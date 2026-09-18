@@ -1,0 +1,99 @@
+---
+title: API Overview
+description: POS AI API Reference
+---
+
+# API Reference
+
+POS AI provides a RESTful API for integrations and custom development.
+
+## Base URL
+
+```
+Production: https://api.ideazes.com
+```
+
+## Authentication
+
+All API requests require authentication using Bearer tokens.
+
+### Getting Your API Key
+
+1. Log in to your admin dashboard
+2. Go to **Settings** → **API**
+3. Generate your API key
+
+### Using the API Key
+
+Include your API key in the Authorization header:
+
+```bash
+curl -X GET "https://api.ideazes.com/v1/endpoint" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Response Format
+
+All responses are in JSON format:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "name": "Example"
+  },
+  "error": null
+}
+```
+
+## Rate Limits
+
+| Plan | Requests/minute |
+|------|-----------------|
+| Starter | 100 |
+| Basic | 500 |
+| Pro | 1,000 |
+| Enterprise | Unlimited |
+
+## Available Endpoints
+
+### Authentication
+
+| Endpoint | Method | Description |
+|-----------|--------|-------------|
+| `/api/auth/login` | POST | User login |
+| `/api/auth/logout` | POST | User logout |
+| `/api/auth/me` | GET | Current user info |
+
+### Orders
+
+| Endpoint | Method | Description |
+|-----------|--------|-------------|
+| `/api/orders` | GET | List orders |
+| `/api/orders` | POST | Create order |
+| `/api/orders/{id}` | GET | Get order |
+| `/api/orders/{id}` | PUT | Update order |
+| `/api/orders/{id}/status` | PUT | Update status |
+
+### Subscriptions
+
+| Endpoint | Method | Description |
+|-----------|--------|-------------|
+| `/api/subscriptions` | GET | List subscriptions |
+| `/api/subscriptions` | POST | Create subscription |
+| `/api/subscriptions/{id}` | GET | Get subscription |
+| `/api/subscriptions/{id}/upgrade` | POST | Upgrade plan |
+
+## Webhooks
+
+Configure webhooks to receive real-time notifications:
+
+- `invoice.created`
+- `invoice.paid`
+- `subscription.created`
+- `subscription.upgraded`
+
+## Need Help?
+
+Contact [api@ideazes.com](mailto:api@ideazes.com) for API support.

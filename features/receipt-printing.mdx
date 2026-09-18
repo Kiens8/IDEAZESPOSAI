@@ -1,0 +1,96 @@
+---
+title: Receipt Printing
+description: Configure and use receipt printers with POS AI
+---
+
+# Receipt Printing
+
+POS AI supports multiple receipt printing options to suit your restaurant's needs.
+
+## Supported Printer Types
+
+| Type | Description | Best For |
+|------|-------------|----------|
+| **Quick Print** | Browser print dialog | Any printer |
+| **Network** | ESC/POS via network | Counter POS |
+| **Bluetooth** | Wireless printing | Mobile/deli |
+| **PDF** | Save as PDF | Email receipts |
+
+## Configuring Your Printer
+
+### Step 1: Access Settings
+
+1. Go to **Settings** → **Receipt**
+
+### Step 2: Select Printer Type
+
+Choose your preferred printer type:
+
+- **None** - Disable printing
+- **Quick Print** - Browser default printer
+- **Network Printer** - ESC/POS thermal printer
+- **Bluetooth Printer** - Wireless thermal printer
+- **PDF** - Save as PDF file
+
+### Step 3: Configure Connection
+
+#### For Network Printer
+
+| Setting | Description |
+|---------|-------------|
+| Printer IP | Printer's network IP address |
+| Port | Usually `9100` (default) |
+
+#### For Bluetooth Printer
+
+1. Make sure your printer is discoverable
+2. Click **Scan** to find devices
+3. Select your printer from the list
+
+## Printing Receipts
+
+After recording payment:
+
+1. A success banner appears
+2. Click **Print Receipt**
+3. Receipt prints based on your settings
+
+## Receipt Copies
+
+Set the number of copies to print automatically:
+
+- **1 copy** - Customer receipt only
+- **2+ copies** - Customer + kitchen/audit copies
+
+## Troubleshooting
+
+### Quick Print Not Working
+
+1. Check your default printer is set
+2. Allow browser pop-ups for the site
+3. Ensure printer is powered on
+
+### Network Printer Not Connecting
+
+1. Verify printer IP address
+2. Check printer is on same network
+3. Try installing [Browser Print Server](https://chrome.google.com/webstore) for reliable printing
+
+### Bluetooth Not Detecting
+
+1. Ensure printer is in pairing mode
+2. Use Chrome or Edge browser (not Safari/Firefox)
+3. Grant Bluetooth permissions when prompted
+
+## Supported Printers
+
+POS AI works with standard ESC/POS thermal printers including:
+
+- Epson TM series
+- Star TSP series
+- Zebra ZPL printers
+- Any printer supporting ESC/POS protocol
+
+## Need Help?
+
+[View FAQs](/troubleshooting/faqs) or contact support.
