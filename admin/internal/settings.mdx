@@ -5,13 +5,19 @@ description: Internal documentation for admin settings management
 
 # Admin Settings
 
-This page contains internal documentation for admin settings management in the IDEAZES POS AI system.
+The Admin Settings page allows internal staff to configure system-wide settings that control payment and subscription behavior. Access the Settings page at **admin.ideazes.com/settings**.
+
+---
+
+## Accessing Settings
+
+1. Login to **admin.ideazes.com**
+2. Navigate to **Settings** in the sidebar menu
+3. View and modify system configuration values
 
 ---
 
 ## Configurable Settings
-
-The following settings can be configured in the admin panel to control payment and subscription behavior:
 
 | Setting Key | Default | Description |
 |------------|---------|-------------|
@@ -19,30 +25,68 @@ The following settings can be configured in the admin panel to control payment a
 | `trial_days` | 30 | Trial period in days |
 | `overdue_warning_days` | 7 | Days before due date to show payment warning |
 
-### Accessing Settings
+---
 
-Settings can be accessed via the Admin App at **admin.ideazes.com/settings**
+## Settings Details
 
-### How to Update Settings
+### Payment Due Days (payment_due_days)
 
-Settings can be managed via the Admin API:
+**Purpose:** Controls how many days customers have to pay for Pay Later invoices.
 
-```bash
-# Get all settings
-GET /api/admin/settings
+**Affected Areas:**
+- Invoice `due_date` calculation
+- Stripe Invoice `days_until_due` parameter
+- Subscription `payment_due_date` field
 
-# Update a setting
-PUT /api/admin/settings/{key}
-Body: {"value": "30"}
+**Formula:**
+```
+invoice.due_date = invoice_created_date + payment_due_days
 ```
 
-### Settings Flow
+**Example:**
+- Payment Due Days = 14
+- Invoice created on Jan 1
+- Invoice due on Jan 15
 
-| Setting | Used In |
-|---------|---------|
-| `payment_due_days` | Invoice due date, Stripe Invoice days_until_due, subscription payment_due_date |
-| `trial_days` | Trial end date calculation |
-| `overdue_warning_days` | Login warning threshold (days before due date) |
+---
+
+### Trial Days (trial_days)
+
+**Purpose:** Controls the length of trial period for new trial subscriptions.
+
+**Affected Areas:**
+- `trial_ends_at` date calculation when creating trial subscriptions
+
+**Formula:**
+```
+trial_ends_at = subscription_created_date + trial_days
+```
+
+**Example:**
+- Trial Days = 30
+- Subscription created on Jan 1
+- Trial ends on Jan 31
+
+---
+
+### Warning Days (overdue_warning_days)
+
+**Purpose:** Controls when users see payment reminder warnings during POS login.
+
+**Affected Areas:**
+- Login access control warnings
+- Payment reminder display
+
+**Formula:**
+```
+if (due_date - today) <= warning_days:
+    show_payment_warning()
+```
+
+**Example:**
+- Warning Days = 7
+- Payment due on Jan 15
+- Warning shown starting Jan 8
 
 ---
 
@@ -50,56 +94,35 @@ Body: {"value": "30"}
 
 ### Impact on Existing Subscriptions
 
-**Important:** Changing `payment_due_days` affects only **NEW** subscriptions/invoices. Existing subscriptions retain their original payment terms.
+⚠️ **Changes only affect NEW subscriptions/invoices**
 
 | Setting | Impact |
 |---------|--------|
-| `payment_due_days` | New subscriptions only |
+| `payment_due_days` | New subscriptions only - existing keep original dates |
 | `trial_days` | New trial subscriptions only |
 | `overdue_warning_days` | All login checks immediately |
 
-### How Settings Work
+**Safe to modify anytime** - existing customers are not affected.
 
-#### Payment Due Days (payment_due_days)
+---
 
-Used when:
-1. Creating a new Pay Later subscription
-2. Generating a Pay Later invoice
-3. Setting the Stripe Invoice `days_until_due`
+### How Settings Work Together
 
-Formula:
 ```
-invoice.due_date = invoice_created_date + payment_due_days
-```
-
-#### Trial Days (trial_days)
-
-Used when:
-1. Creating a new subscription with trial option
-2. Calculating `trial_ends_at` date
-
-Formula:
-```
-trial_ends_at = subscription_created_date + trial_days
-```
-
-#### Warning Days (overdue_warning_days)
-
-Used during:
-1. User login to POS app
-2. Checking if payment warning should be shown
-
-Formula:
-```
-if (due_date - today) <= warning_days:
-    show_warning()
+New Pay Later Subscription Created
+    ↓
+Check payment_due_days setting
+    ↓
+Set invoice.due_date = today + payment_due_days
+    ↓
+Set subscription.payment_due_date = today + payment_due_days
 ```
 
 ---
 
 ## Database Schema
 
-Settings are stored in the `settings` table:
+Settings are stored in the `settings` table in the Website API database:
 
 ```sql
 CREATE TABLE settings (
@@ -108,6 +131,24 @@ CREATE TABLE settings (
     description TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+```
+
+---
+
+## API Endpoints
+
+Settings can also be managed via API:
+
+```bash
+# Get all settings
+GET /api/admin/settings
+
+# Get specific setting
+GET /api/admin/settings/{key}
+
+# Update a setting
+PUT /api/admin/settings/{key}
+Body: {"value": "30"}
 ```
 
 ---
