@@ -1,0 +1,118 @@
+---
+title: Admin Settings
+description: Internal documentation for admin settings management
+---
+
+# Admin Settings
+
+This page contains internal documentation for admin settings management in the IDEAZES POS AI system.
+
+---
+
+## Configurable Settings
+
+The following settings can be configured in the admin panel to control payment and subscription behavior:
+
+| Setting Key | Default | Description |
+|------------|---------|-------------|
+| `payment_due_days` | 14 | Payment due in days for Pay Later invoices |
+| `trial_days` | 30 | Trial period in days |
+| `overdue_warning_days` | 7 | Days before due date to show payment warning |
+
+### Accessing Settings
+
+Settings can be accessed via the Admin App at **admin.ideazes.com/settings**
+
+### How to Update Settings
+
+Settings can be managed via the Admin API:
+
+```bash
+# Get all settings
+GET /api/admin/settings
+
+# Update a setting
+PUT /api/admin/settings/{key}
+Body: {"value": "30"}
+```
+
+### Settings Flow
+
+| Setting | Used In |
+|---------|---------|
+| `payment_due_days` | Invoice due date, Stripe Invoice days_until_due, subscription payment_due_date |
+| `trial_days` | Trial end date calculation |
+| `overdue_warning_days` | Login warning threshold (days before due date) |
+
+---
+
+## Important Notes
+
+### Impact on Existing Subscriptions
+
+**Important:** Changing `payment_due_days` affects only **NEW** subscriptions/invoices. Existing subscriptions retain their original payment terms.
+
+| Setting | Impact |
+|---------|--------|
+| `payment_due_days` | New subscriptions only |
+| `trial_days` | New trial subscriptions only |
+| `overdue_warning_days` | All login checks immediately |
+
+### How Settings Work
+
+#### Payment Due Days (payment_due_days)
+
+Used when:
+1. Creating a new Pay Later subscription
+2. Generating a Pay Later invoice
+3. Setting the Stripe Invoice `days_until_due`
+
+Formula:
+```
+invoice.due_date = invoice_created_date + payment_due_days
+```
+
+#### Trial Days (trial_days)
+
+Used when:
+1. Creating a new subscription with trial option
+2. Calculating `trial_ends_at` date
+
+Formula:
+```
+trial_ends_at = subscription_created_date + trial_days
+```
+
+#### Warning Days (overdue_warning_days)
+
+Used during:
+1. User login to POS app
+2. Checking if payment warning should be shown
+
+Formula:
+```
+if (due_date - today) <= warning_days:
+    show_warning()
+```
+
+---
+
+## Database Schema
+
+Settings are stored in the `settings` table:
+
+```sql
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    description TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+---
+
+## Related Documentation
+
+- [Access Control System](/access-control/overview) - Login access control
+- [Billing & Subscription](/billing/plans) - Subscription management

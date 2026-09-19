@@ -47,8 +47,13 @@
         "group": "Troubleshooting",
         "pages": [
           "troubleshooting/common-issues",
-          "troubleshooting/faqs",
-          "access-control/overview"
+          "troubleshooting/faqs"
+        ]
+      },
+      {
+        "group": "Admin (Internal)",
+        "pages": [
+          "admin/internal/settings"
         ]
       }
     ]
