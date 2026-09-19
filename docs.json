@@ -1,16 +1,20 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "theme": "mint",
-  "name": "POS AI - Documentation",
+  "name": "IDEAZES POS AI - Documentation",
   "colors": {
     "primary": "#059669",
     "light": "#10B981",
     "dark": "#047857"
   },
-  "favicon": "/favicon.svg",
+  "favicon": {
+    "light": "/images/ideazes-pos-ai-favicon-light.svg",
+    "dark": "/images/ideazes-pos-ai-favicon-dark.svg"
+  },
   "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
+    "light": "/images/ideazes-pos-ai-square-logo.svg",
+    "dark": "/images/ideazes-pos-ai-square-logo.svg",
+    "href": "https://site.ideazes.com"
   },
   "navigation": {
     "pages": [
