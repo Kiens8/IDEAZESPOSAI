@@ -47,7 +47,8 @@
         "group": "Troubleshooting",
         "pages": [
           "troubleshooting/common-issues",
-          "troubleshooting/faqs"
+          "troubleshooting/faqs",
+          "access-control/overview"
         ]
       },
       {
