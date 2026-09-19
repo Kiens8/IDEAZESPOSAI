@@ -38,8 +38,18 @@ When a user attempts to login, the system checks the subscription status:
 | Status | Action | Message |
 |--------|--------|---------|
 | `paid` | ✅ Allow | Normal access |
-| `pending` | ⚠️ Allow (warning if due soon) | Payment due in X days |
+| `pending` | ⚠️ Allow (warning if due ≤7 days) | Payment due in X days |
 | `overdue` | ❌ Block | Account suspended due to overdue payment |
+
+### Invoice Due Date vs Subscription Due Date
+
+The system uses the **latest pending invoice's due date** for payment warning checks, not the subscription creation date. This ensures:
+
+1. **Correct behavior for initial invoices** - Due date is calculated from invoice creation
+2. **Correct behavior for recurring invoices** - Each new invoice has its own due date
+3. **Accurate warnings** - Warning triggers based on actual payment deadline
+
+The website API returns `latest_invoice_due_date` which contains the due date of the most recent pending invoice for the customer.
 
 ---
 
@@ -65,12 +75,14 @@ These scenarios allow login but display warnings to the user:
 ```
 
 ### 2. Payment Due Soon
-**Condition:** Pay Later payment due within 7 days
+**Condition:** Pay Later payment due within 7 days (based on latest pending invoice due date)
 
 **Warning Message:**
 ```
 ⚠️ Payment due in X day(s). Please ensure timely payment to avoid service interruption.
 ```
+
+**Note:** The system checks the **latest pending invoice's due date**, not the subscription creation date. This ensures correct behavior for both initial and recurring Pay Later invoices.
 
 ### 3. Subscription Check Failed
 **Condition:** Unable to verify subscription status with payment system
@@ -95,6 +107,7 @@ When a user logs in, the system returns additional fields for the frontend to ha
   "payment_status": "paid|pending|overdue",
   "trial_ends_at": "2026-09-25T00:00:00Z",
   "payment_due_date": "2026-09-30T00:00:00Z",
+  "latest_invoice_due_date": "2026-09-30T00:00:00Z",
   "warnings": ["Warning message 1", "Warning message 2"]
 }
 ```
@@ -128,6 +141,7 @@ When a user logs in, the system returns additional fields for the frontend to ha
 | Subscription expired | "Your subscription has expired. Please renew to continue using the POS system." |
 | Trial ended | "Your trial period has ended. Please subscribe to continue using the POS system." |
 | Payment overdue | "Account suspended due to overdue payment. Please clear your outstanding balance to continue." |
+| Payment past due date | "Payment is overdue. Please clear your outstanding balance to continue." |
 | Invalid credentials | "Invalid email or password" |
 | Account deactivated | "Account has been deactivated. Please contact your administrator." |
 
