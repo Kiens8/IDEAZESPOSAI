@@ -75,7 +75,7 @@ These scenarios allow login but display warnings to the user:
 ```
 
 ### 2. Payment Due Soon
-**Condition:** Pay Later payment due within 7 days (based on latest pending invoice due date)
+**Condition:** Pay Later payment due within X days (configurable, default 7 days)
 
 **Warning Message:**
 ```
@@ -153,3 +153,38 @@ If users encounter access issues, they should contact:
 
 - **Email:** support@ideazes.com
 - **Website:** https://site.ideazes.com/contact
+
+---
+
+## Configurable Settings
+
+The following settings can be configured in the admin panel to control payment and subscription behavior:
+
+| Setting Key | Default | Description |
+|------------|---------|-------------|
+| `payment_due_days` | 14 | Payment due in days for Pay Later invoices |
+| `trial_days` | 30 | Trial period in days |
+| `overdue_warning_days` | 7 | Days before due date to show payment warning |
+
+### How to Update Settings
+
+Settings can be managed via the Admin API:
+
+```bash
+# Get all settings
+GET /api/admin/settings
+
+# Update a setting
+PUT /api/admin/settings/{key}
+Body: {"value": "30"}
+```
+
+### Settings Flow
+
+| Setting | Used In |
+|---------|---------|
+| `payment_due_days` | Invoice due date, Stripe Invoice days_until_due, subscription payment_due_date |
+| `trial_days` | Trial end date calculation |
+| `overdue_warning_days` | Login warning threshold (days before due date) |
+
+**Important:** Changing `payment_due_days` affects only **new** invoices/subscriptions. Existing subscriptions retain their original due dates.
