@@ -1,0 +1,141 @@
+---
+title: Access Control System
+description: How IDEAZES POS AI controls user access based on subscription and payment status
+---
+
+# Access Control System
+
+IDEAZES POS AI implements a comprehensive access control system to ensure only valid subscribers can access the POS system. This system checks subscription status, payment status, and user account status during login.
+
+---
+
+## Access Status Types
+
+| Status | Description | Result |
+|--------|-------------|--------|
+| `granted` | ✅ All checks passed | User can login |
+| `warning` | ⚠️ Minor issues detected | User can login with warnings displayed |
+| `blocked` | ❌ Access denied | User cannot login |
+
+---
+
+## Subscription Status Checks
+
+When a user attempts to login, the system checks the subscription status:
+
+| Status | Action | Message |
+|--------|--------|---------|
+| `active` | ✅ Allow | Normal access |
+| `trial` | ✅ Allow (with warnings if ending soon) | Trial ending in X days |
+| `cancelled` | ❌ Block | Subscription cancelled |
+| `expired` | ❌ Block | Subscription expired |
+| `none` | ❌ Block | No subscription found |
+
+---
+
+## Payment Status Checks
+
+| Status | Action | Message |
+|--------|--------|---------|
+| `paid` | ✅ Allow | Normal access |
+| `pending` | ⚠️ Allow (warning if due soon) | Payment due in X days |
+| `overdue` | ❌ Block | Account suspended due to overdue payment |
+
+---
+
+## User Account Checks
+
+| Status | Action | Message |
+|--------|--------|---------|
+| `is_active = true` | ✅ Allow | Normal access |
+| `is_active = false` | ❌ Block | Account deactivated |
+
+---
+
+## Warning Scenarios
+
+These scenarios allow login but display warnings to the user:
+
+### 1. Trial Ending Soon
+**Condition:** Trial period ends within 3 days
+
+**Warning Message:**
+```
+⚠️ Your trial period ends in X day(s). Please subscribe to avoid service interruption.
+```
+
+### 2. Payment Due Soon
+**Condition:** Pay Later payment due within 7 days
+
+**Warning Message:**
+```
+⚠️ Payment due in X day(s). Please ensure timely payment to avoid service interruption.
+```
+
+### 3. Subscription Check Failed
+**Condition:** Unable to verify subscription status with payment system
+
+**Warning Message:**
+```
+⚠️ Unable to verify subscription status. Please contact support if you see any issues.
+```
+
+---
+
+## Login Response Fields
+
+When a user logs in, the system returns additional fields for the frontend to handle:
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "access_status": "granted|warning|blocked",
+  "subscription_status": "active|trial|cancelled|expired",
+  "payment_status": "paid|pending|overdue",
+  "trial_ends_at": "2026-09-25T00:00:00Z",
+  "payment_due_date": "2026-09-30T00:00:00Z",
+  "warnings": ["Warning message 1", "Warning message 2"]
+}
+```
+
+---
+
+## Frontend Behavior
+
+### Hard Block (access_status = "blocked")
+- User sees error message with red banner
+- Login is prevented
+- User must resolve issue before retrying
+
+### Soft Warning (access_status = "warning")
+- User sees amber warning banner with notices
+- User can still login
+- Warnings should be addressed promptly
+
+### Normal Access (access_status = "granted")
+- User sees blue info banner
+- Normal login flow
+
+---
+
+## Error Messages
+
+| Scenario | Error Message |
+|----------|---------------|
+| No subscription | "No active subscription found. Please subscribe to access the POS system." |
+| Subscription cancelled | "Your subscription has been cancelled. Please contact support to reactivate." |
+| Subscription expired | "Your subscription has expired. Please renew to continue using the POS system." |
+| Trial ended | "Your trial period has ended. Please subscribe to continue using the POS system." |
+| Payment overdue | "Account suspended due to overdue payment. Please clear your outstanding balance to continue." |
+| Invalid credentials | "Invalid email or password" |
+| Account deactivated | "Account has been deactivated. Please contact your administrator." |
+
+---
+
+## Support Contact
+
+If users encounter access issues, they should contact:
+
+- **Email:** support@ideazes.com
+- **Website:** https://site.ideazes.com/contact
