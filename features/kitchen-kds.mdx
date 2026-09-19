@@ -1,0 +1,144 @@
+---
+title: Kitchen Display System (KDS)
+description: Real-time kitchen order display and management
+---
+
+# Kitchen Display System (KDS)
+
+The Kitchen Display System provides real-time order management for kitchen staff, with automatic notifications and ticket printing.
+
+## Overview
+
+When orders are placed through the POS or online ordering system, they appear instantly on the Kitchen Display screen. Kitchen staff can:
+
+- View incoming orders in real-time
+- Update order status (Confirm → Preparing → Ready)
+- Receive sound notifications for new orders
+- Auto-print kitchen tickets to network printers
+
+## How It Works
+
+### Order Flow
+
+```
+1. Order Placed (POS / Online)
+         ↓
+2. Kitchen Display receives order (auto-refresh every 3 seconds)
+         ↓
+3. Sound notification plays (if enabled)
+         ↓
+4. Kitchen staff sees order card on screen
+         ↓
+5. Staff clicks "Confirm Order"
+         ↓
+6. Staff clicks "Start Preparing"
+         ↓
+7. Staff clicks "Mark Ready"
+         ↓
+8. Order moves to Service area
+```
+
+### Order Statuses
+
+| Status | Description | Color |
+|--------|-------------|-------|
+| **Pending** | New order, not yet confirmed | Yellow |
+| **Confirmed** | Order confirmed by kitchen | Blue |
+| **Preparing** | Kitchen is preparing the order | Orange |
+| **Ready** | Order ready for service | Green |
+
+## Settings
+
+Configure the Kitchen Display in **Settings → Kitchen** tab:
+
+### Order Display Time
+
+**Purpose:** How long orders stay on screen before auto-dismiss.
+
+- **Range:** 10-300 seconds
+- **Default:** 60 seconds
+- **Behavior:** Orders auto-dismiss after this time, except "Ready" orders which stay until served
+
+### Sound Notifications
+
+**Purpose:** Play a sound alert when new orders arrive.
+
+- **Default:** Enabled
+- **Toggle:** On/Off switch in Kitchen settings
+- **Manual Mute:** Click sound icon on Kitchen page to temporarily mute
+
+### Auto-Print Kitchen Tickets
+
+**Purpose:** Automatically print kitchen tickets when orders arrive.
+
+- **Default:** Disabled
+- **Printer:** Uses the same network printer configured in Receipt settings
+- **Ticket Format:** Simplified order ticket (no prices, just items and modifications)
+
+## Kitchen Ticket Format
+
+When auto-print is enabled, kitchen tickets print with:
+
+```
+       *** KITCHEN ***
+           
+         #12345
+    --------------------------------
+    [DINE IN] 10:30 AM Table 5
+    --------------------------------
+    
+    2x Burger
+       > No onions
+       > Extra cheese
+    
+    1x Fries
+       > Extra salt
+    
+    1x Coke
+    --------------------------------
+```
+
+## Printer Requirements
+
+Kitchen tickets use ESC/POS commands and require:
+
+1. **Network Thermal Printer** (recommended)
+2. **Browser Print Server** Chrome extension (optional but recommended for reliability)
+3. Printer must be connected to the same network as the POS device
+
+### Supported Printers
+
+Most thermal printers with network capability support ESC/POS:
+
+- Epson TM-T88 series
+- Star TSP series
+- Any ESC/POS compatible printer
+
+## Manual Print
+
+If auto-print is disabled, kitchen staff can manually print tickets:
+
+1. Click the 🖨️ button on any order card
+2. Ticket prints to the configured receipt printer
+
+## Troubleshooting
+
+### No Sound Notifications
+
+1. Check that "Sound notifications" is enabled in Settings → Kitchen
+2. Click the sound icon on Kitchen page to check if manually muted
+3. Ensure browser allows audio/autoplay
+
+### Tickets Not Printing
+
+1. Verify printer IP is configured in Settings → Receipt → Network Printer
+2. Check printer is powered on and connected to network
+3. Try printing a test page from printer settings
+4. Install Browser Print Server extension for more reliable printing
+
+### Orders Not Appearing
+
+1. Verify Kitchen page is open in browser
+2. Check refresh interval (should auto-refresh every 3 seconds)
+3. Click "Refresh" button to manually reload
+4. Check if orders are in correct status (pending/confirmed/preparing/ready)

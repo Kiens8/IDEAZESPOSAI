@@ -31,6 +31,7 @@
         "pages": [
           "features/receipt-printing",
           "features/order-management",
+          "features/kitchen-kds",
           "features/subscription"
         ]
       },
