@@ -21,31 +21,38 @@
       {
         "group": "Getting Started",
         "pages": [
-          "getting-started/overview",
-          "getting-started/quickstart",
-          "getting-started/setup-outlet"
+          "site-app/getting-started/overview",
+          "site-app/getting-started/quickstart",
+          "site-app/getting-started/setup-outlet"
         ]
       },
       {
-        "group": "Features",
+        "group": "site.app (Landing Page)",
         "pages": [
-          "features/receipt-printing",
-          "features/order-management",
-          "features/kitchen-kds",
-          "features/subscription"
+          "site-app/overview"
         ]
       },
       {
-        "group": "API Reference",
+        "group": "pos.app (POS Terminal)",
         "pages": [
-          "api-reference/overview"
+          "pos-app/receipt-printing",
+          "pos-app/order-management",
+          "pos-app/kitchen-kds"
+        ]
+      },
+      {
+        "group": "order.app (Customer Ordering)",
+        "pages": [
+          "order-app/overview"
         ]
       },
       {
         "group": "Billing & Subscription",
         "pages": [
           "billing/plans",
-          "billing/payment-methods"
+          "billing/payment-methods",
+          "billing/subscription",
+          "billing/api-reference"
         ]
       },
       {
