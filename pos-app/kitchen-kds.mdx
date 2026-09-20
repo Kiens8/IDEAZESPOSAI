@@ -67,7 +67,7 @@ When orders have been waiting too long (pending/confirmed status), the system pr
 
 - Reminder countdown uses **Order Reminder setting** (default: 5 minutes)
 - Countdown resets after each cycle
-- Sound plays **once per cycle** when entering the final minute
+- Sound plays **once per cycle** when entering the final minute (e.g., at 4:00 for a 5-minute cycle)
 - Reminder continues until order status changes to "preparing" or higher
 
 ### Example with 5-minute Reminder
@@ -75,10 +75,10 @@ When orders have been waiting too long (pending/confirmed status), the system pr
 | Time | Countdown | Action |
 |------|-----------|--------|
 | 0:00 | 5:00 | Order appears, countdown starts |
-| 4:00 | 1:00 | Countdown in final minute |
-| 4:58 | 0:02 | 🔔 **SOUND PLAYS** |
-| 5:00 | 5:00 | Countdown resets (new cycle) |
-| 9:58 | 0:02 | 🔔 **SOUND PLAYS AGAIN** |
+| 4:00 | 1:00 | 🔔 **SOUND PLAYS** (entering final minute) |
+| 5:00 | 5:00 | Countdown resets (new cycle starts) |
+| 9:00 | 1:00 | 🔔 **SOUND PLAYS AGAIN** |
+| 10:00 | 5:00 | Countdown resets, new cycle |
 
 ## Settings
 
@@ -110,13 +110,16 @@ Configure the Kitchen Display in **Settings → Kitchen** tab:
 - **Requirement:** Only works when Receipt Printer Type is set to "Network"
 - **Ticket Format:** Simplified order ticket (no prices, just items)
 
+**Note:** Auto-print is only available for network printers. For other printer types (Quick Print, PDF, Screenshot), use the **Manual Print button** on each order card.
+
 ## Kitchen Ticket Printing
 
 ### Manual Print Button
 
 Kitchen staff can manually print tickets by clicking the 🖨️ button on any order card.
 
-**Supported Printer Types:**
+**Works with ALL printer types** configured in Receipt settings:
+
 | Printer Type | Behavior |
 |-------------|----------|
 | **Network** | Sends ticket directly to network printer |
