@@ -15,7 +15,7 @@ When orders are placed through the POS or online ordering system, they appear in
 - Update order status (Confirm → Preparing → Ready)
 - Receive sound notifications for new orders
 - Receive urgent reminders for orders waiting too long
-- Auto-print kitchen tickets to network printers
+- Print kitchen tickets to any configured printer type
 
 ## How It Works
 
@@ -52,35 +52,46 @@ When orders are placed through the POS or online ordering system, they appear in
 
 ## Order Reminders
 
-When orders have been waiting too long (pending/confirmed status), the system will:
+When orders have been waiting too long (pending/confirmed status), the system provides visual and audio alerts:
 
-1. **Visual Alert** - Order card gets a red warning border and pulsing animation
-2. **"REMINDER" Label** - Shows warning badge on the order card
+### How Reminders Work
+
+1. **Countdown Timer** - Each order card shows a countdown timer (e.g., "⏱️ 1:45")
+2. **Visual Alert** - When countdown reaches final minute, order card gets:
+   - Red warning border
+   - Pulsing animation
+   - "⚠️ REMINDER" badge
 3. **Alert Sound** - Plays urgent reminder sound (different from new order sound)
 
-The reminder time is configurable in Settings.
+### Reminder Behavior
+
+- Reminder countdown uses **Order Reminder setting** (default: 5 minutes)
+- Countdown resets after each cycle
+- Sound plays **once per cycle** when entering the final minute
+- Reminder continues until order status changes to "preparing" or higher
+
+### Example with 5-minute Reminder
+
+| Time | Countdown | Action |
+|------|-----------|--------|
+| 0:00 | 5:00 | Order appears, countdown starts |
+| 4:00 | 1:00 | Countdown in final minute |
+| 4:58 | 0:02 | 🔔 **SOUND PLAYS** |
+| 5:00 | 5:00 | Countdown resets (new cycle) |
+| 9:58 | 0:02 | 🔔 **SOUND PLAYS AGAIN** |
 
 ## Settings
 
 Configure the Kitchen Display in **Settings → Kitchen** tab:
 
-### Order Display Time
+### Order Reminder (minutes)
 
-**Purpose:** How long pending/confirmed/preparing orders stay on screen before auto-dismiss.
-
-- **Range:** 10-300 seconds
-- **Default:** 60 seconds
-- **Behavior:** Orders auto-dismiss after this time
-- **Note:** "Ready" orders are NOT affected by this setting - they stay until served
-
-### Order Reminder
-
-**Purpose:** Alert when orders have been waiting too long.
+**Purpose:** Time before showing reminder alert.
 
 - **Range:** 1-30 minutes
 - **Default:** 5 minutes
-- **Behavior:** After this time, pending/confirmed orders show visual/audio reminder
-- **Effect:** Order card gets red border, pulsing animation, and "REMINDER" badge
+- **Behavior:** After this time, pending/confirmed orders show countdown and reminder alerts
+- **Effect:** Order card shows countdown timer, then red border and sound when entering final minute
 
 ### Sound Notifications
 
@@ -95,12 +106,35 @@ Configure the Kitchen Display in **Settings → Kitchen** tab:
 **Purpose:** Automatically print kitchen tickets when orders arrive.
 
 - **Default:** Disabled
-- **Printer:** Uses the same network printer configured in Receipt settings
-- **Ticket Format:** Simplified order ticket (no prices, just items and modifications)
+- **Printer:** Uses network printer configured in Receipt settings
+- **Requirement:** Only works when Receipt Printer Type is set to "Network"
+- **Ticket Format:** Simplified order ticket (no prices, just items)
+
+## Kitchen Ticket Printing
+
+### Manual Print Button
+
+Kitchen staff can manually print tickets by clicking the 🖨️ button on any order card.
+
+**Supported Printer Types:**
+| Printer Type | Behavior |
+|-------------|----------|
+| **Network** | Sends ticket directly to network printer |
+| **Quick Print** | Opens browser print dialog |
+| **PDF** | Opens PDF preview for printing |
+| **Screenshot** | Captures ticket as image |
+
+### Auto-Print vs Manual Print
+
+| Feature | Auto-Print | Manual Print Button |
+|---------|------------|---------------------|
+| **Printer Type** | Network only | All types |
+| **Trigger** | Automatic on new order | Staff clicks button |
+| **Use Case** | Busy kitchen, hands-free | When needed |
 
 ## Kitchen Ticket Format
 
-When auto-print is enabled, kitchen tickets print with:
+Kitchen tickets include:
 
 ```
        *** KITCHEN ***
@@ -121,28 +155,35 @@ When auto-print is enabled, kitchen tickets print with:
     --------------------------------
 ```
 
+**Note:** Datetime on kitchen tickets uses the outlet's timezone setting.
+
+## Timezone Handling
+
+Kitchen Display correctly handles timezones:
+
+- **Order Numbers:** Date portion uses outlet timezone
+- **Kitchen Tickets:** Datetime uses outlet timezone
+- **Order History:** Date filtering uses outlet timezone
+
+Configure timezone in **Settings → General → Timezone**.
+
 ## Printer Requirements
+
+### For Network Printing
 
 Kitchen tickets use ESC/POS commands and require:
 
 1. **Network Thermal Printer** (recommended)
-2. **Browser Print Server** Chrome extension (optional but recommended for reliability)
+2. **Browser Print Server** Chrome extension (optional)
 3. Printer must be connected to the same network as the POS device
 
 ### Supported Printers
 
-Most thermal printers with network capability support ESC/POS:
+Most thermal printers with network capability:
 
 - Epson TM-T88 series
 - Star TSP series
 - Any ESC/POS compatible printer
-
-## Manual Print
-
-If auto-print is disabled, kitchen staff can manually print tickets:
-
-1. Click the 🖨️ button on any order card
-2. Ticket prints to the configured receipt printer
 
 ## Troubleshooting
 
@@ -152,22 +193,41 @@ If auto-print is disabled, kitchen staff can manually print tickets:
 2. Click the sound icon on Kitchen page to check if manually muted
 3. Ensure browser allows audio/autoplay
 
-### Tickets Not Printing
+### Tickets Not Printing (Network)
 
 1. Verify printer IP is configured in Settings → Receipt → Network Printer
 2. Check printer is powered on and connected to network
 3. Try printing a test page from printer settings
-4. Install Browser Print Server extension for more reliable printing
+4. Install Browser Print Server extension for reliability
+
+### Tickets Not Printing (Manual Print)
+
+1. Check Receipt Printer Type in Settings → Receipt
+2. Verify printer is configured correctly
+3. For Quick Print - ensure browser print dialog appears
 
 ### Orders Not Appearing
 
 1. Verify Kitchen page is open in browser
-2. Check refresh interval (should auto-refresh every 3 seconds)
+2. Check refresh interval (auto-refresh every 3 seconds)
 3. Click "Refresh" button to manually reload
 4. Check if orders are in correct status (pending/confirmed/preparing/ready)
 
 ### Ready Orders Not Showing
 
-- "Ready" orders should stay on screen until served
-- If Ready orders disappear, check if the order was marked as "Served"
-- Ready orders are not affected by Order Display Time setting
+- "Ready" orders stay on screen until served
+- Check if the order was marked as "Served"
+- Ready orders do not auto-dismiss
+
+### Reminder Sound Not Playing
+
+- Reminder sound plays only once per cycle when entering final minute
+- After playing, sound won't play again until the next cycle
+- This is intentional to avoid annoying repeated sounds
+
+### Date/Time Issues
+
+If dates appear incorrect:
+1. Check outlet timezone setting in Settings → General → Timezone
+2. Verify server timezone matches expected location
+3. Kitchen tickets and order numbers use outlet timezone
