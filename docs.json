@@ -37,7 +37,8 @@
         "pages": [
           "pos-app/receipt-printing",
           "pos-app/order-management",
-          "pos-app/kitchen-kds"
+          "pos-app/kitchen-kds",
+          "billing/payment-methods"
         ]
       },
       {
@@ -50,7 +51,6 @@
         "group": "Billing & Subscription",
         "pages": [
           "billing/plans",
-          "billing/payment-methods",
           "billing/subscription"
         ]
       },
