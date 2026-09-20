@@ -1,29 +1,100 @@
 ---
-title: Landing Page
-description: Marketing website and trial signup
+title: Site
+description: Landing page and customer portal
 ---
 
 # Site
 
-The landing page at **site.ideazes.com** is the marketing website where potential customers learn about IDEAZES POS AI and sign up for a free trial.
+Site consists of two parts: the **public landing page** for marketing and the **customer portal** for managing your subscription and restaurant.
 
-## Features
+---
 
-### Public Pages
+## Public Landing Page (site.ideazes.com)
+
+The landing page is where potential customers learn about IDEAZES POS AI and sign up for a free trial.
+
+### Features
+
 - **Hero Section** - Introduction to IDEAZES POS AI
 - **Features Overview** - Key capabilities of the system
+- **AI Tools** - showcasing AI-powered features
 - **Pricing Display** - Available subscription plans
 - **Free Trial Signup** - Create new customer account
 
-### Customer Flow
+### Customer Signup Flow
 1. Customer visits site.ideazes.com
-2. Views features and pricing
-3. Signs up for free trial
-4. Account created in the system
-5. Redirected to Customer App for setup
+2. Views features, AI tools, and pricing
+3. Clicks "Try Free" or "Get Started"
+4. Fills in registration details (name, email, password, restaurant name)
+5. Account created with Starter plan (free trial)
+6. Redirected to Customer Portal
+
+---
+
+## Customer Portal (site.ideazes.com - Logged In)
+
+After login, customers access the portal dashboard to manage their restaurant and subscription.
+
+### Dashboard Overview
+
+The main dashboard shows a summary of your subscription status:
+
+| Field | Description |
+|-------|-------------|
+| **Plan** | Current subscription plan (Starter, Basic, Pro, Enterprise) |
+| **Outlets** | Number of outlets allowed vs. maximum |
+| **Staff** | Number of staff allowed vs. maximum |
+| **Status** | Subscription status (active, trial, expired) |
+
+### Subscription Card
+
+Displays detailed subscription information:
+- **Plan Name** - Current plan tier
+- **Billing Cycle** - Monthly or Annual
+- **Next Renewal** - Date of next billing
+- **Status** - Active, Trial, or Expired
+
+### Quick Actions
+
+| Action | Description |
+|--------|-------------|
+| **Open POS** | Launch the POS Frontend application |
+| **Manage Subscription** | View and change subscription plan |
+| **View Billing** | Access invoices and payment history |
+| **Update Profile** | Edit account and restaurant details |
+
+---
+
+## Customer Portal Navigation
+
+### Menu Items
+
+| Section | Description |
+|---------|-------------|
+| **Overview** | Dashboard with subscription summary |
+| **Subscription** | Manage subscription plan and limits |
+| **Billing** | View invoices and payment methods |
+| **Profile** | Account and restaurant information |
+| **Settings** | Outlet and business settings |
+| **Support** | Help and contact support |
+
+---
+
+## Subscription Limits
+
+Each plan has limits on:
+
+| Resource | Starter | Basic | Pro | Enterprise |
+|---------|---------|-------|-----|------------|
+| Outlets | 1 | 2 | 5 | Unlimited |
+| Staff | 3 | 10 | 25 | Unlimited |
+| Features | Basic | Standard | Advanced | All |
+
+---
 
 ## Related Documentation
 
-- [Quickstart Guide](../getting-started/quickstart)
+- [Getting Started](../site-app/getting-started/overview)
+- [Quickstart Guide](../site-app/getting-started/quickstart)
+- [Setup Outlet](../site-app/getting-started/setup-outlet)
 - [Subscription Plans](../billing/plans)
-- [Customer Setup](../getting-started/setup-outlet)
