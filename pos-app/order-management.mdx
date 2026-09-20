@@ -25,9 +25,30 @@ graph LR
 | **Pending** | Order just created, awaiting confirmation |
 | **Confirmed** | Staff confirmed the order |
 | **Preparing** | Kitchen is preparing the order |
-| **Ready** | Order is ready for serving |
+| **Ready** | Order ready for service, waiting to be served |
 | **Served** | Food delivered to customer |
 | **Paid** | Payment completed |
+
+## Order Settings
+
+Configure order settings in **Settings → Order**.
+
+### Settings That Apply to Both Customer App and Staff Order
+
+| Setting | Description |
+|---------|-------------|
+| **Allow Dine In** | Show/hide "Dine In" option |
+| **Allow Takeaway** | Show/hide "Takeaway" option |
+| **Allow Delivery** | Show/hide "Delivery" option |
+
+### Settings That Apply to Staff Order Only *
+
+> *marked with **Staff Order** label in settings
+
+| Setting | Description |
+|---------|-------------|
+| **Max Orders Per Table** * | Maximum active orders allowed per table |
+| **Table Required for Dine-In** * | Force table selection for dine-in orders |
 
 ## Staff Order Screen
 
@@ -37,21 +58,18 @@ The Staff Order screen allows staff to manually create orders for customers.
 
 The available order types depend on your settings:
 
-| Setting | Description |
-|---------|-------------|
-| **Allow Dine In** | Show/hide "Dine In" option |
-| **Allow Takeaway** | Show/hide "Takeaway" option |
-| **Allow Delivery** | Show/hide "Delivery" option |
-| **Table Required** | Force table selection for dine-in orders |
-| **Max Orders Per Table** | Limit number of active orders per table |
+- **Allow Dine In** - Show/hide "Dine In" option
+- **Allow Takeaway** - Show/hide "Takeaway" option
+- **Allow Delivery** - Show/hide "Delivery" option
 
 ### Table Selection
 
 When selecting a table:
 
 - Tables show current number of active orders
-- Tables at max capacity (max_orders_per_table) are highlighted in red and disabled
+- Tables at max capacity (Max Orders Per Table) are highlighted in red and disabled
 - Error message shown if attempting to select full table
+- If **Table Required for Dine-In** is enabled, table must be selected for dine-in orders
 
 ### Order Flow
 
@@ -117,7 +135,10 @@ The order queue shows all active orders organized by status:
 
 ## Kitchen Display System (KDS)
 
-Orders automatically appear on the kitchen display for preparation tracking. Ready orders stay visible until marked as "Served".
+Orders automatically appear on the kitchen display for preparation tracking.
+
+- **Ready** orders stay on screen until marked as "Served"
+- Order reminder alerts appear for orders waiting too long
 
 ## Need Help?
 
