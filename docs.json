@@ -27,13 +27,13 @@
         ]
       },
       {
-        "group": "site.app (Landing Page)",
+        "group": "Site (Landing Page)",
         "pages": [
           "site-app/overview"
         ]
       },
       {
-        "group": "pos.app (POS Terminal)",
+        "group": "POS Frontend",
         "pages": [
           "pos-app/receipt-printing",
           "pos-app/order-management",
@@ -41,7 +41,7 @@
         ]
       },
       {
-        "group": "order.app (Customer Ordering)",
+        "group": "Customer App",
         "pages": [
           "order-app/overview"
         ]
