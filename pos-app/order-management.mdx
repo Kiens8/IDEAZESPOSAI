@@ -29,6 +29,38 @@ graph LR
 | **Served** | Food delivered to customer |
 | **Paid** | Payment completed |
 
+## Staff Order Screen
+
+The Staff Order screen allows staff to manually create orders for customers.
+
+### Order Type Options
+
+The available order types depend on your settings:
+
+| Setting | Description |
+|---------|-------------|
+| **Allow Dine In** | Show/hide "Dine In" option |
+| **Allow Takeaway** | Show/hide "Takeaway" option |
+| **Allow Delivery** | Show/hide "Delivery" option |
+| **Table Required** | Force table selection for dine-in orders |
+| **Max Orders Per Table** | Limit number of active orders per table |
+
+### Table Selection
+
+When selecting a table:
+
+- Tables show current number of active orders
+- Tables at max capacity (max_orders_per_table) are highlighted in red and disabled
+- Error message shown if attempting to select full table
+
+### Order Flow
+
+1. Select order type (Dine In / Takeaway / Delivery)
+2. Select table (if dine-in)
+3. Add menu items to cart
+4. Submit order
+5. Order appears in Order Queue and Kitchen Display
+
 ## Managing Orders
 
 ### Create New Order
@@ -85,7 +117,7 @@ The order queue shows all active orders organized by status:
 
 ## Kitchen Display System (KDS)
 
-Orders automatically appear on the kitchen display for preparation tracking.
+Orders automatically appear on the kitchen display for preparation tracking. Ready orders stay visible until marked as "Served".
 
 ## Need Help?
 

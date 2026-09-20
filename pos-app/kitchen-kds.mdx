@@ -5,7 +5,7 @@ description: Real-time kitchen order display and management
 
 # Kitchen Display System (KDS)
 
-The Kitchen Display System provides real-time order management for kitchen staff, with automatic notifications and ticket printing.
+The Kitchen Display System provides real-time order management for kitchen staff, with automatic notifications, ticket printing, and order reminders.
 
 ## Overview
 
@@ -14,6 +14,7 @@ When orders are placed through the POS or online ordering system, they appear in
 - View incoming orders in real-time
 - Update order status (Confirm → Preparing → Ready)
 - Receive sound notifications for new orders
+- Receive urgent reminders for orders waiting too long
 - Auto-print kitchen tickets to network printers
 
 ## How It Works
@@ -33,9 +34,9 @@ When orders are placed through the POS or online ordering system, they appear in
          ↓
 6. Staff clicks "Start Preparing"
          ↓
-7. Staff clicks "Mark Ready"
+7. Staff clicks "Mark Ready" → Order stays visible
          ↓
-8. Order moves to Service area
+8. Staff marks "Served" → Order disappears
 ```
 
 ### Order Statuses
@@ -45,7 +46,19 @@ When orders are placed through the POS or online ordering system, they appear in
 | **Pending** | New order, not yet confirmed | Yellow |
 | **Confirmed** | Order confirmed by kitchen | Blue |
 | **Preparing** | Kitchen is preparing the order | Orange |
-| **Ready** | Order ready for service | Green |
+| **Ready** | Order ready for service, waiting to be served | Green |
+
+**Important:** "Ready" orders stay on screen until staff marks them as "Served". They do not auto-dismiss.
+
+## Order Reminders
+
+When orders have been waiting too long (pending/confirmed status), the system will:
+
+1. **Visual Alert** - Order card gets a red warning border and pulsing animation
+2. **"REMINDER" Label** - Shows warning badge on the order card
+3. **Alert Sound** - Plays urgent reminder sound (different from new order sound)
+
+The reminder time is configurable in Settings.
 
 ## Settings
 
@@ -53,11 +66,21 @@ Configure the Kitchen Display in **Settings → Kitchen** tab:
 
 ### Order Display Time
 
-**Purpose:** How long orders stay on screen before auto-dismiss.
+**Purpose:** How long pending/confirmed/preparing orders stay on screen before auto-dismiss.
 
 - **Range:** 10-300 seconds
 - **Default:** 60 seconds
-- **Behavior:** Orders auto-dismiss after this time, except "Ready" orders which stay until served
+- **Behavior:** Orders auto-dismiss after this time
+- **Note:** "Ready" orders are NOT affected by this setting - they stay until served
+
+### Order Reminder
+
+**Purpose:** Alert when orders have been waiting too long.
+
+- **Range:** 1-30 minutes
+- **Default:** 5 minutes
+- **Behavior:** After this time, pending/confirmed orders show visual/audio reminder
+- **Effect:** Order card gets red border, pulsing animation, and "REMINDER" badge
 
 ### Sound Notifications
 
@@ -142,3 +165,9 @@ If auto-print is disabled, kitchen staff can manually print tickets:
 2. Check refresh interval (should auto-refresh every 3 seconds)
 3. Click "Refresh" button to manually reload
 4. Check if orders are in correct status (pending/confirmed/preparing/ready)
+
+### Ready Orders Not Showing
+
+- "Ready" orders should stay on screen until served
+- If Ready orders disappear, check if the order was marked as "Served"
+- Ready orders are not affected by Order Display Time setting
