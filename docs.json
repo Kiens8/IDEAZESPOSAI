@@ -71,7 +71,8 @@
       {
         "group": "Admin (Internal)",
         "pages": [
-          "admin/internal/settings"
+          "admin/internal/settings",
+          "admin/internal/renewal-system"
         ]
       }
     ]
@@ -91,11 +92,6 @@
       "type": "button",
       "label": "Try Free",
       "href": "https://site.ideazes.com"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/kiens8/ideazesposai"
     }
   }
 }
