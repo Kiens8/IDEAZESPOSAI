@@ -408,6 +408,104 @@ Day 44:  Grace period ends
 
 ---
 
+### Scenario 13: Trial - Upgrade Plan During Trial
+
+```
+Day 0:   Trial starts
+           subscription_status = trial
+           plan = Starter (default or selected)
+           billing_cycle = null/pending
+           Invoice #1 created: $0, status = trial
+
+Day 0:   Cron job runs (daily)
+           Invoice #1 status → paid (auto-marked for trial)
+
+Day 7:   Trial warning email #1 sent
+Day 12:  Trial warning email #2 sent
+Day 14:  Grace period ends
+           ✓ No issue — Invoice #1 already paid
+
+Day 15:  Customer UPGRADES plan AND selects billing cycle
+           subscription plan updated: Starter → Pro
+           subscription billing_cycle stored: annual (365 days)
+           Invoice #1: unchanged ($0, already paid)
+           No new invoice created yet ✓
+
+Day 30:  Trial ends
+           subscription plan: Pro (already updated on Day 15)
+           subscription billing_cycle: annual (already stored on Day 15)
+           subscription status → active
+           subscription period_start = Day 30
+           subscription period_end = Day 395 (30 + 365)
+           Invoice #2 created: $XX (Pro annual price), status = pending
+
+Day 30:  Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           subscription continues as active
+           Next invoice (Invoice #3) due at Day 395
+
+Day 44:  Grace period ends
+           ✓ No issue — Invoice #2 already paid
+```
+
+**Key Points:**
+- During trial, customer can upgrade plan AND select billing cycle anytime (Day 0-29)
+- Both `plan` and `billing_cycle` are stored in the subscription record when customer commits
+- Invoice #2 at Day 30 reflects the upgraded plan AND selected billing cycle
+- No prorated billing during trial — keeps it simple
+- After trial converts to paid, normal prorated upgrade rules apply for mid-cycle changes
+
+**Result:** Plan upgraded during trial, billing cycle selected, Invoice #2 generated for Pro annual at Day 30, Trial converts to active, Access full
+
+---
+
+### Scenario 14: Trial - Upgrade Plan During Trial (Monthly Billing Cycle)
+
+```
+Day 0:   Trial starts
+           subscription_status = trial
+           plan = Starter
+           billing_cycle = null/pending
+           Invoice #1 created: $0, status = trial
+
+Day 0:   Cron job runs (daily)
+           Invoice #1 status → paid (auto-marked for trial)
+
+Day 7:   Trial warning email #1 sent
+Day 12:  Trial warning email #2 sent
+Day 14:  Grace period ends
+           ✓ No issue — Invoice #1 already paid
+
+Day 20:  Customer UPGRADES plan AND selects billing cycle
+           subscription plan updated: Starter → Pro
+           subscription billing_cycle stored: monthly (30 days)
+           No new invoice created yet ✓
+
+Day 30:  Trial ends
+           subscription plan: Pro (already updated on Day 20)
+           subscription billing_cycle: monthly (already stored on Day 20)
+           subscription status → active
+           subscription period_start = Day 30
+           subscription period_end = Day 60 (30 + 30)
+           Invoice #2 created: $XX (Pro monthly price), status = pending
+
+Day 30:  Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           subscription continues as active
+           Next invoice (Invoice #3) due at Day 60
+
+Day 44:  Grace period ends
+           ✓ No issue — Invoice #2 already paid
+```
+
+**Key Points:**
+- Same flow as Scenario 13, but customer selects monthly billing cycle
+- Period end calculated based on 30 days (monthly) instead of 365 days (annual)
+
+**Result:** Plan upgraded during trial, monthly billing cycle selected, Invoice #2 generated for Pro monthly at Day 30, Trial converts to active, Access full
+
+---
+
 ## Summary Table
 
 | Scenario | Payment | Cancel When | Invoice | Subscription | Access |
@@ -424,6 +522,8 @@ Day 44:  Grace period ends
 | 10. Cancelled - Resubscribe | - | - | forgiven (old) | cancelled (old) / active (new) | Blocked then Full |
 | 11. Trial - Paid | Day 30 (pay at Day 30) | - | Invoice #1 (trial) paid auto, Invoice #2 paid | trial → active | Full |
 | 12. Trial - Not paid | - | - | Invoice #2 forgiven at Day 44 | expired | Blocked at Day 44 |
+| 13. Trial - Upgrade annual | Day 15 (upgrade + annual) | - | Invoice #1 (trial) paid auto, Invoice #2 paid (Pro annual) | trial → active | Full |
+| 14. Trial - Upgrade monthly | Day 20 (upgrade + monthly) | - | Invoice #1 (trial) paid auto, Invoice #2 paid (Pro monthly) | trial → active | Full |
 
 ---
 
