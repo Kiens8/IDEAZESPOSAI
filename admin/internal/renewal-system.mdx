@@ -21,16 +21,18 @@ All logic is identical for both billing cycles. Only the period length differs.
 
 ## Core Concepts
 
-### Subscription Period
+### Key Rule
+
+**Access is blocked when grace period ends (Day 14) if payment is not received.**
+
+### Subscription Period vs Grace Period
 
 | Item | Definition | Duration |
 |------|------------|----------|
 | Subscription Period | Active service time | 30 days (monthly) / 365 days (annual) |
 | Grace Period | Time to pay invoice | 14 days (default) |
 
-### Key Rule
-
-**Access is blocked when grace period ends if payment is not received.**
+**Important:** If grace period ends without payment, subscription becomes EXPIRED regardless of cancellation status.
 
 ---
 
@@ -44,7 +46,7 @@ Day 0:  Subscribe / Renew
          invoice_created = Day 0
          invoice_due_date = Day 14
          |
-Day 7:  Warning email (midpoint)
+Day 7:  Warning email
          |
 Day 14: Grace period ends (invoice due)
          |
@@ -78,23 +80,40 @@ Invoice Created (pending)
 ## Subscription Status Flow
 
 ```
-ACTIVE / TRIAL
+ACTIVE
          |
          |--- Paid ---> ACTIVE (next cycle)
          |
          |--- Not paid by Day 14 ---|
                    |
                    v
-              EXPIRED
-                   |
-                   v
-         Access BLOCKED
-         Customer must resubscribe
+              EXPIRED (blocked immediately)
 ```
 
 ---
 
-## Scenario 1: New Subscription - Paid On Time
+## Cancellation Logic
+
+### Key Points
+
+1. **Cancellation is recorded** but does NOT override payment obligation
+2. **If grace period ends without payment, subscription becomes EXPIRED** regardless of cancellation status
+3. **With payment before grace period:** Access continues until period end
+4. **Without payment:** Access blocked at grace period end
+
+### Cancellation Decision Table
+
+| Payment | Cancel When | Result |
+|---------|-------------|--------|
+| Paid | Any time | Access until period end, then blocked |
+| Not Paid | Before Day 14 | Cancelled at Day 14 becomes EXPIRED |
+| Not Paid | After Day 14 | Already EXPIRED, cancellation has no effect |
+
+---
+
+## Complete Scenarios
+
+### Scenario 1: New Subscription - Paid On Time
 
 ```
 Day 0:   Subscribe (Monthly)
@@ -107,304 +126,258 @@ Day 5:   Customer pays invoice
            invoice_status = paid
 
 Day 30:  Subscription period ends
-           subscription_status = active (auto-renew)
-           new invoice created
-           new invoice_due_date = Day 44
-
-Day 44:  Grace period ends for Cycle 2
-           (same pattern repeats)
+           Auto-renew to Cycle 2
 ```
 
-**Result:**
-- Invoice: pending - paid
-- Subscription: active
-- Access: Full
+**Result:** Invoice paid, Subscription active, Access full
 
 ---
 
-## Scenario 2: New Subscription - Paid Late (Within Grace Period)
+### Scenario 2: New Subscription - Paid Late (Within Grace Period)
 
 ```
-Day 0:   Subscribe (Monthly)
-           subscription_status = active
-           subscription_period_end = Day 30
-           invoice_status = pending
-           invoice_due_date = Day 14
-
-Day 10:  Warning email sent (Day 7)
-
-Day 13:  Grace period ending tomorrow
-           Final reminder email sent
-
+Day 0:   Subscribe
+Day 10:  Warning email sent
+Day 13:  Final reminder sent
 Day 14:  Grace period ends
-           Customer pays today
+         Customer pays today
            invoice_status = paid
-
-Day 30:  Subscription period ends
-           subscription_status = active (auto-renew)
+Day 30:  Period ends, auto-renew
 ```
 
-**Result:**
-- Invoice: pending - paid (Day 14)
-- Subscription: active
-- Access: Full
+**Result:** Invoice paid (Day 14), Subscription active, Access full
 
 ---
 
-## Scenario 3: New Subscription - Not Paid (Access Blocked)
+### Scenario 3: New Subscription - Not Paid (Access Blocked)
 
 ```
-Day 0:   Subscribe (Monthly)
-           subscription_status = active
-           subscription_period_end = Day 30
-           invoice_status = pending
-           invoice_due_date = Day 14
-
+Day 0:   Subscribe
 Day 7:   Warning email sent
-
 Day 14:  Grace period ends
-           No payment received
+         No payment received
            invoice_status = forgiven
            subscription_status = expired
            Access = BLOCKED
 
 Day 15+:  Customer cannot login
-           POS shows subscription expired message
 ```
 
-**Result:**
-- Invoice: pending - forgiven (Day 14)
-- Subscription: active - expired (Day 14)
-- Access: BLOCKED at Day 14
+**Result:** Invoice forgiven, Subscription expired, Access blocked at Day 14
 
 ---
 
-## Scenario 4: Renewal - Paid On Time
+### Scenario 4: Renewal - Paid On Time
 
 ```
-Day 30:  Previous subscription period ends
-           New invoice created for Cycle 2
-           subscription_status = active (auto-renew)
-           subscription_period_end = Day 60
-           invoice_status = pending
-           invoice_due_date = Day 44
+Day 30:  Previous period ends
+         New invoice created
+         subscription_status = active
+         subscription_period_end = Day 60
+         invoice_due_date = Day 44
 
 Day 35:  Customer pays
            invoice_status = paid
 
-Day 60:  Subscription period ends
-           (auto-renews to Cycle 3)
+Day 60:  Period ends, auto-renew
 ```
 
-**Result:**
-- Invoice: pending - paid
-- Subscription: active
-- Access: Full
+**Result:** Invoice paid, Subscription active, Access full
 
 ---
 
-## Scenario 5: Renewal - Not Paid (Access Blocked)
+### Scenario 5: Renewal - Not Paid (Access Blocked)
 
 ```
-Day 30:  Previous subscription period ends
-           New invoice created for Cycle 2
-           subscription_status = active
-           subscription_period_end = Day 60
-           invoice_status = pending
-           invoice_due_date = Day 44
+Day 30:  Previous period ends
+         New invoice created
+         invoice_due_date = Day 44
 
 Day 37:  Warning email sent
-
 Day 44:  Grace period ends
-           No payment received
+         No payment received
            invoice_status = forgiven
            subscription_status = expired
            Access = BLOCKED
-
-Day 45+:  Customer cannot login
 ```
 
-**Result:**
-- Invoice: pending - forgiven (Day 44)
-- Subscription: active - expired (Day 44)
-- Access: BLOCKED at Day 44
+**Result:** Invoice forgiven, Subscription expired, Access blocked at Day 44
 
 ---
 
-## Scenario 6: Customer Cancels Subscription (Paid)
+### Scenario 6: Cancel - With Payment
 
 ```
-Day 0:   Subscribe (Monthly)
-           subscription_status = active
-           subscription_period_end = Day 30
-           invoice_status = pending
-
+Day 0:   Subscribe
 Day 5:   Customer pays invoice
            invoice_status = paid
 
-Day 15:  Customer decides to cancel
+Day 15:  Customer cancels
            subscription_status = cancelled
            cancelled_at = Day 15
            Access = CONTINUES until Day 30
 
-Day 30:  Subscription period ends
+Day 30:  Period ends
            subscription_status = cancelled (no renewal)
            Access = BLOCKED
 ```
 
-**Result:**
-- Invoice: pending - paid
-- Subscription: active - cancelled (Day 15)
-- Access: Full until Day 30, then BLOCKED
+**Result:** Invoice paid, Subscription cancelled, Access until Day 30
 
 ---
 
-## Scenario 7: Customer Cancels Without Paying
+### Scenario 7: Cancel - Without Payment (Within Grace Period)
 
 ```
-Day 0:   Subscribe (Monthly)
+Day 0:   Subscribe
            subscription_status = active
-           subscription_period_end = Day 30
-           invoice_status = pending
 
-Day 15:  Customer cancels (no payment)
+Day 10:  Customer cancels (no payment)
            subscription_status = cancelled
-           cancelled_at = Day 15
-           Access = CONTINUES until Day 30
-           (Grace period still running)
-
-Day 14:  Grace period ends (Invoice due)
-           invoice_status = forgiven
-           (Access already ending at Day 30 anyway)
-
-Day 30:  Subscription period ends
-           Access = BLOCKED
-```
-
-**Result:**
-- Invoice: pending - forgiven
-- Subscription: active - cancelled
-- Access: Continues until Day 30, then BLOCKED
-
----
-
-## Scenario 8: Subscription Expired - Customer Resubscribes
-
-```
-Day 0:   First subscription
-           subscription_status = active
+           cancelled_at = Day 10
+           Access = CONTINUES until Day 14
 
 Day 14:  Grace period ends
-           No payment
+         No payment received
            invoice_status = forgiven
            subscription_status = expired
            Access = BLOCKED
 
-Day 20:  Customer wants to return
-           Customer goes to site to resubscribe
-           Creates new subscription
+Day 30:  Period end (already blocked)
+```
+
+**Important:** Cancellation does NOT protect from non-payment. At Day 14, subscription becomes EXPIRED.
+
+**Result:** Invoice forgiven, Subscription expired, Access blocked at Day 14
+
+---
+
+### Scenario 8: Cancel - After Grace Period (Already Expired)
+
+```
+Day 0:   Subscribe
+Day 14:  Grace period ends
+         No payment
+           invoice_status = forgiven
+           subscription_status = expired
+           Access = BLOCKED
+
+Day 20:  Customer contacts support to cancel
+           subscription_status = expired (already)
+           cancelled_at = Day 20 (recorded but no effect)
+           Access = BLOCKED (no change)
+```
+
+**Result:** Already expired, cancellation recorded but no effect on access
+
+---
+
+### Scenario 9: Subscription Expired - Customer Resubscribes
+
+```
+Day 0:   First subscription
+Day 14:  Grace period ends
+         No payment
+           invoice_status = forgiven
+           subscription_status = expired
+           Access = BLOCKED
+
+Day 20:  Customer returns
+         Creates new subscription
            subscription_status = active (NEW)
            New period starts fresh
-
-Day 34:  New subscription period ends (Day 20 + 14 days grace)
-           Invoice created
-           invoice_due_date = Day 34
+           New invoice created
 ```
 
 **Key Points:**
 - Old subscription: expired status remains (historical record)
-- New subscription: brand new subscription with new ID
-- Customer gets fresh start
+- New subscription: brand new with fresh period
 - Old forgiven invoice stays on record
+
+**Result:** Old subscription expired, New subscription active, Full access restored
 
 ---
 
-## Scenario 9: Subscription Cancelled - Customer Resubscribes
+### Scenario 10: Subscription Cancelled - Customer Resubscribes
 
 ```
 Day 0:   First subscription
-           subscription_status = active
-
-Day 15:  Customer cancels
+Day 15:  Customer cancels (paid)
+Day 30:  Period ends
            subscription_status = cancelled
-
-Day 30:  Subscription period ends
            Access = BLOCKED
 
 Day 40:  Customer returns and resubscribes
            New subscription created
            subscription_status = active (NEW)
-           Old subscription stays as cancelled (historical)
 ```
 
 **Key Points:**
-- Old cancelled subscription: stays cancelled (no refund implied)
+- Old subscription: cancelled status (historical record)
 - New subscription: fresh start
 - Both subscriptions visible in admin panel
-- Customer can have multiple subscriptions over time
+
+**Result:** Old subscription cancelled, New subscription active, Full access restored
 
 ---
 
-## Scenario 10: Trial Subscription - Paid On Time
+### Scenario 11: Trial - Paid
 
 ```
-Day 0:   Trial subscription starts
+Day 0:   Trial subscription
            subscription_status = trial
            trial_ends_at = Day 14
 
-Day 7:   Trial ending warning email sent
-
-Day 14:  Trial ends - Customer pays
+Day 7:   Trial ending warning
+Day 14:  Trial ends
+         Customer pays
            invoice_status = paid
            subscription_status = active
-           subscription_period_end = Day 44 (Day 14 + 30 days)
+           subscription_period_end = Day 44
 
 Day 44:  First paid period ends
-           (auto-renews)
+           Auto-renew
 ```
 
-**Result:**
-- Invoice: pending - paid
-- Subscription: trial - active
-- Access: Full after payment
+**Result:** Invoice paid, Trial converts to active, Access full
 
 ---
 
-## Scenario 11: Trial Subscription - Not Paid
+### Scenario 12: Trial - Not Paid
 
 ```
-Day 0:   Trial subscription starts
+Day 0:   Trial subscription
            subscription_status = trial
            trial_ends_at = Day 14
 
-Day 14:  Trial ends - No payment
+Day 7:   Trial ending warning
+Day 14:  Trial ends
+         No payment
+           invoice_status = forgiven
            subscription_status = expired
            Access = BLOCKED
-           invoice_status = forgiven
 ```
 
-**Result:**
-- Invoice: pending - forgiven
-- Subscription: trial - expired
-- Access: BLOCKED at Day 14
+**Result:** Invoice forgiven, Subscription expired, Access blocked at Day 14
 
 ---
 
 ## Summary Table
 
-| Scenario | Invoice Status | Subscription Status | Access |
-|----------|---------------|-------------------|--------|
-| 1. New - Paid on time | pending - paid | active | Full |
-| 2. New - Paid late | pending - paid (Day 14) | active | Full |
-| 3. New - Not paid | pending - forgiven | active - expired | BLOCKED (Day 14) |
-| 4. Renewal - Paid | pending - paid | active | Full |
-| 5. Renewal - Not paid | pending - forgiven | active - expired | BLOCKED (Day 44) |
-| 6. Cancel - Paid | pending - paid | active - cancelled | Full until Day 30 |
-| 7. Cancel - Not paid | pending - forgiven | active - cancelled | Full until Day 30 |
-| 8. Expired - Resubscribe | forgiven (old) | expired (old) / active (new) | BLOCKED then Full |
-| 9. Cancelled - Resubscribe | forgiven (old) | cancelled (old) / active (new) | BLOCKED then Full |
-| 10. Trial - Paid | pending - paid | trial - active | Full after payment |
-| 11. Trial - Not paid | pending - forgiven | trial - expired | BLOCKED (Day 14) |
+| Scenario | Payment | Cancel When | Invoice | Subscription | Access |
+|----------|---------|-------------|---------|--------------|--------|
+| 1. New - Paid | On time | - | paid | active | Full |
+| 2. New - Paid | Late (Day 14) | - | paid | active | Full |
+| 3. New - Not paid | - | - | forgiven | expired | Blocked (Day 14) |
+| 4. Renewal - Paid | On time | - | paid | active | Full |
+| 5. Renewal - Not paid | - | - | forgiven | expired | Blocked (Day 44) |
+| 6. Cancel - Paid | Before cancel | Day 15 | paid | cancelled | Until Day 30 |
+| 7. Cancel - No Pay | Before grace end | Day 10 | forgiven | expired | Until Day 14 |
+| 8. Cancel - After Expired | - | Day 20 | forgiven | expired | Blocked |
+| 9. Expired - Resubscribe | - | - | forgiven (old) | expired (old) / active (new) | Blocked then Full |
+| 10. Cancelled - Resubscribe | - | - | forgiven (old) | cancelled (old) / active (new) | Blocked then Full |
+| 11. Trial - Paid | Day 14 | - | paid | trial to active | Full after pay |
+| 12. Trial - Not paid | - | - | forgiven | expired | Blocked (Day 14) |
 
 ---
 
@@ -418,49 +391,46 @@ Customer attempts login
          v
 Check subscription status
          |
-    ____|____
-   |         |
-   v         v
-ACTIVE    NOT ACTIVE
-   |         |
-   |     ____|____
-   |    |         |
-   |    v         v
-   |  EXPIRED   CANCELLED
-   |    |         |
-   |    v         v
-   |  BLOCK    Check period
-   |         ____|____
-   |        |           |
-   |        v           v
-   |    Period End   Period Active
-   |    in future    |
-   |        |         v
-   |        |      ALLOW with
-   |        |      warning
-   |        v
-   |      BLOCK
-   v
-Check invoice payment
+    _____|_____
+   |           |
+   v           v
+ACTIVE      NOT ACTIVE
+   |           |
+   |       ____|____
+   |      |         |
+   |      v         v
+   |    EXPIRED   CANCELLED
+   |      |         |
+   |      v         v
+   |    BLOCK    Check grace period
+   |             ____|____
+   |            |           |
+   |            v           v
+   |         GRACE        GRACE
+   |         ENDED        ACTIVE
+   |            |           |
+   |            v           v
+   |          BLOCK      ALLOW
+   v                       (with warning)
+Check payment
    |
    v
 Paid - ALLOW
-Pending - Check grace period
+Pending - WARNING if due soon
 Overdue - BLOCK
 ```
 
 ### Access Decision Table
 
-| Status | Period | Payment | Access |
-|--------|--------|---------|--------|
-| active | ongoing | paid | ALLOW |
-| active | ongoing | pending | WARNING if due soon |
-| active | ongoing | overdue | BLOCK |
-| trial | ongoing | - | ALLOW |
-| cancelled | future | paid | ALLOW (with warning) |
-| cancelled | future | pending | WARNING |
-| cancelled | passed | - | BLOCK |
-| expired | - | - | BLOCK |
+| Status | Payment | Access |
+|--------|---------|--------|
+| active | paid | ALLOW |
+| active | pending (due soon) | WARNING |
+| active | overdue | BLOCK |
+| trial | - | ALLOW |
+| cancelled | paid | ALLOW until period end |
+| cancelled | no payment | BLOCK at grace period |
+| expired | - | BLOCK |
 
 ---
 
@@ -505,6 +475,18 @@ Overdue - BLOCK
 1. **Send Warning Emails** - Trial ending, billing reminders
 2. **Check Expired Subscriptions** - Block access if grace period passed without payment
 3. **Mark Forgiven Invoices** - Invoice status = forgiven
+
+---
+
+## Key Rules Summary
+
+| Rule | Description |
+|------|-------------|
+| Grace period = 14 days | Time to pay invoice |
+| Access blocked at Day 15 | If grace period ends without payment |
+| Period end at Day 30 | Technical end, access already blocked |
+| Cancellation recorded | But does NOT override payment obligation |
+| Payment extends nothing | Period end date stays fixed |
 
 ---
 
