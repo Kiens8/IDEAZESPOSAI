@@ -26,7 +26,7 @@ All logic (grace period, cancellation, expiration, forgiveness) is identical for
 | Item | Definition | Duration | Purpose |
 |------|------------|----------|---------|
 | **Subscription Period** | Active service time | 30 days (monthly) / 365 days (annual) | How long customer has access |
-| **Grace Period** | Time to pay invoice | 14 days (default) |缓冲时间支付账单 |
+| **Grace Period** | Time to pay invoice | 14 days (default) | Buffer time to pay invoice |
 
 **Key Rule:** Payment does NOT extend the subscription period. The period end date is set once at subscription/renewal and remains fixed.
 
@@ -36,20 +36,20 @@ All logic (grace period, cancellation, expiration, forgiveness) is identical for
 
 ```
 Day 0:  Subscribe / Renew
-        ↓
+        |
         subscription_period_start = Day 0
         subscription_period_end = Day 30
         invoice_created = Day 0
         invoice_due_date = Day 14 (grace period)
-        ↓
+        |
 Day 7:  Warning email (midpoint)
-        ↓
+        |
 Day 14: Grace period ends (invoice due)
-        ↓
+        |
 Day 30: Subscription period ends
-        ↓
-        If paid → Access continues, new cycle begins
-        If not paid → Access revoked at Day 30
+        |
+        If paid - Access continues, new cycle begins
+        If not paid - Access revoked at Day 30
 ```
 
 ---
@@ -59,18 +59,18 @@ Day 30: Subscription period ends
 ### Cycle 1: New Subscription
 
 | Day | Event | Subscription End | Invoice Due | Access |
-|-----|-------|-----------------|-------------|--------|
-| 0 | Subscribe | Day 30 | Day 14 | ✅ |
-| 14 | Grace period ends | Day 30 | Day 14 | ✅ |
-| 30 | Period ends | Day 30 | - | ❌ or ✅ if paid |
+|-----|-------|----------------|-------------|--------|
+| 0 | Subscribe | Day 30 | Day 14 | Active |
+| 14 | Grace period ends | Day 30 | Day 14 | Active |
+| 30 | Period ends | Day 30 | - | Blocked or Active if paid |
 
 ### Cycle 2: First Renewal
 
 | Day | Event | Subscription End | Invoice Due | Access |
-|-----|-------|-----------------|-------------|--------|
-| 30 | Previous period ends | Day 60 | Day 44 | ❌ or ✅ if paid |
-| 44 | Grace period ends | Day 60 | Day 44 | ✅ if paid |
-| 60 | Period ends | Day 60 | - | ❌ or ✅ if paid |
+|-----|-------|----------------|-------------|--------|
+| 30 | Previous period ends | Day 60 | Day 44 | Blocked or Active if paid |
+| 44 | Grace period ends | Day 60 | Day 44 | Active if paid |
+| 60 | Period ends | Day 60 | - | Blocked or Active if paid |
 
 ---
 
@@ -93,8 +93,8 @@ Day 30: Subscription period ends
 |--------|---------|--------|
 | `trial` | Trial period | Limited access until trial_ends_at |
 | `active` | Within subscription period | Full access |
-| `expired` | Period ended without renewal | ❌ Blocked |
-| `cancelled` | Manually cancelled | ✅ Access until period end |
+| `expired` | Period ended without renewal | Blocked |
+| `cancelled` | Manually cancelled | Access until period end |
 
 ---
 
@@ -108,7 +108,7 @@ Day 0:   Subscribe
           invoice_due = Day 14
 
 Day 10:  Customer pays
-          invoice status → paid
+          invoice status - paid
           Access continues
 
 Day 30:  Period ends
@@ -129,14 +129,14 @@ Day 13:  Grace period ending tomorrow
 
 Day 14:  Grace period ends
           Customer pays today
-          invoice status → paid
+          invoice status - paid
           Access continues
 
 Day 30:  Period ends
           New invoice created (Cycle 2)
 ```
 
-**Key:** Paying within grace period doesn't extend access. Period end is fixed at Day 30.
+**Key:** Paying within grace period does not extend access. Period end is fixed at Day 30.
 
 ### Example 3: Do Not Pay - Grace Period Expired
 
@@ -146,11 +146,11 @@ Day 0:   Subscribe
           invoice_due = Day 14
 
 Day 14:  Grace period ends - NO PAYMENT
-          invoice status → forgiven
+          invoice status - forgiven
           (NOT immediately expired - waiting for period end)
 
 Day 30:  Period ends
-          subscription status → expired
+          subscription status - expired
           Access BLOCKED
 ```
 
@@ -166,10 +166,10 @@ Day 0:   Subscribe
           invoice_due = Day 14
 
 Day 10:  Customer pays
-          invoice status → paid
+          invoice status - paid
 
 Day 20:  Customer cancels
-          subscription status → cancelled
+          subscription status - cancelled
           Access continues until Day 30 (period end)
 
 Day 30:  Period ends
@@ -185,12 +185,12 @@ Day 0:   Subscribe
           invoice_due = Day 14
 
 Day 20:  Customer cancels (NOT paid)
-          subscription status → cancelled
+          subscription status - cancelled
           Access continues until Day 30 (period end)
 
 Day 30:  Period ends
           Access BLOCKED
-          invoice status → forgiven
+          invoice status - forgiven
 ```
 
 **Key:** Cancellation does NOT grant immediate access revocation. Access continues until original period end.
@@ -202,11 +202,11 @@ Day 0:   Subscribe
           period_end = Day 30
 
 Day 35:  Period ended on Day 30
-          subscription status → expired
+          subscription status - expired
           Access BLOCKED
 
 Day 40:  Customer requests cancellation
-          subscription status → cancelled (already expired)
+          subscription status - cancelled (already expired)
           No change in access
 ```
 
@@ -228,7 +228,7 @@ Day 13:  Grace period = 1 day remaining
 
 Day 14:  Grace period ends
 Day 14:  Customer pays
-         invoice status → paid
+         invoice status - paid
          Access OK
 ```
 
@@ -240,11 +240,11 @@ Day 0:   Subscribe
           invoice_due = Day 14
 
 Day 14:  Grace period ends
-         invoice status → forgiven
+         invoice status - forgiven
          Access continues until Day 30
 
 Day 30:  Period ends
-         subscription status → expired
+         subscription status - expired
          Access BLOCKED
 ```
 
@@ -256,7 +256,7 @@ Day 0:   Subscribe
           invoice_due = Day 14
 
 Day 14:  Grace period ended
-         invoice status → forgiven (if not paid)
+         invoice status - forgiven (if not paid)
 
 Day 15+: Access still available until Day 30
          Subscription NOT yet expired
@@ -267,7 +267,7 @@ Day 15+: Access still available until Day 30
 
 ---
 
-## Payment Methods & Handling
+## Payment Methods and Handling
 
 ### Stripe
 
@@ -294,29 +294,27 @@ Day 15+: Access still available until Day 30
 
 ```
 Customer attempts login
-        ↓
+        |
 Get subscription status from database
-        ↓
-┌─────────────────────────────────┐
-│  1. No subscription             │ → BLOCK (success: false)
-│  2. Status = expired           │ → BLOCK (success: false)
-│  3. Status = cancelled         │
-│     AND period_end > now        │ → ALLOW with warning
-│     AND period_end <= now       │ → BLOCK (period ended)
-│  4. Status = active/trial      │
-│     AND payment overdue         │ → BLOCK
-│     AND payment pending        │ → WARNING if due soon
-│     AND payment paid           │ → ALLOW
-└─────────────────────────────────┘
+        |
+1. No subscription - BLOCK
+2. Status = expired - BLOCK
+3. Status = cancelled
+   a. period_end in future - ALLOW with warning
+   b. period_end passed - BLOCK
+4. Status = active/trial
+   a. payment overdue - BLOCK
+   b. payment pending (due soon) - WARNING
+   c. payment paid - ALLOW
 ```
 
 ### Cancellation Access Rule
 
 | Condition | Result |
 |-----------|--------|
-| Cancelled + period_end > now | ✅ Allow login with warning |
-| Cancelled + period_end <= now | ❌ Block (period ended) |
-| Expired | ❌ Block |
+| Cancelled and period end in future | Allow login with warning |
+| Cancelled and period end passed | Block (period ended) |
+| Expired | Block |
 
 ---
 
@@ -369,7 +367,7 @@ Get subscription status from database
 | Rule | Description |
 |------|-------------|
 | Period is fixed | Set once at subscribe/renewal, NOT extended by payment |
-| Grace period | Time to pay (14 days default) |
+| Grace period | Time to pay (14 days) |
 | Access blocked | When period_end passes, not when grace period passes |
 | Cancellation | Access continues until original period_end |
 | Forgiveness | Invoice marked when grace period passes, access ends when period passes |
