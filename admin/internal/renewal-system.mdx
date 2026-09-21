@@ -695,6 +695,55 @@ Day 30:  Period ends
 
 ---
 
+### Scenario 20: Free Plan (Starter $0) - Normal Flow
+
+**Starting State:**
+- Plan: Starter (Free $0/month)
+- This is a free plan — no payment required
+
+```
+Day 0:   Customer subscribes to Starter (Free)
+           subscription_status = active
+           plan = Starter
+           billing_cycle = monthly
+           subscription_period_start = Day 0
+           subscription_period_end = Day 30
+           Invoice #1 created: $0, status = pending
+
+Day 0:   Cron job runs (daily)
+           Invoice #1 amount = $0
+           Invoice #1 status → paid ✓ (no actual payment needed)
+
+Day 14:  Grace period ends
+           ✓ No issue — Invoice #1 already paid ($0)
+
+Day 30:  Period ends
+           Invoice #2 created: $0, status = pending
+           subscription_period_end = Day 60 (auto-renew)
+
+Day 30:  Cron job runs
+           Invoice #2 status → paid ✓ (no actual payment needed)
+
+Day 44:  Grace period ends
+           ✓ No issue — Invoice #2 already paid ($0)
+
+Day 60:  Period ends
+           Invoice #3 created: $0, status = pending
+           subscription_period_end = Day 90 (auto-renew)
+           ...continues indefinitely
+```
+
+**Key Points:**
+- Free plan still generates invoices ($0 amount)
+- Cron job auto-marks $0 invoices as paid
+- Same grace period rules apply (Day 14, Day 44, etc.)
+- Subscription continues indefinitely without any payment
+- Customer can upgrade to Basic/Pro/Enterprise anytime
+
+**Result:** Free plan subscription continues indefinitely, invoices generated but $0, no actual payment required
+
+---
+
 ## Summary Table
 
 | Scenario | Payment | Cancel When | Invoice | Subscription | Access |
@@ -718,6 +767,7 @@ Day 30:  Period ends
 | 17. Paid Basic → Pro annual | Day 180 (mid-cycle) | - | Invoice #2 $50.14 (prorated annual) | Pro → active | Full |
 | 18. Paid Starter → Pro | Day 10 (mid-cycle) | - | Invoice #2 $20 (full price, Starter=$0) | Pro → active | Full |
 | 19. Paid multiple upgrades | Day 10, Day 20 | - | Invoice #2 $6.67, Invoice #3 $10 (prorated) | Enterprise → active | Full |
+| 20. Free Plan (Starter) | N/A (no payment) | - | Invoice #1, #2, #3... all $0, auto-paid | active (continues) | Full |
 
 ---
 
