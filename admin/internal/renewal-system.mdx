@@ -65,7 +65,7 @@ POS Access BLOCKED
 | `trial` | Trial period (trial_ends_at = due_date) |
 | `active` | Within grace period, payment pending or paid |
 | `expired` | Grace period expired, payment not received |
-| `cancelled` | Manually cancelled by admin |
+| `cancelled` | Manually cancelled by admin or customer - access continues until period end |
 
 ---
 
@@ -183,10 +183,14 @@ When admin marks an invoice as paid:
 
 ### Cancel Subscription
 
-When admin cancels a subscription:
+When admin or customer cancels a subscription:
 1. Subscription status → `cancelled`
-2. No further billing occurs
-3. Access immediately revoked
+2. `cancelled_at` timestamp recorded
+3. **Access continues until current_period_end** (no immediate revocation)
+4. No further billing occurs
+5. Cron job will not renew when period ends
+
+**Important:** Cancellation does not grant refund. Customer retains access until their paid period ends.
 
 ### Mark Invoice as Forgiven
 
@@ -242,18 +246,102 @@ Day 40: Next invoice due_date
 ```
 Day 0: Customer subscribes (Annual Pay Later)
         Invoice created, due_date = Day 14
-        
+
 Day 14: Due date reached - No payment
-        
+
 Day 15: Cron job runs
         Invoice status = "forgiven"
         Subscription status = "expired"
         Customer blocked
-        
+
 Day 30: Customer pays
         Admin creates new subscription
         Previous invoice remains "forgiven"
         No refund or credit issued
+```
+
+### Scenario 4: Cancellation After Invoice Creation
+
+```
+Day 0: Customer subscribes (Stripe monthly)
+        Invoice created, due_date = Day 14
+        Subscription status = "active"
+
+Day 5: Customer requests cancellation
+        Admin marks subscription as "cancelled"
+        Subscription status = "cancelled"
+        cancelled_at = Day 5
+
+Day 5-14: Access still active
+        Customer can still use POS system
+        Invoice still shows "pending" (will be forgiven later)
+
+Day 14: Due date reached - No payment
+        Invoice status = "forgiven"
+
+Day 15: Cron job runs
+        Subscription status = "cancelled" (already cancelled)
+        Access revoked (period ended)
+        No renewal triggered (already cancelled)
+```
+
+### Scenario 5: Cancellation - Customer Paid but Cancelled
+
+```
+Day 0: Customer subscribes (Stripe monthly)
+        Invoice created, due_date = Day 14
+        Customer pays immediately
+        Invoice status = "paid"
+        Subscription period extended to Day 30
+
+Day 10: Customer requests cancellation
+        Admin marks subscription as "cancelled"
+        Subscription status = "cancelled"
+        cancelled_at = Day 10
+
+Day 10-30: Access still active
+        Customer can still use POS system
+        Service continues until Day 30
+
+Day 30: Period ends
+        Cron job runs
+        Subscription status = "cancelled"
+        Access revoked
+        No renewal (already cancelled)
+```
+
+---
+
+## Subscription Status Transition Diagram
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     NEW SUBSCRIPTION                        │
+└─────────────────────────┬───────────────────────────────────┘
+                          │
+                          ▼
+              ┌───────────────────────┐
+              │   TRIAL / ACTIVE      │
+              │   (within period)     │
+              └───────────┬───────────┘
+                          │
+            ┌─────────────┼─────────────┐
+            │             │             │
+            ▼             ▼             ▼
+    ┌───────────┐  ┌───────────┐  ┌───────────┐
+    │   PAID    │  │ CANCELLED │  │  EXPIRED │
+    │ (extend)  │  │ (access   │  │ (no pay)  │
+    │           │  │  until    │  │           │
+    │           │  │  period    │  │           │
+    │           │  │  ends)     │  │           │
+    └─────┬─────┘  └─────┬─────┘  └───────────┘
+          │              │
+          ▼              ▼
+    ┌───────────┐  ┌───────────┐
+    │ RENEWAL   │  │ PERIOD    │
+    │ (new      │  │ ENDS      │
+    │  cycle)   │  │           │
+    └───────────┘  └───────────┘
 ```
 
 ---
