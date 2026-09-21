@@ -7,6 +7,16 @@ description: How IDEAZES POS AI handles subscription renewals, grace periods, an
 
 IDEAZES POS AI implements a unified renewal system that treats payment due period as a grace period for all payment methods. This ensures consistent, fair handling of subscriptions regardless of payment method.
 
+:::info
+**Applies to Both Billing Cycles**
+
+This renewal system applies to **both monthly and annual** billing subscriptions:
+- **Monthly Billing:** 30-day subscription period
+- **Annual Billing:** 365-day subscription period
+
+All logic (grace period, cancellation, expiration, forgiveness) is identical for both billing cycles. Only the period length differs.
+:::
+
 ---
 
 ## Core Concept: Grace Period = Payment Due Period
