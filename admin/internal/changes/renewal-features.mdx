@@ -107,15 +107,19 @@ status = Column(String(50), default="pending")
 │   │   │   ├── subscription.py                     [Phase 3]
 │   │   │   └── admin.py                            [Phase 3]
 │   │   └── emails/
-│   │       └── email_service.py                    [Phase 2, 3]
+│   │       └── email_service.py                    [Phase 2, 3, 4]
 │   └── scripts/
-│       └── send_notifications.py                    [Phase 2]
+│       ├── send_notifications.py                    [Phase 2, 4]
+│       └── test_renewal.py                         [Phase 5]
+├── backend/
+│   └── app/routes/
+│       └── auth.py                                 [Phase 5.1]
 ├── site/
 │   └── src/app/portal/billing/
 │       └── page.tsx                                [Phase 3]
 └── admin/
     └── src/pages/
-        └── Subscriptions.jsx                        [Phase 3]
+        └── Subscriptions.jsx                       [Phase 3]
 ```
 
 ---
@@ -156,6 +160,29 @@ status = Column(String(50), default="pending")
 | 3 days | Billing Reminder |
 | 1 day | **Final Reminder** (new) |
 | Due date | Payment Due |
+
+---
+
+## Phase 5.1: POS Backend Fix
+
+### Issue Found
+
+In `backend/app/routes/auth.py`, the subscription status checks were OUTSIDE the `if cust_response.ok:` block. This meant:
+- If website API call failed, subscription_status stayed as None
+- But the checks still ran and blocked everyone
+
+### Fix Applied
+
+Moved all subscription checks INSIDE the `if cust_response.ok:` block and added proper fallback:
+- When API succeeds → checks run normally
+- When API fails → sets warning and allows login with caution
+
+### Files Changed
+
+| File Path | Change |
+|-----------|--------|
+| `backend/app/routes/auth.py` | Fixed indentation, moved checks inside `if cust_response.ok:` block |
+| | Added `else:` clause for API failure fallback |
 
 ---
 
