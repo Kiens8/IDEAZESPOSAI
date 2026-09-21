@@ -19,63 +19,251 @@ All logic (grace period, cancellation, expiration, forgiveness) is identical for
 
 ---
 
-## Core Concept: Grace Period = Payment Due Period
+## Core Concepts
 
-| Item | Value | Notes |
-|------|-------|-------|
-| Grace Period | Payment Due Days | Parameterized in Admin Settings (default: 14 days) |
-| Applies To | **All payment methods** | Stripe, Pay Later, Bank Transfer, Cash |
-| Start Date | Invoice creation date | Subscription start or renewal date |
-| End Date | `start_date + grace_period` | When payment is due |
+### Subscription Period vs Grace Period
+
+| Item | Definition | Duration | Purpose |
+|------|------------|----------|---------|
+| **Subscription Period** | Active service time | 30 days (monthly) / 365 days (annual) | How long customer has access |
+| **Grace Period** | Time to pay invoice | 14 days (default) |缓冲时间支付账单 |
+
+**Key Rule:** Payment does NOT extend the subscription period. The period end date is set once at subscription/renewal and remains fixed.
 
 ---
 
-## How It Works
-
-### Payment Flow
+## Timeline: Monthly Subscription
 
 ```
-Day 0: Subscription created or renewed
+Day 0:  Subscribe / Renew
         ↓
-Invoice created
-due_date = Day 0 + grace_period (e.g., Day 14)
+        subscription_period_start = Day 0
+        subscription_period_end = Day 30
+        invoice_created = Day 0
+        invoice_due_date = Day 14 (grace period)
         ↓
-Grace Period Starts Running...
+Day 7:  Warning email (midpoint)
         ↓
-[Day 7]: Warning email sent (halfway point)
+Day 14: Grace period ends (invoice due)
         ↓
-Day 14 (due_date): Payment due
+Day 30: Subscription period ends
         ↓
-Day 15+: No payment received
-        ↓
-Subscription EXPIRED
-Invoice marked FORGIVEN
-POS Access BLOCKED
+        If paid → Access continues, new cycle begins
+        If not paid → Access revoked at Day 30
 ```
+
+---
+
+## Monthly Subscription Lifecycle
+
+### Cycle 1: New Subscription
+
+| Day | Event | Subscription End | Invoice Due | Access |
+|-----|-------|-----------------|-------------|--------|
+| 0 | Subscribe | Day 30 | Day 14 | ✅ |
+| 14 | Grace period ends | Day 30 | Day 14 | ✅ |
+| 30 | Period ends | Day 30 | - | ❌ or ✅ if paid |
+
+### Cycle 2: First Renewal
+
+| Day | Event | Subscription End | Invoice Due | Access |
+|-----|-------|-----------------|-------------|--------|
+| 30 | Previous period ends | Day 60 | Day 44 | ❌ or ✅ if paid |
+| 44 | Grace period ends | Day 60 | Day 44 | ✅ if paid |
+| 60 | Period ends | Day 60 | - | ❌ or ✅ if paid |
 
 ---
 
 ## Invoice Statuses
 
-| Status | Meaning |
-|--------|---------|
-| `pending` | Awaiting payment (within grace period) |
-| `paid` | Payment received within grace period |
-| `failed` | Payment attempt failed (Stripe only - will retry) |
-| `forgiven` | Grace period expired, payment not received - written off |
-| `cancelled` | Invoice cancelled manually |
-| `refunded` | Payment was refunded |
+| Status | Meaning | Trigger |
+|--------|---------|---------|
+| `pending` | Awaiting payment | Invoice created, within grace period |
+| `paid` | Payment received | Admin marks paid or Stripe confirms |
+| `failed` | Payment attempt failed | Stripe payment failed (will retry) |
+| `forgiven` | Written off | Grace period expired, payment not received |
+| `cancelled` | Manually cancelled | Admin cancels invoice |
+| `refunded` | Payment refunded | Refund issued |
 
 ---
 
 ## Subscription Statuses
 
-| Status | Meaning |
-|--------|---------|
-| `trial` | Trial period (trial_ends_at = due_date) |
-| `active` | Within grace period, payment pending or paid |
-| `expired` | Grace period expired, payment not received |
-| `cancelled` | Manually cancelled by admin or customer - access continues until period end |
+| Status | Meaning | Access |
+|--------|---------|--------|
+| `trial` | Trial period | Limited access until trial_ends_at |
+| `active` | Within subscription period | Full access |
+| `expired` | Period ended without renewal | ❌ Blocked |
+| `cancelled` | Manually cancelled | ✅ Access until period end |
+
+---
+
+## Payment Flow Examples
+
+### Example 1: Pay On Time (Monthly)
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 10:  Customer pays
+          invoice status → paid
+          Access continues
+
+Day 30:  Period ends
+          New invoice created (Cycle 2)
+          period_end = Day 60
+          invoice_due = Day 44
+```
+
+### Example 2: Pay Late But Within Grace Period
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 13:  Grace period ending tomorrow
+          Warning email sent
+
+Day 14:  Grace period ends
+          Customer pays today
+          invoice status → paid
+          Access continues
+
+Day 30:  Period ends
+          New invoice created (Cycle 2)
+```
+
+**Key:** Paying within grace period doesn't extend access. Period end is fixed at Day 30.
+
+### Example 3: Do Not Pay - Grace Period Expired
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 14:  Grace period ends - NO PAYMENT
+          invoice status → forgiven
+          (NOT immediately expired - waiting for period end)
+
+Day 30:  Period ends
+          subscription status → expired
+          Access BLOCKED
+```
+
+---
+
+## Cancellation Examples
+
+### Example 1: Cancel After Paying - Full Access
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 10:  Customer pays
+          invoice status → paid
+
+Day 20:  Customer cancels
+          subscription status → cancelled
+          Access continues until Day 30 (period end)
+
+Day 30:  Period ends
+          Access BLOCKED
+          No renewal triggered
+```
+
+### Example 2: Cancel Without Paying - Limited Access
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 20:  Customer cancels (NOT paid)
+          subscription status → cancelled
+          Access continues until Day 30 (period end)
+
+Day 30:  Period ends
+          Access BLOCKED
+          invoice status → forgiven
+```
+
+**Key:** Cancellation does NOT grant immediate access revocation. Access continues until original period end.
+
+### Example 3: Cancel - Already Expired
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+
+Day 35:  Period ended on Day 30
+          subscription status → expired
+          Access BLOCKED
+
+Day 40:  Customer requests cancellation
+          subscription status → cancelled (already expired)
+          No change in access
+```
+
+---
+
+## Grace Period Examples
+
+### Within Grace Period (Paid)
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 7:   Grace period = 7 days remaining
+Day 10:  Grace period = 4 days remaining
+Day 13:  Grace period = 1 day remaining
+         Warning email sent
+
+Day 14:  Grace period ends
+Day 14:  Customer pays
+         invoice status → paid
+         Access OK
+```
+
+### Within Grace Period (Not Paid)
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 14:  Grace period ends
+         invoice status → forgiven
+         Access continues until Day 30
+
+Day 30:  Period ends
+         subscription status → expired
+         Access BLOCKED
+```
+
+### Outside Grace Period
+
+```
+Day 0:   Subscribe
+          period_end = Day 30
+          invoice_due = Day 14
+
+Day 14:  Grace period ended
+         invoice status → forgiven (if not paid)
+
+Day 15+: Access still available until Day 30
+         Subscription NOT yet expired
+         Just invoice is forgiven
+```
+
+**Note:** Grace period expiry does NOT immediately block access. Access is blocked only when subscription period ends.
 
 ---
 
@@ -83,89 +271,73 @@ POS Access BLOCKED
 
 ### Stripe
 
-| Stripe Event | System Action |
-|-------------|---------------|
-| `invoice.created` | Track invoice, wait for payment |
-| `invoice.finalized` | Update invoice with Stripe hosted URL |
-| `invoice.paid` | Mark invoice paid, extend subscription period |
-| `invoice.payment_failed` | Do NOT expire immediately - wait for due_date |
-| `customer.subscription.deleted` | Mark subscription as cancelled |
+| Event | Action |
+|-------|--------|
+| `invoice.created` | Track invoice, set due_date |
+| `invoice.paid` | Mark invoice paid, period continues |
+| `invoice.payment_failed` | Wait for due_date, not immediate expiration |
+| `customer.subscription.deleted` | Mark subscription cancelled |
 
-**Note:** Stripe automatically retries failed payments. The system waits until the grace period (due_date) expires before marking the subscription as expired.
+### Pay Later / Bank Transfer
 
-### Pay Later
-
-| Event | System Action |
-|-------|---------------|
+| Event | Action |
+|-------|--------|
 | Invoice created | Set due_date = today + grace_period |
-| Admin marks paid | Mark invoice paid, extend subscription period |
-| Due date passed | Mark invoice forgiven, subscription expired |
+| Admin marks paid | Mark invoice paid, period continues |
+| Due date passed | Wait for period end |
 
-### Bank Transfer / Cash
+---
 
-Same handling as Pay Later - admin manually marks payment received when verified.
+## Access Control Logic
+
+### Login Flow
+
+```
+Customer attempts login
+        ↓
+Get subscription status from database
+        ↓
+┌─────────────────────────────────┐
+│  1. No subscription             │ → BLOCK (success: false)
+│  2. Status = expired           │ → BLOCK (success: false)
+│  3. Status = cancelled         │
+│     AND period_end > now        │ → ALLOW with warning
+│     AND period_end <= now       │ → BLOCK (period ended)
+│  4. Status = active/trial      │
+│     AND payment overdue         │ → BLOCK
+│     AND payment pending        │ → WARNING if due soon
+│     AND payment paid           │ → ALLOW
+└─────────────────────────────────┘
+```
+
+### Cancellation Access Rule
+
+| Condition | Result |
+|-----------|--------|
+| Cancelled + period_end > now | ✅ Allow login with warning |
+| Cancelled + period_end <= now | ❌ Block (period ended) |
+| Expired | ❌ Block |
 
 ---
 
 ## Grace Period Settings
 
-### Admin Settings (Internal)
+### Admin Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `payment_due_days` | 14 | Grace period in days |
-| `overdue_warning_days` | 7 | Days before due_date to send warning |
+| `overdue_warning_days` | 7 | Days before due_date for warnings |
 
 ### Warning Timeline
 
-| Days Remaining | Action |
+| Days Before Due | Action |
 |---------------|--------|
-| 7 days | First warning email |
-| 3 days | Second warning email |
-| 1 day | Final reminder email |
-| 0 days (due_date) | Payment due - grace period ends |
-| 1 day+ overdue | Subscription EXPIRED, Invoice FORGIVEN |
-
----
-
-## Subscription Period Extension
-
-When payment is received within grace period:
-
-### Monthly Billing
-```
-current_period_start = today
-current_period_end = today + 30 days
-```
-
-### Annual Billing
-```
-current_period_start = today
-current_period_end = today + 365 days
-```
-
----
-
-## Automatic Processes
-
-### Daily Cron Job (9 AM)
-
-A cron job runs daily to:
-
-1. **Send Warning Emails**
-   - Trial ending notices (7, 3, 1 day before)
-   - Billing reminders (3 days before due_date)
-   - Final reminder (1 day before due_date)
-
-2. **Check Expired Subscriptions**
-   - Find pending invoices past due_date
-   - Mark invoice as `forgiven`
-   - Mark subscription as `expired`
-   - Send expiration notice email
-
-3. **Handle Failed Payments**
-   - Stripe failures tracked but not immediately expired
-   - Wait for due_date before expiring
+| 7 days | First warning |
+| 3 days | Second warning |
+| 1 day | Final reminder |
+| 0 days | Due date - grace period ends |
+| 1+ days overdue | Period continues, invoice forgiven |
 
 ---
 
@@ -173,229 +345,34 @@ A cron job runs daily to:
 
 | Email | Trigger | When |
 |-------|---------|-------|
-| Trial Ending Notice | Trial period ending | 7, 3, 1 day(s) before |
+| Trial Ending | Trial period ending | 7, 3, 1 day(s) before |
 | Billing Reminder | Active subscription due soon | 3 days before due_date |
-| Final Reminder | Final warning | 1 day before due_date |
-| Payment Received | Admin marks paid | Immediately on payment |
-| Subscription Expired | Grace period expired | Immediately on expiration |
-| Subscription Cancelled | Customer or admin cancels | Immediately on cancellation |
+| Final Reminder | Payment due tomorrow | 1 day before due_date |
+| Payment Received | Admin marks paid | Immediately |
+| Subscription Expired | Period ended | Immediately |
+| Subscription Cancelled | Customer/admin cancels | Immediately |
 
 ---
 
-## Admin Actions
+## Automatic Processes
 
-### Mark Invoice as Paid
+### Daily Cron Job (9 AM)
 
-When admin marks an invoice as paid:
-1. Invoice status → `paid`
-2. Subscription period extended (+30 or +365 days)
-3. New invoice created for next cycle (if recurring)
-4. Customer receives confirmation email
-
-### Cancel Subscription
-
-Cancellation can be initiated by **admin** or **customer**. No approval is required - the cancellation takes effect immediately.
-
-#### Customer Self-Service Cancellation
-
-Customers can cancel their subscription through the customer portal:
-
-1. Customer clicks "Cancel Subscription"
-2. System displays confirmation dialog:
-   - "Are you sure? You'll lose access on [period_end_date]"
-   - Customer must confirm to proceed
-3. Customer optionally selects cancellation reason (feedback)
-4. Cancellation executes immediately:
-   - Subscription status → `cancelled`
-   - `cancelled_at` timestamp recorded
-   - **Access continues until current_period_end**
-5. Admin receives notification in dashboard
-6. Cron job will not renew when period ends
-
-#### Admin Cancellation
-
-Admins can cancel subscriptions from the admin panel:
-
-1. Admin selects customer subscription
-2. Admin clicks "Cancel Subscription"
-3. Confirmation dialog shown (same as customer flow)
-4. Cancellation executes immediately (no approval needed)
-
-#### Key Points
-
-| Item | Details |
-|------|---------|
-| Approval Required | ❌ None - self-service |
-| Immediate Effect | ✅ Yes, but access until period end |
-| Refund | ❌ Not granted automatically |
-| Access After Cancel | Continues until `current_period_end` |
-| Renewal | Stopped when period ends |
-
-**Important:** Cancellation does not grant refund. Customer retains access until their paid period ends.
-
-### Mark Invoice as Forgiven
-
-This is handled automatically by the system when grace period expires. Admin can manually mark an invoice as forgiven if:
-- Customer explicitly refuses to pay
-- Debt is written off
-- Legal/compliance reasons
+1. **Send Warning Emails** - Trial ending, billing reminders
+2. **Check Expired Subscriptions** - Mark pending invoices as forgiven, expired subscriptions
+3. **Handle Cancelled Subscriptions** - Let them expire naturally at period end
 
 ---
 
-## Example Scenarios
+## Summary Rules
 
-### Scenario 1: Stripe - Card Declined
-
-```
-Day 0: Customer subscribes (Stripe monthly)
-        Invoice created, due_date = Day 14
-        
-Day 5: First payment attempt - Card declined
-        Invoice status = "failed"
-        
-Day 5-14: Stripe retries payment (automatic)
-        Invoice status stays "failed"
-        
-Day 14: Due date reached
-        Stripe final failure received
-        
-Day 15: Cron job runs
-        Invoice status = "forgiven"
-        Subscription status = "expired"
-        Customer blocked from POS
-```
-
-### Scenario 2: Pay Later - Bank Transfer
-
-```
-Day 0: Customer subscribes (Pay Later)
-        Invoice created, due_date = Day 14
-        
-Day 10: Customer pays via bank transfer
-        Admin verifies and marks invoice paid
-        
-Day 10: Invoice status = "paid"
-        Subscription period extended to Day 40 (30 days)
-        New invoice created for next cycle
-        
-Day 40: Next invoice due_date
-        Grace period starts again...
-```
-
-### Scenario 3: Annual - No Payment
-
-```
-Day 0: Customer subscribes (Annual Pay Later)
-        Invoice created, due_date = Day 14
-
-Day 14: Due date reached - No payment
-
-Day 15: Cron job runs
-        Invoice status = "forgiven"
-        Subscription status = "expired"
-        Customer blocked
-
-Day 30: Customer pays
-        Admin creates new subscription
-        Previous invoice remains "forgiven"
-        No refund or credit issued
-```
-
-### Scenario 4: Cancellation - Pay Later (No Payment Made)
-
-```
-Day 0: Customer subscribes (Pay Later monthly)
-        Invoice created, due_date = Day 14
-        Subscription status = "active"
-
-Day 5: Customer requests cancellation
-        Admin marks subscription as "cancelled"
-        Subscription status = "cancelled"
-        cancelled_at = Day 5
-
-Day 5-14: Access still active
-        Customer can still use POS system
-        Invoice still shows "pending" (no payment made)
-
-Day 14: Due date reached - No payment
-        Invoice status = "forgiven"
-
-Day 15: Cron job runs
-        Subscription status = "cancelled" (already cancelled)
-        Access revoked (period ended)
-        No renewal triggered (already cancelled)
-```
-
-**Note:** This scenario applies to Pay Later where customer has not yet paid. For Stripe, the invoice would already be paid automatically at creation.
-
-### Scenario 5: Cancellation - Customer Paid but Cancelled
-
-```
-Day 0: Customer subscribes (Stripe monthly)
-        Invoice created, due_date = Day 14
-        Customer pays immediately
-        Invoice status = "paid"
-        Subscription period extended to Day 30
-
-Day 10: Customer requests cancellation
-        Admin marks subscription as "cancelled"
-        Subscription status = "cancelled"
-        cancelled_at = Day 10
-
-Day 10-30: Access still active
-        Customer can still use POS system
-        Service continues until Day 30
-
-Day 30: Period ends
-        Cron job runs
-        Subscription status = "cancelled"
-        Access revoked
-        No renewal (already cancelled)
-```
-
----
-
-## Subscription Status Transition Diagram
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     NEW SUBSCRIPTION                        │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-                          ▼
-              ┌───────────────────────┐
-              │   TRIAL / ACTIVE      │
-              │   (within period)     │
-              └───────────┬───────────┘
-                          │
-            ┌─────────────┼─────────────┐
-            │             │             │
-            ▼             ▼             ▼
-    ┌───────────┐  ┌───────────┐  ┌───────────┐
-    │   PAID    │  │ CANCELLED │  │  EXPIRED │
-    │ (extend)  │  │ (access   │  │ (no pay)  │
-    │           │  │  until    │  │           │
-    │           │  │  period    │  │           │
-    │           │  │  ends)     │  │           │
-    └─────┬─────┘  └─────┬─────┘  └───────────┘
-          │              │
-          ▼              ▼
-    ┌───────────┐  ┌───────────┐
-    │ RENEWAL   │  │ PERIOD    │
-    │ (new      │  │ ENDS      │
-    │  cycle)   │  │           │
-    └───────────┘  └───────────┘
-```
-
----
-
-## Best Practices
-
-1. **Monitor Warning Emails** - Warning emails should prompt customers to update payment methods
-2. **Keep Grace Period Reasonable** - 14 days is standard, but can be adjusted per customer
-3. **Document Forgiveness** - Always note why an invoice was marked forgiven
-4. **Stripe Settings** - Ensure Stripe dashboard has retry schedule configured appropriately
-5. **Communication** - Proactive communication before expiration reduces churn
+| Rule | Description |
+|------|-------------|
+| Period is fixed | Set once at subscribe/renewal, NOT extended by payment |
+| Grace period | Time to pay (14 days default) |
+| Access blocked | When period_end passes, not when grace period passes |
+| Cancellation | Access continues until original period_end |
+| Forgiveness | Invoice marked when grace period passes, access ends when period passes |
 
 ---
 
@@ -408,4 +385,4 @@ Day 30: Period ends
 
 ---
 
-*For internal admin configuration, see [Settings](./settings).*
+*Last Updated: September 21, 2026*
