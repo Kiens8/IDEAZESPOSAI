@@ -16,6 +16,7 @@ This document tracks all changes implemented for the subscription renewal system
 | Phase 1 | Database & Model Updates | ✅ Complete |
 | Phase 2 | Core Logic Updates | ✅ Complete |
 | Phase 3 | Cancellation Flow | ✅ Complete |
+| Phase 4 | Email Notifications | ✅ Complete |
 
 ---
 
@@ -124,11 +125,36 @@ status = Column(String(50), default="pending")
 |-----------|-------------|
 | **Database** | Invoice model now supports `forgiven` status |
 | **Stripe Webhooks** | Period extension on payment, invoice.created handling |
-| **Cron Job** | Automatic expiration and forgiveness of overdue invoices |
-| **Emails** | Subscription expired and cancellation emails |
+| **Cron Job** | Automatic expiration, forgiveness, and final reminders |
+| **Emails** | Subscription expired, cancellation, and final reminder emails |
 | **Customer Portal** | Cancel button with confirmation dialog |
 | **Admin Portal** | Cancel with confirmation and optional reason |
 | **API** | Proper cancellation flow with email notifications |
+
+---
+
+## Phase 4: Email Notifications
+
+### Files Changed
+
+#### 1. Email Service (`website_api/app/emails/email_service.py`)
+
+**New Function:**
+- `send_final_reminder()` - Email sent 1 day before due date
+
+#### 2. Cron Job (`website_api/scripts/send_notifications.py`)
+
+**New Function:**
+- `send_final_reminders()` - Sends reminders for invoices due tomorrow
+
+### Email Timeline
+
+| Days Before Due | Email Sent |
+|-----------------|------------|
+| 7 days | Trial Ending Notice |
+| 3 days | Billing Reminder |
+| 1 day | **Final Reminder** (new) |
+| Due date | Payment Due |
 
 ---
 
