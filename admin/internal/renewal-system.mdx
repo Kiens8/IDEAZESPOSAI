@@ -506,6 +506,195 @@ Day 44:  Grace period ends
 
 ---
 
+## Paid to Paid Upgrades
+
+### Key Rules
+
+| Rule | Description |
+|------|-------------|
+| Upgrade only | No downgrade allowed |
+| Period unchanged | period_end stays the same |
+| Prorated billing | Pay difference for remaining days |
+| Immediate effect | Plan upgraded upon payment |
+
+### Plan Pricing (Current)
+
+| Plan | Monthly | Annual |
+|------|---------|--------|
+| Starter | Free ($0) | Free ($0) |
+| Basic | $10/mo | $100/yr |
+| Pro | $20/mo | $200/yr |
+| Enterprise | $50/mo | $500/yr |
+
+### Scenario 15: Paid - Upgrade Mid-Cycle (Monthly Billing)
+
+**Starting State:**
+- Plan: Starter (Free $0/month)
+- Period: Day 0 - Day 30
+- Invoice #1: paid ($0)
+
+**Upgrade on Day 15 (Starter → Basic $10/month):**
+
+```
+Day 15:  Customer UPGRADES Starter → Basic ($10/month)
+           Since Starter is $0, full Basic monthly price applies
+           Days remaining = 30 - 15 = 15 days
+           Full monthly price = $10
+           Invoice #2 created: $10.00, status = pending
+           subscription plan updated: Starter → Basic
+           subscription period_end: unchanged (Day 30)
+
+Day 15:  Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           subscription continues as Basic
+
+Day 30:  Period ends
+           Invoice #3 created: $10 (Basic monthly), status = pending
+           Auto-renew continues
+```
+
+**Result:** Plan upgraded from free to paid, full $10 charged (no prorated since old plan was $0), subscription continues as Basic
+
+---
+
+### Scenario 16: Paid - Upgrade Mid-Cycle (Monthly Billing with Proration)
+
+**Starting State:**
+- Plan: Basic ($10/month)
+- Period: Day 0 - Day 30
+- Invoice #1: paid ($10)
+
+**Upgrade on Day 15 (Basic → Pro $20/month):**
+
+```
+Day 15:  Customer UPGRADES Basic → Pro ($20/month)
+           Days remaining = 30 - 15 = 15 days
+           Daily rate Pro = $20/30 = $0.67/day
+           Daily rate Basic = $10/30 = $0.33/day
+           Difference = $0.33/day
+           Prorated charge = $0.33 × 15 = $5.00
+
+           Invoice #2 created: $5.00, status = pending
+           subscription plan updated: Basic → Pro
+           subscription period_end: unchanged (Day 30)
+
+Day 15:  Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           subscription continues as Pro
+
+Day 30:  Period ends
+           Invoice #3 created: $20 (Pro monthly), status = pending
+           Auto-renew continues
+```
+
+**Result:** Plan upgraded mid-cycle, prorated charge $5 collected, subscription continues as Pro
+
+---
+
+### Scenario 17: Paid - Upgrade Mid-Cycle (Annual Billing)
+
+**Starting State:**
+- Plan: Basic ($100/year)
+- Period: Day 0 - Day 365
+- Invoice #1: paid ($100)
+
+**Upgrade on Day 180 (Basic → Pro $200/year):**
+
+```
+Day 180: Customer UPGRADES Basic → Pro ($200/year)
+           Days remaining = 365 - 180 = 185 days
+           Daily rate Pro = $200/365 = $0.55/day
+           Daily rate Basic = $100/365 = $0.27/day
+           Difference = $0.27/day
+           Prorated charge = $0.27 × 185 = $50.14
+
+           Invoice #2 created: $50.14, status = pending
+           subscription plan updated: Basic → Pro
+           subscription period_end: unchanged (Day 365)
+
+Day 180: Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           subscription continues as Pro
+
+Day 365: Period ends
+           Invoice #3 created: $200 (Pro annual), status = pending
+           Auto-renew continues
+```
+
+**Result:** Plan upgraded mid-cycle, prorated charge $50.14 collected, subscription continues as Pro annual
+
+---
+
+### Scenario 18: Paid - Upgrade from Free Starter to Pro (Mid-Cycle)
+
+**Starting State:**
+- Plan: Starter (Free $0/month)
+- Period: Day 0 - Day 30
+- Invoice #1: paid ($0)
+
+**Upgrade on Day 10 (Starter → Pro $20/month):**
+
+```
+Day 10:  Customer UPGRADES Starter → Pro ($20/month)
+           Since Starter is $0, full Pro monthly price applies
+           Days remaining = 30 - 10 = 20 days
+           Full monthly price = $20
+           Invoice #2 created: $20.00, status = pending
+           subscription plan updated: Starter → Pro
+           subscription period_end: unchanged (Day 30)
+
+Day 10:  Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           subscription continues as Pro
+
+Day 30:  Period ends
+           Invoice #3 created: $20 (Pro monthly), status = pending
+           Auto-renew continues
+```
+
+**Result:** Plan upgraded from free to Pro, full $20 charged, subscription continues as Pro
+
+---
+
+### Scenario 19: Paid - Multiple Upgrades in Same Cycle
+
+**Starting State:**
+- Plan: Basic ($10/month)
+- Period: Day 0 - Day 30
+- Invoice #1: paid ($10)
+
+**Upgrade on Day 10 (Basic → Pro), then Day 20 (Pro → Enterprise):**
+
+```
+Day 10:  Customer UPGRADES Basic → Pro ($20/month)
+           Days remaining = 30 - 10 = 20 days
+           Daily rate Pro = $20/30 = $0.67/day
+           Daily rate Basic = $10/30 = $0.33/day
+           Difference = $0.33/day
+           Prorated charge = $0.33 × 20 = $6.67
+           Invoice #2 created: $6.67, status = pending
+           Customer pays ✓
+           subscription plan: Pro
+
+Day 20:  Customer UPGRADES Pro → Enterprise ($50/month)
+           Days remaining = 30 - 20 = 10 days
+           Daily rate Enterprise = $50/30 = $1.67/day
+           Daily rate Pro = $20/30 = $0.67/day
+           Difference = $1.00/day
+           Prorated charge = $1.00 × 10 = $10.00
+           Invoice #3 created: $10.00, status = pending
+           Customer pays ✓
+           subscription plan: Enterprise
+
+Day 30:  Period ends
+           Invoice #4 created: $50 (Enterprise monthly), status = pending
+           Auto-renew continues
+```
+
+**Result:** Multiple upgrades in same cycle, each generates prorated invoice, final plan Enterprise
+
+---
+
 ## Summary Table
 
 | Scenario | Payment | Cancel When | Invoice | Subscription | Access |
@@ -524,6 +713,11 @@ Day 44:  Grace period ends
 | 12. Trial - Not paid | - | - | Invoice #2 forgiven at Day 44 | expired | Blocked at Day 44 |
 | 13. Trial - Upgrade annual | Day 15 (upgrade + annual) | - | Invoice #1 (trial) paid auto, Invoice #2 paid (Pro annual) | trial → active | Full |
 | 14. Trial - Upgrade monthly | Day 20 (upgrade + monthly) | - | Invoice #1 (trial) paid auto, Invoice #2 paid (Pro monthly) | trial → active | Full |
+| 15. Paid Starter → Basic | Day 15 (mid-cycle) | - | Invoice #2 $10 (full price, Starter=$0) | Basic → active | Full |
+| 16. Paid Basic → Pro | Day 15 (mid-cycle) | - | Invoice #2 $5 (prorated) | Pro → active | Full |
+| 17. Paid Basic → Pro annual | Day 180 (mid-cycle) | - | Invoice #2 $50.14 (prorated annual) | Pro → active | Full |
+| 18. Paid Starter → Pro | Day 10 (mid-cycle) | - | Invoice #2 $20 (full price, Starter=$0) | Pro → active | Full |
+| 19. Paid multiple upgrades | Day 10, Day 20 | - | Invoice #2 $6.67, Invoice #3 $10 (prorated) | Enterprise → active | Full |
 
 ---
 
