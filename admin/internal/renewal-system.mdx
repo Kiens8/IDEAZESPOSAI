@@ -15,6 +15,14 @@ This renewal system applies to **both monthly and annual** billing subscriptions
 - **Annual Billing:** 365-day subscription period, 14-day grace period
 
 All logic is identical for both billing cycles. Only the period length differs.
+
+**Trial Subscriptions**
+
+All trial subscriptions follow the **30-day standard trial period**:
+- Trial invoice ($0) is auto-created and auto-marked as paid by cron job
+- At trial end (Day 30), first paid invoice is generated
+- Customer has 14-day grace period to pay the first paid invoice
+- If not paid by Day 44, subscription expires and access is blocked
 :::
 
 ---
@@ -326,20 +334,40 @@ Day 40:  Customer returns and resubscribes
 ```
 Day 0:   Trial subscription
            subscription_status = trial
-           trial_ends_at = Day 14
+           trial_ends_at = Day 30
+           Invoice #1 created: $0, status = trial
 
-Day 7:   Trial ending warning
-Day 14:  Trial ends
-         Customer pays
-           invoice_status = paid
+Day 0:   Cron job runs (daily)
+           Invoice #1 status → paid (auto-marked for trial)
+
+Day 7:   Trial warning email #1 sent
+Day 12:  Trial warning email #2 sent
+Day 14:  Grace period ends
+           ✓ No issue — Invoice #1 already paid
+
+Day 30:  Trial ends
+           Invoice #2 created for paid version: $XX, status = pending
            subscription_status = active
-           subscription_period_end = Day 44
+           subscription_period_start = Day 30
+           subscription_period_end = Day 60
 
-Day 44:  First paid period ends
-           Auto-renew
+Day 30:  Customer pays Invoice #2
+           Invoice #2 status → paid
+
+Day 44:  Grace period ends
+           ✓ No issue — Invoice #2 already paid
+
+Day 60:  First paid period ends
+           Auto-renew to Cycle 2
 ```
 
-**Result:** Invoice paid, Trial converts to active, Access full
+**Key Points:**
+- Trial invoice ($0) is auto-created and auto-marked as paid by cron job
+- No payment required during trial
+- At Day 30 (trial end), first paid invoice is generated
+- Customer has 14-day grace period (until Day 44) to pay first paid invoice
+
+**Result:** Invoice #1 (trial) paid automatically, Trial converts to active at Day 30, Invoice #2 paid by customer, Access full
 
 ---
 
@@ -348,17 +376,35 @@ Day 44:  First paid period ends
 ```
 Day 0:   Trial subscription
            subscription_status = trial
-           trial_ends_at = Day 14
+           trial_ends_at = Day 30
+           Invoice #1 created: $0, status = trial
 
-Day 7:   Trial ending warning
-Day 14:  Trial ends
-         No payment
-           invoice_status = forgiven
+Day 0:   Cron job runs (daily)
+           Invoice #1 status → paid (auto-marked for trial)
+
+Day 7:   Trial warning email #1 sent
+Day 12:  Trial warning email #2 sent
+Day 14:  Grace period ends
+           ✓ No issue — Invoice #1 already paid
+
+Day 30:  Trial ends
+           Invoice #2 created for paid version: $XX, status = pending
+           subscription_status = trial (grace period starts)
+
+Day 44:  Grace period ends
+         No payment received
+           Invoice #2 status → forgiven
            subscription_status = expired
            Access = BLOCKED
 ```
 
-**Result:** Invoice forgiven, Subscription expired, Access blocked at Day 14
+**Key Points:**
+- Trial invoice ($0) is auto-created and auto-marked as paid by cron job
+- At Day 30 (trial end), first paid invoice is generated but NOT auto-paid
+- Customer has 14-day grace period (until Day 44) to pay
+- If not paid by Day 44, subscription expires and access is blocked
+
+**Result:** Invoice #1 (trial) paid automatically, Invoice #2 (paid) not paid → forgiven at Day 44, Subscription expired, Access blocked
 
 ---
 
@@ -376,8 +422,8 @@ Day 14:  Trial ends
 | 8. Cancel - After Expired | - | Day 20 | forgiven | expired | Blocked |
 | 9. Expired - Resubscribe | - | - | forgiven (old) | expired (old) / active (new) | Blocked then Full |
 | 10. Cancelled - Resubscribe | - | - | forgiven (old) | cancelled (old) / active (new) | Blocked then Full |
-| 11. Trial - Paid | Day 14 | - | paid | trial to active | Full after pay |
-| 12. Trial - Not paid | - | - | forgiven | expired | Blocked (Day 14) |
+| 11. Trial - Paid | Day 30 (pay at Day 30) | - | Invoice #1 (trial) paid auto, Invoice #2 paid | trial → active | Full |
+| 12. Trial - Not paid | - | - | Invoice #2 forgiven at Day 44 | expired | Blocked at Day 44 |
 
 ---
 
@@ -499,4 +545,4 @@ Overdue - BLOCK
 
 ---
 
-*Last Updated: September 21, 2026*
+*Last Updated: September 22, 2026*
