@@ -1,0 +1,280 @@
+---
+title: Subscription Renewal System
+description: How IDEAZES POS AI handles subscription renewals, grace periods, and payment tracking
+---
+
+# Subscription Renewal System
+
+IDEAZES POS AI implements a unified renewal system that treats payment due period as a grace period for all payment methods. This ensures consistent, fair handling of subscriptions regardless of payment method.
+
+---
+
+## Core Concept: Grace Period = Payment Due Period
+
+| Item | Value | Notes |
+|------|-------|-------|
+| Grace Period | Payment Due Days | Parameterized in Admin Settings (default: 14 days) |
+| Applies To | **All payment methods** | Stripe, Pay Later, Bank Transfer, Cash |
+| Start Date | Invoice creation date | Subscription start or renewal date |
+| End Date | `start_date + grace_period` | When payment is due |
+
+---
+
+## How It Works
+
+### Payment Flow
+
+```
+Day 0: Subscription created or renewed
+        ↓
+Invoice created
+due_date = Day 0 + grace_period (e.g., Day 14)
+        ↓
+Grace Period Starts Running...
+        ↓
+[Day 7]: Warning email sent (halfway point)
+        ↓
+Day 14 (due_date): Payment due
+        ↓
+Day 15+: No payment received
+        ↓
+Subscription EXPIRED
+Invoice marked FORGIVEN
+POS Access BLOCKED
+```
+
+---
+
+## Invoice Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Awaiting payment (within grace period) |
+| `paid` | Payment received within grace period |
+| `failed` | Payment attempt failed (Stripe only - will retry) |
+| `forgiven` | Grace period expired, payment not received - written off |
+| `cancelled` | Invoice cancelled manually |
+| `refunded` | Payment was refunded |
+
+---
+
+## Subscription Statuses
+
+| Status | Meaning |
+|--------|---------|
+| `trial` | Trial period (trial_ends_at = due_date) |
+| `active` | Within grace period, payment pending or paid |
+| `expired` | Grace period expired, payment not received |
+| `cancelled` | Manually cancelled by admin |
+
+---
+
+## Payment Methods & Handling
+
+### Stripe
+
+| Stripe Event | System Action |
+|-------------|---------------|
+| `invoice.created` | Track invoice, wait for payment |
+| `invoice.finalized` | Update invoice with Stripe hosted URL |
+| `invoice.paid` | Mark invoice paid, extend subscription period |
+| `invoice.payment_failed` | Do NOT expire immediately - wait for due_date |
+| `customer.subscription.deleted` | Mark subscription as cancelled |
+
+**Note:** Stripe automatically retries failed payments. The system waits until the grace period (due_date) expires before marking the subscription as expired.
+
+### Pay Later
+
+| Event | System Action |
+|-------|---------------|
+| Invoice created | Set due_date = today + grace_period |
+| Admin marks paid | Mark invoice paid, extend subscription period |
+| Due date passed | Mark invoice forgiven, subscription expired |
+
+### Bank Transfer / Cash
+
+Same handling as Pay Later - admin manually marks payment received when verified.
+
+---
+
+## Grace Period Settings
+
+### Admin Settings (Internal)
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `payment_due_days` | 14 | Grace period in days |
+| `overdue_warning_days` | 7 | Days before due_date to send warning |
+
+### Warning Timeline
+
+| Days Remaining | Action |
+|---------------|--------|
+| 7 days | First warning email |
+| 3 days | Second warning email |
+| 1 day | Final reminder email |
+| 0 days (due_date) | Payment due - grace period ends |
+| 1 day+ overdue | Subscription EXPIRED, Invoice FORGIVEN |
+
+---
+
+## Subscription Period Extension
+
+When payment is received within grace period:
+
+### Monthly Billing
+```
+current_period_start = today
+current_period_end = today + 30 days
+```
+
+### Annual Billing
+```
+current_period_start = today
+current_period_end = today + 365 days
+```
+
+---
+
+## Automatic Processes
+
+### Daily Cron Job (9 AM)
+
+A cron job runs daily to:
+
+1. **Send Warning Emails**
+   - Trial ending notices (7, 3, 1 day before)
+   - Billing reminders (3 days before due_date)
+   - Final reminder (1 day before due_date)
+
+2. **Check Expired Subscriptions**
+   - Find pending invoices past due_date
+   - Mark invoice as `forgiven`
+   - Mark subscription as `expired`
+   - Send expiration notice email
+
+3. **Handle Failed Payments**
+   - Stripe failures tracked but not immediately expired
+   - Wait for due_date before expiring
+
+---
+
+## Email Notifications
+
+| Email | Trigger | When |
+|-------|---------|-------|
+| Trial Ending Notice | Trial period ending | 7, 3, 1 day(s) before |
+| Billing Reminder | Active subscription due soon | 3 days before due_date |
+| Final Reminder | Final warning | 1 day before due_date |
+| Payment Received | Admin marks paid | Immediately on payment |
+| Subscription Expired | Grace period expired | Immediately on expiration |
+
+---
+
+## Admin Actions
+
+### Mark Invoice as Paid
+
+When admin marks an invoice as paid:
+1. Invoice status → `paid`
+2. Subscription period extended (+30 or +365 days)
+3. New invoice created for next cycle (if recurring)
+4. Customer receives confirmation email
+
+### Cancel Subscription
+
+When admin cancels a subscription:
+1. Subscription status → `cancelled`
+2. No further billing occurs
+3. Access immediately revoked
+
+### Mark Invoice as Forgiven
+
+This is handled automatically by the system when grace period expires. Admin can manually mark an invoice as forgiven if:
+- Customer explicitly refuses to pay
+- Debt is written off
+- Legal/compliance reasons
+
+---
+
+## Example Scenarios
+
+### Scenario 1: Stripe - Card Declined
+
+```
+Day 0: Customer subscribes (Stripe monthly)
+        Invoice created, due_date = Day 14
+        
+Day 5: First payment attempt - Card declined
+        Invoice status = "failed"
+        
+Day 5-14: Stripe retries payment (automatic)
+        Invoice status stays "failed"
+        
+Day 14: Due date reached
+        Stripe final failure received
+        
+Day 15: Cron job runs
+        Invoice status = "forgiven"
+        Subscription status = "expired"
+        Customer blocked from POS
+```
+
+### Scenario 2: Pay Later - Bank Transfer
+
+```
+Day 0: Customer subscribes (Pay Later)
+        Invoice created, due_date = Day 14
+        
+Day 10: Customer pays via bank transfer
+        Admin verifies and marks invoice paid
+        
+Day 10: Invoice status = "paid"
+        Subscription period extended to Day 40 (30 days)
+        New invoice created for next cycle
+        
+Day 40: Next invoice due_date
+        Grace period starts again...
+```
+
+### Scenario 3: Annual - No Payment
+
+```
+Day 0: Customer subscribes (Annual Pay Later)
+        Invoice created, due_date = Day 14
+        
+Day 14: Due date reached - No payment
+        
+Day 15: Cron job runs
+        Invoice status = "forgiven"
+        Subscription status = "expired"
+        Customer blocked
+        
+Day 30: Customer pays
+        Admin creates new subscription
+        Previous invoice remains "forgiven"
+        No refund or credit issued
+```
+
+---
+
+## Best Practices
+
+1. **Monitor Warning Emails** - Warning emails should prompt customers to update payment methods
+2. **Keep Grace Period Reasonable** - 14 days is standard, but can be adjusted per customer
+3. **Document Forgiveness** - Always note why an invoice was marked forgiven
+4. **Stripe Settings** - Ensure Stripe dashboard has retry schedule configured appropriately
+5. **Communication** - Proactive communication before expiration reduces churn
+
+---
+
+## Related Documentation
+
+- [Admin Settings](../admin/internal/settings) - Configure grace period and warning days
+- [Payment Methods](./payment-methods) - Accepted payment methods
+- [Plans](./plans) - Plan details and pricing
+- [Access Control](../access-control/overview) - How access is blocked on expiration
+
+---
+
+*For internal admin configuration, see [Admin Settings](../admin/internal/settings).*
