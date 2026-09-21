@@ -1,0 +1,143 @@
+---
+title: Renewal System Changes
+description: Implementation changes for subscription renewal, grace period, and cancellation flow
+---
+
+# Renewal System Changes
+
+This document tracks all changes implemented for the subscription renewal system.
+
+---
+
+## Overview
+
+| Phase | Description | Status |
+|-------|-------------|--------|
+| Phase 1 | Database & Model Updates | ✅ Complete |
+| Phase 2 | Core Logic Updates | ✅ Complete |
+| Phase 3 | Cancellation Flow | ✅ Complete |
+
+---
+
+## Phase 1: Database & Model Updates
+
+### Files Changed
+
+| File Path | Change |
+|-----------|--------|
+| `website_api/app/models/models.py` | Added `forgiven` to invoice status values |
+
+### Invoice Status Values
+
+```python
+status = Column(String(50), default="pending")  
+# Values: pending, paid, failed, forgiven, refunded, cancelled
+```
+
+---
+
+## Phase 2: Core Logic Updates
+
+### Files Changed
+
+#### 1. Webhooks (`website_api/app/routes/webhooks.py`)
+
+**Changes:**
+- Added `extend_subscription_period()` helper function
+- Added `handle_invoice_created()` for tracking recurring Stripe invoices
+- Updated `handle_invoice_paid()` to extend subscription period on payment
+- Added routing for `invoice.created` event
+
+#### 2. Cron Job (`website_api/scripts/send_notifications.py`)
+
+**New Functions:**
+- `check_expired_subscriptions()` - Marks pending invoices past due_date as `forgiven`, marks subscriptions as `expired`
+- `check_cancelled_subscriptions()` - Lets cancelled subscriptions expire naturally
+
+#### 3. Email Service (`website_api/app/emails/email_service.py`)
+
+**New Function:**
+- `send_subscription_expired_notice()` - Email sent when subscription expires
+
+---
+
+## Phase 3: Cancellation Flow
+
+### Files Changed
+
+#### 1. Customer Portal (`site/src/app/portal/billing/page.tsx`)
+
+**Changes:**
+- Added cancel button for active/trial subscriptions
+- Added confirmation modal with access ends date
+- Added success toast notification
+
+#### 2. Admin App (`admin/src/pages/Subscriptions.jsx`)
+
+**Changes:**
+- Added confirmation modal with optional reason field
+
+#### 3. API Backend
+
+**`website_api/app/routes/subscription.py`:**
+- Updated cancel endpoint to send cancellation email
+
+**`website_api/app/routes/admin.py`:**
+- Updated admin cancel to send cancellation email
+
+#### 4. Email Service (`website_api/app/emails/email_service.py`)
+
+**New Function:**
+- `send_subscription_cancelled()` - Email sent when subscription is cancelled
+
+---
+
+## Complete File Change List
+
+```
+/root/.openclaw/workspace/mydoc/Projects/POS_AI/
+├── website_api/
+│   ├── app/
+│   │   ├── models/
+│   │   │   └── models.py                           [Phase 1]
+│   │   ├── routes/
+│   │   │   ├── webhooks.py                         [Phase 2]
+│   │   │   ├── subscription.py                     [Phase 3]
+│   │   │   └── admin.py                            [Phase 3]
+│   │   └── emails/
+│   │       └── email_service.py                    [Phase 2, 3]
+│   └── scripts/
+│       └── send_notifications.py                    [Phase 2]
+├── site/
+│   └── src/app/portal/billing/
+│       └── page.tsx                                [Phase 3]
+└── admin/
+    └── src/pages/
+        └── Subscriptions.jsx                        [Phase 3]
+```
+
+---
+
+## Summary of Changes
+
+| Component | What Changed |
+|-----------|-------------|
+| **Database** | Invoice model now supports `forgiven` status |
+| **Stripe Webhooks** | Period extension on payment, invoice.created handling |
+| **Cron Job** | Automatic expiration and forgiveness of overdue invoices |
+| **Emails** | Subscription expired and cancellation emails |
+| **Customer Portal** | Cancel button with confirmation dialog |
+| **Admin Portal** | Cancel with confirmation and optional reason |
+| **API** | Proper cancellation flow with email notifications |
+
+---
+
+## Related Documentation
+
+- [Renewal System](./renewal-system) - Detailed renewal system documentation
+- [Settings](./settings) - Configuration settings (grace period, warning days)
+- [Access Control](../access-control/overview) - How access is blocked on expiration
+
+---
+
+*Last Updated: September 21, 2026*
