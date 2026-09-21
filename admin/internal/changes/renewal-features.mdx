@@ -17,6 +17,7 @@ This document tracks all changes implemented for the subscription renewal system
 | Phase 2 | Core Logic Updates | ✅ Complete |
 | Phase 3 | Cancellation Flow | ✅ Complete |
 | Phase 4 | Email Notifications | ✅ Complete |
+| Phase 5 | Testing & Verification | ✅ Complete |
 
 ---
 
@@ -155,6 +156,53 @@ status = Column(String(50), default="pending")
 | 3 days | Billing Reminder |
 | 1 day | **Final Reminder** (new) |
 | Due date | Payment Due |
+
+---
+
+## Phase 5: Testing & Verification
+
+### Test Script
+
+A test script is available for testing the renewal system using Wonder Restaurant as the test customer.
+
+**Location:** `website_api/scripts/test_renewal.py`
+
+**Usage:**
+```bash
+cd /root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api
+
+# Show current status
+python3 scripts/test_renewal.py --status
+
+# Force expire (create pending invoice with past due date)
+python3 scripts/test_renewal.py --expire
+
+# Run expiration check (marks expired, sends email)
+python3 scripts/test_renewal.py --check
+
+# Restore to active (cleanup test data)
+python3 scripts/test_renewal.py --restore
+```
+
+### Test Results ✅
+
+| Step | Result |
+|------|--------|
+| `--status` | Shows subscription status, period end, pending invoices |
+| `--expire` | Created pending invoice due yesterday |
+| `--check` | Invoice marked `forgiven`, subscription `expired`, email sent |
+| `--status` | Confirmed: status=expired, 1 forgiven invoice |
+| `--restore` | Subscription restored to active, period extended |
+
+### Verified Components
+
+| Component | Status |
+|-----------|--------|
+| Cron job expiration check | ✅ Verified |
+| Invoice marked as forgiven | ✅ Verified |
+| Subscription marked as expired | ✅ Verified |
+| Email notification sent | ✅ Verified |
+| Restore function | ✅ Verified |
 
 ---
 
