@@ -260,10 +260,10 @@ Day 30: Customer pays
         No refund or credit issued
 ```
 
-### Scenario 4: Cancellation After Invoice Creation
+### Scenario 4: Cancellation - Pay Later (No Payment Made)
 
 ```
-Day 0: Customer subscribes (Stripe monthly)
+Day 0: Customer subscribes (Pay Later monthly)
         Invoice created, due_date = Day 14
         Subscription status = "active"
 
@@ -274,7 +274,7 @@ Day 5: Customer requests cancellation
 
 Day 5-14: Access still active
         Customer can still use POS system
-        Invoice still shows "pending" (will be forgiven later)
+        Invoice still shows "pending" (no payment made)
 
 Day 14: Due date reached - No payment
         Invoice status = "forgiven"
@@ -284,6 +284,8 @@ Day 15: Cron job runs
         Access revoked (period ended)
         No renewal triggered (already cancelled)
 ```
+
+**Note:** This scenario applies to Pay Later where customer has not yet paid. For Stripe, the invoice would already be paid automatically at creation.
 
 ### Scenario 5: Cancellation - Customer Paid but Cancelled
 
