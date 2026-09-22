@@ -524,6 +524,109 @@ POST /api/cron/run
 
 ---
 
+## Test Script
+
+### Location
+
+```
+website_api/scripts/test_renewal.py
+```
+
+### Usage
+
+```bash
+cd website_api
+
+# Show help
+python3 scripts/test_renewal.py
+
+# Run all tests
+python3 scripts/test_renewal.py --all
+
+# Run specific test
+python3 scripts/test_renewal.py --test T1
+
+# Show current subscription status
+python3 scripts/test_renewal.py --status
+
+# Cleanup test data
+python3 scripts/test_renewal.py --cleanup
+```
+
+### Test Scenarios
+
+| Test | Description |
+|------|-------------|
+| **T1** | Free Plan ($0) - Invoice created, auto-marked paid, period extends |
+| **T2** | Trial → Paid - Trial invoice $0, first paid invoice at trial end, status → active |
+| **T3** | Trial → Not Paid - Invoice → forgiven at grace period, status → expired |
+| **T4** | Trial Upgrade (monthly) - Plan upgraded during trial, correct invoice at trial end |
+| **T5** | Trial Upgrade (annual) - Plan upgraded during trial with annual billing |
+| **T6** | Paid Upgrade (proration) - Prorated charge calculated correctly |
+| **T7** | Cancelled → Expires - Access continues until period end, then blocked |
+| **T8** | Pay Later Invoice - Invoice generated, due date correct, forgiven after grace |
+
+### Sample Output
+
+```
+==============================================================
+IDEAZES RENEWAL SYSTEM TEST SUITE
+==============================================================
+
+[T1] Free Plan ($0)
+
+  ✅ PASSED
+  ✓ Plan 'Starter' exists
+  ✓ Invoice created with $0
+  ✓ Invoice status = paid
+  ✓ New renewal invoice generated
+  ✓ New invoice has $0
+  ✓ Period extended to next cycle
+
+[T2] Trial → Paid
+
+  ✅ PASSED
+  ✓ Plan 'Pro' exists
+  ✓ Trial invoice $0 created
+  ✓ Trial invoice marked as paid
+  ✓ trial_ends_at cleared
+  ✓ First paid invoice generated
+  ✓ First paid invoice amount correct
+  ✓ First paid invoice status = pending
+  ✓ Status changed to active after payment
+
+...
+
+==============================================================
+TEST RESULTS SUMMARY
+==============================================================
+
+[T1] Free Plan ($0)
+  ✅ PASSED
+
+[T2] Trial → Paid
+  ✅ PASSED
+
+[T3] Trial → Not Paid
+  ✅ PASSED
+
+...
+
+--------------------------------------------------------------
+Results: 8 Passed, 0 Failed
+--------------------------------------------------------------
+
+🎉 All tests passed!
+```
+
+### Test Data
+
+- Test customers are prefixed with `test_renewal_`
+- Use `--cleanup` to remove all test data after testing
+- Use `--status` to see current subscriptions without running tests
+
+---
+
 ## Testing Checklist
 
 | Test | Expected Result |
