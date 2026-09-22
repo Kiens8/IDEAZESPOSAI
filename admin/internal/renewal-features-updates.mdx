@@ -23,6 +23,8 @@ This document tracks all changes made to align the implementation with the lates
 | Free Plan = Trial Flow | Free plan follows same flow as trial | subscription.py | ✅ Done |
 | UI: Free Plan Payment Method | Free plan requires payment method selection | portal/page.tsx | ✅ Done |
 | UI: Trial Banner | Shows trial countdown banner | portal/page.tsx | ✅ Done |
+| UI: Admin Subscriptions | Added trial columns (trial_ends_at, payment_method) | Subscriptions.jsx | ✅ Done |
+| UI: Admin Invoices | Added type column and filters | Invoices.jsx | ✅ Done |
 
 ---
 
@@ -346,6 +348,63 @@ Expected: Invoice with amount=0, status='pending', description LIKE 'Trial Perio
     </div>
   </div>
 )}
+```
+
+---
+
+### Admin: Subscriptions Page (`admin/src/pages/Subscriptions.jsx`)
+
+#### Changes Made
+
+1. **Added "Cancelled" to status filter stats** (was: All/Active/Trial/Pending, now includes Cancelled)
+2. **Added "Trial Ends" column** - Shows trial_ends_at date for trial subscriptions
+3. **Added "Payment" column** - Shows payment_method (stripe/pay_later/free/trial)
+
+```tsx
+// New columns added to table header
+<th>Renewal Date</th>
+<th>Trial Ends</th>    {/* NEW */}
+<th>Payment</th>       {/* NEW */}
+<th>Status</th>
+
+// Trial ends column shows countdown
+<td className="px-6 py-4 text-slate-600 text-sm">
+  {sub.status === 'trial' && sub.trial_ends_at ? (
+    <span className="text-amber-600 font-medium">
+      {formatDate(sub.trial_ends_at)}
+    </span>
+  ) : '-'}
+</td>
+```
+
+---
+
+### Admin: Invoices Page (`admin/src/pages/Invoices.jsx`)
+
+#### Changes Made
+
+1. **Added "Type" column** - Shows invoice type (Trial/Free/First/Renewal/Upgrade)
+2. **Added Type filter buttons** - Filter by invoice type
+3. **Added "forgiven" to status config** - For grace period expired invoices
+4. **Invoice type detection logic:**
+
+```tsx
+const getInvoiceType = (invoice) => {
+  const desc = (invoice.description || '').toLowerCase();
+  if (desc.includes('trial')) return 'trial';
+  if (invoice.amount === 0) return 'free';
+  if (invoice.payment_method === 'trial') return 'trial';
+  if (desc.includes('recurring')) return 'renewal';
+  return 'other';
+};
+
+const typeConfig = {
+  trial: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Trial' },
+  free: { bg: 'bg-green-100', text: 'text-green-700', label: 'Free' },
+  first: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'First' },
+  renewal: { bg: 'bg-cyan-100', text: 'text-cyan-700', label: 'Renewal' },
+  upgrade: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Upgrade' },
+};
 ```
 
 ---
