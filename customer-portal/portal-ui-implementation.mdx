@@ -1,6 +1,7 @@
 # Customer Portal UI - Implementation
 
 **Date:** September 23, 2026  
+**Last Updated:** September 23, 2026 (Bug fixes & Stripe integration)  
 **Status:** Implemented  
 **Author:** Lumi
 
@@ -31,33 +32,47 @@ The customer portal (`site.ideazes.com/portal`) has been redesigned with a premi
 | **Stats** | Simple grid | Premium cards with icons and better spacing |
 | **Quick Actions** | Basic text | Gradient cards with icons and hover effects |
 
-### Key UI Elements
+---
 
-1. **Premium Header**
-   - Gradient logo badge (cyan/blue)
-   - Restaurant name and email displayed
-   - Clean logout button
+## Feature Updates
 
-2. **Premium Sidebar**
-   - Sticky positioning
-   - Active nav has gradient background
-   - Quick info card showing current plan
-   - Rounded corners (2xl)
+### 1. Email Verification Status Fix (Bug Fix)
+**Issue:** Email verification status not updating after clicking verify link  
+**Fix:** Changed API endpoint from `/api/auth/profile` to `/api/auth/me`  
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/page.tsx`
 
-3. **Premium Cards**
-   - `rounded-2xl` corners
-   - `shadow-lg` with hover `shadow-xl`
-   - Border highlights on hover
+### 2. Feature Lock Before Email Verification
+**Implementation:** When email is NOT verified:
+- Open POS button → Locked ("Verify email to access")
+- Upgrade Plan button → Locked ("Verify email to upgrade")
+- View Invoices button → Locked ("Verify email to view")
+- Subscription Tab → Shows "🔒 Email Verification Required" with Resend button
 
-4. **Premium Buttons**
-   - Gradient backgrounds (cyan to blue)
-   - Shadow effects
-   - Smooth transitions
+### 3. Subscription Wizard (3-Step Flow)
+**Step 1: Select Plan**
+- Plan cards (Starter, Basic, Pro, Enterprise)
+- Billing cycle toggle (Monthly / Annual - Save 20%)
+- Next button (enabled when plan selected)
 
-5. **Gradient Backgrounds**
-   - Main page: `bg-gradient-to-br from-slate-50 via-white to-cyan-50`
-   - Verification prompts: Amber gradient
-   - Subscription prompts: Cyan/Blue gradient
+**Step 2: Choose Option**
+- "Start 30-Day Free Trial" option (hidden for $0 plans)
+- "Subscribe Now" option
+- Back/Next navigation
+
+**Step 3: Payment Method**
+- Order Summary display
+- "Pay Later" option
+- "Credit/Debit Card (Stripe)" option
+- "Confirm Subscription" button
+
+### 4. Stripe Checkout Integration
+**Endpoint:** `POST /api/subscriptions/create-checkout?plan_id=X&billing_cycle=Y`  
+**Success URL:** `https://site.ideazes.com/portal?checkout=success`  
+**Cancel URL:** `https://site.ideazes.com/portal?checkout=canceled`
+
+### 5. Bug Fix: Billing Cycle Selection
+**Issue:** Changing billing cycle didn't reset choice selection  
+**Fix:** When changing billing cycle, `choice` is now reset to `null`
 
 ---
 
@@ -86,9 +101,12 @@ PortalPage
         ├── Overview Tab
         │   ├── Stats Grid (Plan, Outlets, Staff, Status)
         │   ├── Subscription Info Card
-        │   └── Quick Actions (Open POS, Upgrade, Invoices)
+        │   └── Quick Actions (Open POS, Upgrade, Invoices) - Locked if not verified
         ├── Subscription Tab
-        │   └── Current Plan + Upgrade Options
+        │   └── 3-Step Wizard
+        │       ├── Step 1: Plan Selection + Billing Cycle
+        │       ├── Step 2: Trial/Subscribe Choice
+        │       └── Step 3: Payment Method + Stripe Checkout
         ├── Profile Tab
         │   └── Profile Settings Form
         └── Support Tab
@@ -117,14 +135,23 @@ PortalPage
 - Active: `bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-200`
 - Inactive: `text-slate-600 hover:bg-slate-50`
 
+### Locked State (Before Email Verification)
+- `bg-slate-100 border-2 border-slate-200 opacity-60 cursor-not-allowed`
+- Shows "🔒 Locked" badge
+
 ---
 
-## Next Steps
+## API Endpoints Used
 
-The subscription wizard (Step 1 → Step 2 → Step 3) will be implemented next as per the proposal document.
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/auth/me` | Get user profile including email_verified status |
+| GET | `/api/subscriptions/current` | Get current subscription |
+| POST | `/api/subscriptions/create-checkout` | Create Stripe checkout session |
+| POST | `/api/auth/resend-verification` | Resend verification email |
 
 ---
 
 ## Related Documents
 
-- [Subscription Wizard Proposal](/customer-portal/subscription-wizard-proposal) - Future subscription flow design
+- [Subscription Wizard Proposal](/customer-portal/subscription-wizard-proposal) - Design proposal for subscription flow
