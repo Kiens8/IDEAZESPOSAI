@@ -5,17 +5,16 @@ description: Implementation changes to align with renewal system documentation
 
 # Renewal Features Updates
 
-> Date: September 22, 2026
-> Status: Implemented
+**Date:** September 22, 2026
+
+**Status:** Implemented
 
 This document tracks all changes made to align the implementation with the latest Renewal System documentation.
-
----
 
 ## Overview
 
 | Status | Description | File |
-| ------ | ----------- | ---- |
+| --- | --- | --- |
 | Done | Period Extension on Payment | webhooks.py |
 | Done | Invoice Status Values | models.py |
 | Done | Renewal Invoice Generation | send_notifications.py |
@@ -30,110 +29,73 @@ This document tracks all changes made to align the implementation with the lates
 | Done | Trial End Processing | send_notifications.py |
 | Done | Backend Cancel Access Check | auth.py |
 
----
+## Backend Changes
 
-## Change 1: Remove Period Extension on Payment
+### 1. Period Extension Removed
 
-### File
+File: website_api/app/routes/webhooks.py
 
-website_api/app/routes/webhooks.py
+Payment no longer extends subscription period. Period end date stays fixed until renewal.
 
-### Before
+### 2. Invoice Status Values
 
-Payment extended subscription period when invoice was paid.
+File: website_api/app/models/models.py
 
-### After
+Values: pending, paid, failed, forgiven, refunded, cancelled
 
-Period extension removed. Period end date stays fixed until renewal at period end.
+Note: Trial is NOT a valid invoice status. Trial invoices have status pending.
 
----
+### 3. Renewal Invoice Generation
 
-## Change 2: Invoice Status Values
+File: website_api/scripts/send_notifications.py
 
-### File
+Creates new invoice at period end for active subscriptions.
 
-website_api/app/models/models.py
+### 4. Trial End Processing
 
-### Values
+File: website_api/scripts/send_notifications.py
 
-pending, paid, failed, forgiven, refunded, cancelled
+Processes trial endings and generates first paid invoice.
 
-Note: Trial is NOT a valid invoice status. Trial invoices have status pending with description Trial Period.
+### 5. Cancelled Access Check
 
----
+File: backend/app/routes/auth.py
 
-## Change 3: Renewal Invoice Generation
-
-### File
-
-website_api/scripts/send_notifications.py
-
-### Function
-
-generate_renewal_invoices - Creates new invoice at period end for active subscriptions.
-
----
-
-## Change 4: Trial Invoice Creation
-
-### File
-
-website_api/app/routes/subscription.py
-
-### Flow
-
-Trial creates invoice with 0 amount, status pending, description Trial Period. Cron marks as paid.
-
----
-
-## Change 5: Free Plan Trial Flow
-
-### File
-
-website_api/app/routes/subscription.py
-
-### Flow
-
-Free Plan follows same flow as Trial - invoice pending, cron marks paid, payment method required.
-
----
+Cancelled subscriptions block access after period_end.
 
 ## UI Changes
 
 ### Customer Portal
 
-site/src/app/portal/page.tsx
+File: site/src/app/portal/page.tsx
 
 - Free Plan requires payment method selection
 - Trial countdown banner added
 
 ### Admin Subscriptions
 
-admin/src/pages/Subscriptions.jsx
+File: admin/src/pages/Subscriptions.jsx
 
 - Trial columns added
 - Payment method column added
 
 ### Admin Invoices
 
-admin/src/pages/Invoices.jsx
+File: admin/src/pages/Invoices.jsx
 
 - Invoice type column
 - Type filters
 
 ### Cron Status Page
 
-admin/src/pages/CronStatus.jsx
+File: admin/src/pages/CronStatus.jsx
 
-- Monitor cron job status
-- Trigger manual run
-
----
+New admin page to monitor cron job status.
 
 ## Cron Jobs
 
 | Job | Description |
-| --- | ----------- |
+| --- | --- |
 | trial_end | Process trial endings |
 | renewal_invoices | Generate renewal invoices |
 | expired_check | Check expired subscriptions |
@@ -143,61 +105,19 @@ admin/src/pages/CronStatus.jsx
 | final_reminders | Send final reminders |
 | payment_failed | Process failed payments |
 
----
-
 ## Test Script
 
-### Location
+Location: website_api/scripts/test_renewal.py
 
-website_api/scripts/test_renewal.py
+Usage:
 
-### Usage
-
-```
+```bash
 python3 scripts/test_renewal.py --all
 python3 scripts/test_renewal.py --test T1
 python3 scripts/test_renewal.py --status
 python3 scripts/test_renewal.py --cleanup
 ```
 
-### Tests
-
-| Test | Scenario | Description |
-| ---- | -------- | ----------- |
-| T1 | 20 | Free Plan monthly |
-| T2 | 11 | Trial to Paid |
-| T3 | 12 | Trial Not Paid |
-| T4 | 14 | Trial Upgrade monthly |
-| T5 | 13 | Trial Upgrade annual |
-| T6 | 15-19 | Paid Upgrade proration |
-| T7 | 6-8 | Cancelled Expires |
-| T8 | - | Pay Later Invoice |
-| T9 | 20 | Free Plan annual |
-| T10 | 11 | Trial to Paid annual |
-| T11 | 12 | Trial Not Paid annual |
-| T12 | 19 | Multiple Upgrades |
-| T13 | - | Auto-Renew Success |
-| T14 | - | Payment Fails |
-| T15 | - | Access Limited |
-| T16 | - | Manual Cancellation |
-| T17 | - | Stripe Checkout |
-
----
-
-## Backend Fix: Cancelled Subscription Access Check
-
-### File
-
-backend/app/routes/auth.py
-
-### Logic
-
-Cancelled subscriptions:
-- If now <= period_end: ALLOW access
-- If now > period_end: BLOCK access (status stays cancelled)
-
-This ensures cancelled subscriptions are blocked after period ends.
-
----
+Tests: T1 to T17 covering all scenarios.
 
 *Last Updated: September 22, 2026*
