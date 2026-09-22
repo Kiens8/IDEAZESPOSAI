@@ -66,13 +66,38 @@ The customer portal (`site.ideazes.com/portal`) has been redesigned with a premi
 - "Confirm Subscription" button
 
 ### 4. Stripe Checkout Integration
-**Endpoint:** `POST /api/subscriptions/create-checkout?plan_id=X&billing_cycle=Y`  
+**Endpoint:** `POST /api/subscriptions/create` (unified endpoint)  
+**Request Body:**
+```json
+{
+  "plan_id": 1,
+  "billing_cycle": "monthly",
+  "choice": "trial" | "subscribe",
+  "payment_method": "stripe" | "pay_later"
+}
+```
+
+**Behavior:**
+- **$0 transactions** (Trial or $0 plan): Creates subscription + invoice immediately, no Stripe redirect
+- **Paid plans**: Creates pending invoice + returns Stripe checkout URL
+
 **Success URL:** `https://site.ideazes.com/portal?checkout=success`  
 **Cancel URL:** `https://site.ideazes.com/portal?checkout=canceled`
 
 ### 5. Bug Fix: Billing Cycle Selection
 **Issue:** Changing billing cycle didn't reset choice selection  
 **Fix:** When changing billing cycle, `choice` is now reset to `null`
+
+### 6. Unified Subscription Creation Endpoint
+**New Endpoint:** `POST /api/subscriptions/create`
+
+**Flow:**
+| Scenario | Invoice | Cron Job | Stripe |
+|----------|---------|----------|--------|
+| $0 (Trial/Starter) | ✅ Created (pending) | ✅ Marks paid | ❌ Skipped |
+| Paid (Pro/Enterprise) | ✅ Created (pending) | ✅ Marks paid | ✅ Redirected |
+
+This aligns with the documented renewal system where cron job handles $0 invoice status updates.
 
 ---
 
