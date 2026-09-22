@@ -379,13 +379,15 @@ Day 30+: Customer pays invoice
 **File:** `backend/app/routes/auth.py`
 
 **Before (WRONG):**
-```python
+
+```
 if sub.status == 'cancelled':
     is_cancelled = True  # Always allows access
 ```
 
 **After (CORRECT):**
-```python
+
+```
 if sub.status == 'cancelled':
     # Check if period has ended - if so, access is blocked
     # Cancelled subscriptions retain access until current_period_end
