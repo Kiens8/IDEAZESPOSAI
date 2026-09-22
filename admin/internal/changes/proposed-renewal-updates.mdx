@@ -206,17 +206,6 @@ def generate_renewal_invoices(db: Session):
         # Calculate amount based on billing cycle
         amount = plan.price_monthly if sub.billing_cycle == 'monthly' else plan.price_annual
         
-        # Skip if $0 (free plan)
-        if amount == 0:
-            # For free plans, just extend the period
-            if sub.billing_cycle == 'monthly':
-                sub.current_period_end = sub.current_period_end + relativedelta(months=1)
-            else:
-                sub.current_period_end = sub.current_period_end + relativedelta(years=1)
-            db.commit()
-            print(f"  ✓ Extended free plan subscription {sub.id} to {sub.current_period_end}")
-            continue
-        
         # Get grace period from settings
         grace_days = 14  # default
         try:
@@ -225,7 +214,8 @@ def generate_renewal_invoices(db: Session):
         except:
             pass
         
-        # Create new invoice for next period
+        # Create new invoice for next period (including $0 for free plans)
+        # Cron will auto-mark $0 invoices as paid
         new_period_start = sub.current_period_end
         if sub.billing_cycle == 'monthly':
             new_period_end = sub.current_period_end + relativedelta(months=1)

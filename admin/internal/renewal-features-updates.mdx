@@ -154,13 +154,11 @@ def generate_renewal_invoices(db: Session):
 ```
 For each active subscription where current_period_end <= today:
     1. Get plan price (monthly or annual)
-    2. If $0 (free plan):
-       - Just extend period (no invoice)
-    3. Else:
-       - Create new invoice with amount
-       - Set due_date = period_end + 14 days
-       - Update current_period_start = period_end
-       - Update current_period_end = period_end + 30/365 days
+    2. Create invoice with amount (including $0 for free plans)
+    3. Set due_date = period_end + 14 days
+    4. Update current_period_start = period_end
+    5. Update current_period_end = period_end + 30/365 days
+    6. Cron will auto-mark $0 invoices as paid (existing logic)
 ```
 
 ### Cron Execution Order
@@ -302,7 +300,7 @@ Expected: Invoice with amount=0, status='pending', description LIKE 'Trial Perio
 | Cron runs at period end | New invoice generated, `current_period_end` extended to next period |
 | Start trial subscription | Invoice created with $0, status=pending, description="Trial Period - 30 days" |
 | Cron marks $0 invoice | Trial invoice status → paid (handled by existing logic) |
-| Period end for free plan | Period extended, no invoice generated |
+| Period end for free plan | Invoice generated ($0), period extended, cron marks as paid |
 
 ---
 
