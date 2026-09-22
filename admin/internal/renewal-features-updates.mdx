@@ -300,6 +300,80 @@ Expected: Invoice with amount=0, status='pending', description LIKE 'Trial Perio
 
 ---
 
+## Trial End Processing
+
+### New Function: process_trial_end()
+
+When trial ends (trial_ends_at <= now), this function:
+
+1. Finds trial subscriptions where trial has ended
+2. Generates first paid invoice based on:
+   - Current plan (may have been upgraded during trial)
+   - Stored billing cycle (monthly/annual)
+3. Sets subscription period dates:
+   - `period_start` = trial_ends_at
+   - `period_end` = trial_ends_at + 30/365 days
+4. Clears trial_ends_at (trial has ended)
+5. Status stays 'trial' until invoice is paid
+
+```python
+def process_trial_end(db: Session):
+    """
+    Process trial subscriptions that have ended.
+    
+    When trial ends:
+    - Generate first paid invoice
+    - Set period_start = trial_ends_at
+    - Set period_end = trial_ends_at + billing_cycle
+    - Clear trial_ends_at
+    - Status stays 'trial' until paid
+    """
+```
+
+### Cron Execution Order (Updated)
+
+```
+1. process_trial_end()         ← Handles trial → paid transition
+2. generate_renewal_invoices() ← For active subscriptions (period renewal)
+3. check_expired_subscriptions()
+4. check_cancelled_subscriptions()
+5. send_trial_ending_notices()
+6. send_billing_reminders()
+7. send_final_reminders()
+8. send_payment_failed_notices()
+```
+
+### Trial End Flow
+
+```
+Day 0:   Trial starts
+           status = trial
+           trial_ends_at = Day 30
+
+Day 15:  Customer upgrades plan during trial
+           plan_id updated to new plan
+
+Day 30:  Trial ends (cron runs process_trial_end)
+           → Generates first paid invoice
+           → Sets period_start = Day 30
+           → Sets period_end = Day 60 (for monthly)
+           → Clears trial_ends_at
+           → status stays 'trial' (waiting for payment)
+
+Day 30+: Customer pays invoice
+           → status changes to 'active'
+```
+
+### Files Modified
+
+| File | Change |
+|------|--------|
+| `send_notifications.py` | Added `process_trial_end()` function |
+| `notifications.py` | Added job to API |
+| `CronStatus.jsx` | Shows new job in list |
+
+---
+
 ## UI Changes
 
 ### Customer Portal (`site/src/app/portal/page.tsx`)
