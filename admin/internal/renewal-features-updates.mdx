@@ -28,6 +28,7 @@ This document tracks all changes made to align the implementation with the lates
 | UI: Cron Status Page | New admin page showing cron job status | CronStatus.jsx | ✅ Done |
 | API: Cron Status | Endpoint to get/trigger cron status | notifications.py | ✅ Done |
 | Trial End Processing | New cron function to process trial endings | send_notifications.py | ✅ Done |
+| Backend: Cancel Access Check | Block access for cancelled subscriptions after period_end | auth.py | ✅ Done |
 
 ---
 
@@ -371,6 +372,32 @@ Day 30+: Customer pays invoice
 | `send_notifications.py` | Added `process_trial_end()` function |
 | `notifications.py` | Added job to API |
 | `CronStatus.jsx` | Shows new job in list |
+| `backend/app/routes/auth.py` | Check period_end for cancelled subscriptions |
+
+### Backend Fix: Cancelled Subscription Access Check
+
+**File:** `backend/app/routes/auth.py`
+
+**Before (WRONG):**
+```python
+if sub.status == 'cancelled':
+    is_cancelled = True  # Always allows access
+```
+
+**After (CORRECT):**
+```python
+if sub.status == 'cancelled':
+    # Check if period has ended - if so, access is blocked
+    # Cancelled subscriptions retain access until current_period_end
+    if sub.current_period_end and datetime.utcnow() > sub.current_period_end:
+        # Period ended - access is blocked (status stays cancelled)
+        is_cancelled = False
+        is_expired = True
+    else:
+        is_cancelled = True
+```
+
+This ensures cancelled subscriptions are blocked AFTER their period ends, as per the renewal system design.
 
 ---
 
