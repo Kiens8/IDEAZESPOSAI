@@ -1,0 +1,401 @@
+# Customer Portal Subscription Wizard - Proposal
+
+**Date:** September 23, 2026  
+**Status:** Draft - For Review  
+**Author:** Lumi
+
+---
+
+## Executive Summary
+
+The current customer portal subscription UI is confusing and not aligned with the new renewal system. This proposal outlines a **step-by-step wizard flow** that guides customers through plan selection, trial/subscription choice, and payment method selection.
+
+---
+
+## Current Issues
+
+1. **Confusing UI** - Multiple states displayed without clear hierarchy
+2. **Not aligned with renewal system** - Payment method selection not integrated
+3. **Poor user guidance** - Customer doesn't know what to do next
+4. **Inconsistent flow** - New vs upgrade customer not differentiated
+
+---
+
+## Proposed Solution: Subscription Wizard
+
+A multi-step wizard that adapts based on:
+- Whether customer selected a plan before signup (localStorage)
+- Whether customer is new or upgrading
+- Plan type (Free, Starter $0, Paid plans)
+
+---
+
+## Customer Flow Scenarios
+
+### Scenario 1: Customer selects plan before signup
+
+**Path:** Visit site → Select plan → Click "Get Started" → localStorage stores plan + billing cycle → Sign up → Email verification → Subscription wizard
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    EXISTING FLOW                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. Visit site.ideazes.com                                       │
+│ 2. Select plan (Starter/Pro/Enterprise)                        │
+│ 3. Click "Get Started"                                          │
+│    → localStorage.setItem('selected_plan', planData)            │
+│    → localStorage.setItem('billing_cycle', 'monthly'/'annual') │
+│ 4. Sign up form                                                 │
+│ 5. Email verification                                            │
+│ 6. Email verified → Subscription wizard STARTS HERE            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Scenario 2: Customer clicks "Sign Up Free"
+
+**Path:** Visit site → Click "Sign Up Free" → No localStorage → Sign up → Email verification → Subscription wizard
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    EXISTING FLOW                                 │
+├─────────────────────────────────────────────────────────────────┤
+│ 1. Visit site.ideazes.com                                       │
+│ 2. Click "Sign Up Free" (no plan selected)                      │
+│    → localStorage has NO plan data                              │
+│ 3. Sign up form                                                │
+│ 4. Email verification                                           │
+│ 5. Email verified → Subscription wizard STARTS AT STEP 1       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Subscription Wizard Steps
+
+### NEW CUSTOMER (Email just verified)
+
+#### Step 1: Plan Selection 🌍
+
+**When:** Customer clicks Subscription menu (new customer, no subscription)
+
+**Display:**
+- If `localStorage.selected_plan` exists → Pre-select that plan
+- If NOT → Show all available plans as cards
+
+**UI Elements:**
+- Plan cards (Free, Starter $99, Pro $199, Enterprise $399)
+- Billing cycle toggle (Monthly / Annual)
+- Selected plan highlighted
+- "Next" button
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 1: SELECT YOUR PLAN                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│   │   FREE   │  │ STARTER  │  │   PRO    │  │ENTERPRISE│      │
+│   │   $0     │  │   $99    │  │   $199   │  │   $399   │      │
+│   │          │  │          │  │          │  │          │      │
+│   │ Features │  │ Features │  │ Features │  │ Features │      │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
+│                                                                  │
+│   Billing Cycle:  ( ) Monthly    (●) Annual (Save 20%)          │
+│                                                                  │
+│                                        [ Next → ]                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Step 2: Start Trial or Subscribe 📋
+
+**When:** Customer completed Step 1
+
+**Display:**
+- Show selected plan summary
+- Show "Start Free Trial" button (NOT for $0 plans)
+- Show "Subscribe Now" button
+
+**Logic:**
+- If plan amount = $0 (Starter) → Only "Subscribe Now" button
+- If plan amount > $0 → Show BOTH "Start Free Trial" AND "Subscribe Now"
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 2: START YOUR JOURNEY                                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Selected Plan: PRO - Annual                                    │
+│   Price: $199/month (billed annually)                           │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                                                          │   │
+│   │     [ 🧪 Start 14-Day Free Trial ]                      │   │
+│   │      No payment required now                            │   │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   OR                                                            │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                                                          │   │
+│   │     [ 💳 Subscribe Now ]                                │   │
+│   │      Start immediately                                  │   │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   [ ← Back ]                               [ Next → ]            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### Step 3: Payment Method 💳
+
+**When:** Customer completed Step 2
+
+**Display:**
+- Show selected plan + choice (Trial/Subscribe)
+- Show payment methods
+
+**Payment Methods (Current):**
+1. **Pay Later** - Manual payment (bank transfer, cash)
+2. **Credit/Debit Card** - Stripe payment
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 3: SELECT PAYMENT METHOD                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Order Summary:                                                 │
+│   ─────────────────                                             │
+│   Plan: Pro - Annual                                            │
+│   Type: 14-Day Free Trial                                       │
+│   Amount: $0.00                                                 │
+│                                                                  │
+│   Select Payment Method:                                         │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  (●) Pay Later                                         │   │
+│   │      Manual payment - bank transfer, cash                │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  ( ) Credit/Debit Card (Stripe)                        │   │
+│   │      Pay securely with your card                         │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   [ ← Back ]                           [ Confirm Subscription ]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## FREE PLAN FLOW
+
+### Free Plan → No Trial Option
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 1: SELECT YOUR PLAN                                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ✓ FREE PLAN SELECTED                                         │
+│   $0/month                                                     │
+│                                                                  │
+│   [ Next → ]                                                   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 2: CONFIRM SUBSCRIPTION                                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Order Summary:                                                 │
+│   ─────────────────                                             │
+│   Plan: Free                                                    │
+│   Amount: $0.00                                                 │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │     [ ✓ Activate Free Plan ]                            │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   [ ← Back ]                                                   │
+└─────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────┐
+│  STEP 3: SELECT PAYMENT METHOD                                  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Payment Method Required:                                        │
+│   (Even for $0, we store payment method for future upgrades)    │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  (●) Pay Later                                         │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │  ( ) Credit/Debit Card (Stripe)                        │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   [ ← Back ]                           [ Confirm Subscription ]   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## UPGRADE CUSTOMER FLOW
+
+### When: Existing customer clicks Subscription menu
+
+**Flow:**
+1. Show available upgrade plans
+2. Highlight current plan
+3. Customer selects new plan
+4. Follow same wizard (Step 1 → Step 2 → Step 3)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  YOUR CURRENT PLAN                                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Current: Starter - Monthly                                     │
+│   Status: Active                                                │
+│   Renewal Date: 22 Oct 2026                                     │
+│                                                                  │
+│   UPGRADE OPTIONS:                                              │
+│                                                                  │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐                     │
+│   │   PRO    │  │ENTERPRISE│  │  DOWNGRADE│                     │
+│   │   $199   │  │   $399   │  │  FREE     │                     │
+│   │  ↑ UP    │  │  ↑ UP    │  │  ↓       │                     │
+│   └──────────┘  └──────────┘  └──────────┘                     │
+│                                                                  │
+│   [ Next → ]                                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Technical Implementation
+
+### Frontend Pages
+
+| Route | Purpose |
+|-------|---------|
+| `/portal` | Main portal layout with sidebar |
+| `/portal/subscription` | Subscription wizard container |
+| `/portal/subscription/plan` | Step 1: Plan selection |
+| `/portal/subscription/trial` | Step 2: Trial vs Subscribe |
+| `/portal/subscription/payment` | Step 3: Payment method |
+| `/portal/subscription/confirm` | Confirmation page |
+
+### localStorage Keys
+
+| Key | Description |
+|-----|-------------|
+| `selected_plan` | Plan ID selected before signup |
+| `billing_cycle` | 'monthly' or 'annual' |
+| `subscription_choice` | 'trial' or 'subscribe' |
+| `payment_method` | 'pay_later' or 'stripe' |
+| `wizard_step` | Current step (1, 2, or 3) |
+
+### API Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/subscriptions` | Create subscription |
+| GET | `/api/subscriptions/current` | Get current subscription |
+| PUT | `/api/subscriptions/{id}/trial` | Start trial |
+| PUT | `/api/subscriptions/{id}/payment-method` | Update payment method |
+
+### State Management
+
+```
+subscriptionState = {
+  step: 1 | 2 | 3,
+  plan: { id, name, price, billing_cycle },
+  choice: 'trial' | 'subscribe',
+  paymentMethod: 'pay_later' | 'stripe',
+  isEmailVerified: boolean
+}
+```
+
+---
+
+## UI/UX Guidelines
+
+### Design Principles
+
+1. **One action per step** - Don't overwhelm customer
+2. **Clear progress indicator** - Show which step they're on
+3. **Always show summary** - Customer knows what they're getting
+4. **Validation before Next** - Can't proceed without selection
+5. **Back button always available** - Customer can change mind
+
+### Visual Design
+
+- **Progress bar** at top showing steps (1 → 2 → 3)
+- **Selected items** highlighted with blue border + checkmark
+- **Disabled buttons** when no selection made
+- **Summary sidebar** showing current selections
+- **Clean typography** - Arial/Helvetica (matching invoice style)
+- **Blue accent color (#1D4ED8)** for buttons and highlights
+
+### Error Handling
+
+| Scenario | Handling |
+|----------|----------|
+| Email not verified | Show "Verify Email First" message, disable subscription |
+| Trial already used | Hide "Start Free Trial" button |
+| Payment failed | Show error, allow retry |
+| Session expired | Redirect to login |
+
+---
+
+## Component Structure
+
+```
+/portal
+├── page.tsx                 # Main layout
+├── subscription/
+│   ├── WizardContainer.tsx # Wizard wrapper + progress bar
+│   ├── StepIndicator.tsx    # Step 1, 2, 3 progress
+│   ├── PlanSelection.tsx   # Step 1
+│   ├── TrialOrSubscribe.tsx # Step 2
+│   ├── PaymentMethod.tsx   # Step 3
+│   └── ConfirmSubscription.tsx # Final confirmation
+```
+
+---
+
+## Next Steps
+
+1. [ ] Review and approve this proposal
+2. [ ] Update documentation
+3. [ ] Implement Step 1: Plan Selection component
+4. [ ] Implement Step 2: Trial/Subscribe component
+5. [ ] Implement Step 3: Payment Method component
+6. [ ] Integrate with backend API
+7. [ ] Test all flows (new, upgrade, free, paid)
+8. [ ] Deploy to production
+
+---
+
+## Appendix: localStorage Flow
+
+```
+Signup Page:
+├── User selects plan → localStorage.setItem('selected_plan', planData)
+├── User clicks "Get Started" → Redirect to signup
+└── After signup → localStorage preserved
+
+OR:
+
+Signup Page:
+├── User clicks "Sign Up Free" → No localStorage
+└── After signup → localStorage empty
+
+After Email Verification:
+├── Click Subscription menu
+├── Check localStorage
+│   ├── Has plan → Start at Step 2
+│   └── No plan → Start at Step 1
+└── Wizard proceeds based on steps
+```
