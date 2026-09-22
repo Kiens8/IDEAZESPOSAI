@@ -565,6 +565,17 @@ python3 scripts/test_renewal.py --cleanup
 | **T6** | Paid Upgrade (proration) - Prorated charge calculated correctly |
 | **T7** | Cancelled → Expires - Access continues until period end, then blocked |
 | **T8** | Pay Later Invoice - Invoice generated, due date correct, forgiven after grace |
+| **T9** | Free Plan (annual) - Same as T1 but annual billing cycle |
+| **T10** | Trial → Paid (annual) - Same as T2 but annual billing cycle |
+| **T11** | Trial → Not Paid (annual) - Same as T3 but annual billing cycle |
+| **T12** | Multiple Upgrades - Basic → Pro → Enterprise in same cycle |
+| **T13** | Auto-Renew Success - Payment received, period extended |
+| **T14** | Payment Fails (Retry) - Invoice failed but retry possible |
+| **T15** | Access Limited (Overdue) - Access limited during grace period |
+| **T16** | Manual Cancellation - Customer cancels, access until period end |
+| **T17** | Stripe Checkout Flow - Stripe payment method integration |
+
+**Total: 17 comprehensive tests covering all 20 scenarios plus edge cases**
 
 ### Sample Output
 
