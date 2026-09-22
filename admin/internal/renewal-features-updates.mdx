@@ -5,551 +5,143 @@ description: Implementation changes to align with renewal system documentation
 
 # Renewal Features Updates
 
-> **Date:** September 22, 2026
-> **Status:** ✅ Implemented
+> Date: September 22, 2026
+> Status: Implemented
 
-This document tracks all changes made to align the implementation with the latest [Renewal System](./renewal-system) documentation.
+This document tracks all changes made to align the implementation with the latest Renewal System documentation.
 
 ---
 
 ## Overview
 
-| Change | Description | File | Status |
-|--------|-------------|------|--------|
-| Period Extension on Payment | Removed (per renewal design) | webhooks.py | ✅ Done |
-| Invoice Status Values | Confirmed correct (no "trial") | models.py | ✅ Verified |
-| Renewal Invoice Generation | Added to cron job | send_notifications.py | ✅ Done |
-| Trial Invoice Creation | Added $0 invoice for trial | subscription.py | ✅ Done |
-| Free Plan = Trial Flow | Free plan follows same flow as trial | subscription.py | ✅ Done |
-| UI: Free Plan Payment Method | Free plan requires payment method selection | portal/page.tsx | ✅ Done |
-| UI: Trial Banner | Shows trial countdown banner | portal/page.tsx | ✅ Done |
-| UI: Admin Subscriptions | Added trial columns (trial_ends_at, payment_method) | Subscriptions.jsx | ✅ Done |
-| UI: Admin Invoices | Added type column and filters | Invoices.jsx | ✅ Done |
-| UI: Cron Status Page | New admin page showing cron job status | CronStatus.jsx | ✅ Done |
-| API: Cron Status | Endpoint to get/trigger cron status | notifications.py | ✅ Done |
-| Trial End Processing | New cron function to process trial endings | send_notifications.py | ✅ Done |
-| Backend: Cancel Access Check | Block access for cancelled subscriptions after period_end | auth.py | ✅ Done |
+| Status | Description | File |
+| ------ | ----------- | ---- |
+| Done | Period Extension on Payment | webhooks.py |
+| Done | Invoice Status Values | models.py |
+| Done | Renewal Invoice Generation | send_notifications.py |
+| Done | Trial Invoice Creation | subscription.py |
+| Done | Free Plan Trial Flow | subscription.py |
+| Done | Free Plan Payment Method | portal/page.tsx |
+| Done | Trial Banner | portal/page.tsx |
+| Done | Admin Subscriptions Columns | Subscriptions.jsx |
+| Done | Admin Invoices Type Filters | Invoices.jsx |
+| Done | Cron Status Page | CronStatus.jsx |
+| Done | Cron Status API | notifications.py |
+| Done | Trial End Processing | send_notifications.py |
+| Done | Backend Cancel Access Check | auth.py |
 
 ---
 
 ## Change 1: Remove Period Extension on Payment
 
-### Problem
+### File
 
-Previous implementation extended `current_period_end` when payment was received via Stripe webhook.
+website_api/app/routes/webhooks.py
 
-### Per Renewal System Design
+### Before
 
-> **"Payment extends nothing - Period end date stays fixed"**
+Payment extended subscription period when invoice was paid.
 
-Period should only extend at **renewal** (period end), NOT when payment is received.
+### After
 
-### File Changed
-
-**`website_api/app/routes/webhooks.py`**
-
-#### Before (WRONG)
-
-```python
-def extend_subscription_period(subscription):
-    """Extend subscription period based on billing cycle"""
-    billing_cycle = subscription.billing_cycle or 'monthly'
-    now = datetime.utcnow()
-    
-    if billing_cycle == 'monthly':
-        new_period_end = now + relativedelta(months=1)
-    else:  # annual
-        new_period_end = now + relativedelta(years=1)
-    
-    subscription.current_period_start = now
-    subscription.current_period_end = new_period_end
-    subscription.status = 'active'
-    subscription.payment_status = 'paid'
-```
-
-```python
-# Called in handle_invoice_paid():
-extend_subscription_period(sub)
-```
-
-#### After (CORRECT)
-
-```python
-# DEPRECATED: Per renewal system design
-# Payment does NOT extend subscription period
-# Period end stays fixed until renewal (at period end)
-# 
-# def extend_subscription_period(subscription):
-#     """Extend subscription period based on billing cycle"""
-#     ...
-```
-
-```python
-# In handle_invoice_paid() - NO period extension
-# Invoice is marked as paid, period_end stays the same
-```
-
-### Verification
-
-```bash
-grep -n "extend_subscription_period" website_api/app/routes/webhooks.py
-```
-
-Expected output: Only commented lines (no active calls)
+Period extension removed. Period end date stays fixed until renewal at period end.
 
 ---
 
-## Change 2: Verify Invoice Status Values
+## Change 2: Invoice Status Values
 
-### File Verified
+### File
 
-**`website_api/app/models/models.py`**
+website_api/app/models/models.py
 
-```python
-class Invoice(Base):
-    # ...
-    status = Column(String(50), default="pending")  
-    # Values: pending, paid, failed, forgiven, refunded, cancelled
-    # NOTE: "trial" is NOT a valid invoice status
-    # Trial invoices have status="pending" with description="Trial Period - X days"
-```
+### Values
 
-### Status Values (Correct)
+pending, paid, failed, forgiven, refunded, cancelled
 
-| Status | Description |
-|--------|-------------|
-| pending | Awaiting payment |
-| paid | Payment received |
-| failed | Payment failed |
-| forgiven | Written off (grace period expired) |
-| refunded | Payment refunded |
-| cancelled | Invoice cancelled |
+Note: Trial is NOT a valid invoice status. Trial invoices have status pending with description Trial Period.
 
 ---
 
-## Change 3: Add Renewal Invoice Generation
+## Change 3: Renewal Invoice Generation
 
-### Problem
+### File
 
-Previous cron job did NOT generate new invoices at period end. Only checked for expired subscriptions.
+website_api/scripts/send_notifications.py
 
-### Per Renewal System Design
+### Function
 
-At period end (Day 30, Day 60, etc.):
-1. Create new invoice for next billing cycle
-2. Update `current_period_start` and `current_period_end`
-3. Subscription continues as active
-
-### File Changed
-
-**`website_api/scripts/send_notifications.py`**
-
-### New Function Added
-
-```python
-def generate_renewal_invoices(db: Session):
-    """
-    Generate new invoices for subscriptions reaching period end.
-    
-    Per renewal system design:
-    - At period end, new invoice is created for next cycle
-    - Subscription continues as active
-    - Invoice due_date = period_end + grace_period (14 days)
-    """
-```
-
-### Logic
-
-```
-For each active subscription where current_period_end <= today:
-    1. Get plan price (monthly or annual)
-    2. Create invoice with amount (including $0 for free plans)
-    3. Set due_date = period_end + 14 days
-    4. Update current_period_start = period_end
-    5. Update current_period_end = period_end + 30/365 days
-    6. Cron will auto-mark $0 invoices as paid (existing logic)
-```
-
-### Cron Execution Order
-
-```python
-def main():
-    # IMPORTANT: Generate renewal invoices BEFORE checking expired
-    generate_renewal_invoices(db)  # NEW - runs first
-    check_expired_subscriptions(db)  # checks grace period
-    check_cancelled_subscriptions(db)
-    send_trial_ending_notices(db)
-    send_billing_reminders(db)
-    send_final_reminders(db)
-```
-
-### New CLI Argument
-
-```bash
-# Generate renewal invoices only
-python3 send_notifications.py --renewal
-```
-
-### Verification
-
-```bash
-cd website_api
-python3 scripts/send_notifications.py --renewal
-```
-
-Expected: Generates invoices for subscriptions past period end
+generate_renewal_invoices - Creates new invoice at period end for active subscriptions.
 
 ---
 
-## Change 4: Add Trial Invoice Creation
+## Change 4: Trial Invoice Creation
 
-### Problem
+### File
 
-Previous implementation did NOT create an invoice when trial started.
+website_api/app/routes/subscription.py
 
-### Per Renewal System Design
+### Flow
 
-Trial subscription flow:
-1. Day 0: Create invoice with $0, status = pending, description = "Trial Period - 30 days"
-2. Cron job: Mark $0 invoices as paid (same as free plan)
-3. Day 30: Generate first paid invoice
-
-### File Changed
-
-**`website_api/app/routes/subscription.py`**
-
-### Before (WRONG)
-
-```python
-# Trial had no invoice created
-if sub_data.payment_method == "pay_later" or is_free_plan:
-    # ... creates invoice
-elif sub_data.trial:
-    # NO INVOICE CREATED
-```
-
-### After (CORRECT)
-
-```python
-# Create invoice for Pay Later, Free plan, or Trial
-if sub_data.payment_method == "pay_later" or is_free_plan or sub_data.trial:
-    # For trial, amount is $0
-    if sub_data.trial:
-        invoice_amount = 0
-    else:
-        invoice_amount = plan.price_monthly if sub_data.billing_cycle == 'monthly' else plan.price_annual
-    
-    # Determine invoice status and description based on type
-    if sub_data.trial:
-        invoice_status = "pending"
-        invoice_payment_method = "trial"
-        invoice_description = f"Trial Period - {trial_days} days"
-    elif is_free_plan:
-        invoice_status = "paid"
-        invoice_payment_method = "free"
-        invoice_description = f"{plan.name} - {sub_data.billing_cycle} subscription"
-    else:
-        invoice_status = "pending"
-        invoice_payment_method = "pay_later"
-        invoice_description = f"{plan.name} - {sub_data.billing_cycle} subscription"
-```
-
-### Trial Invoice Details
-
-| Field | Value |
-|-------|-------|
-| amount | $0 |
-| status | pending |
-| payment_method | trial |
-| description | "Trial Period - 30 days" |
-| due_date | null (no payment expected during trial) |
-
-### Verification
-
-Create a trial subscription and verify:
-
-```bash
-# Check invoice created
-curl -X POST "http://localhost:9000/api/subscriptions" \
-  -H "Authorization: Bearer <token>" \
-  -H "Content-Type: application/json" \
-  -d '{"plan_id": 1, "billing_cycle": "monthly", "trial": true}'
-
-# Verify invoice in database
-sqlite3 website_api/website.db "SELECT * FROM invoices WHERE subscription_id = <id>"
-```
-
-Expected: Invoice with amount=0, status='pending', description LIKE 'Trial Period%'
+Trial creates invoice with 0 amount, status pending, description Trial Period. Cron marks as paid.
 
 ---
 
-## Summary of Changes
+## Change 5: Free Plan Trial Flow
 
-### Files Modified
+### File
 
-| File | Change |
-|------|--------|
-| `website_api/app/routes/webhooks.py` | Commented out `extend_subscription_period()` |
-| `website_api/scripts/send_notifications.py` | Added `generate_renewal_invoices()` function |
-| `website_api/app/routes/subscription.py` | Added trial invoice creation |
+website_api/app/routes/subscription.py
 
-### Files Verified (No Changes Needed)
+### Flow
 
-| File | Status |
-|------|--------|
-| `website_api/app/models/models.py` | Invoice status values already correct |
-
----
-
-## Trial End Processing
-
-### New Function: process_trial_end()
-
-When trial ends (trial_ends_at <= now), this function:
-
-1. Finds trial subscriptions where trial has ended
-2. Generates first paid invoice based on:
-   - Current plan (may have been upgraded during trial)
-   - Stored billing cycle (monthly/annual)
-3. Sets subscription period dates:
-   - `period_start` = trial_ends_at
-   - `period_end` = trial_ends_at + 30/365 days
-4. Clears trial_ends_at (trial has ended)
-5. Status stays 'trial' until invoice is paid
-
-```python
-def process_trial_end(db: Session):
-    """
-    Process trial subscriptions that have ended.
-    
-    When trial ends:
-    - Generate first paid invoice
-    - Set period_start = trial_ends_at
-    - Set period_end = trial_ends_at + billing_cycle
-    - Clear trial_ends_at
-    - Status stays 'trial' until paid
-    """
-```
-
-### Cron Execution Order (Updated)
-
-```
-1. process_trial_end()         ← Handles trial → paid transition
-2. generate_renewal_invoices() ← For active subscriptions (period renewal)
-3. check_expired_subscriptions()
-4. check_cancelled_subscriptions()
-5. send_trial_ending_notices()
-6. send_billing_reminders()
-7. send_final_reminders()
-8. send_payment_failed_notices()
-```
-
-### Trial End Flow
-
-```
-Day 0:   Trial starts
-           status = trial
-           trial_ends_at = Day 30
-
-Day 15:  Customer upgrades plan during trial
-           plan_id updated to new plan
-
-Day 30:  Trial ends (cron runs process_trial_end)
-           → Generates first paid invoice
-           → Sets period_start = Day 30
-           → Sets period_end = Day 60 (for monthly)
-           → Clears trial_ends_at
-           → status stays 'trial' (waiting for payment)
-
-Day 30+: Customer pays invoice
-           → status changes to 'active'
-```
-
-### Files Modified
-
-| File | Change |
-|------|--------|
-| send_notifications.py | Added process_trial_end function |
-| notifications.py | Added job to API |
-| CronStatus.jsx | Shows new job in list |
-| backend/app/routes/auth.py | Check period_end for cancelled subscriptions |
-
-### Backend Fix: Cancelled Subscription Access Check
-
-**File:** backend/app/routes/auth.py
-
-**Before (WRONG):**
-
-```
-if sub.status == 'cancelled':
-    is_cancelled = True  # Always allows access
-```
-
-**After (CORRECT):**
-
-```
-if sub.status == 'cancelled':
-    # Check if period has ended - if so, access is blocked
-    # Cancelled subscriptions retain access until current_period_end
-    if sub.current_period_end and datetime.utcnow() > sub.current_period_end:
-        # Period ended - access is blocked (status stays cancelled)
-        is_cancelled = False
-        is_expired = True
-    else:
-        is_cancelled = True
-```
-
-This ensures cancelled subscriptions are blocked AFTER their period ends, as per the renewal system design.
+Free Plan follows same flow as Trial - invoice pending, cron marks paid, payment method required.
 
 ---
 
 ## UI Changes
 
-### Customer Portal (`site/src/app/portal/page.tsx`)
+### Customer Portal
 
-#### 1. Free Plan Requires Payment Method Selection
+site/src/app/portal/page.tsx
 
-**Before (WRONG):**
-- Free plan subscribed directly without payment method
-- No payment method stored for future upgrades
+- Free Plan requires payment method selection
+- Trial countdown banner added
 
-**After (CORRECT):**
-- All plans (including free) require billing cycle + payment method selection
-- Payment method stored for future upgrades
-- UI shows "Confirm Free Plan" with payment method options
+### Admin Subscriptions
 
-```tsx
-// Free Plan - Show Free Option
-{selectedPlan.price === 0 ? (
-  <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
-    <h3 className="font-bold text-green-800">Free Plan</h3>
-    <p className="text-sm text-green-600">No payment required. Start using immediately.</p>
-    <p className="text-xs text-green-500">
-      ℹ️ Your payment method will be stored for future upgrades.
-    </p>
-  </div>
-) : (
-  // Paid Plan options...
-)}
-```
+admin/src/pages/Subscriptions.jsx
 
-#### 2. Trial Countdown Banner
+- Trial columns added
+- Payment method column added
 
-**Added to subscription display:**
+### Admin Invoices
 
-```tsx
-{subscription.status === 'trial' && (
-  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
-    <div className="flex items-start gap-3">
-      <div className="text-2xl">⏰</div>
-      <div className="flex-1">
-        <h3 className="font-bold text-amber-800">Trial Period</h3>
-        <p className="text-sm text-amber-700 mt-1">
-          Your trial ends on {trial_ends_date} ({days_remaining} days remaining)
-        </p>
-        <p className="text-xs text-amber-600 mt-2">
-          ℹ️ Your selected payment method will be charged when the trial ends.
-        </p>
-      </div>
-    </div>
-  </div>
-)}
-```
+admin/src/pages/Invoices.jsx
+
+- Invoice type column
+- Type filters
+
+### Cron Status Page
+
+admin/src/pages/CronStatus.jsx
+
+- Monitor cron job status
+- Trigger manual run
 
 ---
 
-### Admin: Subscriptions Page (`admin/src/pages/Subscriptions.jsx`)
+## Cron Jobs
 
-#### Changes Made
-
-1. **Added "Cancelled" to status filter stats** (was: All/Active/Trial/Pending, now includes Cancelled)
-2. **Added "Trial Ends" column** - Shows trial_ends_at date for trial subscriptions
-3. **Added "Payment" column** - Shows payment_method (stripe/pay_later/free/trial)
-
-```tsx
-// New columns added to table header
-<th>Renewal Date</th>
-<th>Trial Ends</th>    {/* NEW */}
-<th>Payment</th>       {/* NEW */}
-<th>Status</th>
-
-// Trial ends column shows countdown
-<td className="px-6 py-4 text-slate-600 text-sm">
-  {sub.status === 'trial' && sub.trial_ends_at ? (
-    <span className="text-amber-600 font-medium">
-      {formatDate(sub.trial_ends_at)}
-    </span>
-  ) : '-'}
-</td>
-```
-
----
-
-### Admin: Invoices Page (`admin/src/pages/Invoices.jsx`)
-
-#### Changes Made
-
-1. **Added "Type" column** - Shows invoice type (Trial/Free/First/Renewal/Upgrade)
-2. **Added Type filter buttons** - Filter by invoice type
-3. **Added "forgiven" to status config** - For grace period expired invoices
-4. **Invoice type detection logic:**
-
-```tsx
-const getInvoiceType = (invoice) => {
-  const desc = (invoice.description || '').toLowerCase();
-  if (desc.includes('trial')) return 'trial';
-  if (invoice.amount === 0) return 'free';
-  if (invoice.payment_method === 'trial') return 'trial';
-  if (desc.includes('recurring')) return 'renewal';
-  return 'other';
-};
-
-const typeConfig = {
-  trial: { bg: 'bg-purple-100', text: 'text-purple-700', label: 'Trial' },
-  free: { bg: 'bg-green-100', text: 'text-green-700', label: 'Free' },
-  first: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'First' },
-  renewal: { bg: 'bg-cyan-100', text: 'text-cyan-700', label: 'Renewal' },
-  upgrade: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Upgrade' },
-};
-```
-
----
-
-### Admin: Cron Status Page (`admin/src/pages/CronStatus.jsx`)
-
-#### New Page Added
-
-A new admin page to monitor cron job status:
-
-**Access:** Admin sidebar → Cron Status
-
-**Features:**
-- View last run time
-- View job history with success/failure status
-- Manually trigger cron job
-- Refresh status
-
-**Cron Jobs Tracked:**
 | Job | Description |
-|-----|-------------|
-| trial_end | Process trial endings, generate first paid invoice |
-| renewal_invoices | Generate invoices at period end |
-| expired_check | Check and expire overdue subscriptions |
+| --- | ----------- |
+| trial_end | Process trial endings |
+| renewal_invoices | Generate renewal invoices |
+| expired_check | Check expired subscriptions |
 | cancelled_check | Check cancelled subscriptions |
-| trial_notices | Send trial ending reminders |
+| trial_notices | Send trial notices |
 | billing_reminders | Send billing reminders |
-| final_reminders | Send final payment reminders |
+| final_reminders | Send final reminders |
 | payment_failed | Process failed payments |
-
-#### API Endpoint
-
-```bash
-# Get cron status
-GET /api/cron/status
-
-# Trigger cron manually
-POST /api/cron/run
-```
 
 ---
 
@@ -557,132 +149,54 @@ POST /api/cron/run
 
 ### Location
 
-```
 website_api/scripts/test_renewal.py
-```
 
 ### Usage
 
-```bash
-cd website_api
-
-# Show help
-python3 scripts/test_renewal.py
-
-# Run all tests
+```
 python3 scripts/test_renewal.py --all
-
-# Run specific test
 python3 scripts/test_renewal.py --test T1
-
-# Show current subscription status
 python3 scripts/test_renewal.py --status
-
-# Cleanup test data
 python3 scripts/test_renewal.py --cleanup
 ```
 
-### Test Scenarios (T1-T17)
+### Tests
 
 | Test | Scenario | Description |
-|------|----------|-------------|
-| **T1** | 20 | Free Plan ($0) - Invoice created, auto-marked paid, period extends |
-| **T2** | 11 | Trial → Paid - Trial invoice $0, first paid invoice at trial end, status → active |
-| **T3** | 12 | Trial → Not Paid - Invoice → forgiven at grace period, status → expired |
-| **T4** | 14 | Trial Upgrade (monthly) - Plan upgraded during trial, correct invoice at trial end |
-| **T5** | 13 | Trial Upgrade (annual) - Plan upgraded during trial with annual billing |
-| **T6** | 15-19 | Paid Upgrade (proration) - Prorated charge calculated correctly |
-| **T7** | 6-8 | Cancelled → Expires - Access continues until period end, then blocked |
-| **T8** | - | Pay Later Invoice - Invoice generated, due date correct, forgiven after grace |
-| **T9** | 20 | Free Plan (annual) - Same as T1 but annual billing cycle |
-| **T10** | 11 | Trial → Paid (annual) - Same as T2 but annual billing cycle |
-| **T11** | 12 | Trial → Not Paid (annual) - Same as T3 but annual billing cycle |
-| **T12** | 19 | Multiple Upgrades - Basic → Pro → Enterprise in same cycle |
-| **T13** | - | Auto-Renew Success - Payment received, period extended |
-| **T14** | - | Payment Fails (Retry) - Invoice failed but retry possible |
-| **T15** | - | Access Limited (Overdue) - Access limited during grace period |
-| **T16** | - | Manual Cancellation - Customer cancels, access until period end |
-| **T17** | - | Stripe Checkout Flow - Stripe payment method integration |
-
-**Total: 17 comprehensive tests covering all 20 scenarios plus edge cases**
-
-### Sample Output
-
-```
-==============================================================
-IDEAZES RENEWAL SYSTEM TEST SUITE
-==============================================================
-
-[T1] Free Plan ($0)
-
-  ✅ PASSED
-  ✓ Plan 'Starter' exists
-  ✓ Invoice created with $0
-  ✓ Invoice status = paid
-  ✓ New renewal invoice generated
-  ✓ New invoice has $0
-  ✓ Period extended to next cycle
-
-[T2] Trial → Paid
-
-  ✅ PASSED
-  ✓ Plan 'Pro' exists
-  ✓ Trial invoice $0 created
-  ✓ Trial invoice marked as paid
-  ✓ trial_ends_at cleared
-  ✓ First paid invoice generated
-  ✓ First paid invoice amount correct
-  ✓ First paid invoice status = pending
-  ✓ Status changed to active after payment
-
-...
-
-==============================================================
-TEST RESULTS SUMMARY
-==============================================================
-
-[T1] Free Plan ($0)
-  ✅ PASSED
-
-[T2] Trial → Paid
-  ✅ PASSED
-
-[T3] Trial → Not Paid
-  ✅ PASSED
-
-...
-
---------------------------------------------------------------
-Results: 8 Passed, 0 Failed
---------------------------------------------------------------
-
-🎉 All tests passed!
-```
-
-### Test Data
-
-- Test customers are prefixed with `test_renewal_`
-- Use `--cleanup` to remove all test data after testing
-- Use `--status` to see current subscriptions without running tests
+| ---- | -------- | ----------- |
+| T1 | 20 | Free Plan monthly |
+| T2 | 11 | Trial to Paid |
+| T3 | 12 | Trial Not Paid |
+| T4 | 14 | Trial Upgrade monthly |
+| T5 | 13 | Trial Upgrade annual |
+| T6 | 15-19 | Paid Upgrade proration |
+| T7 | 6-8 | Cancelled Expires |
+| T8 | - | Pay Later Invoice |
+| T9 | 20 | Free Plan annual |
+| T10 | 11 | Trial to Paid annual |
+| T11 | 12 | Trial Not Paid annual |
+| T12 | 19 | Multiple Upgrades |
+| T13 | - | Auto-Renew Success |
+| T14 | - | Payment Fails |
+| T15 | - | Access Limited |
+| T16 | - | Manual Cancellation |
+| T17 | - | Stripe Checkout |
 
 ---
 
-## Testing Checklist
+## Backend Fix: Cancelled Subscription Access Check
 
-| Test | Expected Result |
-|------|----------------|
-| Pay invoice | Invoice status → paid, `current_period_end` UNCHANGED |
-| Cron runs at period end | New invoice generated, `current_period_end` extended to next period |
-| Start trial subscription | Invoice created with $0, status=pending, description="Trial Period - 30 days" |
-| Cron marks $0 invoice | Trial invoice status → paid (handled by existing logic) |
-| Period end for free plan | Invoice generated ($0), period extended, cron marks as paid |
+### File
 
----
+backend/app/routes/auth.py
 
-## Related Documentation
+### Logic
 
-- [Renewal System](./renewal-system) - Latest renewal system design
-- [Changes (Old)](./changes/renewal-features) - Previous implementation changes
+Cancelled subscriptions:
+- If now <= period_end: ALLOW access
+- If now > period_end: BLOCK access (status stays cancelled)
+
+This ensures cancelled subscriptions are blocked after period ends.
 
 ---
 
