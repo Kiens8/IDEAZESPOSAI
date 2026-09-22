@@ -82,6 +82,14 @@ New API endpoints for cron status and manual trigger.
 - Trial columns added
 - Payment method column added
 - Cancelled filter added
+- **Expired status added** - was missing from statusConfig, causing mismatch between table and modal
+
+### Admin Dashboard
+
+**File:** admin/src/pages/Dashboard.jsx
+
+- Added trial_subscriptions, cancelled_subscriptions, expired_subscriptions counts
+- Now syncs with Subscriptions page counts
 
 ### Admin Invoices
 
@@ -90,6 +98,13 @@ New API endpoints for cron status and manual trigger.
 - Invoice type column
 - Type filters (trial, free, first, renewal, upgrade)
 - Forgiven status added
+- **Print button for Pay Later/Manual invoices** - new endpoint /api/admin/invoices/{id}/html generates printable HTML
+
+### Admin Users
+
+**File:** admin/src/pages/Users.jsx
+
+- **Horizontal scroll** - added overflow-x-auto to table wrapper for full column visibility
 
 ### Cron Status Page
 
