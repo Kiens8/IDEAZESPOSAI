@@ -20,6 +20,9 @@ This document tracks all changes made to align the implementation with the lates
 | Invoice Status Values | Confirmed correct (no "trial") | models.py | ✅ Verified |
 | Renewal Invoice Generation | Added to cron job | send_notifications.py | ✅ Done |
 | Trial Invoice Creation | Added $0 invoice for trial | subscription.py | ✅ Done |
+| Free Plan = Trial Flow | Free plan follows same flow as trial | subscription.py | ✅ Done |
+| UI: Free Plan Payment Method | Free plan requires payment method selection | portal/page.tsx | ✅ Done |
+| UI: Trial Banner | Shows trial countdown banner | portal/page.tsx | ✅ Done |
 
 ---
 
@@ -289,6 +292,61 @@ Expected: Invoice with amount=0, status='pending', description LIKE 'Trial Perio
 | File | Status |
 |------|--------|
 | `website_api/app/models/models.py` | Invoice status values already correct |
+
+---
+
+## UI Changes
+
+### Customer Portal (`site/src/app/portal/page.tsx`)
+
+#### 1. Free Plan Requires Payment Method Selection
+
+**Before (WRONG):**
+- Free plan subscribed directly without payment method
+- No payment method stored for future upgrades
+
+**After (CORRECT):**
+- All plans (including free) require billing cycle + payment method selection
+- Payment method stored for future upgrades
+- UI shows "Confirm Free Plan" with payment method options
+
+```tsx
+// Free Plan - Show Free Option
+{selectedPlan.price === 0 ? (
+  <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4">
+    <h3 className="font-bold text-green-800">Free Plan</h3>
+    <p className="text-sm text-green-600">No payment required. Start using immediately.</p>
+    <p className="text-xs text-green-500">
+      ℹ️ Your payment method will be stored for future upgrades.
+    </p>
+  </div>
+) : (
+  // Paid Plan options...
+)}
+```
+
+#### 2. Trial Countdown Banner
+
+**Added to subscription display:**
+
+```tsx
+{subscription.status === 'trial' && (
+  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+    <div className="flex items-start gap-3">
+      <div className="text-2xl">⏰</div>
+      <div className="flex-1">
+        <h3 className="font-bold text-amber-800">Trial Period</h3>
+        <p className="text-sm text-amber-700 mt-1">
+          Your trial ends on {trial_ends_date} ({days_remaining} days remaining)
+        </p>
+        <p className="text-xs text-amber-600 mt-2">
+          ℹ️ Your selected payment method will be charged when the trial ends.
+        </p>
+      </div>
+    </div>
+  </div>
+)}
+```
 
 ---
 
