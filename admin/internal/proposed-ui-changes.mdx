@@ -1,0 +1,309 @@
+---
+title: Proposed UI Changes for Renewal System
+description: UI changes needed to align with the latest renewal system documentation
+---
+
+# Proposed UI Changes for Renewal System
+
+> **Date:** September 22, 2026
+> **Status:** Proposed
+
+This document outlines UI changes needed to align customer-facing pages with the latest [Renewal System](./renewal-system) documentation.
+
+---
+
+## Overview
+
+| Page | Current State | Changes Needed |
+|------|--------------|----------------|
+| Signup Page | Basic trial signup | Add billing cycle selection + payment method for trial |
+| Customer Portal | Shows subscription/invoices | Add trial-specific displays, upgrade flow |
+| Invoice Detail | Generic invoice display | Show trial badge, clarify $0 auto-paid |
+| Admin: Subscriptions | List subscriptions | Add trial status filtering, trial_ends_at column |
+| Admin: Invoices | List invoices | Show invoice type (trial/paid/renewal) |
+
+---
+
+## 1. Signup Page (`site/src/app/signup/page.tsx`)
+
+### Current Behavior
+- Simple signup with plan selection
+- Trial option available but basic
+
+### Required Changes
+
+#### 1.1 Add Billing Cycle + Payment Method for Trial
+
+**Current:** Customer selects plan → starts trial → no payment info collected
+
+**Required:**
+1. Customer selects plan
+2. **NEW:** Select billing cycle (monthly/annual) — required for when trial ends
+3. **NEW:** Select payment method — required even for trial (credit card stored for future billing)
+4. Start trial with $0
+
+**UI Mockup:**
+```
+┌─────────────────────────────────────────┐
+│  Start Your 30-Day Free Trial           │
+├─────────────────────────────────────────┤
+│  Select Plan:  [Starter] [Basic] [Pro]  │
+│                                         │
+│  Billing Cycle:  ○ Monthly  ● Annual     │
+│                                         │
+│  Payment Method:                         │
+│    ○ Credit Card (Visa ****4242)         │
+│    ○ Pay Later                          │
+│                                         │
+│  [Start Free Trial]                     │
+│                                         │
+│  ✓ No payment required now              │
+│  ✓ Your card will be charged on         │
+│    Day 30 when trial ends               │
+└─────────────────────────────────────────┘
+```
+
+#### 1.2 Display Trial Information Clearly
+
+**Add to signup confirmation:**
+- Trial period: 30 days
+- What happens at Day 30
+- Payment will be charged to selected method
+- Cancel anytime before Day 30 = no charge
+
+---
+
+## 2. Customer Portal (`site/src/app/portal/page.tsx`)
+
+### Current Behavior
+- Shows subscription status
+- Shows invoices list
+- Basic upgrade button
+
+### Required Changes
+
+#### 2.1 Subscription Card — Add Trial-Specific Info
+
+**Current:**
+```
+┌─────────────────────────────────────────┐
+│  Current Plan: Pro                      │
+│  Status: Active                         │
+│  Period End: Oct 22, 2026              │
+└─────────────────────────────────────────┘
+```
+
+**Required:**
+```
+┌─────────────────────────────────────────┐
+│  Current Plan: Pro (Monthly)            │
+│  Status: Trial                          │
+│  Trial Ends: Oct 22, 2026 (14 days)   │
+│  ────────────────────────────────────   │
+│  ⚠ Your trial ends in 14 days         │
+│  Selected payment: Visa ****4242        │
+│  [Change Payment Method]                │
+└─────────────────────────────────────────┘
+```
+
+#### 2.2 Add Trial Countdown Banner
+
+**When subscription.status = 'trial':**
+```
+┌─────────────────────────────────────────┐
+│  ⏰ Trial ends in 14 days              │
+│  Your Pro plan ($20/mo) will start     │
+│  on Oct 22, 2026. Cancel to avoid     │
+│  charges. [Cancel Trial]               │
+└─────────────────────────────────────────┘
+```
+
+#### 2.3 Plan Upgrade During Trial — Store Selection
+
+**When upgrading during trial:**
+```
+┌─────────────────────────────────────────┐
+│  Upgrade Your Trial Plan                │
+├─────────────────────────────────────────┤
+│  Current: Pro ($20/mo)                 │
+│  New Plan: Enterprise ($50/mo)          │
+│                                         │
+│  At trial end (Day 30):                │
+│  You will be charged $50/month         │
+│  (prorated for remaining days)          │
+│                                         │
+│  [Confirm Upgrade]  [Cancel]           │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## 3. Invoice Display (`site/src/app/invoice/[id]/page.tsx`)
+
+### Current Behavior
+- Generic invoice display
+
+### Required Changes
+
+#### 3.1 Trial Invoice Badge
+
+**When invoice.description contains "Trial":**
+```
+┌─────────────────────────────────────────┐
+│  INVOICE #INV-20260922-A1B2C3D4        │
+│  ┌─────────────────────────────────┐    │
+│  │  🎁 TRIAL PERIOD INVOICE       │    │
+│  │  Amount: $0.00                  │    │
+│  │  Status: Paid (Auto)            │    │
+│  └─────────────────────────────────┘    │
+└─────────────────────────────────────────┘
+```
+
+#### 3.2 Invoice Description Labels
+
+| Invoice Type | Description Format | Display |
+|-------------|-------------------|---------|
+| Trial | "Trial Period - 30 days" | 🎁 Trial Period |
+| First Paid | "Pro - monthly subscription" | First Payment |
+| Renewal | "Recurring subscription - monthly" | Renewal |
+| Upgrade | "Pro - monthly subscription" (prorated) | Upgrade (Prorated) |
+
+#### 3.3 Status Display Updates
+
+| Status | Current Display | New Display |
+|--------|----------------|-------------|
+| pending | Pending | ⏳ Pending - Due [date] |
+| paid | Paid | ✅ Paid on [date] |
+| forgiven | (show as pending) | ❌ Waived / Not Paid |
+
+---
+
+## 4. Admin: Subscriptions Page (`admin/src/pages/Subscriptions.jsx`)
+
+### Current Behavior
+- List subscriptions with status
+- Filter by status
+
+### Required Changes
+
+#### 4.1 Add Trial Filter and Columns
+
+**Filters:**
+- All / Active / Trial / Cancelled / Expired / Pending
+
+**Columns to Add:**
+| Column | Description |
+|--------|-------------|
+| trial_ends_at | Show when trial ends (for trial status) |
+| billing_cycle | Monthly / Annual |
+| payment_method | stripe / pay_later / trial / free |
+| trial_ends_at | Date when trial ends |
+
+#### 4.2 Trial Status Display
+
+**For subscription.status = 'trial':**
+```
+Status: Trial
+Trial Ends: Oct 22, 2026 (14 days)
+```
+
+#### 4.3 Subscription Detail Modal
+
+**Add tab/section for:**
+- Trial information (if applicable)
+- Invoice history
+- Payment method on file
+
+---
+
+## 5. Admin: Invoices Page (`admin/src/pages/Invoices.jsx`)
+
+### Current Behavior
+- List invoices with amount, status, date
+
+### Required Changes
+
+#### 5.1 Invoice Type Column
+
+**New column: Type**
+
+| Description Contains | Type Badge |
+|---------------------|-----------|
+| "Trial Period" | 🟣 Trial |
+| "First Payment" pattern | 🟢 First Payment |
+| "Recurring" | 🔵 Renewal |
+| (prorated amount) | 🟡 Upgrade |
+
+#### 5.2 Filter by Invoice Type
+
+**Add filter dropdown:**
+- All / Trial / First Payment / Renewal / Upgrade
+
+#### 5.3 Trial Invoice Display
+
+**For trial invoices:**
+- Amount: $0.00
+- Status: Paid (with tooltip: "Auto-paid by cron job")
+- Show "TRIAL" badge
+
+---
+
+## 6. Cron Job UI — Status Page (Optional)
+
+### Proposed: Add Status Dashboard
+
+If admin wants to see cron job status:
+
+**New page: `/admin/system/cron-status`**
+
+```
+┌─────────────────────────────────────────┐
+│  Cron Job Status                        │
+├─────────────────────────────────────────┤
+│  Last Run: Sep 22, 2026 09:00 AM      │
+│  ────────────────────────────────────   │
+│  ✓ Renewal Invoices Generated: 5       │
+│  ✓ Expired Subscriptions: 0            │
+│  ✓ Trial Notices Sent: 2               │
+│  ✓ Billing Reminders Sent: 3           │
+│  ✓ Final Reminders Sent: 1             │
+│  ────────────────────────────────────   │
+│  [Run Now]  [View Logs]                │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Summary of Files to Modify
+
+| File | Changes |
+|------|---------|
+| `site/src/app/signup/page.tsx` | Add billing cycle + payment method for trial |
+| `site/src/app/portal/page.tsx` | Add trial banner, countdown, upgrade selection |
+| `site/src/app/portal/billing/page.tsx` | Show trial invoices with badge |
+| `site/src/app/invoice/[id]/page.tsx` | Trial badge, status labels |
+| `admin/src/pages/Subscriptions.jsx` | Trial filter, trial_ends_at column |
+| `admin/src/pages/Invoices.jsx` | Invoice type column, trial filter |
+
+---
+
+## Implementation Priority
+
+| Priority | Change | Reason |
+|----------|--------|--------|
+| **HIGH** | Signup: Add billing cycle + payment for trial | Core trial flow |
+| **HIGH** | Portal: Show trial status + countdown | Customer awareness |
+| **HIGH** | Invoice: Trial badge | Clarity on invoice type |
+| **MEDIUM** | Admin: Trial columns/filters | Admin visibility |
+| **LOW** | Admin: Cron status page | Nice to have |
+
+---
+
+## Related Documentation
+
+- [Renewal System](./renewal-system) - Full renewal system design
+- [Renewal Features Updates](./renewal-features-updates) - Backend changes
+
+---
+
+*Last Updated: September 22, 2026*
