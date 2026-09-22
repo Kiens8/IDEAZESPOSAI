@@ -7,90 +7,94 @@ description: Implementation changes to align with renewal system documentation
 
 **Date:** September 22, 2026
 
-**Status:** Implemented
-
 This document tracks all changes made to align the implementation with the latest Renewal System documentation.
 
-## Overview
+## Summary
 
-| Status | Description | File |
-| --- | --- | --- |
-| Done | Period Extension on Payment | webhooks.py |
-| Done | Invoice Status Values | models.py |
-| Done | Renewal Invoice Generation | send_notifications.py |
-| Done | Trial Invoice Creation | subscription.py |
-| Done | Free Plan Trial Flow | subscription.py |
-| Done | Free Plan Payment Method | portal/page.tsx |
-| Done | Trial Banner | portal/page.tsx |
-| Done | Admin Subscriptions Columns | Subscriptions.jsx |
-| Done | Admin Invoices Type Filters | Invoices.jsx |
-| Done | Cron Status Page | CronStatus.jsx |
-| Done | Cron Status API | notifications.py |
-| Done | Trial End Processing | send_notifications.py |
-| Done | Backend Cancel Access Check | auth.py |
+All changes below have been implemented and tested.
 
 ## Backend Changes
 
 ### 1. Period Extension Removed
 
-File: website_api/app/routes/webhooks.py
+**File:** website_api/app/routes/webhooks.py
 
-Payment no longer extends subscription period. Period end date stays fixed until renewal.
+Payment no longer extends subscription period. Period end date stays fixed until renewal at period end.
 
 ### 2. Invoice Status Values
 
-File: website_api/app/models/models.py
+**File:** website_api/app/models/models.py
 
-Values: pending, paid, failed, forgiven, refunded, cancelled
+Valid statuses: pending, paid, failed, forgiven, refunded, cancelled
 
-Note: Trial is NOT a valid invoice status. Trial invoices have status pending.
+Note: Trial is NOT a valid invoice status.
 
 ### 3. Renewal Invoice Generation
 
-File: website_api/scripts/send_notifications.py
+**File:** website_api/scripts/send_notifications.py
 
-Creates new invoice at period end for active subscriptions.
+New function generate_renewal_invoices creates new invoice at period end for active subscriptions.
 
-### 4. Trial End Processing
+### 4. Trial Invoice Creation
 
-File: website_api/scripts/send_notifications.py
+**File:** website_api/app/routes/subscription.py
 
-Processes trial endings and generates first paid invoice.
+Trial creates invoice with 0 amount, status pending, description Trial Period.
 
-### 5. Cancelled Access Check
+### 5. Free Plan Follows Trial Flow
 
-File: backend/app/routes/auth.py
+**File:** website_api/app/routes/subscription.py
+
+Free Plan follows same flow as Trial - invoice pending, cron marks paid, payment method required.
+
+### 6. Trial End Processing
+
+**File:** website_api/scripts/send_notifications.py
+
+New function process_trial_end generates first paid invoice when trial ends.
+
+### 7. Cancelled Access Check
+
+**File:** backend/app/routes/auth.py
 
 Cancelled subscriptions block access after period_end.
+
+### 8. Cron Status API
+
+**File:** website_api/app/routes/notifications.py
+
+New API endpoints for cron status and manual trigger.
 
 ## UI Changes
 
 ### Customer Portal
 
-File: site/src/app/portal/page.tsx
+**File:** site/src/app/portal/page.tsx
 
 - Free Plan requires payment method selection
 - Trial countdown banner added
 
 ### Admin Subscriptions
 
-File: admin/src/pages/Subscriptions.jsx
+**File:** admin/src/pages/Subscriptions.jsx
 
 - Trial columns added
 - Payment method column added
+- Cancelled filter added
 
 ### Admin Invoices
 
-File: admin/src/pages/Invoices.jsx
+**File:** admin/src/pages/Invoices.jsx
 
 - Invoice type column
-- Type filters
+- Type filters (trial, free, first, renewal, upgrade)
+- Forgiven status added
 
 ### Cron Status Page
 
-File: admin/src/pages/CronStatus.jsx
+**File:** admin/src/pages/CronStatus.jsx
 
-New admin page to monitor cron job status.
+New admin page to monitor and trigger cron jobs.
 
 ## Cron Jobs
 
@@ -107,9 +111,9 @@ New admin page to monitor cron job status.
 
 ## Test Script
 
-Location: website_api/scripts/test_renewal.py
+**Location:** website_api/scripts/test_renewal.py
 
-Usage:
+**Usage:**
 
 ```bash
 python3 scripts/test_renewal.py --all
@@ -118,6 +122,26 @@ python3 scripts/test_renewal.py --status
 python3 scripts/test_renewal.py --cleanup
 ```
 
-Tests: T1 to T17 covering all scenarios.
+**Tests:** T1 to T17 covering all renewal scenarios.
+
+## Key Flows
+
+### Trial Flow
+
+1. Trial starts with 0 invoice pending
+2. Cron marks 0 invoice as paid
+3. Trial ends generates first paid invoice
+4. Payment converts trial to active
+
+### Free Plan Flow
+
+Same as trial flow - payment method required, 0 invoice generated.
+
+### Cancelled Flow
+
+1. Customer cancels
+2. Access continues until period_end
+3. After period_end access is blocked
+4. Status stays cancelled (not expired)
 
 *Last Updated: September 22, 2026*
