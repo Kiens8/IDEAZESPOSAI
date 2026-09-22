@@ -25,6 +25,8 @@ This document tracks all changes made to align the implementation with the lates
 | UI: Trial Banner | Shows trial countdown banner | portal/page.tsx | ✅ Done |
 | UI: Admin Subscriptions | Added trial columns (trial_ends_at, payment_method) | Subscriptions.jsx | ✅ Done |
 | UI: Admin Invoices | Added type column and filters | Invoices.jsx | ✅ Done |
+| UI: Cron Status Page | New admin page showing cron job status | CronStatus.jsx | ✅ Done |
+| API: Cron Status | Endpoint to get/trigger cron status | notifications.py | ✅ Done |
 
 ---
 
@@ -405,6 +407,43 @@ const typeConfig = {
   renewal: { bg: 'bg-cyan-100', text: 'text-cyan-700', label: 'Renewal' },
   upgrade: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Upgrade' },
 };
+```
+
+---
+
+### Admin: Cron Status Page (`admin/src/pages/CronStatus.jsx`)
+
+#### New Page Added
+
+A new admin page to monitor cron job status:
+
+**Access:** Admin sidebar → Cron Status
+
+**Features:**
+- View last run time
+- View job history with success/failure status
+- Manually trigger cron job
+- Refresh status
+
+**Cron Jobs Tracked:**
+| Job | Description |
+|-----|-------------|
+| renewal_invoices | Generate invoices at period end |
+| expired_check | Check and expire overdue subscriptions |
+| cancelled_check | Check cancelled subscriptions |
+| trial_notices | Send trial ending reminders |
+| billing_reminders | Send billing reminders |
+| final_reminders | Send final payment reminders |
+| payment_failed | Process failed payments |
+
+#### API Endpoint
+
+```bash
+# Get cron status
+GET /api/cron/status
+
+# Trigger cron manually
+POST /api/cron/run
 ```
 
 ---
