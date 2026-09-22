@@ -27,6 +27,7 @@ This document tracks all changes made to align the implementation with the lates
 | UI: Admin Invoices | Added type column and filters | Invoices.jsx | ✅ Done |
 | UI: Cron Status Page | New admin page showing cron job status | CronStatus.jsx | ✅ Done |
 | API: Cron Status | Endpoint to get/trigger cron status | notifications.py | ✅ Done |
+| Trial End Processing | New cron function to process trial endings | send_notifications.py | ✅ Done |
 
 ---
 
@@ -428,6 +429,7 @@ A new admin page to monitor cron job status:
 **Cron Jobs Tracked:**
 | Job | Description |
 |-----|-------------|
+| trial_end | Process trial endings, generate first paid invoice |
 | renewal_invoices | Generate invoices at period end |
 | expired_check | Check and expire overdue subscriptions |
 | cancelled_check | Check cancelled subscriptions |
