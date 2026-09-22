@@ -228,53 +228,10 @@ A multi-step wizard that adapts based on:
 
 ## FREE PLAN FLOW
 
-### Free Plan → No Trial Option
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  STEP 1: SELECT YOUR PLAN                                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   ✓ FREE PLAN SELECTED                                         │
-│   $0/month                                                     │
-│                                                                  │
-│   [ Next → ]                                                   │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  STEP 2: CONFIRM SUBSCRIPTION                                   │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   Order Summary:                                                 │
-│   ─────────────────                                             │
-│   Plan: Free                                                    │
-│   Amount: $0.00                                                 │
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │     [ ✓ Activate Free Plan ]                            │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   [ ← Back ]                                                   │
-└─────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────┐
-│  STEP 3: SELECT PAYMENT METHOD                                  │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│   Payment Method Required:                                        │
-│   (Even for $0, we store payment method for future upgrades)    │
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │  (●) Pay Later                                         │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │  ( ) Credit/Debit Card (Stripe)                        │   │
-│   └─────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│   [ ← Back ]                           [ Confirm Subscription ]   │
-└─────────────────────────────────────────────────────────────────┘
-```
+Free Plan follows the SAME wizard flow as paid plans:
+- Step 1: Select Plan (Free plan shown as option)
+- Step 2: Confirm Subscription (No "Start Free Trial" option for $0 plans)
+- Step 3: Select Payment Method
 
 ---
 
@@ -284,33 +241,31 @@ When customer first enters Subscription page (after email verified):
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  SUBSCRIPTION - Welcome                                           │
+│  STEP 1: SELECT YOUR PLAN                                       │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │                                                          │   │
-│   │   🔘 START FREE TRIAL  (DISABLED)                       │   │
-│   │   (Greyed out - select a plan first)                     │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
+│   Your Plan Options:                                            │
 │                                                                  │
-│   OR                                                            │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│   │   FREE   │  │ STARTER  │  │   PRO    │  │ENTERPRISE│      │
+│   │   $0     │  │   $99    │  │   $199   │  │   $399   │      │
+│   │          │  │          │  │          │  │          │      │
+│   │ Features │  │ Features │  │ Features │  │ Features │      │
+│   └──────────┘  └──────────┘  └──────────┘  └──────────┘      │
 │                                                                  │
-│   ┌─────────────────────────────────────────────────────────┐   │
-│   │                                                          │   │
-│   │   [ ✅ CHOOSE PLAN ] ← Required first step              │   │
-│   │                                                          │   │
-│   └─────────────────────────────────────────────────────────┘   │
+│   Billing Cycle:  ( ) Monthly    (●) Annual (Save 20%)          │
 │                                                                  │
-│   Note: Start Free Trial will be enabled after choosing a plan   │
+│   Selected: PRO - Annual ($199/month)                           │
 │                                                                  │
+│                                        [ Next → ]                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 **Key Rules:**
-- "Start Free Trial" is DISABLED until customer clicks "Choose Plan"
-- Customer MUST click "Choose Plan" to begin the subscription wizard
-- If localStorage has pre-selected plan → Jump to Step 2 directly
+- Customer goes DIRECTLY to Step 1 (Plan Selection) when entering Subscription menu
+- If localStorage has pre-selected plan → Pre-select that plan
+- "Start Free Trial" is NOT shown in initial state - only in Step 2
+- Customer proceeds through wizard: Step 1 → Step 2 → Step 3
 
 ---
 
