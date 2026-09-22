@@ -1,0 +1,398 @@
+---
+title: Proposed Changes to Align with Renewal System
+description: Changes needed to sync implementation with latest renewal system documentation
+---
+
+# Proposed Changes to Align with Renewal System
+
+This document outlines changes needed to sync the implementation with the latest [Renewal System](./renewal-system) documentation.
+
+> **Note:** Existing code that no longer aligns with the new design will be **commented out** or marked as deprecated.
+
+---
+
+## Overview
+
+| Item | Current Behavior | New Behavior | Action |
+|------|-----------------|--------------|--------|
+| Period Extension on Payment | Extends on payment received | Period end stays fixed | **COMMENT OUT** |
+| Invoice Status | Has "trial" status | No "trial" status (plan description shows trial) | **FIX** |
+| Invoice Generation at Renewal | Via Stripe webhook | Via cron job (for pay-later) | **ADD** |
+
+---
+
+## 1. Period Extension on Payment
+
+### Current Implementation (WRONG per new design)
+
+**File:** `website_api/app/routes/webhooks.py`
+
+```python
+def extend_subscription_period(subscription):
+    """Extend subscription period based on billing cycle"""
+    billing_cycle = subscription.billing_cycle or 'monthly'
+    now = datetime.utcnow()
+    
+    if billing_cycle == 'monthly':
+        new_period_end = now + relativedelta(months=1)
+    else:  # annual
+        new_period_end = now + relativedelta(years=1)
+    
+    subscription.current_period_start = now
+    subscription.current_period_end = new_period_end
+    subscription.status = 'active'
+    subscription.payment_status = 'paid'
+```
+
+**Called from:** `handle_invoice_paid()`
+
+### New Design (Correct)
+
+From renewal system document:
+> "Payment extends nothing - Period end date stays fixed"
+
+**Period extension happens at:**
+- Renewal (Day 30, Day 60, etc.) - NOT when payment is received
+- A NEW invoice is created at period end for the next cycle
+
+### Proposed Change
+
+**Comment out the extend_subscription_period call:**
+
+```python
+async def handle_invoice_paid(data: dict, db: Session):
+    """Handle invoice paid event - ONLY marks invoice as paid"""
+    # ... existing code ...
+    
+    if invoice:
+        invoice.status = 'paid'
+        invoice.paid_at = datetime.utcnow()
+        db.commit()
+        return {"status": "success", "invoice_id": invoice.id}
+    
+    # ... rest of code ...
+    
+    # DEPRECATED: Do NOT extend period on payment
+    # Per renewal system: "Payment extends nothing - Period end date stays fixed"
+    # Period extension happens at renewal (period end), not on payment
+    # 
+    # OLD CODE (COMMENTED OUT):
+    # if sub:
+    #     extend_subscription_period(sub)
+    #     db.commit()
+```
+
+**Also comment out the extend_subscription_period function definition:**
+
+```python
+# DEPRECATED: Per renewal system design
+# Payment does NOT extend subscription period
+# Period end stays fixed until renewal
+#
+# def extend_subscription_period(subscription):
+#     """Extend subscription period based on billing cycle"""
+#     billing_cycle = subscription.billing_cycle or 'monthly'
+#     now = datetime.utcnow()
+#     
+#     if billing_cycle == 'monthly':
+#         new_period_end = now + relativedelta(months=1)
+#     else:  # annual
+#         new_period_end = now + relativedelta(years=1)
+#     
+#     subscription.current_period_start = now
+#     subscription.current_period_end = new_period_end
+#     subscription.status = 'active'
+#     subscription.payment_status = 'paid'
+```
+
+---
+
+## 2. Invoice Status - No "trial" Status
+
+### Current Implementation
+
+Invoice model has `status = Column(String(50), default="pending")` with values including "trial"
+
+### New Design
+
+Invoice statuses are: `pending`, `paid`, `failed`, `forgiven`, `refunded`, `cancelled`
+
+**Invoice knows it's a trial based on:**
+- Plan description (e.g., "Trial Period - 30 days")
+- Subscription status (checked separately)
+
+### Proposed Change
+
+**File:** `website_api/app/models/models.py`
+
+```python
+# Current (WRONG):
+status = Column(String(50), default="pending")
+# Values: pending, paid, failed, forgiven, refunded, cancelled, trial  # REMOVE 'trial'
+
+# Correct values:
+status = Column(String(50), default="pending")
+# Values: pending, paid, failed, forgiven, refunded, cancelled
+```
+
+**Trial invoice creation should:**
+1. Create invoice with `status = 'pending'`
+2. Set `description` = "Trial Period - 30 days" (or similar)
+3. Cron job marks as `paid` (same as free plan)
+
+---
+
+## 3. Cron Job: Generate New Invoice at Period End
+
+### Current Implementation Gap
+
+The cron job currently:
+- ✅ Checks expired subscriptions
+- ✅ Sends warning emails
+- ✅ Marks forgiven invoices
+
+**Missing:**
+- ❌ Does NOT generate new invoice at period end for recurring billing
+
+### New Design
+
+At period end (Day 30, Day 60, etc.):
+
+1. Create new invoice for next billing cycle
+2. Set invoice `due_date` = `period_end + payment_due_days` (grace period)
+3. Subscription continues as active (no status change needed)
+
+### Proposed Addition
+
+**File:** `website_api/scripts/send_notifications.py`
+
+Add new function:
+
+```python
+def generate_renewal_invoices(db: Session):
+    """
+    Generate new invoices for subscriptions reaching period end.
+    
+    Per renewal system design:
+    - At period end, new invoice is created for next cycle
+    - Subscription continues as active
+    - Invoice due_date = period_end + grace_period (14 days)
+    """
+    print("\n" + "="*60)
+    print("RENEWAL INVOICE GENERATION")
+    print("="*60)
+    
+    from dateutil.relativedelta import relativedelta
+    from app.models.models import Subscription, SubscriptionPlan, Invoice
+    import secrets
+    
+    # Find active subscriptions where period_end has passed
+    expired_periods = db.query(Subscription).filter(
+        Subscription.status == 'active',
+        Subscription.current_period_end <= datetime.utcnow()
+    ).all()
+    
+    invoice_count = 0
+    
+    for sub in expired_periods:
+        # Get plan details
+        plan = db.query(SubscriptionPlan).filter(
+            SubscriptionPlan.id == sub.plan_id
+        ).first()
+        
+        if not plan:
+            continue
+        
+        # Calculate amount based on billing cycle
+        amount = plan.price_monthly if sub.billing_cycle == 'monthly' else plan.price_annual
+        
+        # Skip if $0 (free plan)
+        if amount == 0:
+            # For free plans, just extend the period
+            if sub.billing_cycle == 'monthly':
+                sub.current_period_end = sub.current_period_end + relativedelta(months=1)
+            else:
+                sub.current_period_end = sub.current_period_end + relativedelta(years=1)
+            db.commit()
+            print(f"  ✓ Extended free plan subscription {sub.id} to {sub.current_period_end}")
+            continue
+        
+        # Get grace period from settings
+        grace_days = 14  # default
+        try:
+            from app.routes.admin import get_setting_value
+            grace_days = int(get_setting_value(db, "payment_due_days", "14"))
+        except:
+            pass
+        
+        # Create new invoice for next period
+        new_period_start = sub.current_period_end
+        if sub.billing_cycle == 'monthly':
+            new_period_end = sub.current_period_end + relativedelta(months=1)
+        else:
+            new_period_end = sub.current_period_end + relativedelta(years=1)
+        
+        invoice = Invoice(
+            customer_id=sub.customer_id,
+            subscription_id=sub.id,
+            invoice_number=f"INV-{datetime.utcnow().strftime('%Y%m%d')}-{secrets.token_hex(4).upper()}",
+            amount=amount,
+            currency='USD',
+            status='pending',
+            payment_method=sub.payment_method or 'pay_later',
+            due_date=new_period_start + timedelta(days=grace_days),
+            description=f"Recurring subscription - {sub.billing_cycle}"
+        )
+        db.add(invoice)
+        
+        # Update subscription period
+        sub.current_period_start = new_period_start
+        sub.current_period_end = new_period_end
+        
+        invoice_count += 1
+        print(f"  ✓ Generated invoice for subscription {sub.id}, due {invoice.due_date}")
+    
+    db.commit()
+    print(f"\nRenewal invoices generated: {invoice_count}")
+    return invoice_count
+```
+
+**Add to main() cron execution:**
+
+```python
+def main():
+    # ... existing code ...
+    
+    # Add to daily cron
+    generate_renewal_invoices(db)
+    check_expired_subscriptions(db)
+    send_trial_ending_notices(db)
+    send_billing_reminders(db, days_before=3)
+    send_final_reminders(db)
+```
+
+---
+
+## 4. Trial Invoice Flow (Per New Design)
+
+### Current Implementation
+
+Trial creates invoice with `$0` amount, status `trial`
+
+### New Design
+
+1. Invoice status = `pending` (not "trial")
+2. Description = "Trial Period - 30 days" (to identify as trial)
+3. Cron job marks as `paid` (same as free plan)
+
+### Proposed Change
+
+**File:** `website_api/app/routes/subscription.py`
+
+```python
+# In create_subscription(), when trial is True:
+
+# Create trial invoice
+invoice = Invoice(
+    customer_id=customer_id,
+    subscription_id=new_sub.id,
+    invoice_number=f"INV-{datetime.utcnow().strftime('%Y%m%d')}-{secrets.token_hex(4).upper()}",
+    amount=0,  # Trial = $0
+    currency='USD',
+    status='pending',  # NOT 'trial'
+    payment_method=None,
+    due_date=None,
+    description="Trial Period - 30 days"  # Identify as trial via description
+)
+db.add(invoice)
+```
+
+---
+
+## 5. Cron Job: Mark $0 Invoices as Paid
+
+### Current Implementation
+
+Already exists for free plans. Needs to also handle trial invoices.
+
+### Check Current Code
+
+**File:** `website_api/scripts/send_notifications.py`
+
+```python
+# Look for mark_zero_invoices_paid or similar function
+```
+
+### If Missing, Add:
+
+```python
+def mark_zero_invoices_paid(db: Session):
+    """
+    Mark $0 invoices as paid (free plans and trial).
+    Per renewal system: cron job auto-marks these as paid.
+    """
+    print("\n" + "="*60)
+    print("ZERO INVOICE AUTO-PAID")
+    print("="*60)
+    
+    zero_invoices = db.query(Invoice).filter(
+        Invoice.status == 'pending',
+        Invoice.amount == 0
+    ).all()
+    
+    count = 0
+    for invoice in zero_invoices:
+        invoice.status = 'paid'
+        invoice.paid_at = datetime.utcnow()
+        count += 1
+    
+    db.commit()
+    print(f"Invoices marked as paid: {count}")
+    return count
+```
+
+---
+
+## Summary of Changes
+
+| Priority | Change | File | Action |
+|----------|--------|------|--------|
+| **HIGH** | Remove period extension on payment | webhooks.py | Comment out |
+| **HIGH** | Remove "trial" from invoice status | models.py | Fix |
+| **HIGH** | Add renewal invoice generation | send_notifications.py | Add function |
+| **MEDIUM** | Fix trial invoice description | subscription.py | Update |
+| **MEDIUM** | Add $0 invoice auto-paid | send_notifications.py | Add/verify |
+| **LOW** | Update test script | test_renewal.py | Update |
+
+---
+
+## Files to Modify
+
+```
+website_api/
+├── app/
+│   ├── models/
+│   │   └── models.py                    [Remove "trial" from status]
+│   └── routes/
+│       └── webhooks.py                 [Comment out extend_subscription_period]
+├── scripts/
+│   └── send_notifications.py           [Add renewal invoice generation]
+└── app/routes/
+    └── subscription.py                 [Fix trial invoice description]
+```
+
+---
+
+## Testing After Changes
+
+| Test | Expected Result |
+|------|-----------------|
+| Pay invoice | Invoice status → paid, period_end UNCHANGED |
+| Period end (Day 30) | New invoice generated, period_end updated to Day 60 |
+| Trial start | Invoice created with pending status, description="Trial Period" |
+| Trial end (Day 30) | First paid invoice generated |
+| Free plan | Invoice $0, auto-marked paid, period extends |
+
+---
+
+*Last Updated: September 22, 2026*
