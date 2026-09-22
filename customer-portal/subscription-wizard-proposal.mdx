@@ -6,6 +6,43 @@
 
 ---
 
+## Current Process (From PDF)
+
+### New Customer Sign Up Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 1. Customer views site.ideazes.com                               │
+│    ├── Scenario A: Select plan → localStorage stores plan + cycle │
+│    └── Scenario B: No plan selected → localStorage empty         │
+├─────────────────────────────────────────────────────────────────┤
+│ 2. Sign up form → Account created                               │
+├─────────────────────────────────────────────────────────────────┤
+│ 3. Receive email verification                                    │
+├─────────────────────────────────────────────────────────────────┤
+│ 4. LOGIN BEFORE EMAIL VERIFICATION                             │
+│    → Subscription function DISABLED (greyed out)                │
+├─────────────────────────────────────────────────────────────────┤
+│ 5. Customer verifies email via link                              │
+├─────────────────────────────────────────────────────────────────┤
+│ 6. LOGIN AFTER EMAIL VERIFICATION                               │
+│    → Subscription function ENABLED                               │
+├─────────────────────────────────────────────────────────────────┤
+│ 7. Click Subscription menu                                       │
+│    → "Start Free Trial" DISABLED                                │
+│    → Must click "Choose Plan" button to proceed                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Points from Current Process
+
+1. **localStorage** stores plan selection (or empty)
+2. **Email verification** is prerequisite for subscription access
+3. **Start Free Trial** is disabled until plan is chosen
+4. **"Choose Plan" button** is the entry point to subscription flow
+
+---
+
 ## Executive Summary
 
 The current customer portal subscription UI is confusing and not aligned with the new renewal system. This proposal outlines a **step-by-step wizard flow** that guides customers through plan selection, trial/subscription choice, and payment method selection.
@@ -18,6 +55,7 @@ The current customer portal subscription UI is confusing and not aligned with th
 2. **Not aligned with renewal system** - Payment method selection not integrated
 3. **Poor user guidance** - Customer doesn't know what to do next
 4. **Inconsistent flow** - New vs upgrade customer not differentiated
+5. **Missing localStorage handling** - Doesn't properly use pre-selected plan from site
 
 ---
 
@@ -237,6 +275,42 @@ A multi-step wizard that adapts based on:
 │   [ ← Back ]                           [ Confirm Subscription ]   │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## INITIAL STATE: Subscription Menu Entry Point
+
+When customer first enters Subscription page (after email verified):
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  SUBSCRIPTION - Welcome                                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                                                          │   │
+│   │   🔘 START FREE TRIAL  (DISABLED)                       │   │
+│   │   (Greyed out - select a plan first)                     │   │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   OR                                                            │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │                                                          │   │
+│   │   [ ✅ CHOOSE PLAN ] ← Required first step              │   │
+│   │                                                          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   Note: Start Free Trial will be enabled after choosing a plan   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key Rules:**
+- "Start Free Trial" is DISABLED until customer clicks "Choose Plan"
+- Customer MUST click "Choose Plan" to begin the subscription wizard
+- If localStorage has pre-selected plan → Jump to Step 2 directly
 
 ---
 
