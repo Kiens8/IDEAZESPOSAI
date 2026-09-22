@@ -16,11 +16,16 @@ This document outlines UI changes needed to align customer-facing pages with the
 
 | Page | Current State | Changes Needed |
 |------|--------------|----------------|
-| Signup Page | Basic trial signup | Add billing cycle selection + payment method for trial |
-| Customer Portal | Shows subscription/invoices | Add trial-specific displays, upgrade flow |
-| Invoice Detail | Generic invoice display | Show trial badge, clarify $0 auto-paid |
+| Signup Page | Basic trial signup | Add billing cycle selection + payment method for trial AND free plan |
+| Customer Portal | Shows subscription/invoices | Add trial/free plan-specific displays, upgrade flow |
+| Invoice Detail | Generic invoice display | Show trial/free plan badge, clarify $0 auto-paid |
 | Admin: Subscriptions | List subscriptions | Add trial status filtering, trial_ends_at column |
-| Admin: Invoices | List invoices | Show invoice type (trial/paid/renewal) |
+| Admin: Invoices | List invoices | Show invoice type (trial/free/paid/renewal) |
+
+**Note:** Free Plan ($0) now follows the same flow as Trial:
+- Payment method required (for future upgrades)
+- Invoice created with $0, status = pending
+- Cron job auto-marks as paid
 
 ---
 
@@ -32,15 +37,20 @@ This document outlines UI changes needed to align customer-facing pages with the
 
 ### Required Changes
 
-#### 1.1 Add Billing Cycle + Payment Method for Trial
+#### 1.1 Add Billing Cycle + Payment Method for Trial AND Free Plan
 
 **Current:** Customer selects plan → starts trial → no payment info collected
 
-**Required:**
+**Required (for BOTH Trial AND Free Plan):**
 1. Customer selects plan
-2. **NEW:** Select billing cycle (monthly/annual) — required for when trial ends
-3. **NEW:** Select payment method — required even for trial (credit card stored for future billing)
-4. Start trial with $0
+2. **NEW:** Select billing cycle (monthly/annual) — required for future billing
+3. **NEW:** Select payment method — required even for $0 plans (credit card stored for future upgrades)
+4. Start subscription with $0
+
+**Important:** Free Plan ($0) now follows the same flow as Trial:
+- Payment method required (stored for future billing)
+- Invoice created with $0, status = pending
+- Cron job auto-marks as paid
 
 **UI Mockup:**
 ```
