@@ -1,7 +1,7 @@
 # Customer Portal UI - Implementation
 
 **Date:** September 23, 2026  
-**Last Updated:** September 23, 2026 (Bug fixes & comprehensive Stripe integration)  
+**Last Updated:** September 23, 2026 (Upgrade flow restrictions & $0 invoice cron job)
 **Status:** Implemented  
 **Author:** Lumi
 
@@ -250,6 +250,142 @@ PortalPage
    - hasSubscription → Show current plan details
    - !hasSubscription && emailVerified → Show subscription wizard
 ```
+
+---
+
+## Upgrade Flow Restrictions (September 23, 2026)
+
+### 1. Upper Plans Only
+**Implementation:** When upgrading, only plans with higher price are shown.
+
+**Logic:**
+```javascript
+// Filter plans - show only upper plans for upgrades
+availablePlans.filter(plan => {
+  if (hasSubscription && subscription?.plan) {
+    const currentPrice = subscription.billing_cycle === 'annual'
+      ? subscription.plan.price_annual
+      : subscription.plan.price_monthly
+    const newPrice = selectedPlan.billingCycle === 'annual'
+      ? plan.price_annual
+      : plan.price_monthly
+    return newPrice > currentPrice  // Only show higher priced plans
+  }
+  return true  // Show all plans for new customers
+})
+```
+
+### 2. Payment Method Lock for Stripe Customers
+**Rule:** If customer is on Stripe subscription, they CANNOT switch to Pay Later when upgrading.
+
+**Reason:** To prevent double billing - Stripe would still auto-charge even if manual invoice is created.
+
+**Backend Protection:**
+```python
+# In /api/subscriptions/upgrade endpoint
+if upgrade_data.payment_method == "pay_later":
+    if sub.stripe_subscription_id:
+        raise HTTPException(
+            status_code=400, 
+            detail="Cannot change from Stripe to Pay Later. Please keep Stripe for upgrades or cancel your Stripe subscription first."
+        )
+```
+
+**Frontend Behavior:**
+- Pay Later option is HIDDEN if `subscription.payment_method === 'stripe'`
+- Shows warning notice:
+  ```html
+  <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+    <p class="font-semibold">⚠️ Payment Method Locked</p>
+    <p>Your subscription is managed via Stripe. Upgrades must also use Stripe payment.</p>
+  </div>
+  ```
+
+### 3. Upgrade vs New Subscription Detection
+**Frontend Logic:**
+```javascript
+const isUpgrade = hasSubscription && subscription?.id
+
+if (isUpgrade) {
+  // Call upgrade endpoint
+  POST /api/subscriptions/upgrade
+} else {
+  // Call create endpoint
+  POST /api/subscriptions/
+}
+```
+
+### Upgrade Flow Summary
+
+| Scenario | Plans Shown | Payment Methods |
+|----------|-------------|-----------------|
+| New customer (no subscription) | All plans | Pay Later, Stripe |
+| Upgrade from Pay Later | Upper plans only | Pay Later, Stripe |
+| Upgrade from Stripe | Upper plans only | Stripe only (Pay Later hidden) |
+
+---
+
+## $0 Invoice Cron Job (September 23, 2026)
+
+### New Cron Job: `mark_zero_paid`
+
+**Purpose:** Mark all $0 pending invoices as paid (for trials and free plans).
+
+**Location:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/scripts/send_notifications.py`
+
+**Function:**
+```python
+def mark_zero_invoices_paid(db: Session):
+    """
+    Mark all $0 pending invoices as paid.
+    Per renewal system design:
+    - Trial and Free plan invoices are $0
+    - Cron marks these as paid automatically
+    """
+    pending_zero = db.query(Invoice).filter(
+        Invoice.status == 'pending',
+        Invoice.amount == 0
+    ).all()
+    
+    for invoice in pending_zero:
+        invoice.status = 'paid'
+    
+    db.commit()
+```
+
+**Cron Execution Order:**
+1. `mark_zero_invoices_paid` - Marks $0 pending invoices as paid
+2. `process_trial_end` - Process trial endings
+3. `generate_renewal_invoices` - Generate renewal invoices
+4. Other checks (expired, cancelled, reminders...)
+
+**CLI Flag:** `--mark-zero`
+
+### Updated Renewal System Flow
+
+```
+1. Trial/Free Plan Subscription Created
+   ↓
+2. $0 invoice created (status: pending)
+   ↓
+3. Cron runs → marks $0 invoice as PAID
+   ↓
+4. Trial ends → generates first paid invoice
+```
+
+This aligns with the documented renewal system where cron job handles $0 invoice status updates.
+
+---
+
+## API Endpoints Summary
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/auth/me` | Get user profile including email_verified status |
+| GET | `/api/subscriptions/current` | Get current subscription |
+| POST | `/api/subscriptions/` | Create new subscription |
+| POST | `/api/subscriptions/upgrade` | Upgrade existing subscription |
+| POST | `/api/auth/resend-verification` | Resend verification email |
 
 ---
 
