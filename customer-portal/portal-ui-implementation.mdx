@@ -1,7 +1,7 @@
 # Customer Portal UI - Implementation
 
 **Date:** September 23, 2026  
-**Last Updated:** September 23, 2026 (Upgrade redirect fix & Stripe invoice webhook handling)
+**Last Updated:** September 23, 2026 (Reactivation flow implemented)
 **Status:** Implemented  
 **Author:** Lumi
 
@@ -377,6 +377,111 @@ if (isUpgrade) {
   <a href={selectedInvoice.hosted_invoice_url}>View Online</a>
 )}
 ```
+
+---
+
+## Reactivation Flow (September 23, 2026)
+
+### Overview
+
+When a customer with a cancelled or expired subscription returns, they can **reactivate** by creating a new subscription. This follows Option 2 design - a NEW subscription is created (not resume old one).
+
+### Backend Changes
+
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/app/routes/subscription.py`
+
+**Reactivation detection:**
+```python
+# Check for cancelled/expired subscription (for reactivation)
+old_subscription = db.query(Subscription).filter(
+    Subscription.customer_id == current_user.id,
+    Subscription.status.in_(["cancelled", "expired"])
+).first()
+
+is_reactivation = old_subscription is not None
+```
+
+**Key points:**
+- Old subscription is NOT modified (stays cancelled/expired)
+- New subscription is created with fresh period dates
+- POS data is PRESERVED (outlets, orders, menu items intact)
+- Customer can choose same or different plan
+
+### Admin API Changes
+
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/app/routes/admin.py`
+
+**Returns latest subscription (prioritized):**
+```python
+.order_by(
+    db.case(
+        (Subscription.status == "active", 1),
+        (Subscription.status == "trial", 2),
+        (Subscription.status == "cancelled", 3),
+        (Subscription.status == "expired", 4),
+        else_=5
+    ),
+    Subscription.created_at.desc()
+).first()
+```
+
+### POS Login Message Updates
+
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/backend/app/routes/auth.py`
+
+| Status | Old Message | New Message |
+|--------|-------------|-------------|
+| Cancelled | "Please contact support to reactivate" | "Please reactivate to continue" |
+| Expired | "Please renew to continue" | "Please reactivate to continue" |
+
+### Frontend Changes
+
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/page.tsx`
+
+**UI Changes:**
+1. Subscription title changes based on status:
+   - Active/Trial: "Upgrade Your Plan"
+   - Cancelled/Expired: "Reactivate Your Subscription"
+
+2. Info banner for cancelled/expired:
+   ```jsx
+   {(subscription?.status === 'cancelled' || subscription?.status === 'expired') && (
+     <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+       <p className="text-amber-800 text-sm">
+         💡 Your previous subscription is no longer active.
+         Create a new subscription to restore access.
+         Your POS data is safe and will be available after reactivation.
+       </p>
+     </div>
+   )}
+   ```
+
+### Reactivation Flow Summary
+
+| Step | Description |
+|------|-------------|
+| 1 | Customer visits portal (cancelled/expired status) |
+| 2 | Sees "Reactivate Your Subscription" title |
+| 3 | Info banner shows data is preserved |
+| 4 | Selects plan (can be same or different) |
+| 5 | Selects billing cycle |
+| 6 | Selects payment method |
+| 7 | Creates NEW subscription |
+| 8 | POS Login RESTORED |
+
+### POS Data Preservation
+
+| Data | Preserved on Reactivation? |
+|------|---------------------------|
+| Customer record | ✅ Yes (same customer_id) |
+| Users | ✅ Yes |
+| Outlets | ✅ Yes |
+| Menu Items | ✅ Yes |
+| Categories | ✅ Yes |
+| Tables | ✅ Yes |
+| Orders | ✅ Yes |
+| Subscriptions (old) | ❌ Archived (status preserved) |
+| Invoices (old) | ❌ Archived (historical record) |
 
 ---
 
