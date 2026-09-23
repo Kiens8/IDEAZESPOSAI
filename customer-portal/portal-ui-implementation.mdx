@@ -1,7 +1,7 @@
 # Customer Portal UI - Implementation
 
 **Date:** September 23, 2026  
-**Last Updated:** September 23, 2026 (Bug fixes & Stripe integration)  
+**Last Updated:** September 23, 2026 (Bug fixes & comprehensive Stripe integration)  
 **Status:** Implemented  
 **Author:** Lumi
 
@@ -34,21 +34,64 @@ The customer portal (`site.ideazes.com/portal`) has been redesigned with a premi
 
 ---
 
-## Feature Updates
+## Bug Fixes (September 23, 2026)
 
-### 1. Email Verification Status Fix (Bug Fix)
-**Issue:** Email verification status not updating after clicking verify link  
-**Fix:** Changed API endpoint from `/api/auth/profile` to `/api/auth/me`  
+### 1. Email Verification Status Not Updating (Critical Fix)
+**Issue:** When logging in without email verification, portal showed "Active" status incorrectly  
+**Root Cause:** `fetchSubscription()` was setting `emailVerified = true` whenever API returned 200 OK  
+**Fix:** Fetch email verification status from `/api/auth/me` FIRST, before setting subscription state  
 **File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/page.tsx`
 
-### 2. Feature Lock Before Email Verification
+**Code Change:**
+```javascript
+// Before (Wrong - always set emailVerified to true)
+if (res.ok) {
+    setEmailVerified(true)  // ❌ Wrong
+}
+
+// After (Correct - check from profile API)
+const profileRes = await fetch('/api/auth/me')
+if (profileRes.ok) {
+    const profileData = await profileRes.json()
+    const emailVerified = profileData.user?.email_verified || false
+    setEmailVerified(emailVerified)  // ✅ Correct
+}
+```
+
+### 2. Subscription API Endpoint Fixed
+**Issue:** Frontend calling `/api/subscriptions/create` but backend endpoint is `/api/subscriptions/`  
+**Fix:** Changed frontend to call correct endpoint  
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/page.tsx`
+
+### 3. Trial/Condition Detection Fixed
+**Issue:** Backend expected `trial: true` boolean but frontend sends `choice: "trial"` string  
+**Fix:** Changed backend to check `sub_data.choice == "trial"`  
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/app/routes/subscription.py`
+
+### 4. Plan Display Fixed
+**Issue:** Plan showing as "Plan" instead of actual plan name  
+**Root Cause:** Frontend using `user.plan?.name` from localStorage instead of `subscription.plan?.name`  
+**Fix:** Changed to use `subscription.plan?.name` and fixed API to return full plan object  
+**Files:**
+- `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/page.tsx`
+- `/root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/app/routes/subscription.py`
+
+### 5. Billing Cycle Selection Reset
+**Issue:** Changing billing cycle didn't reset choice selection  
+**Fix:** When changing billing cycle, `choice` is now reset to `null`
+
+---
+
+## Feature Updates
+
+### 1. Feature Lock Before Email Verification
 **Implementation:** When email is NOT verified:
 - Open POS button → Locked ("Verify email to access")
 - Upgrade Plan button → Locked ("Verify email to upgrade")
 - View Invoices button → Locked ("Verify email to view")
 - Subscription Tab → Shows "🔒 Email Verification Required" with Resend button
 
-### 3. Subscription Wizard (3-Step Flow)
+### 2. Subscription Wizard (3-Step Flow)
 **Step 1: Select Plan**
 - Plan cards (Starter, Basic, Pro, Enterprise)
 - Billing cycle toggle (Monthly / Annual - Save 20%)
@@ -65,8 +108,10 @@ The customer portal (`site.ideazes.com/portal`) has been redesigned with a premi
 - "Credit/Debit Card (Stripe)" option
 - "Confirm Subscription" button
 
-### 4. Stripe Checkout Integration
-**Endpoint:** `POST /api/subscriptions/create` (unified endpoint)  
+### 3. Stripe Checkout Integration (Updated)
+
+**Endpoint:** `POST /api/subscriptions/` (NOT `/create`)
+
 **Request Body:**
 ```json
 {
@@ -77,33 +122,41 @@ The customer portal (`site.ideazes.com/portal`) has been redesigned with a premi
 }
 ```
 
-**Behavior:**
-- **$0 transactions** (Trial or $0 plan): Creates subscription + invoice immediately, no Stripe redirect
-- **Paid plans**: Creates pending invoice + returns Stripe checkout URL
+**Behavior Matrix:**
+
+| Scenario | Payment Method | Stripe Redirect | Invoice Created |
+|----------|---------------|----------------|-----------------|
+| $0 plan (Starter) | Stripe | ❌ No | ✅ Yes ($0) |
+| $0 plan (Starter) | Pay Later | N/A | ✅ Yes ($0) |
+| Trial (Paid plans) | Stripe | ❌ No | ✅ Yes ($0) |
+| Trial (Paid plans) | Pay Later | N/A | ✅ Yes ($0) |
+| Paid plan + Subscribe | Stripe | ✅ Yes | ✅ Yes (pending) |
+| Paid plan + Subscribe | Pay Later | N/A | ✅ Yes (pending) |
 
 **Success URL:** `https://site.ideazes.com/portal?checkout=success`  
 **Cancel URL:** `https://site.ideazes.com/portal?checkout=canceled`
 
-### 5. Bug Fix: Billing Cycle Selection
-**Issue:** Changing billing cycle didn't reset choice selection  
-**Fix:** When changing billing cycle, `choice` is now reset to `null`
-
-### 6. Unified Subscription Creation Endpoint
-**New Endpoint:** `POST /api/subscriptions/create`
+### 4. Unified Subscription Creation Endpoint
+**Endpoint:** `POST /api/subscriptions/`
 
 **Flow:**
 | Scenario | Invoice | Cron Job | Stripe |
 |----------|---------|----------|--------|
 | $0 (Trial/Starter) | ✅ Created (pending) | ✅ Marks paid | ❌ Skipped |
-| Paid (Pro/Enterprise) | ✅ Created (pending) | ✅ Marks paid | ✅ Redirected |
+| Trial (Paid plans) | ✅ Created ($0, pending) | ✅ Marks paid | ❌ Skipped |
+| Paid (Pro/Enterprise) + Subscribe + Stripe | ✅ Created (pending) | ✅ Marks paid | ✅ Redirected |
+| Paid + Pay Later | ✅ Created (pending) | ✅ Marks paid | N/A |
 
 This aligns with the documented renewal system where cron job handles $0 invoice status updates.
 
 ---
 
-## File Location
+## File Locations
 
-**Path:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/page.tsx`
+| File | Purpose |
+|------|---------|
+| `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/page.tsx` | Customer portal frontend |
+| `/root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/app/routes/subscription.py` | Subscription backend API |
 
 ---
 
@@ -172,11 +225,35 @@ PortalPage
 |--------|----------|---------|
 | GET | `/api/auth/me` | Get user profile including email_verified status |
 | GET | `/api/subscriptions/current` | Get current subscription |
-| POST | `/api/subscriptions/create-checkout` | Create Stripe checkout session |
+| POST | `/api/subscriptions/` | Create new subscription (unified endpoint) |
 | POST | `/api/auth/resend-verification` | Resend verification email |
+
+---
+
+## Email Verification Flow
+
+```
+1. User logs in
+   ↓
+2. fetchSubscription() called
+   ↓
+3. FIRST: Call /api/auth/me to check email_verified status
+   ↓
+4. THEN: Call /api/subscriptions/current to get subscription
+   ↓
+5. Set states:
+   - emailVerified = true only if profile API confirms it
+   - hasSubscription = true only if subscription exists and is active
+   ↓
+6. UI renders based on states:
+   - !emailVerified → Show "🔒 Email Verification Required"
+   - hasSubscription → Show current plan details
+   - !hasSubscription && emailVerified → Show subscription wizard
+```
 
 ---
 
 ## Related Documents
 
 - [Subscription Wizard Proposal](/customer-portal/subscription-wizard-proposal) - Design proposal for subscription flow
+- [Renewal Features Updates](/admin/internal/renewal-features-updates) - Backend renewal system documentation
