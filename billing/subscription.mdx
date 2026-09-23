@@ -1,71 +1,93 @@
+# Subscription Billing
+
+**Last Updated:** September 24, 2026
+
 ---
-title: Subscription & Plans
-description: Manage your IDEAZES POS AI subscription
----
 
-# Subscription & Plans
+## How Subscription Billing Works
 
-Choose the plan that fits your restaurant's needs.
+When you subscribe to a IDEAZES POS plan, you are billed according to your selected billing cycle. Here's what you need to know:
 
-## Available Plans
+### Billing Cycles
 
-| Plan | Price | Features |
-|------|-------|----------|
-| **Starter** | Free | Basic POS features |
-| **Basic** | $10/month | + Full POS + Reports |
-| **Pro** | $20/month | + Multi-outlet + Priority support |
-| **Enterprise** | $50/month | + Advanced features + API access |
+| Billing Cycle | Description |
+|---------------|-------------|
+| **Monthly** | Billed every month on your subscription start date |
+| **Annual** | Billed once per year (save up to 20%) |
 
-## Viewing Your Current Plan
+### How Trials Work
 
-1. Log in to your account
-2. Go to **Billing** section
-3. View your current plan and usage
+When you start a free trial:
 
-## Upgrading Your Plan
+| Day | What Happens |
+|-----|--------------|
+| Day 0 | Trial starts, first invoice created ($0) |
+| During Trial | You have full access to all features |
+| Trial Ends | Your first paid invoice is generated |
+| After Payment | Your subscription continues |
 
-1. Go to **Billing** → **Change Plan**
-2. Select your desired plan
-3. Choose payment method:
-   - **Pay Now** - Stripe checkout
-   - **Pay Later** - Invoice with 14-day payment terms
+### Upgrading Your Plan
 
-### Proration for Upgrades
+You can upgrade your plan at any time. Here's how it works:
 
-When upgrading mid-cycle:
+#### Trial Users
+- You can upgrade to a higher plan during your trial
+- Your billing cycle will be set when you upgrade
+- **No payment is required during the trial period**
+- When your trial ends, your first paid invoice will be generated
 
-- **Example:** Basic ($10) → Pro ($20) with 15 days remaining
-- **Credit:** $10 credit for unused Basic days
-- **Charge:** $20 - $5 (credit) = $15 prorated amount
+#### Paid Users
+- Upgrading to a higher plan is immediate
+- You may be charged a prorated amount for the remaining days in your current billing period
+- Your billing cycle can be changed (monthly ↔ annual)
 
-## Downgrading
+### Payment Methods
 
-Downgrade to a lower plan at any time. Changes take effect at the next billing cycle.
-
-## Payment Methods
+We offer two payment methods:
 
 | Method | Description |
 |--------|-------------|
-| **Stripe** | Credit/Debit card via Stripe |
-| **Pay Later** | Bank transfer (14-day terms) |
+| **Credit/Debit Card (Stripe)** | Secure payment processed by Stripe |
+| **Pay Later** | Manual payment via bank transfer |
 
-### Pay Later Flow
+#### Important Notes
 
-1. Select Pay Later at checkout
-2. Receive invoice via email
-3. Pay via bank transfer within 14 days
-4. Invoice marked paid automatically
+- **If you select Stripe as your payment method**, you must continue using Stripe for all future upgrades
+- **If you select Pay Later**, you can switch to Stripe during upgrades
+- Once your subscription is active, you cannot switch to Pay Later if you originally chose Stripe
 
-## Billing Portal
+### Invoice Timeline
 
-Access your billing portal to:
+| Event | Invoice Amount | Status |
+|-------|---------------|--------|
+| Trial starts | $0 | Paid (auto) |
+| Trial ends | Full period price | Pending |
+| First payment | Full period price | Pending |
+| Subsequent renewals | Full period price | Pending |
 
-- View invoices
-- Download receipts
-- Update payment method
-- Change plan
-- Cancel subscription
+### Renewal Process
+
+1. **7 days before** - First reminder email sent
+2. **3 days before** - Second reminder email sent  
+3. **1 day before** - Final reminder email sent
+4. **Due date** - Invoice marked as overdue
+5. **Grace period** - Access continues (14 days)
+6. **After grace period** - Subscription suspended
+
+### Cancellation
+
+- You can cancel at any time
+- Access continues until the end of your current billing period
+- No refunds for unused time
+
+### Reactivation
+
+- You can reactivate your subscription at any time
+- Your POS data is preserved and will be available immediately after reactivation
+- A new subscription is created (previous subscription remains on record)
+
+---
 
 ## Need Help?
 
-Contact [billing@ideazes.com](mailto:billing@ideazes.com) for billing inquiries.
+If you have questions about your billing, please contact our support team.
