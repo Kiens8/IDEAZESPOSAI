@@ -290,19 +290,23 @@ Day 14:  Grace period ends
            subscription_status = expired
            Access = BLOCKED
 
-Day 20:  Customer returns
+Day 20:  Customer returns (Self-service reactivation)
          Creates new subscription
            subscription_status = active (NEW)
            New period starts fresh
            New invoice created
+           POS data: PRESERVED (outlets, orders, menu items intact)
 ```
 
 **Key Points:**
 - Old subscription: expired status remains (historical record)
 - New subscription: brand new with fresh period
 - Old forgiven invoice stays on record
+- **POS data is PRESERVED** - outlets, orders, menu items, tables all remain
+- Customer can self-reactivate via portal or admin can do it
+- Reactivation creates NEW subscription (not resume old one)
 
-**Result:** Old subscription expired, New subscription active, Full access restored
+**Result:** Old subscription expired, New subscription active, Full access restored, POS data preserved
 
 ---
 
@@ -315,17 +319,21 @@ Day 30:  Period ends
            subscription_status = cancelled
            Access = BLOCKED
 
-Day 40:  Customer returns and resubscribes
-           New subscription created
+Day 40:  Customer returns (Self-service reactivation)
+         Resubscribes / Creates new subscription
            subscription_status = active (NEW)
+           POS data: PRESERVED (outlets, orders, menu items intact)
 ```
 
 **Key Points:**
 - Old subscription: cancelled status (historical record)
-- New subscription: fresh start
+- New subscription: fresh start with new period
 - Both subscriptions visible in admin panel
+- **POS data is PRESERVED** - all outlets, orders, menu items, tables remain
+- Customer can self-reactivate via portal (simplified flow)
+- Reactivation creates NEW subscription, NOT resume old one
 
-**Result:** Old subscription cancelled, New subscription active, Full access restored
+**Result:** Old subscription cancelled, New subscription active, Full access restored, POS data preserved
 
 ---
 
@@ -771,6 +779,95 @@ Day 60:  Period ends
 
 ---
 
+## Reactivation Flow
+
+### Overview
+
+When a customer with a cancelled or expired subscription returns, they can **reactivate** by creating a new subscription.
+
+**Key Design Decision:** Reactivation creates a **NEW subscription** (not resume old one). This ensures:
+- Clean billing history
+- Proper invoice tracking
+- Customer can choose different plan
+- Clear lifecycle audit trail
+
+### Reactivation Methods
+
+| Method | Who | How |
+|--------|-----|-----|
+| **Self-service** | Customer | Via customer portal (simplified flow) |
+| **Admin-initiated** | Admin | Via admin panel |
+
+### Self-Service Reactivation (Customer Portal)
+
+```
+Customer visits portal (cancelled/expired status)
+         |
+         v
+Sees "Reactivate Subscription" button
+         |
+         v
+Simplified subscription flow:
+1. Select plan (can be same or different)
+2. Choose billing cycle
+3. Select payment method
+         |
+         v
+Creates NEW subscription
+         |
+         v
+POS Login RESTORED
+POS data: PRESERVED
+```
+
+### Admin Reactivation
+
+```
+Admin views cancelled/expired customer in Admin Panel
+         |
+         v
+Clicks "Reactivate" button
+         |
+         v
+Chooses plan (same or different)
+         |
+         v
+Creates NEW subscription
+         |
+         v
+Customer notified via email
+POS Login RESTORED
+POS data: PRESERVED
+```
+
+### POS Data Preservation
+
+| Data Type | Preserved on Reactivation? |
+|-----------|---------------------------|
+| Customer record | ✅ Yes (same customer_id) |
+| Users | ✅ Yes |
+| Outlets | ✅ Yes |
+| Menu Items | ✅ Yes |
+| Categories | ✅ Yes |
+| Tables | ✅ Yes |
+| Orders | ✅ Yes |
+| Subscriptions (old) | ❌ Archived (status preserved) |
+| Invoices (old) | ❌ Archived (historical record) |
+
+**All POS operational data is preserved.** Only subscriptions and invoices are treated as new records.
+
+### Reactivation and Payment
+
+| Old Status | Payment Required? |
+|------------|-------------------|
+| Expired (unpaid) | Old invoices remain forgiven on record |
+| Cancelled (paid) | Old subscription was paid - no payment needed |
+| Both cases | New subscription requires new payment |
+
+Reactivation always creates a fresh subscription with new invoices. Old unpaid invoices stay on record as forgiven.
+
+---
+
 ## Access Control Logic
 
 ### Login Flow
@@ -801,8 +898,16 @@ ACTIVE      NOT ACTIVE
    |            |           |
    |            v           v
    |          BLOCK      ALLOW
-   v                       (with warning)
-Check payment
+   |                       (with warning)
+   v
+Check for NEW active subscription (reactivated)
+   |
+   v
+Has new active subscription - ALLOW
+No new subscription - BLOCK
+         |
+         v
+Check payment (if active)
    |
    v
 Paid - ALLOW
@@ -821,6 +926,7 @@ Overdue - BLOCK
 | cancelled | paid | ALLOW until period end |
 | cancelled | no payment | BLOCK at grace period |
 | expired | - | BLOCK |
+| cancelled/expired | has NEW active subscription | ALLOW (reactivated) |
 
 ---
 
@@ -889,4 +995,4 @@ Overdue - BLOCK
 
 ---
 
-*Last Updated: September 22, 2026*
+*Last Updated: September 23, 2026*
