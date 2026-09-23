@@ -1,7 +1,7 @@
 # Customer Portal UI - Implementation
 
 **Date:** September 23, 2026  
-**Last Updated:** September 23, 2026 (Upgrade flow restrictions & $0 invoice cron job)
+**Last Updated:** September 23, 2026 (Upgrade redirect fix & Stripe invoice webhook handling)
 **Status:** Implemented  
 **Author:** Lumi
 
@@ -322,6 +322,61 @@ if (isUpgrade) {
 | New customer (no subscription) | All plans | Pay Later, Stripe |
 | Upgrade from Pay Later | Upper plans only | Pay Later, Stripe |
 | Upgrade from Stripe | Upper plans only | Stripe only (Pay Later hidden) |
+
+### Upgrade Redirect Behavior
+
+**Before:** For existing Stripe customers, upgrade modified subscription directly without showing checkout.
+
+**After:** All Stripe upgrades redirect to Stripe checkout with prorated amount displayed.
+
+**Flow:**
+1. Customer selects upgrade plan + Stripe payment
+2. Redirects to Stripe checkout with prorated charge shown
+3. Customer sees "Upgrade to {Plan} - Proration" line item
+4. After payment → webhook updates invoice with Stripe URLs
+5. Customer can view/download Stripe invoice in billing page
+
+---
+
+## Stripe Invoice Integration
+
+### How It Works
+
+| Scenario | Invoice Source | View/Download Links |
+|----------|---------------|---------------------|
+| Pay Later | Our custom invoice | Our HTML invoice |
+| Stripe Checkout (new) | Stripe hosted | Stripe hosted invoice |
+| Stripe Checkout (upgrade) | Stripe hosted | Stripe hosted invoice |
+| Stripe Invoice (Pay Later) | Stripe hosted | Stripe hosted invoice |
+
+### Webhook Handling
+
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/app/routes/webhooks.py`
+
+**Events handled:**
+- `checkout.session.completed` - Creates subscription + invoice
+- `invoice.finalized` - Stores `hosted_invoice_url` and `stripe_pdf_url`
+- `invoice.created` - Creates invoice record
+
+**Invoice lookup order:**
+1. Find subscription by `stripe_subscription_id`
+2. If not found, find subscription by customer email
+3. If invoice exists, update with Stripe URLs
+4. Create new invoice record if needed
+
+### Frontend Display
+
+**File:** `/root/.openclaw/workspace/mydoc/Projects/POS_AI/site/src/app/portal/billing/page.tsx`
+
+```tsx
+// Show Stripe invoice links if available
+{selectedInvoice.stripe_pdf_url && (
+  <a href={selectedInvoice.stripe_pdf_url}>Download PDF</a>
+)}
+{selectedInvoice.hosted_invoice_url && (
+  <a href={selectedInvoice.hosted_invoice_url}>View Online</a>
+)}
+```
 
 ---
 
