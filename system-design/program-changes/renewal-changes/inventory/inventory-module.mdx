@@ -1,0 +1,438 @@
+---
+title: Inventory Management Module
+description: Design specification for inventory management in IDEAZES POS AI
+---
+
+# Inventory Management Module
+
+**Date:** September 25, 2026
+
+## Overview
+
+The Inventory Management module tracks ingredients and raw materials used in menu preparation, enabling accurate food cost calculation, low-stock alerts, and automated reorder notifications.
+
+---
+
+## Design Goals
+
+| Goal | Description |
+|------|-------------|
+| **Accurate Costing** | Calculate actual food cost per menu item from recipe ingredients |
+| **Stock Monitoring** | Track ingredient levels and alert when low |
+| **Waste Reduction** | Identify shrinkage and waste patterns |
+| **Profitability** | Help restaurants understand true gross margins |
+| **Scalability** | Support multi-outlet (Enterprise plan) |
+
+---
+
+## Scope
+
+### Included (Phase 1 - Basic)
+- Ingredient management (CRUD)
+- Recipe/recipe card management
+- Actual cost calculation per menu item
+- Low stock alerts
+- Stock level tracking
+- Basic reports
+
+### Excluded (Phase 2 - Advanced)
+- Supplier management
+- Purchase orders
+- Barcode scanning
+- Multi-location transfers
+- Advanced forecasting
+
+---
+
+## Database Schema
+
+### Existing Tables (Modified)
+
+#### `menu_items` (Modified)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `estimated_cost` | DECIMAL(10,2) | Manual/approximate cost (existing) |
+| `has_recipe` | BOOLEAN | Whether menu item has inventory recipe |
+| `updated_at` | DATETIME | Last update timestamp |
+
+> Note: `actual_cost` is **calculated dynamically**, not stored.
+
+---
+
+### New Tables
+
+#### `ingredients`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | Primary key |
+| `name` | VARCHAR(255) | Ingredient name (e.g., "Chicken Breast") |
+| `unit` | VARCHAR(50) | Unit of measurement (e.g., "kg", "liter", "pcs") |
+| `unit_cost` | DECIMAL(10,4) | Cost per unit |
+| `current_stock` | DECIMAL(12,4) | Current stock quantity |
+| `min_stock_level` | DECIMAL(12,4) | Alert threshold |
+| `outlet_id` | INT (FK) | Which outlet (NULL = all, for multi-outlet) |
+| `is_active` | BOOLEAN | Active/inactive |
+| `created_at` | DATETIME | Creation timestamp |
+| `updated_at` | DATETIME | Last update timestamp |
+
+#### `recipes`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | Primary key |
+| `menu_item_id` | INT (FK) | Link to menu item |
+| `created_at` | DATETIME | Creation timestamp |
+| `updated_at` | DATETIME | Last update timestamp |
+
+#### `recipe_ingredients`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | Primary key |
+| `recipe_id` | INT (FK) | Link to recipe |
+| `ingredient_id` | INT (FK) | Link to ingredient |
+| `quantity` | DECIMAL(12,4) | Amount needed |
+| `unit_override` | VARCHAR(50) | Optional unit override for recipe |
+
+#### `stock_movements`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | Primary key |
+| `ingredient_id` | INT (FK) | Link to ingredient |
+| `quantity` | DECIMAL(12,4) | Amount (positive = in, negative = out) |
+| `movement_type` | ENUM | `purchase`, `usage`, `adjustment`, `waste` |
+| `reference_id` | INT | Order ID or adjustment ID |
+| `notes` | TEXT | Optional notes |
+| `created_at` | DATETIME | When movement occurred |
+
+#### `suppliers` (Phase 2)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | Primary key |
+| `name` | VARCHAR(255) | Supplier name |
+| `contact_email` | VARCHAR(255) | Contact email |
+| `contact_phone` | VARCHAR(50) | Contact phone |
+| `address` | TEXT | Address |
+| `is_active` | BOOLEAN | Active/inactive |
+
+---
+
+## Cost Calculation
+
+### Actual Cost Formula
+
+```
+For each menu item with a recipe:
+
+actual_cost = SUM(ingredient.quantity × ingredient.unit_cost)
+```
+
+### Example
+
+| Ingredient | Quantity | Unit Cost | Subtotal |
+|-----------|----------|-----------|----------|
+| Rice | 200g | $0.02/g | $4.00 |
+| Chicken | 150g | $0.01/g | $1.50 |
+| Oil | 30ml | $0.02/ml | $0.60 |
+| Spices | 10g | $0.03/g | $0.30 |
+| **Total** | | | **$6.40** |
+
+### Fallback Logic
+
+```
+if menu_item.has_recipe AND recipe has ingredients:
+    actual_cost = calculated from recipe
+else:
+    actual_cost = menu_item.estimated_cost  # fallback
+```
+
+---
+
+## Menu Item Integration
+
+### When Inventory is DISABLED
+- `actual_cost` = `estimated_cost` (fallback)
+- Recipe features hidden
+- Stock features hidden
+
+### When Inventory is ENABLED
+- `actual_cost` = calculated from recipe
+- `estimated_cost` = manual input (for reference/variance)
+- Recipe features visible
+- Stock features visible
+
+### API Changes
+
+**GET /api/menu-items/{id}** response:
+```json
+{
+  "id": 1,
+  "name": "Nasi Goreng",
+  "price": 10.00,
+  "estimated_cost": 3.50,
+  "actual_cost": 6.40,
+  "cost_variance": 2.90,
+  "has_recipe": true,
+  "gross_margin": 3.60
+}
+```
+
+---
+
+## Stock Management
+
+### Stock Movements
+
+| Type | Description | When Used |
+|------|-------------|-----------|
+| `purchase` | Stock received | Receiving new inventory |
+| `usage` | Stock consumed | Auto-deducted from orders |
+| `adjustment` | Manual count correction | Physical count variance |
+| `waste` | Spoilage/loss | Damaged/expired items |
+
+### Auto-Deduction Flow
+
+```
+1. Customer places order
+2. Order includes menu items
+3. For each menu item:
+   a. Check if has_recipe = true
+   b. If yes, deduct ingredients from stock:
+      - stock_movements记录 (type: usage)
+      - ingredients.current_stock -= quantity
+4. If ingredient hits min_stock_level → ALERT
+```
+
+### Low Stock Alert
+
+When `current_stock <= min_stock_level`:
+
+```json
+{
+  "alert_type": "low_stock",
+  "ingredient": {
+    "id": 5,
+    "name": "Chicken Breast",
+    "current_stock": 2.5,
+    "min_stock_level": 5.0,
+    "unit": "kg"
+  }
+}
+```
+
+---
+
+## Reports
+
+### 1. Cost Analysis Report
+
+| Menu Item | Sales Qty | Revenue | Est. Cost | Actual Cost | Variance |
+|-----------|----------|---------|-----------|------------|----------|
+| Nasi Goreng | 150 | $1,500 | $525 | $960 | +$435 |
+| Mee Goreng | 80 | $800 | $280 | $512 | +$232 |
+
+### 2. Stock Status Report
+
+| Ingredient | Current Stock | Min Level | Status | Last Purchase |
+|------------|---------------|-----------|--------|---------------|
+| Rice | 50 kg | 20 kg | ✅ OK | Sep 20, 2026 |
+| Chicken | 2.5 kg | 5 kg | ⚠️ LOW | Sep 22, 2026 |
+| Oil | 100 L | 30 L | ✅ OK | Sep 18, 2026 |
+
+### 3. Waste Report
+
+| Date | Ingredient | Quantity | Value | Reason |
+|------|-----------|----------|-------|--------|
+| Sep 24 | Chicken | 0.5 kg | $5.00 | Expired |
+| Sep 23 | Rice | 2 kg | $4.00 | Spoilage |
+
+---
+
+## API Endpoints
+
+### Ingredients
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/inventory/ingredients` | List all ingredients |
+| POST | `/api/inventory/ingredients` | Create ingredient |
+| GET | `/api/inventory/ingredients/{id}` | Get ingredient |
+| PUT | `/api/inventory/ingredients/{id}` | Update ingredient |
+| DELETE | `/api/inventory/ingredients/{id}` | Delete ingredient |
+| GET | `/api/inventory/ingredients/low-stock` | Get low stock alerts |
+| POST | `/api/inventory/ingredients/{id}/adjust` | Manual stock adjustment |
+
+### Recipes
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/inventory/recipes/{menu_item_id}` | Get recipe for menu item |
+| PUT | `/api/inventory/recipes/{menu_item_id}` | Update recipe |
+| DELETE | `/api/inventory/recipes/{menu_item_id}` | Delete recipe |
+
+### Stock Movements
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/inventory/movements` | List movements (with filters) |
+| POST | `/api/inventory/movements/purchase` | Record purchase |
+| GET | `/api/inventory/movements/{ingredient_id}` | Movements for ingredient |
+
+### Reports
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/inventory/reports/cost-analysis` | Cost analysis report |
+| GET | `/api/inventory/reports/stock-status` | Stock status report |
+| GET | `/api/inventory/reports/waste` | Waste report |
+
+---
+
+## Frontend UI
+
+### Admin Panel Pages
+
+1. **Ingredients** (`/inventory/ingredients`)
+   - Table view with search/filter
+   - Add/Edit ingredient modal
+   - Stock level indicator
+   - Low stock badge
+
+2. **Recipe Builder** (`/inventory/recipes/{menu_item_id}`)
+   - Link from Menu Items page
+   - Add/remove ingredients
+   - Quantity inputs
+   - Real-time cost calculation
+
+3. **Stock Movements** (`/inventory/movements`)
+   - Filter by date, type, ingredient
+   - Purchase entry form
+   - Adjustment form
+
+4. **Reports** (`/inventory/reports`)
+   - Tab navigation: Cost | Stock | Waste
+   - Export to CSV
+
+### Customer Portal
+
+- No inventory features visible to customers
+
+---
+
+## Enterprise Features (Multi-Outlet)
+
+For Enterprise plan with multiple outlets:
+
+| Feature | Description |
+|---------|-------------|
+| `outlet_id` in ingredients | Each outlet has own stock |
+| Transfer between outlets | Move stock between locations |
+| Consolidated reports | Aggregate across outlets |
+| Outlet-specific recipes | Recipe costs vary by location |
+
+---
+
+## Implementation Phases
+
+### Phase 1: Basic Inventory (MVP)
+- [ ] Ingredient CRUD
+- [ ] Basic recipe management
+- [ ] Actual cost calculation
+- [ ] Stock level tracking
+- [ ] Low stock alerts
+- [ ] Basic reports
+
+### Phase 2: Enhanced
+- [ ] Supplier management
+- [ ] Purchase order basics
+- [ ] Waste tracking
+- [ ] Stock movement history
+- [ ] Export features
+
+### Phase 3: Enterprise
+- [ ] Multi-outlet support
+- [ ] Inter-outlet transfers
+- [ ] Advanced forecasting
+- [ ] Barcode support
+- [ ] Supplier integration
+
+---
+
+## Files to Create/Modify
+
+### New Files
+
+```
+website_api/
+├── app/
+│   ├── models/
+│   │   └── inventory.py          # Ingredient, Recipe, StockMovement models
+│   └── routes/
+│       └── inventory.py           # Inventory API endpoints
+├── scripts/
+│   └── inventory_services.py     # Cost calculation, alerts
+└── tests/
+    └── test_inventory.py
+```
+
+### Modified Files
+
+```
+website_api/
+├── app/
+│   ├── models/
+│   │   └── menu_items.py        # Add has_recipe field
+│   └── routes/
+│       └── menu_items.py         # Return actual_cost
+```
+
+### Admin Frontend
+
+```
+admin/
+├── src/
+│   └── pages/
+│       ├── Ingredients.jsx
+│       ├── RecipeBuilder.jsx
+│       ├── StockMovements.jsx
+│       └── InventoryReports.jsx
+```
+
+---
+
+## Rollout Strategy
+
+1. **Database migration** - Add new tables, no breaking changes
+2. **Backend API** - All endpoints working
+3. **Admin UI** - Ingredients page first
+4. **Recipe linking** - Connect to menu items
+5. **Cost display** - Show actual vs estimated
+6. **Stock alerts** - Notification system
+7. **Reports** - Cost analysis
+
+---
+
+## Considerations
+
+### Performance
+- `actual_cost` calculated on-the-fly (not stored) - simple SUM query
+- Index on `ingredients.outlet_id` for multi-outlet filtering
+- Cache cost calculations if menu items > 1000
+
+### Data Integrity
+- Prevent ingredient deletion if used in recipes
+- Soft delete for ingredients (keep history)
+- Transaction for stock movements
+
+### Migration
+- Existing `estimated_cost` preserved
+- New `actual_cost` calculated from recipes when created
+- No data loss
+
+---
+
+*Last Updated: September 25, 2026*
