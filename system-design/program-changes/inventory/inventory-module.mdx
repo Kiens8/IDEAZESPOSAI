@@ -9,7 +9,11 @@ description: Design specification for inventory management in IDEAZES POS AI
 
 ## Overview
 
-The Inventory Management module tracks ingredients and raw materials used in menu preparation, enabling accurate food cost calculation, low-stock alerts, and automated reorder notifications.
+The Inventory Management module tracks ingredients and raw materials used in menu preparation for each outlet, enabling accurate food cost calculation, low-stock alerts, and automated reorder notifications.
+
+**This module uses the POS Backend API** (not the website API) as it operates at the outlet/POS level.
+
+**Multi-outlet Support:** Each outlet has its own inventory. The `outlet_id` field ensures inventory is isolated per outlet.
 
 ---
 
@@ -45,6 +49,8 @@ The Inventory Management module tracks ingredients and raw materials used in men
 ---
 
 ## Database Schema
+
+**Note:** Inventory tables are stored in the **POS Backend database** (`pos_ai.db`) to support outlet-level operations. Each outlet manages its own inventory.
 
 ### Existing Tables (Modified)
 
@@ -258,8 +264,13 @@ When `current_stock <= min_stock_level`:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/inventory/ingredients` | List all ingredients |
-| POST | `/api/inventory/ingredients` | Create ingredient |
+| GET | `/api/ingredients` | List ingredients for outlet |
+| POST | `/api/ingredients` | Create ingredient |
+| GET | `/api/ingredients/{id}` | Get ingredient |
+| PUT | `/api/ingredients/{id}` | Update ingredient |
+| DELETE | `/api/ingredients/{id}` | Delete ingredient |
+| GET | `/api/ingredients/low-stock` | Get low stock alerts |
+| POST | `/api/ingredients/{id}/adjust` | Manual stock adjustment |
 | GET | `/api/inventory/ingredients/{id}` | Get ingredient |
 | PUT | `/api/inventory/ingredients/{id}` | Update ingredient |
 | DELETE | `/api/inventory/ingredients/{id}` | Delete ingredient |
@@ -270,31 +281,33 @@ When `current_stock <= min_stock_level`:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/inventory/recipes/{menu_item_id}` | Get recipe for menu item |
-| PUT | `/api/inventory/recipes/{menu_item_id}` | Update recipe |
-| DELETE | `/api/inventory/recipes/{menu_item_id}` | Delete recipe |
+| GET | `/api/recipes/{menu_item_id}` | Get recipe for menu item |
+| PUT | `/api/recipes/{menu_item_id}` | Update recipe |
+| DELETE | `/api/recipes/{menu_item_id}` | Delete recipe |
 
 ### Stock Movements
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/inventory/movements` | List movements (with filters) |
-| POST | `/api/inventory/movements/purchase` | Record purchase |
-| GET | `/api/inventory/movements/{ingredient_id}` | Movements for ingredient |
+| GET | `/api/stock-movements` | List movements (with filters) |
+| POST | `/api/stock-movements/purchase` | Record purchase |
+| GET | `/api/stock-movements/{ingredient_id}` | Movements for ingredient |
 
 ### Reports
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/inventory/reports/cost-analysis` | Cost analysis report |
-| GET | `/api/inventory/reports/stock-status` | Stock status report |
-| GET | `/api/inventory/reports/waste` | Waste report |
+| GET | `/api/reports/cost-analysis` | Cost analysis report |
+| GET | `/api/reports/stock-status` | Stock status report |
+| GET | `/api/reports/waste` | Waste report |
 
 ---
 
 ## Frontend UI
 
-### Admin Panel Pages
+**Note:** This module uses the POS Frontend (not Admin Frontend) as inventory is managed at the outlet level.
+
+### POS Frontend Pages
 
 1. **Ingredients** (`/inventory/ingredients`)
    - Table view with search/filter
@@ -390,16 +403,19 @@ website_api/
 │       └── menu_items.py         # Return actual_cost
 ```
 
-### Admin Frontend
+### POS Frontend
 
 ```
-admin/
+frontend-pos/
 ├── src/
 │   └── pages/
-│       ├── Ingredients.jsx
-│       ├── RecipeBuilder.jsx
-│       ├── StockMovements.jsx
-│       └── InventoryReports.jsx
+│       ├── Inventory/
+│       │   ├── Ingredients.jsx
+│       │   ├── RecipeBuilder.jsx
+│       │   ├── StockMovements.jsx
+│       │   └── InventoryReports.jsx
+│       └── components/
+│           └── InventoryWidgets.jsx
 ```
 
 ---
