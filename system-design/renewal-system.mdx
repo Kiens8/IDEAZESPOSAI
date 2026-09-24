@@ -529,8 +529,8 @@ Day 44:  Grace period ends
 
 | Change | Allowed? | Behavior |
 |--------|----------|----------|
-| monthly → annual | ✅ Yes | Prorated charge, period_end unchanged |
-| annual → monthly | ❌ No | Blocked mid-cycle, allowed at renewal |
+| monthly → annual | ✅ Yes | Scheduled at renewal, no immediate charge |
+| annual → monthly | ✅ Yes | Scheduled at renewal, no immediate charge |
 | annual → annual | ✅ Yes | Plan upgrade, period_end unchanged |
 
 #### Monthly to Annual Upgrade
