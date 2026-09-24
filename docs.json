@@ -69,10 +69,9 @@
         ]
       },
       {
-        "group": "Admin (Internal)",
+        "group": "Admin App",
         "pages": [
-          "admin/internal/settings",
-          "admin/internal/renewal-system"
+          "admin-app/settings"
         ]
       }
     ]
