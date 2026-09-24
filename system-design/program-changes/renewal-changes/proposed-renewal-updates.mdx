@@ -16,7 +16,6 @@ This document outlines changes needed to sync the implementation with the latest
 | Item | Current Behavior | New Behavior | Action |
 |------|-----------------|--------------|--------|
 | Period Extension on Payment | Extends on payment received | Period end stays fixed | ✅ DONE |
-| Invoice Status | Has "trial" status | No "trial" status (plan description shows trial) | ✅ DONE |
 | Invoice Generation at Renewal | Via Stripe webhook | Via cron job (for pay-later) | ✅ DONE |
 | Billing Cycle Change monthly→annual | period_end recalculated | period_end unchanged | ✅ DONE |
 | Billing Cycle Change annual→monthly | Blocked | Uses next_billing_cycle at renewal | ✅ DONE |
@@ -34,17 +33,7 @@ The `extend_subscription_period` function is now commented out per design:
 
 ---
 
-### ✅ 2. Invoice Status - "trial" Removed
-
-**File:** `website_api/app/models/models.py`
-
-Invoice statuses are now: `pending`, `paid`, `failed`, `forgiven`, `refunded`, `cancelled`
-
-Trial invoices are identified by `description = "Trial Period - 30 days"` instead of status.
-
----
-
-### ✅ 3. Cron Job: Generate New Invoice at Period End
+### ✅ 2. Cron Job: Generate New Invoice at Period End
 
 **File:** `website_api/scripts/send_notifications.py`
 
@@ -181,7 +170,6 @@ if sub.next_billing_cycle:
 | Priority | Change | File | Status |
 |----------|--------|------|--------|
 | **HIGH** | Remove period extension on payment | webhooks.py | ✅ DONE |
-| **HIGH** | Remove "trial" from invoice status | models.py | ✅ DONE |
 | **HIGH** | Add renewal invoice generation | send_notifications.py | ✅ DONE |
 | **HIGH** | monthly→annual: period_end unchanged | subscription.py | ✅ DONE |
 | **HIGH** | annual→monthly: add next_billing_cycle | models.py | ✅ DONE |
@@ -189,7 +177,6 @@ if sub.next_billing_cycle:
 | **HIGH** | annual→monthly: apply at renewal | send_notifications.py | ✅ DONE |
 | **HIGH** | Cancel clears next_billing_cycle | subscription.py | ✅ DONE |
 | **MEDIUM** | API returns next_billing_cycle | subscription.py | ✅ DONE |
-| **LOW** | Update test script | test_renewal.py | Pending |
 
 ---
 
