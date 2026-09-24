@@ -1,0 +1,627 @@
+---
+title: AI Competitor Module
+description: Design specification for AI Competitor Discovery and Analysis in IDEAZES POS AI
+---
+
+# AI Competitor Module
+
+**Date:** September 25, 2026
+
+## Overview
+
+The AI Competitor module helps restaurants discover nearby competitors, build a competitor database, and analyze competitor menus/pricing using AI.
+
+---
+
+## Design Goals
+
+| Goal | Description |
+|------|-------------|
+| **Competitor Discovery** | Find nearby restaurants within radius (1-5km) |
+| **Competitor Database** | Save and manage competitor information |
+| **Menu Intelligence** | AI-powered menu and price research |
+| **Strategic Insights** | AI-generated recommendations based on market data |
+
+---
+
+## API Vendors
+
+### Primary APIs
+
+| API | Purpose | Pricing |
+|-----|---------|---------|
+| **Geoapify** | Restaurant discovery within radius | Free tier: 100,000 requests/month |
+| **Overpass API (OSM)** | Fallback for restaurant data | Free, no restrictions |
+
+### Secondary APIs (Optional Enhancement)
+
+| API | Purpose | Pricing |
+|-----|---------|---------|
+| **Google Places** | Ratings, reviews, photos | ~$0.032/request |
+| **Google Maps Geocoding** | Address to lat/lng conversion | Free tier available |
+
+### Why This Combination?
+
+```
+Geoapify (Primary)
+├── ✅ Free tier generous
+├── ✅ Restaurant categories support
+├── ✅ Easy to use
+└── ✅ Good documentation
+
+Overpass API (Fallback)
+├── ✅ Completely free
+├── ✅ No rate limits
+└── ✅ Good for verification
+
+Google Places (Enhancement)
+├── ✅ Rich data (ratings, reviews)
+├── ✅ Trusted source
+└── ⚠️ Paid - use sparingly
+```
+
+---
+
+## Module Structure
+
+### Two Tabs Approach
+
+```
+AI Competitor
+├── Competitor Discover (NEW)
+│   ├── Search by location + radius
+│   ├── API returns nearby restaurants
+│   ├── AI generates insights per restaurant
+│   └── Save to competitor database
+│
+└── Competitor Analysis (EXISTING - Enhanced)
+    ├── Select from saved competitors
+    ├── "AI Search Menu" - grab menu from web
+    ├── "AI Compare" - analyze vs your restaurant
+    └── Generate report
+```
+
+---
+
+## Database Schema
+
+### New Table: `competitors`
+
+```sql
+CREATE TABLE competitors (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(255) NOT NULL,
+    address TEXT,
+    location_lat DECIMAL(10, 8),
+    location_lng DECIMAL(11, 8),
+    radius_km DECIMAL(5, 2),          -- Distance from user location
+    api_source VARCHAR(50),             -- 'geoapify', 'overpass', 'manual'
+    rating DECIMAL(2, 1),             -- 1.0 - 5.0 (if available)
+    review_count INT,
+    price_level VARCHAR(10),          -- '$', '$$', '$$$', '$$$$'
+    cuisine_types JSON,               -- ['malaysian', 'chinese', 'western']
+    phone VARCHAR(50),
+    website VARCHAR(255),
+    opening_hours JSON,
+    menu_data JSON,                   -- Extracted menu items/prices
+    menu_source VARCHAR(50),          -- 'ai_scraped', 'user_uploaded', 'manual'
+    notes TEXT,
+    is_saved BOOLEAN DEFAULT FALSE,
+    outlet_id INT,                    -- For multi-outlet
+    created_by INT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME ON UPDATE CURRENT_TIMESTAMP
+);
+```
+
+### New Table: `competitor_menus`
+
+```sql
+CREATE TABLE competitor_menus (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    competitor_id INT,
+    item_name VARCHAR(255),
+    description TEXT,
+    price DECIMAL(10, 2),
+    category VARCHAR(100),
+    is_ai_extracted BOOLEAN DEFAULT FALSE,
+    source_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (competitor_id) REFERENCES competitors(id)
+);
+```
+
+---
+
+## Competitor Discover Tab
+
+### User Flow
+
+```
+1. User enters location (or uses POS location)
+2. User selects radius: 1km, 2km, 3km, 5km
+3. User clicks "Discover Competitors"
+4. System calls Geoapify API
+5. Results displayed as list + map
+6. AI generates insights for each restaurant
+7. Prompt: "Save selected restaurants to competitor list?"
+8. User selects and saves
+```
+
+### UI Components
+
+#### Search Form
+```
+┌─────────────────────────────────────────┐
+│  📍 Location: [Kuala Lumpur        🔍]  │
+│  📏 Radius:    [3km ▼]                 │
+│                                         │
+│  [Discover Competitors]                 │
+└─────────────────────────────────────────┘
+```
+
+#### Results List
+```
+┌─────────────────────────────────────────┐
+│  🏠 Old Town White Coffee              │
+│     📍 1.2km away                     │
+│     ⭐ 4.2 (156 reviews) | $$         │
+│     🍜 Malaysian, Coffee Shop          │
+│     💡 "Popular local chain..."        │
+│     [View Insights] [Save]             │
+├─────────────────────────────────────────┤
+│  🏠 Nandos                             │
+│     📍 2.1km away                     │
+│     ⭐ 4.0 (89 reviews) | $$$         │
+│     🍗 Portuguese, Grilled Chicken      │
+│     💡 "Mid-range pricing..."           │
+│     [View Insights] [Save]             │
+└─────────────────────────────────────────┘
+```
+
+### AI Insights Per Restaurant
+
+When user clicks "View Insights", AI generates:
+
+```json
+{
+  "competitor": "Old Town White Coffee",
+  "insights": {
+    "positioning": "Casual dining, local comfort food",
+    "price_range": "Budget to mid-range ($5-$15)",
+    "strengths": [
+      "Strong brand recognition",
+      "Extended hours (6AM-11PM)",
+      "Variety of local favorites"
+    ],
+    "weaknesses": [
+      "Generic menu, no innovation",
+      "Average review sentiment"
+    ],
+    "recommendations": [
+      "Focus on authentic local experience",
+      "Consider competitive pricing on signature dishes"
+    ]
+  }
+}
+```
+
+### API Integration
+
+#### Geoapify API Call
+
+```javascript
+// Discover restaurants within radius
+const response = await fetch(
+  `https://api.geoapify.com/v2/places?` +
+  `categories=commercial.restaurant,catering.restaurant` +
+  `&filter=circle:${longitude},${latitude},${radiusInMeters}` +
+  `&limit=50` +
+  `&apiKey=${GEOAPIFY_API_KEY}`
+);
+
+const results = response.data.features.map(f => ({
+  name: f.properties.name,
+  address: f.properties.address_line1,
+  location: { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0] },
+  distance: f.properties.distance,
+  categories: f.properties.categories,
+  rating: f.properties.rating,
+  reviews: f.properties.reviews
+}));
+```
+
+#### Overpass API Fallback
+
+```javascript
+// Overpass QL query
+const query = `
+  [out:json][timeout:25];
+  (
+    node["amenity"="restaurant"](around:3000,${lat},${lng});
+    way["amenity"="restaurant"](around:3000,${lat},${lng});
+  );
+  out body;
+  >;
+  out skel qt;
+`;
+
+// Fetch and parse
+const response = await fetch(
+  `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`
+);
+```
+
+### Geoapify vs Overpass Strategy
+
+```javascript
+async function discoverCompetitors(lat, lng, radiusKm) {
+  // Try Geoapify first
+  try {
+    const geoapifyResults = await geoapifySearch(lat, lng, radiusKm);
+    if (geoapifyResults.length > 0) {
+      return geoapifyResults;
+    }
+  } catch (e) {
+    console.log('Geoapify failed, trying Overpass...');
+  }
+  
+  // Fallback to Overpass
+  const overpassResults = await overpassSearch(lat, lng, radiusKm);
+  return overpassResults;
+}
+```
+
+---
+
+## Competitor Analysis Tab (Enhanced)
+
+### User Flow
+
+```
+1. User selects from saved competitors (checkboxes)
+2. User clicks "AI Search Menu"
+3. AI scrapes/grabs menu from web
+4. AI analyzes menu items and prices
+5. AI generates comparison report
+6. User can export or save analysis
+```
+
+### AI Menu Search Feature
+
+```javascript
+// AI Search Menu for selected competitors
+async function searchCompetitorMenus(competitorIds) {
+  const competitors = await getCompetitorsByIds(competitorIds);
+  
+  for (const competitor of competitors) {
+    // AI searches web for menu information
+    const menuData = await ai.grabMenuFromWeb({
+      name: competitor.name,
+      website: competitor.website,
+      location: competitor.address
+    });
+    
+    // AI extracts menu items and prices
+    const extractedItems = menuData.items.map(item => ({
+      name: item.name,
+      price: item.price,
+      category: item.category
+    }));
+    
+    // Save to database
+    await saveCompetitorMenu(competitor.id, extractedItems);
+  }
+}
+```
+
+### Comparison Report
+
+```json
+{
+  "your_restaurant": {
+    "name": "My Restaurant",
+    "signature_dishes": ["Nasi Goreng", "Chicken Rice"]
+  },
+  "comparison": {
+    "price_positioning": {
+      "your_avg_price": 12.50,
+      "competitor_avg_price": 10.80,
+      "difference": "+15.7%"
+    },
+    "menu_overlap": [
+      { "item": "Nasi Goreng", "your_price": 12, "competitor_price": 10, "gap": "+20%" },
+      { "item": "Mee Goreng", "your_price": 11, "competitor_price": 9, "gap": "+22%" }
+    ],
+    "unique_offerings": {
+      "yours": ["Satay", "Rendang"],
+      "competitors": ["Burger", "Pasta"]
+    }
+  },
+  "recommendations": [
+    "Consider reducing Nasi Goreng price by 5-10% to stay competitive",
+    "Highlight unique items (Satay, Rendang) in marketing"
+  ]
+}
+```
+
+---
+
+## API Endpoints
+
+### Competitor Discovery
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/competitors/discover` | Discover nearby competitors |
+| GET | `/api/competitors/nearby` | Get saved nearby competitors |
+
+### Competitor Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/competitors` | List all saved competitors |
+| POST | `/api/competitors` | Save competitor |
+| GET | `/api/competitors/{id}` | Get competitor details |
+| PUT | `/api/competitors/{id}` | Update competitor |
+| DELETE | `/api/competitors/{id}` | Delete competitor |
+
+### Menu Analysis
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/competitors/{id}/menu/search` | AI search for menu |
+| GET | `/api/competitors/{id}/menu` | Get competitor menu |
+| POST | `/api/competitors/compare` | Compare with your restaurant |
+
+### Reports
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/competitors/{id}/report` | Get analysis report |
+| POST | `/api/competitors/report` | Generate bulk report |
+
+---
+
+## AI Integration
+
+### AI Prompt Templates
+
+#### Competitor Insights Prompt
+```
+Analyze this restaurant and provide strategic insights:
+
+Restaurant: {name}
+Address: {address}
+Categories: {cuisine_types}
+Rating: {rating} ({review_count} reviews)
+Distance: {distance}km
+
+Provide:
+1. Market positioning (1 sentence)
+2. Price range estimate
+3. Key strengths (3 points)
+4. Potential weaknesses (3 points)
+5. Strategic recommendations for a competing restaurant
+```
+
+#### Menu Extraction Prompt
+```
+Extract menu items from this restaurant information:
+
+Restaurant: {name}
+Web content: {web_content}
+
+Return a JSON array of menu items with:
+- item_name
+- price (if found)
+- category (if found)
+- description (optional)
+```
+
+#### Comparison Prompt
+```
+Compare these two restaurants and provide insights:
+
+MY RESTAURANT:
+- Name: {my_name}
+- Menu items: {my_menu_items}
+- Average price: ${my_avg_price}
+
+COMPETITOR:
+- Name: {competitor_name}
+- Menu items: {competitor_menu_items}
+- Average price: ${competitor_avg_price}
+
+Provide:
+1. Price positioning analysis
+2. Menu overlap analysis (what both serve)
+3. Unique offerings from each
+4. Recommendations
+```
+
+---
+
+## Frontend UI
+
+### Admin POS Pages
+
+```
+frontend-pos/
+├── src/
+│   └── pages/
+│       └── AICompetitor/
+│           ├── index.jsx              # Main component with tabs
+│           ├── DiscoverTab.jsx        # Competitor discovery
+│           ├── AnalysisTab.jsx         # Competitor analysis
+│           ├── components/
+│           │   ├── SearchForm.jsx     # Location + radius form
+│           │   ├── CompetitorCard.jsx  # Restaurant result card
+│           │   ├── InsightsModal.jsx   # AI insights popup
+│           │   ├── CompetitorList.jsx  # Saved competitors
+│           │   └── ComparisonReport.jsx # Analysis report
+│           └── services/
+│               ├── geoapify.js         # Geoapify API calls
+│               └── aiAnalysis.js       # AI prompts
+```
+
+### UI Components
+
+#### Search Form
+- Location input (autocomplete)
+- Radius dropdown (1km, 2km, 3km, 5km)
+- "Discover" button with loading state
+
+#### Results List
+- Scrollable list of competitor cards
+- Map view toggle (optional)
+- Multi-select checkboxes
+- "Save Selected" bulk action
+
+#### Insights Modal
+- AI-generated insights displayed
+- Loading state during AI processing
+- "Save to Competitors" button
+
+#### Analysis Tab
+- Saved competitors list
+- Checkbox selection
+- "AI Search Menu" button
+- Comparison report display
+
+---
+
+## Implementation Phases
+
+### Phase 1: Discovery (MVP)
+- [ ] Database tables
+- [ ] Geoapify API integration
+- [ ] Basic discover UI
+- [ ] Save competitors to database
+- [ ] Basic AI insights
+
+### Phase 2: Menu Search
+- [ ] AI web search for menus
+- [ ] Menu data extraction
+- [ ] Menu storage
+- [ ] Display competitor menus
+
+### Phase 3: Analysis & Compare
+- [ ] Comparison report
+- [ ] AI-powered analysis
+- [ ] Export features
+- [ ] Multi-competitor comparison
+
+### Phase 4: Enhancements
+- [ ] Overpass fallback
+- [ ] Google Places integration
+- [ ] Map visualization
+- [ ] Historical tracking
+
+---
+
+## Files to Create
+
+### Backend
+
+```
+website_api/
+├── app/
+│   ├── models/
+│   │   └── competitors.py              # Competitor, CompetitorMenu models
+│   └── routes/
+│       └── competitors.py              # Competitor API endpoints
+├── services/
+│   ├── geoapify_service.py            # Geoapify API calls
+│   ├── overpass_service.py            # Overpass API fallback
+│   └── competitor_ai_service.py        # AI analysis
+└── scripts/
+    └── discover_competitors.py         # CLI tool for testing
+```
+
+### Frontend (POS)
+
+```
+frontend-pos/
+├── src/
+│   └── pages/
+│       └── AICompetitor/
+│           ├── index.jsx
+│           ├── DiscoverTab.jsx
+│           ├── AnalysisTab.jsx
+│           ├── CompetitorCard.jsx
+│           ├── InsightsModal.jsx
+│           ├── services/
+│           │   ├── geoapify.js
+│           │   └── ai.js
+│           └── styles/
+│               └── competitor.css
+```
+
+### Tests
+
+```
+tests/
+├── test_competitor_discovery.py
+├── test_competitor_api.py
+└── test_ai_integration.py
+```
+
+---
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Geoapify
+GEOAPIFY_API_KEY=your_geoapify_api_key
+GEOAPIFY_FREE_TIER_LIMIT=100000
+
+# Google Places (optional - for ratings)
+GOOGLE_PLACES_API_KEY=your_google_places_key
+GOOGLE_MAPS_API_KEY=your_google_maps_key
+
+# Overpass (no key needed)
+OVERPASS_ENDPOINT=https://overpass-api.de/api/interpreter
+```
+
+---
+
+## Error Handling
+
+| Scenario | Handling |
+|----------|----------|
+| Geoapify API fails | Fallback to Overpass API |
+| Overpass fails | Show error, allow manual entry |
+| No competitors found | Show "No restaurants found" message |
+| AI analysis fails | Show basic info, retry option |
+| Rate limit hit | Queue requests, show user message |
+
+---
+
+## Security & Privacy
+
+| Concern | Mitigation |
+|---------|-------------|
+| API keys exposed | Store in backend env, not frontend |
+| Competitor data | Only public info stored |
+| User location | Use POS location, encrypt in transit |
+| Rate limiting | Implement request throttling |
+
+---
+
+## Cost Estimation
+
+| API | Usage | Monthly Cost |
+|-----|-------|-------------|
+| Geoapify | ~10,000 requests | $0 (free tier) |
+| Overpass | Unlimited | $0 |
+| Google Places | ~500 requests | ~$16/month |
+| AI Analysis | ~200 analyses | $0 (using existing AI) |
+
+**Total MVP Cost:** $0/month (using free tiers)
+
+---
+
+*Last Updated: September 25, 2026*
