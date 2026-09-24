@@ -525,6 +525,32 @@ Day 44:  Grace period ends
 | Prorated billing | Pay difference for remaining days |
 | Immediate effect | Plan upgraded upon payment |
 
+### Billing Cycle Change Rules
+
+| Change | Allowed? | Behavior |
+|--------|----------|----------|
+| monthly → annual | ✅ Yes | Prorated charge, period_end unchanged |
+| annual → monthly | ❌ No | Blocked mid-cycle, allowed at renewal |
+| annual → annual | ✅ Yes | Plan upgrade, period_end unchanged |
+
+#### Monthly to Annual Upgrade
+
+When upgrading from monthly to annual:
+- Prorated charge calculated for remaining days
+- `billing_cycle` updates to "annual" immediately
+- `period_end` stays unchanged (next renewal will be at original date)
+- At renewal, full annual price applies
+
+**Example Message:**
+> "Successfully upgraded to Pro. Billing cycle changed to annual - takes effect at next renewal (Day 60). Prorated charge: $5.00"
+
+#### Annual to Monthly Downgrade
+
+**Not allowed mid-cycle.** Customer must wait until renewal date.
+
+**Example Message:**
+> "Downgrade from annual to monthly billing is not allowed mid-cycle. You can switch to monthly at your next renewal date (Day 365)."
+
 ### Plan Pricing (Current)
 
 | Plan | Monthly | Annual |
