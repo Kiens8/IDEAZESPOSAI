@@ -546,10 +546,23 @@ When upgrading from monthly to annual:
 
 #### Annual to Monthly Downgrade
 
-**Not allowed mid-cycle.** Customer must wait until renewal date.
+**Scheduled at renewal, not immediate.** Uses `next_billing_cycle` field.
+
+**How it works:**
+1. Customer sets "Switch to monthly at renewal" (no immediate change)
+2. System stores `next_billing_cycle = "monthly"`
+3. At renewal (period_end), cron applies the change
+4. Invoice created with monthly price
 
 **Example Message:**
-> "Downgrade from annual to monthly billing is not allowed mid-cycle. You can switch to monthly at your next renewal date (Day 365)."
+> "Your billing cycle will change from annual to monthly at your next renewal date (Day 365). No charges applied now."
+
+**Billing cycle at renewal applies:**
+- Customer continues with annual benefits until period_end
+- At renewal, `billing_cycle` changes to "monthly"
+- Invoice uses monthly price
+
+**Cancellation:** If subscription is cancelled, `next_billing_cycle` is cleared (no change applies)
 
 ### Plan Pricing (Current)
 
@@ -802,6 +815,51 @@ Day 60:  Period ends
 | 18. Paid Starter → Pro | Day 10 (mid-cycle) | - | Invoice #2 $20 (full price, Starter=$0) | Pro → active | Full |
 | 19. Paid multiple upgrades | Day 10, Day 20 | - | Invoice #2 $6.67, Invoice #3 $10 (prorated) | Enterprise → active | Full |
 | 20. Free Plan (Starter) | N/A (no payment) | - | Invoice #1, #2, #3... all $0, auto-paid | active (continues) | Full |
+| 21. Annual → Monthly scheduled | Day 180 (schedule change) | - | Invoice #1 (annual) paid, no charge now | active, changes at renewal | Full (until Day 365) |
+
+---
+
+### Scenario 21: Annual → Monthly Scheduled Downgrade
+
+**Starting State:**
+- Plan: Basic ($100/year)
+- Period: Day 0 - Day 365
+- Invoice #1: paid ($100)
+
+**Schedule change on Day 180:**
+
+```
+Day 180: Customer sets "Switch to monthly at renewal"
+           next_billing_cycle = "monthly" (scheduled)
+           billing_cycle remains "annual" (no change yet)
+           No charge applied now ✓
+
+Day 365: Period ends - Renewal cron runs
+           effective_billing_cycle = "monthly" (from next_billing_cycle)
+           billing_cycle = "monthly" (applied at renewal)
+           next_billing_cycle = null (cleared)
+           Invoice #2 created: $10 (Basic monthly), status = pending
+
+Day 365: Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           Subscription continues as Basic monthly
+```
+
+**If customer cancels before Day 365:**
+```
+Day 200: Customer cancels subscription
+           next_billing_cycle = null (cleared)
+           Subscription continues until Day 365
+           Access blocked at Day 365 (not renewed)
+```
+
+**Key Points:**
+- `next_billing_cycle` stores the scheduled change
+- Change applies at renewal (period_end), not immediately
+- At renewal, cron applies the billing cycle change and creates invoice
+- If subscription cancelled, `next_billing_cycle` is cleared (no change applies)
+
+**Result:** Annual subscription continues until period_end, then switches to monthly billing at renewal
 
 ---
 
