@@ -212,9 +212,10 @@ When user clicks "View Insights", AI generates:
 
 ```javascript
 // Discover restaurants within radius
+// Note: Use "catering.restaurant" category (commercial.restaurant is not supported)
 const response = await fetch(
   `https://api.geoapify.com/v2/places?` +
-  `categories=commercial.restaurant,catering.restaurant` +
+  `categories=catering.restaurant` +
   `&filter=circle:${longitude},${latitude},${radiusInMeters}` +
   `&limit=50` +
   `&apiKey=${GEOAPIFY_API_KEY}`
@@ -575,8 +576,12 @@ tests/
 
 ```bash
 # Geoapify
-GEOAPIFY_API_KEY=your_geoapify_api_key
+GEOAPIFY_API_KEY=3c079f5c93eb4965b38050a266a703e6
 GEOAPIFY_FREE_TIER_LIMIT=100000
+
+# Sample API Request
+# https://api.geoapify.com/v1/geocode/search?text=38%20Upper%20Montagu%20Street%2C%20Westminster%20W1H%201LJ%2C%20United%20Kingdom&apiKey=3c079f5c93eb4965b38050a266a703e6
+```
 
 # Google Places (optional - for ratings)
 GOOGLE_PLACES_API_KEY=your_google_places_key
