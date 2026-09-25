@@ -677,144 +677,61 @@ OVERPASS_ENDPOINT=https://overpass-api.de/api/interpreter
 
 ## Program Changes
 
-All program changes for the AI Competitor module implementation.
+All program changes for the AI Competitor Discover feature implementation.
 
-### POS Frontend (React)
-
-| File Path | Description |
-|-----------|-------------|
-| `frontend/src/pages/AICompetitor/index.jsx` | Main component with tabs |
-| `frontend/src/pages/AICompetitor/DiscoverTab.jsx` | Competitor discovery tab |
-| `frontend/src/pages/AICompetitor/AnalysisTab.jsx` | Competitor analysis tab |
-| `frontend/src/pages/AICompetitor/components/SearchForm.jsx` | Location + radius search form |
-| `frontend/src/pages/AICompetitor/components/CompetitorCard.jsx` | Restaurant result card |
-| `frontend/src/pages/AICompetitor/components/InsightsModal.jsx` | AI insights popup modal |
-| `frontend/src/pages/AICompetitor/components/CompetitorList.jsx` | Saved competitors list (table) |
-| `frontend/src/pages/AICompetitor/components/ComparisonReport.jsx` | Comparison analysis report |
-| `frontend/src/pages/AICompetitor/services/geoapify.js` | Geoapify API service |
-| `frontend/src/pages/AICompetitor/services/aiAnalysis.js` | AI analysis prompts service |
-| `frontend/.env.example` | Environment variables template |
-
-### POS Backend (Python/FastAPI)
+### POS Frontend (React) - MODIFIED
 
 | File Path | Description |
 |-----------|-------------|
-| `frontend/src/pages/AICompetitor/index.jsx` | Main component with tabs |
-| `frontend/src/pages/AICompetitor/DiscoverTab.jsx` | Competitor discovery tab |
-| `frontend/src/pages/AICompetitor/AnalysisTab.jsx` | Competitor analysis tab |
-| `frontend/src/pages/AICompetitor/components/SearchForm.jsx` | Location + radius search form |
-| `frontend/src/pages/AICompetitor/components/CompetitorCard.jsx` | Restaurant result card |
-| `frontend/src/pages/AICompetitor/components/InsightsModal.jsx` | AI insights popup modal |
-| `frontend/src/pages/AICompetitor/components/CompetitorList.jsx` | Saved competitors list (table) |
-| `frontend/src/pages/AICompetitor/components/ComparisonReport.jsx` | Comparison analysis report |
-| `frontend/src/pages/AICompetitor/services/geoapify.js` | Geoapify API service |
-| `frontend/src/pages/AICompetitor/services/aiAnalysis.js` | AI analysis prompts service |
-| `frontend/.env.example` | Environment variables template |
+| `frontend/src/pages/AI/tabs/CompetitorTab.jsx` | Added Discover view with DiscoverView component |
 
-### Backend (Python/FastAPI)
+### POS Backend (Python/FastAPI) - MODIFIED
 
 | File Path | Description |
 |-----------|-------------|
-| `backend/app/models/competitors.py` | Competitor and CompetitorMenu SQLAlchemy models |
-| `backend/app/routes/competitors.py` | REST API endpoints |
-| `backend/services/geoapify_service.py` | Geoapify API integration service |
-| `backend/services/competitor_ai_service.py` | AI analysis service |
+| `backend/app/routes/competitors.py` | Added discover endpoints (geocode, discover, analyze-discovered, save-discovered) |
 
-> **Note:** `backend/` = POS Backend API (not website_api)
+### Implementation Details
 
-### Environment Variables Required
+The AI Competitor module is built into the **existing** CompetitorTab.jsx in the POS Frontend AI section. No new folders were created.
 
-```bash
-# Frontend (.env)
-REACT_APP_GEOAPIFY_API_KEY=your_geoapify_api_key
+#### Frontend Changes
+- Added `viewMode` toggle: `discover`, `list`, `compare`
+- Added `DiscoverView` component with:
+  - Location search form (Geoapify geocoding)
+  - Radius selector (1-10km)
+  - Competitor cards with rating, price level, distance badges
+  - **Insights** button → AI analysis via MiniMax
+  - **Save** button → saves to database
 
-# Backend (.env)
-GEOAPIFY_API_KEY=your_geoapify_api_key
-GEOAPIFY_FREE_TIER_LIMIT=3000
-GEOAPIFY_RATE_LIMIT=5
-GEOAPIFY_MAX_RADIUS_KM=10
-AI_API_URL=https://your-ai-api.com/analyze
-AI_API_KEY=your-ai-api-key
-```
+#### Backend Changes
+Added new endpoints to existing `competitors.py`:
+- `GET /api/competitors/geocode?text=...` - Geocode address to coordinates
+- `POST /api/competitors/discover` - Discover nearby restaurants via Geoapify
+- `POST /api/competitors/analyze-discovered` - AI insights for discovered competitors
+- `POST /api/competitors/discovered` - Save discovered competitor
 
-### Database Tables
-
-| Table | Description |
-|-------|-------------|
-| `competitors` | Competitor information and saved data |
-| `competitor_menus` | Menu items for each competitor |
-
-### API Endpoints
+### API Endpoints (Updated)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/competitors/discover` | Discover competitors by location |
-| GET | `/api/competitors` | Get saved competitors |
-| POST | `/api/competitors` | Save a competitor |
-| DELETE | `/api/competitors/{id}` | Delete a competitor |
-| POST | `/api/competitors/{id}/analyze` | Generate AI insights |
-| POST | `/api/competitors/{id}/menu/search` | Search competitor menu via AI |
-| GET | `/api/competitors/{id}/menu` | Get competitor menu items |
-| POST | `/api/competitors/{id}/menu` | Manually add menu item |
-| POST | `/api/competitors/compare` | Compare with competitors |
+| GET | `/api/competitors/geocode?text=...` | Geocode address to lat/lng |
+| POST | `/api/competitors/discover` | Discover nearby restaurants |
+| POST | `/api/competitors/analyze-discovered` | AI insights for discovered competitor |
+| POST | `/api/competitors/discovered` | Save discovered competitor |
+| GET | `/api/competitors/{customer_id}` | Get saved competitors |
+| POST | `/api/competitors` | Save competitor (manual) |
+| DELETE | `/api/competitors/{id}` | Delete competitor |
+| POST | `/api/competitors/{id}/analyze` | AI insights (URL-based) |
+| GET | `/api/competitors/ai-insights/{outlet_id}` | Get AI pricing insights |
+| POST | `/api/competitors/items/bulk` | Bulk add menu items |
 
-### Integration Steps
+### Environment Variables
 
-1. **POS Frontend** - Add AI Competitor page to router:
-   ```jsx
-   import AICompetitor from './pages/AICompetitor';
-   <Route path="/ai-competitor" element={<AICompetitor />} />
-   ```
+No new environment variables needed - uses existing:
+- `GEOAPIFY_API_KEY` (already configured)
+- `MINIMAX_API_KEY` (already configured)
 
-2. **POS Frontend Navigation** - Add menu item to sidebar:
-   ```jsx
-   <MenuItem icon={<AnalysisIcon />} path="/ai-competitor">
-     AI Competitor
-   </MenuItem>
-   ```
-
-3. **POS Frontend Environment** - Copy `.env.example` to `.env`:
-   ```bash
-   REACT_APP_GEOAPIFY_API_KEY=your_geoapify_api_key
-   REACT_APP_API_URL=http://localhost:8000  # POS Backend URL
-   ```
-
-4. **POS Backend** - Create models and routes:
-   - `backend/app/models/competitors.py`
-   - `backend/app/routes/competitors.py`
-   - `backend/services/geoapify_service.py`
-   - `backend/services/competitor_ai_service.py`
-
-5. **POS Backend Environment** - Set in backend `.env`:
-   ```bash
-   GEOAPIFY_API_KEY=your_geoapify_api_key
-   # MiniMax AI
-   MINIMAX_API_KEY=your_minimax_api_key
-   ```
-
-6. **Database Migration** - Run to create tables:
-   ```python
-   from app.core.database import engine, Base
-   from app.models.competitors import Competitor, CompetitorMenu
-   Base.metadata.create_all(bind=engine)
-   ```
-
-7. **Test the API**:
-   ```bash
-   # Discover competitors
-   curl -X POST http://localhost:8000/api/competitors/discover \
-     -H "Content-Type: application/json" \
-     -d '{"location":{"lat":3.139,"lng":101.6869},"radius_km":5}'
-   
-   # Test AI analysis
-   curl -X POST http://localhost:8000/api/competitors/1/analyze
-   ```
-
-8. **Start Servers**:
-   ```bash
-   # POS Backend
-   pm2 restart backend
-   
-   # POS Frontend
-   npm start
-   ```
+### Geoapify API Key
+- **Key:** `3c079f5c93eb4965b38050a266a703e6`
+- **Free tier:** 3,000 credits/day, 5 req/sec, 10km max
