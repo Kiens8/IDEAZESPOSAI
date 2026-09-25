@@ -64,22 +64,18 @@ Google Places (Enhancement)
 
 ## Module Structure
 
-### Two Tabs Approach
+### Implementation Approach
+
+The Discover feature is integrated into the **existing CompetitorTab** as a third view mode (Discover/List/Compare), NOT as a separate folder.
 
 ```
-AI Competitor
-├── Competitor Discover (NEW)
-│   ├── Search by location + radius
-│   ├── API returns nearby restaurants
-│   ├── AI generates insights per restaurant
-│   └── Save to competitor database
-│
-└── Competitor Analysis (EXISTING - Enhanced)
-    ├── Select from saved competitors
-    ├── "AI Search Menu" - grab menu from web
-    ├── "AI Compare" - analyze vs your restaurant
-    └── Generate report
+AI Competitor Tab (existing)
+├── Discover (NEW) ← Location-based competitor search
+├── List (existing)
+└── Compare (existing)
 ```
+
+**No new folder created.** All code added to existing files.
 
 ---
 
@@ -445,26 +441,18 @@ Provide:
 
 ## Frontend UI
 
-### Admin POS Pages
+### Implementation (No New Folder)
+
+The Discover feature is integrated directly into the existing `CompetitorTab.jsx`:
 
 ```
-frontend-pos/
-├── src/
-│   └── pages/
-│       └── AICompetitor/
-│           ├── index.jsx              # Main component with tabs
-│           ├── DiscoverTab.jsx        # Competitor discovery
-│           ├── AnalysisTab.jsx         # Competitor analysis
-│           ├── components/
-│           │   ├── SearchForm.jsx     # Location + radius form
-│           │   ├── CompetitorCard.jsx  # Restaurant result card
-│           │   ├── InsightsModal.jsx   # AI insights popup
-│           │   ├── CompetitorList.jsx  # Saved competitors
-│           │   └── ComparisonReport.jsx # Analysis report
-│           └── services/
-│               ├── geoapify.js         # Geoapify API calls
-│               └── aiAnalysis.js       # AI prompts
+frontend/src/pages/AI/tabs/
+└── CompetitorTab.jsx     # Added DiscoverView component inline
 ```
+
+No new folder or separate files created. The Discover feature is implemented as:
+- A third view mode toggle (Discover / List / Compare)
+- An inline `DiscoverView` React component within the same file
 
 ### UI Components
 
@@ -521,51 +509,27 @@ frontend-pos/
 
 ---
 
-## Files to Create
+## Files Modified
 
-### Backend
-
-```
-backend/
-├── app/
-│   ├── models/
-│   │   └── competitors.py              # Competitor, CompetitorMenu models
-│   └── routes/
-│       └── competitors.py              # Competitor API endpoints
-├── services/
-│   ├── geoapify_service.py            # Geoapify API calls
-│   ├── overpass_service.py            # Overpass API fallback
-│   └── competitor_ai_service.py        # AI analysis
-└── scripts/
-    └── discover_competitors.py         # CLI tool for testing
-```
-
-### Frontend (POS)
+### Backend (Added to existing file)
 
 ```
-frontend-pos/
-├── src/
-│   └── pages/
-│       └── AICompetitor/
-│           ├── index.jsx
-│           ├── DiscoverTab.jsx
-│           ├── AnalysisTab.jsx
-│           ├── CompetitorCard.jsx
-│           ├── InsightsModal.jsx
-│           ├── services/
-│           │   ├── geoapify.js
-│           │   └── ai.js
-│           └── styles/
-│               └── competitor.css
+backend/app/routes/competitors.py
+    Added new endpoints:
+    - GET  /api/competitors/geo-code
+    - POST /api/competitors/discover-places
+    - POST /api/competitors/analyze-discovered
+    - POST /api/competitors/save-discovered
 ```
 
-### Tests
+### Frontend (Modified existing file)
 
 ```
-tests/
-├── test_competitor_discovery.py
-├── test_competitor_api.py
-└── test_ai_integration.py
+frontend/src/pages/AI/tabs/CompetitorTab.jsx
+    Added:
+    - viewMode toggle: 'discover', 'list', 'compare'
+    - DiscoverView React component
+    - Discover-related state variables
 ```
 
 ---
@@ -689,36 +653,36 @@ All program changes for the AI Competitor Discover feature implementation.
 
 | File Path | Description |
 |-----------|-------------|
-| `backend/app/routes/competitors.py` | Added discover endpoints (geocode, discover, analyze-discovered, save-discovered) |
+| `backend/app/routes/competitors.py` | Added discover endpoints (geo-code, discover-places, analyze-discovered, save-discovered) |
 
 ### Implementation Details
 
-The AI Competitor module is built into the **existing** CompetitorTab.jsx in the POS Frontend AI section. No new folders were created.
+**No new folders created.** All changes are modifications to existing files.
 
-#### Frontend Changes
+#### Frontend Changes (CompetitorTab.jsx)
 - Added `viewMode` toggle: `discover`, `list`, `compare`
 - Added `DiscoverView` component with:
   - Location search form (Geoapify geocoding)
   - Radius selector (1-10km)
-  - Competitor cards with rating, price level, distance badges
+  - Competitor cards with: name, address, distance, rating, price level, cuisine
   - **Insights** button → AI analysis via MiniMax
   - **Save** button → saves to database
 
-#### Backend Changes
-Added new endpoints to existing `competitors.py`:
-- `GET /api/competitors/geocode?text=...` - Geocode address to coordinates
-- `POST /api/competitors/discover` - Discover nearby restaurants via Geoapify
+#### Backend Changes (competitors.py)
+Added new endpoints to existing competitors router:
+- `GET /api/competitors/geo-code?text=...` - Geocode address to coordinates
+- `POST /api/competitors/discover-places` - Discover nearby restaurants via Geoapify
 - `POST /api/competitors/analyze-discovered` - AI insights for discovered competitors
-- `POST /api/competitors/discovered` - Save discovered competitor
+- `POST /api/competitors/save-discovered` - Save discovered competitor
 
-### API Endpoints (Updated)
+### API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/competitors/geocode?text=...` | Geocode address to lat/lng |
-| POST | `/api/competitors/discover` | Discover nearby restaurants |
+| GET | `/api/competitors/geo-code?text=...` | Geocode address to lat/lng |
+| POST | `/api/competitors/discover-places` | Discover nearby restaurants |
 | POST | `/api/competitors/analyze-discovered` | AI insights for discovered competitor |
-| POST | `/api/competitors/discovered` | Save discovered competitor |
+| POST | `/api/competitors/save-discovered` | Save discovered competitor |
 | GET | `/api/competitors/{customer_id}` | Get saved competitors |
 | POST | `/api/competitors` | Save competitor (manual) |
 | DELETE | `/api/competitors/{id}` | Delete competitor |
