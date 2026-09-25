@@ -815,6 +815,8 @@ Day 60:  Period ends
 | 18. Paid Starter → Pro | Day 10 (mid-cycle) | - | Invoice #2 $20 (full price, Starter=$0) | Pro → active | Full |
 | 19. Paid multiple upgrades | Day 10, Day 20 | - | Invoice #2 $6.67, Invoice #3 $10 (prorated) | Enterprise → active | Full |
 | 20. Free Plan (Starter) | N/A (no payment) | - | Invoice #1, #2, #3... all $0, auto-paid | active (continues) | Full |
+| 21. Annual → Monthly (Scheduled) | Day 180 (schedule change) | - | Invoice #1 (annual) paid, no charge now | active, changes at renewal | Full (until Day 365) |
+| 22. Monthly → Annual (Scheduled) | Day 15 (schedule change) | - | No charge at upgrade, Invoice #2 at renewal | active, changes at renewal | Monthly until Day 30, then Annual |
 | 21. Annual → Monthly scheduled | Day 180 (schedule change) | - | Invoice #1 (annual) paid, no charge now | active, changes at renewal | Full (until Day 365) |
 
 ---
@@ -860,6 +862,42 @@ Day 200: Customer cancels subscription
 - If subscription cancelled, `next_billing_cycle` is cleared (no change applies)
 
 **Result:** Annual subscription continues until period_end, then switches to monthly billing at renewal
+
+---
+
+### Scenario 22: Monthly → Annual Scheduled Upgrade
+
+**Starting State:**
+- Plan: Pro monthly ($20/month)
+- Period: Day 0 - Day 30
+- Invoice #1: pending ($20)
+
+**Schedule upgrade on Day 15:**
+
+```
+Day 15: Customer upgrades to annual billing
+           next_billing_cycle = "annual" (scheduled)
+           plan_id changes to Enterprise
+           billing_cycle remains "monthly" (no change yet)
+           No charge applied now ✓
+
+Day 30: Period ends - Renewal cron runs
+           billing_cycle = "annual" (from next_billing_cycle)
+           next_billing_cycle = null (cleared)
+           Invoice #2 created: $500 (Enterprise annual), status = pending
+
+Day 30: Customer pays Invoice #2
+           Invoice #2 status → paid ✓
+           Subscription continues as Enterprise annual
+```
+
+**Key Points:**
+- `next_billing_cycle` stores the scheduled change
+- Change applies at renewal (period_end), not immediately
+- No immediate charge - customer pays full annual price at renewal
+- Simple and fair - no complex proration calculations
+
+**Result:** Monthly subscription continues until period_end, then switches to annual billing at renewal
 
 ---
 
