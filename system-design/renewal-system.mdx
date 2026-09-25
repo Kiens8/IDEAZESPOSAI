@@ -564,6 +564,52 @@ When upgrading from monthly to annual:
 
 **Cancellation:** If subscription is cancelled, `next_billing_cycle` is cleared (no change applies)
 
+### Invoice Creation by Payment Method
+
+To prevent double invoicing, invoice creation at renewal follows different logic based on payment method:
+
+| Payment Method | Invoice Created By | How |
+|----------------|-------------------|-----|
+| **Stripe** | Stripe webhook | Stripe's `invoice.created` webhook creates invoice in our system |
+| **Pay Later** | Cron | Cron creates invoice at renewal |
+| **Manual** | Cron | Cron creates invoice at renewal |
+
+#### Stripe Subscriptions - No Cron Invoice
+
+For Stripe subscriptions, Stripe automatically handles recurring billing:
+1. Cron runs at renewal → Updates subscription period only (NO invoice created)
+2. Stripe detects subscription renewal → Creates invoice and sends to customer
+3. Stripe webhook `invoice.created` fires → Creates invoice record in our system (status: pending)
+4. Customer pays via Stripe → Webhook `invoice.paid` updates status to paid
+
+**Cron log for Stripe subscription:**
+```
+⚠️ Stripe subscription - Stripe handles billing, no local invoice created
+  Period: 2026-09-25 to 2026-10-25
+```
+
+#### Pay Later / Manual - Cron Creates Invoice
+
+For Pay Later and manual payments:
+1. Cron runs at renewal → Creates invoice in our system
+2. Invoice sent to customer via email / portal
+3. Customer pays → Status updated to paid
+
+**Cron log for Pay Later subscription:**
+```
+✓ Generated invoice #INV-20260925-ABCD1234 for subscription 1
+  Amount: USD 10.00, Due: 2026-10-09
+  Period: 2026-09-25 to 2026-10-25
+```
+
+#### Why This Prevents Double Invoicing
+
+**Before fix (BUG):**
+- Cron created invoice AND Stripe created invoice → Customer pays twice ❌
+
+**After fix:**
+- Cron skips invoice for Stripe → Stripe handles it alone → Customer pays once ✅
+
 ### Plan Pricing (Current)
 
 | Plan | Monthly | Annual |
