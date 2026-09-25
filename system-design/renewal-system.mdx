@@ -868,36 +868,41 @@ Day 200: Customer cancels subscription
 ### Scenario 22: Monthly → Annual Scheduled Upgrade
 
 **Starting State:**
-- Plan: Pro monthly ($20/month)
+- Plan: Basic monthly ($10/month)
 - Period: Day 0 - Day 30
-- Invoice #1: pending ($20)
+- Invoice #1: pending ($10)
 
 **Schedule upgrade on Day 15:**
 
 ```
 Day 15: Customer upgrades to annual billing
            next_billing_cycle = "annual" (scheduled)
-           plan_id changes to Enterprise
-           billing_cycle remains "monthly" (no change yet)
+           next_plan_id = Pro (scheduled)
+           Plan stays Basic (no change yet)
+           Billing cycle stays monthly (no change yet)
            No charge applied now ✓
 
 Day 30: Period ends - Renewal cron runs
            billing_cycle = "annual" (from next_billing_cycle)
+           plan_id = Pro (from next_plan_id)
            next_billing_cycle = null (cleared)
-           Invoice #2 created: $500 (Enterprise annual), status = pending
+           next_plan_id = null (cleared)
+           price = $200 (Pro annual)
+           Invoice #2 created: $200 (Pro annual), status = pending
 
 Day 30: Customer pays Invoice #2
            Invoice #2 status → paid ✓
-           Subscription continues as Enterprise annual
+           Subscription continues as Pro annual
 ```
 
 **Key Points:**
-- `next_billing_cycle` stores the scheduled change
-- Change applies at renewal (period_end), not immediately
+- `next_billing_cycle` and `next_plan_id` store the scheduled changes
+- ALL changes apply at renewal (period_end), not immediately
 - No immediate charge - customer pays full annual price at renewal
+- Plan stays the same until renewal
 - Simple and fair - no complex proration calculations
 
-**Result:** Monthly subscription continues until period_end, then switches to annual billing at renewal
+**Result:** Monthly subscription continues until period_end, then switches to new plan with annual billing at renewal
 
 ---
 
