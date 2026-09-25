@@ -17,7 +17,7 @@ The AI Competitor module helps restaurants discover nearby competitors, build a 
 
 | Goal | Description |
 |------|-------------|
-| **Competitor Discovery** | Find nearby restaurants within radius (1-5km) |
+| **Competitor Discovery** | Find nearby restaurants within radius (1-10km) |
 | **Competitor Database** | Save and manage competitor information |
 | **Menu Intelligence** | AI-powered menu and price research |
 | **Strategic Insights** | AI-generated recommendations based on market data |
@@ -139,7 +139,7 @@ CREATE TABLE competitor_menus (
 
 ```
 1. User enters location (or uses POS location)
-2. User selects radius: 1km, 2km, 3km, 5km
+2. User selects radius: 1km, 2km, 3km, 5km, 10km
 3. User clicks "Discover Competitors"
 4. System calls Geoapify API
 5. Results displayed as list + map
@@ -154,7 +154,7 @@ CREATE TABLE competitor_menus (
 ```
 ┌─────────────────────────────────────────┐
 │  📍 Location: [Kuala Lumpur        🔍]  │
-│  📏 Radius:    [3km ▼]                 │
+│  📏 Radius:    [5km ▼]                 │
 │                                         │
 │  [Discover Competitors]                 │
 └─────────────────────────────────────────┘
@@ -470,7 +470,7 @@ frontend-pos/
 
 #### Search Form
 - Location input (autocomplete)
-- Radius dropdown (1km, 2km, 3km, 5km)
+- Radius dropdown (1km, 2km, 3km, 5km, 10km)
 - "Discover" button with loading state
 
 #### Results List
