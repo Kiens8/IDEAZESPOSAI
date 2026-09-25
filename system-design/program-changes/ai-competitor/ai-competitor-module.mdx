@@ -578,9 +578,33 @@ tests/
 # Geoapify
 GEOAPIFY_API_KEY=3c079f5c93eb4965b38050a266a703e6
 GEOAPIFY_FREE_TIER_LIMIT=100000
+```
 
-# Sample API Request
-# https://api.geoapify.com/v1/geocode/search?text=38%20Upper%20Montagu%20Street%2C%20Westminster%20W1H%201LJ%2C%20United%20Kingdom&apiKey=3c079f5c93eb4965b38050a266a703e6
+### Sample API Requests
+
+#### Geocode (Text to Coordinates)
+```
+https://api.geoapify.com/v1/geocode/search?text=38%20Upper%20Montagu%20Street%2C%20Westminster%20W1H%201LJ%2C%20United%20Kingdom&apiKey=3c079f5c93eb4965b38050a266a703e6
+```
+
+#### Places (Rectangle/Bbox Filter)
+```
+https://api.geoapify.com/v2/places?categories=commercial.supermarket&filter=rect:10.716463143326969,48.755151258420966,10.835314015356737,48.680903341613316&limit=20&apiKey=3c079f5c93eb4965b38050a266a703e6
+```
+
+### Available Categories
+| Category | Description |
+|----------|-------------|
+| `catering.restaurant` | Restaurants |
+| `commercial.supermarket` | Supermarkets |
+| `commercial Mall` | Shopping malls |
+| `catering.fast_food` | Fast food |
+| `catering.cafe` | Cafes |
+| `catering.bar` | Bars/Pubs |
+
+### Filter Types
+- **Circle**: `filter=circle:longitude,latitude,radiusInMeters`
+- **Rectangle/Bbox**: `filter=rect:minLon,minLat,maxLon,maxLat`
 ```
 
 # Google Places (optional - for ratings)
