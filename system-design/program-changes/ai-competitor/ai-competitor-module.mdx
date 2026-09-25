@@ -526,7 +526,7 @@ frontend-pos/
 ### Backend
 
 ```
-website_api/
+backend/
 ├── app/
 │   ├── models/
 │   │   └── competitors.py              # Competitor, CompetitorMenu models
@@ -679,7 +679,23 @@ OVERPASS_ENDPOINT=https://overpass-api.de/api/interpreter
 
 All program changes for the AI Competitor module implementation.
 
-### Frontend (React)
+### POS Frontend (React)
+
+| File Path | Description |
+|-----------|-------------|
+| `frontend/src/pages/AICompetitor/index.jsx` | Main component with tabs |
+| `frontend/src/pages/AICompetitor/DiscoverTab.jsx` | Competitor discovery tab |
+| `frontend/src/pages/AICompetitor/AnalysisTab.jsx` | Competitor analysis tab |
+| `frontend/src/pages/AICompetitor/components/SearchForm.jsx` | Location + radius search form |
+| `frontend/src/pages/AICompetitor/components/CompetitorCard.jsx` | Restaurant result card |
+| `frontend/src/pages/AICompetitor/components/InsightsModal.jsx` | AI insights popup modal |
+| `frontend/src/pages/AICompetitor/components/CompetitorList.jsx` | Saved competitors list (table) |
+| `frontend/src/pages/AICompetitor/components/ComparisonReport.jsx` | Comparison analysis report |
+| `frontend/src/pages/AICompetitor/services/geoapify.js` | Geoapify API service |
+| `frontend/src/pages/AICompetitor/services/aiAnalysis.js` | AI analysis prompts service |
+| `frontend/.env.example` | Environment variables template |
+
+### POS Backend (Python/FastAPI)
 
 | File Path | Description |
 |-----------|-------------|
@@ -699,10 +715,12 @@ All program changes for the AI Competitor module implementation.
 
 | File Path | Description |
 |-----------|-------------|
-| `website_api/app/models/competitors.py` | Competitor and CompetitorMenu SQLAlchemy models |
-| `website_api/app/routes/competitors.py` | REST API endpoints |
-| `website_api/services/geoapify_service.py` | Geoapify API integration service |
-| `website_api/services/competitor_ai_service.py` | AI analysis service |
+| `backend/app/models/competitors.py` | Competitor and CompetitorMenu SQLAlchemy models |
+| `backend/app/routes/competitors.py` | REST API endpoints |
+| `backend/services/geoapify_service.py` | Geoapify API integration service |
+| `backend/services/competitor_ai_service.py` | AI analysis service |
+
+> **Note:** `backend/` = POS Backend API (not website_api)
 
 ### Environment Variables Required
 
@@ -742,53 +760,61 @@ AI_API_KEY=your-ai-api-key
 
 ### Integration Steps
 
-1. **Frontend Routing** - Add AI Competitor page to router:
+1. **POS Frontend** - Add AI Competitor page to router:
    ```jsx
    import AICompetitor from './pages/AICompetitor';
    <Route path="/ai-competitor" element={<AICompetitor />} />
    ```
 
-2. **Frontend Navigation** - Add menu item to sidebar:
+2. **POS Frontend Navigation** - Add menu item to sidebar:
    ```jsx
    <MenuItem icon={<AnalysisIcon />} path="/ai-competitor">
      AI Competitor
    </MenuItem>
    ```
 
-3. **Frontend Environment** - Copy `.env.example` to `.env`:
+3. **POS Frontend Environment** - Copy `.env.example` to `.env`:
    ```bash
    REACT_APP_GEOAPIFY_API_KEY=your_geoapify_api_key
+   REACT_APP_API_URL=http://localhost:8000  # POS Backend URL
    ```
 
-4. **Backend Integration** (Already Done ✅):
-   - `app/main.py` - Added competitors_router
-   - `app/core/database.py` - Added competitor models
-   - `services/__init__.py` - Created
-   - Database tables created: `competitors`, `competitor_menus`
+4. **POS Backend** - Create models and routes:
+   - `backend/app/models/competitors.py`
+   - `backend/app/routes/competitors.py`
+   - `backend/services/geoapify_service.py`
+   - `backend/services/competitor_ai_service.py`
 
-5. **Backend Environment** - Set in backend `.env`:
+5. **POS Backend Environment** - Set in backend `.env`:
    ```bash
    GEOAPIFY_API_KEY=your_geoapify_api_key
-   # MiniMax AI (already configured)
+   # MiniMax AI
    MINIMAX_API_KEY=your_minimax_api_key
    ```
 
-6. **Test the API**:
+6. **Database Migration** - Run to create tables:
+   ```python
+   from app.core.database import engine, Base
+   from app.models.competitors import Competitor, CompetitorMenu
+   Base.metadata.create_all(bind=engine)
+   ```
+
+7. **Test the API**:
    ```bash
    # Discover competitors
-   curl -X POST http://localhost:9000/api/competitors/discover \
+   curl -X POST http://localhost:8000/api/competitors/discover \
      -H "Content-Type: application/json" \
      -d '{"location":{"lat":3.139,"lng":101.6869},"radius_km":5}'
    
    # Test AI analysis
-   curl -X POST http://localhost:9000/api/competitors/1/analyze
+   curl -X POST http://localhost:8000/api/competitors/1/analyze
    ```
 
-7. **Start Servers**:
+8. **Start Servers**:
    ```bash
-   # Backend
-   pm2 restart website-api
+   # POS Backend
+   pm2 restart backend
    
-   # Frontend
+   # POS Frontend
    npm start
    ```
