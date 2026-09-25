@@ -641,54 +641,78 @@ OVERPASS_ENDPOINT=https://overpass-api.de/api/interpreter
 
 ## Program Changes
 
-All program changes for the AI Competitor Discover feature implementation.
+All program changes for the AI Competitor module (updated September 26, 2026).
 
 ### POS Frontend (React) - MODIFIED
 
 | File Path | Description |
 |-----------|-------------|
-| `frontend/src/pages/AI/tabs/CompetitorTab.jsx` | Added Discover view with DiscoverView component |
+| `frontend/src/pages/AI/tabs/CompetitorTab.jsx` | Added Option 3 in Add Competitor modal, updated CompetitorAnalysis tab |
+| `frontend/src/pages/AI/tabs/CompetitorDiscoverTab.jsx` | NEW - Separate tab for competitor discovery |
 
 ### POS Backend (Python/FastAPI) - MODIFIED
 
 | File Path | Description |
 |-----------|-------------|
-| `backend/app/routes/competitors.py` | Added discover endpoints (geo-code, discover-places, analyze-discovered, save-discovered) |
+| `backend/app/routes/competitors.py` | Added discover endpoints + `source` field support |
+| `backend/app/models/competitors.py` | Added `source` field to Competitor model |
 
-### Implementation Details
+### Database Changes
 
-**No new folders created.** All changes are modifications to existing files.
+| Table | Change |
+|-------|--------|
+| `competitors` | Added `source` column (VARCHAR(50), default='manual') |
 
-#### Frontend Changes (CompetitorTab.jsx)
-- Added `viewMode` toggle: `discover`, `list`, `compare`
-- Added `DiscoverView` component with:
-  - Location search form (Geoapify geocoding)
-  - Radius selector (1-10km)
-  - Competitor cards with: name, address, distance, rating, price level, cuisine
-  - **Insights** button → AI analysis via MiniMax
-  - **Save** button → saves to database
+### Source Field Values
 
-#### Backend Changes (competitors.py)
-Added new endpoints to existing competitors router:
-- `GET /api/competitors/geo-code?text=...` - Geocode address to coordinates
-- `POST /api/competitors/discover-places` - Discover nearby restaurants via Geoapify
-- `POST /api/competitors/analyze-discovered` - AI insights for discovered competitors
-- `POST /api/competitors/save-discovered` - Save discovered competitor
+| Value | Description |
+|-------|-------------|
+| `manual` | Manually added by user |
+| `url_analysis` | Added via URL analysis |
+| `discovered` | Saved from Competitor Discover |
+
+---
+
+## Add Competitor Modal - Option 3
+
+### User Flow
+
+```
+1. User opens "Competitor Analysis" tab
+2. Clicks "Add Competitor"
+3. Modal shows 3 options:
+   - Option 1: Import from URL (existing)
+   - Option 2: Add Items Manually (existing)
+   - Option 3: Select from Saved (NEW - requires Competitor Discover access)
+4. If Option 3 selected:
+   - Shows list of saved competitors (source='discovered')
+   - User selects one
+   - System auto-fills name, location, website
+   - If website exists, auto-analyzes for menu items
+5. User reviews and saves
+```
+
+### Feature Gating
+
+| Option | Feature Required | Notes |
+|--------|-----------------|-------|
+| Option 1: URL Import | None | Available to all |
+| Option 2: Manual Add | None | Available to all |
+| Option 3: Select from Saved | **Competitor Discover** (ID 32) | Only if user has access to Competitor Discover tab |
 
 ### API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/competitors/{customer_id}?source=discovered` | Get competitors by source |
 | GET | `/api/competitors/geo-code?text=...` | Geocode address to lat/lng |
 | POST | `/api/competitors/discover-places` | Discover nearby restaurants |
 | POST | `/api/competitors/analyze-discovered` | AI insights for discovered competitor |
 | POST | `/api/competitors/save-discovered` | Save discovered competitor |
-| GET | `/api/competitors/{customer_id}` | Get saved competitors |
+| GET | `/api/competitors/{customer_id}` | Get all saved competitors |
 | POST | `/api/competitors` | Save competitor (manual) |
 | DELETE | `/api/competitors/{id}` | Delete competitor |
 | POST | `/api/competitors/{id}/analyze` | AI insights (URL-based) |
-| GET | `/api/competitors/ai-insights/{outlet_id}` | Get AI pricing insights |
-| POST | `/api/competitors/items/bulk` | Bulk add menu items |
 
 ### Environment Variables
 
