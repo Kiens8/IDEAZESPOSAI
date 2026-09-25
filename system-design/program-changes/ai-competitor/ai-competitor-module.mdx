@@ -729,9 +729,40 @@ All program changes for the AI Competitor module (updated September 26, 2026).
 |---------|-----------|---------|
 | Click "Find Competitors" | Geoapify | Discover nearby restaurants |
 | Click "Insights" | Tavily + Brave | Search for restaurant website |
-| Click "Insights" | MiniMax | AI business analysis |
+| Click "Analyze URL" | Jina AI → MiniMax | Fetch & analyze menu content |
+| Manual entry | None | User enters items directly |
+
+### Current Analysis Flow (Analyze URL)
+
+```
+User enters URL → Jina AI (fetch content)
+                    ↓
+              Content found?
+                ↓ Yes       ↓ No
+        MiniMax (parse)    Direct fetch
+                ↓               ↓
+        Extract items    Parse content
+                ↓               ↓
+        AI enhanced    AI enhanced
+```
+
+**Why Jina AI?**
+- Bypasses 403/blocked websites (acts as proxy)
+- Returns clean markdown content
+- No API key needed (free tier: 10,000 requests/month)
+
+**Fallback Chain:**
+1. Jina AI → MiniMax (primary, bypasses 403)
+2. Direct fetch → BeautifulSoup → MiniMax (fallback)
+3. Manual entry (final fallback if all fail)
 
 ### API Details
+
+#### Jina AI Reader
+- **Purpose:** Fetch webpage content as markdown (bypasses 403)
+- **Free tier:** 10,000 requests/month
+- **Endpoint:** `https://r.jina.ai/{url}`
+- **No API key required**
 
 #### Geoapify
 - **Purpose:** Discover nearby restaurants + geocoding
@@ -747,4 +778,4 @@ All program changes for the AI Competitor module (updated September 26, 2026).
 - **Free tier:** 2,000 queries/month
 
 #### MiniMax
-- **Purpose:** AI-powered business insights and analysis
+- **Purpose:** AI-powered menu extraction and analysis
