@@ -577,7 +577,9 @@ tests/
 ```bash
 # Geoapify
 GEOAPIFY_API_KEY=3c079f5c93eb4965b38050a266a703e6
-GEOAPIFY_FREE_TIER_LIMIT=100000
+GEOAPIFY_FREE_TIER_LIMIT=3000  # 3000 credits/day
+GEOAPIFY_RATE_LIMIT=5  # 5 requests/second
+GEOAPIFY_MAX_RADIUS_KM=10  # Max radius 10km
 ```
 
 ### Sample API Requests
@@ -644,10 +646,15 @@ OVERPASS_ENDPOINT=https://overpass-api.de/api/interpreter
 
 | API | Usage | Monthly Cost |
 |-----|-------|-------------|
-| Geoapify | ~10,000 requests | $0 (free tier) |
+| Geoapify | 3,000 credits/day (free tier) | $0 |
 | Overpass | Unlimited | $0 |
 | Google Places | ~500 requests | ~$16/month |
 | AI Analysis | ~200 analyses | $0 (using existing AI) |
+
+**Free Tier Limits:**
+- Geoapify: 3,000 credits/day
+- Rate limit: 5 requests/second
+- Max radius: 10km
 
 **Total MVP Cost:** $0/month (using free tiers)
 
