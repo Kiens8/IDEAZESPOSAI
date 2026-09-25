@@ -716,10 +716,35 @@ All program changes for the AI Competitor module (updated September 26, 2026).
 
 ### Environment Variables
 
-No new environment variables needed - uses existing:
-- `GEOAPIFY_API_KEY` (already configured)
-- `MINIMAX_API_KEY` (already configured)
+| API | Environment Variable | Purpose |
+|-----|-------------------|---------|
+| Geoapify | `GEOAPIFY_API_KEY` | Location search & geocoding |
+| MiniMax | `MINIMAX_API_KEY` | AI analysis |
+| Tavily | `TAVILY_API_KEY` | Website search (primary) |
+| Brave | `BRAVE_API_KEY` | Website search (fallback) |
 
-### Geoapify API Key
-- **Key:** `3c079f5c93eb4965b38050a266a703e6`
+### API Usage Summary
+
+| Trigger | API Called | Purpose |
+|---------|-----------|---------|
+| Click "Find Competitors" | Geoapify | Discover nearby restaurants |
+| Click "Insights" | Tavily + Brave | Search for restaurant website |
+| Click "Insights" | MiniMax | AI business analysis |
+
+### API Details
+
+#### Geoapify
+- **Purpose:** Discover nearby restaurants + geocoding
 - **Free tier:** 3,000 credits/day, 5 req/sec, 10km max
+
+#### Tavily (Primary)
+- **Purpose:** Search for restaurant official website
+- **Fallback:** Brave Search if Tavily fails
+- **Free tier:** 250 searches/month
+
+#### Brave Search (Fallback)
+- **Purpose:** Search for restaurant official website
+- **Free tier:** 2,000 queries/month
+
+#### MiniMax
+- **Purpose:** AI-powered business insights and analysis
