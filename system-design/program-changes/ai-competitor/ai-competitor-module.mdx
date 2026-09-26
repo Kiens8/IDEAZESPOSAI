@@ -739,11 +739,12 @@ User enters URL → Jina AI (fetch content)
                     ↓
               Content found?
                 ↓ Yes       ↓ No
-        MiniMax (parse)    Direct fetch
-                ↓               ↓
-        Extract items    Parse content
-                ↓               ↓
-        AI enhanced    AI enhanced
+        MiniMax (parse)    ❌ Stop
+                ↓               (No menu items = manual entry)
+        Items found?
+                ↓ Yes       ↓ No
+        Return items   ❌ Stop
+                    (JS-rendered site = manual entry)
 ```
 
 **Why Jina AI?**
@@ -751,10 +752,29 @@ User enters URL → Jina AI (fetch content)
 - Returns clean markdown content
 - No API key needed (free tier: 10,000 requests/month)
 
-**Fallback Chain:**
-1. Jina AI → MiniMax (primary, bypasses 403)
-2. Direct fetch → BeautifulSoup → MiniMax (fallback)
-3. Manual entry (final fallback if all fail)
+**Flow Logic:**
+1. Jina AI fetches webpage content
+2. If content has menu data → MiniMax parses & extracts items
+3. If no menu items found → Show "JS-rendered site, try manual entry"
+4. Direct fetch fallback only for truly blocked URLs (not JS-rendered)
+
+### Previous Flow (Reference Only)
+
+```
+User enters URL → Jina AI (fetch content)
+                    ↓
+              Content found?
+                ↓ Yes       ↓ No
+        MiniMax (parse)    Direct fetch
+                ↓               ↓
+        Extract items    Parse content
+                ↓               ↓
+        AI enhanced    AI enhanced
+```
+
+*Previous approach tried direct fetch as fallback even when Jina succeeded but found no menu items.*
+
+### API Details
 
 ### API Details
 
