@@ -32,28 +32,44 @@ This document outlines the language switching system to support 4 languages acro
 
 ### Priority System
 
-| App | Priority Order |
-|-----|---------------|
-| **Frontend POS** | User setting > Outlet setting > Default (en) |
-| **Customer Order App** | User selection (stored in browser) > Outlet setting > Default (en) |
-| **Site App** | Outlet setting > Default (en) |
+| App | Priority Order | Database |
+|-----|---------------|----------|
+| **Frontend POS** | User setting > Outlet setting > Default (en) | pos_ai.db |
+| **Customer Order App** | User selection (stored in browser) > Outlet setting > Default (en) | pos_ai.db |
+| **Site App** | User preference (localStorage) > Default (en) | website_api.db |
 
 ### Database Changes
 
-#### outlet_settings Table
+#### pos_ai.db (Frontend POS & Customer Apps)
+
+**outlet_settings Table**
 ```sql
 ALTER TABLE outlet_settings ADD COLUMN language VARCHAR(10) DEFAULT 'en';
 ```
 
-#### users Table
+**users Table**
 ```sql
 ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT NULL;
 ```
 
-#### customer_sessions Table (for customer app)
+**customer_sessions Table**
 ```sql
 ALTER TABLE customer_sessions ADD COLUMN language VARCHAR(10) DEFAULT NULL;
 ```
+
+#### website_api.db (Site App)
+
+Site app has its own database (`website_api.db`) for public-facing website.
+
+### Date/Time & Currency Format
+
+| App | Date/Time Format | Currency Format |
+|-----|-----------------|----------------|
+| **Frontend POS** | Follows outlet settings (timezone) | Follows outlet settings (currency_symbol) |
+| **Customer Order App** | Follows outlet settings (timezone) | Follows outlet settings (currency_symbol) |
+| **Site App** | Uses site's timezone setting | Uses site's currency setting |
+
+*Note: These are already configured in outlet_settings table.*
 
 ---
 
@@ -199,7 +215,10 @@ Add language dropdown in the customer order app header.
 
 ### Language Setting
 
-The site app (landing page, ordering) uses outlet setting.
+The site app (landing page, ordering) is a public website, so:
+- Default language: English
+- User can select their preferred language
+- Preference stored in localStorage
 
 **Implementation Details:**
 
@@ -212,7 +231,7 @@ The site app (landing page, ordering) uses outlet setting.
 ### Site App Features
 
 1. Language selector in header
-2. Uses outlet's default language as fallback
+2. Default to English
 3. Persists user selection in localStorage
 
 ---
@@ -325,13 +344,13 @@ The site app (landing page, ordering) uses outlet setting.
 
 ---
 
-## Menu Items Translation
+## Menu Items & Categories Translation
 
 ### Approach: Manual Input via Menu Management
 
-For menu items (food names, categories, descriptions), the system will allow manual translation input in the Menu Management screen.
+For menu items and categories (food names, descriptions), the system will allow manual translation input in the Menu Management screen.
 
-**UI Design:**
+### Menu Items - UI Design:
 ```
 ┌─────────────────────────────────────────┐
 │ Item Name (English): [Pad Thai        ] │
@@ -344,20 +363,50 @@ For menu items (food names, categories, descriptions), the system will allow man
 └─────────────────────────────────────────┘
 ```
 
-**Database Changes:**
+### Categories - UI Design:
+```
+┌─────────────────────────────────────────┐
+│ Category Name (English): [Main Course  ] │
+│ Category Name (Chinese):  [主菜           ] │
+│ Category Name (Malay):   [Makanan Utama] │
+│ Category Name (Khmer):   [ម្ហូបដ៏ធំ] │
+└─────────────────────────────────────────┘
+```
+
+### Database Changes:
+
+**menu_items Table:**
 ```sql
 ALTER TABLE menu_items ADD COLUMN name_zh VARCHAR(255);
 ALTER TABLE menu_items ADD COLUMN name_ms VARCHAR(255);
 ALTER TABLE menu_items ADD COLUMN name_kh VARCHAR(255);
+```
+
+**categories Table:**
+```sql
 ALTER TABLE categories ADD COLUMN name_zh VARCHAR(255);
 ALTER TABLE categories ADD COLUMN name_ms VARCHAR(255);
 ALTER TABLE categories ADD COLUMN name_kh VARCHAR(255);
 ```
 
-**Language Detection Logic:**
+### Language Detection Logic (Display):
+
+For both menu items and categories:
 1. Check if user's language preference is set
-2. If item has translation for that language, display it
+2. If translation exists for that language, display it
 3. Fallback to English if no translation
+
+**Example Display Logic:**
+```javascript
+function getItemName(item, language) {
+  switch(language) {
+    case 'zh': return item.name_zh || item.name;
+    case 'ms': return item.name_ms || item.name;
+    case 'kh': return item.name_kh || item.name;
+    default: return item.name;
+  }
+}
+```
 
 ---
 
@@ -378,6 +427,20 @@ ALTER TABLE categories ADD COLUMN name_kh VARCHAR(255);
 | | Site app integration | 6 |
 | **Phase 3 Total** | | **10 hours** |
 | **Grand Total** | | **41 hours** |
+
+---
+
+## Important Notes
+
+### Database Separation
+
+| App | Database | API |
+|-----|----------|-----|
+| Frontend POS | `pos_ai.db` | Backend API (port 8000) |
+| Customer Order App | `pos_ai.db` | Backend API (port 8000) |
+| Site App | `website_api.db` | Website API (port 9000) |
+
+*Note: Each app has its own database and API. Translations for menu items and categories are stored in `pos_ai.db` (used by POS and Customer Apps).*
 
 ---
 
