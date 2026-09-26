@@ -1,0 +1,238 @@
+---
+title: AI Chatbot Module
+description: AI Chatbot integration with language support, custom greeting, and settings
+---
+
+# AI Chatbot Module
+
+## Overview
+
+The AI Chatbot module provides intelligent customer and staff assistance within the POS system. It supports multiple languages, custom greetings, and configurable behavior.
+
+## Features
+
+- **Multi-language Support**: English, Chinese, Malay, Khmer, Multilingual
+- **Custom Bot Identity**: Configurable bot name and greeting message
+- **Enable/Disable Control**: Toggle chatbot availability per outlet
+- **Role-based Responses**: Different behavior for customer, staff, manager, admin
+- **Intent-based Processing**: Recognizes orders, menu requests, reservations, etc.
+- **AI Fallback**: Uses MiniMax for complex queries (admin mode)
+
+## Settings
+
+### Configuration Fields
+
+| Setting | Key | Description | Default |
+|--------|-----|-------------|---------|
+| Enable AI Chatbot | `ai_enabled` | Toggle chatbot availability | `true` |
+| Bot Name | `bot_name` | Display name for chatbot | `"Lumi"` |
+| Bot Language | `bot_language` | Response language code | `"en"` |
+| Auto-Response Greeting | `bot_greeting` | Custom welcome message | `null` |
+
+### Language Options
+
+| Code | Language | Description |
+|------|----------|-------------|
+| `en` | English | Default English responses |
+| `zh` | Chinese | Simplified Chinese (中文) |
+| `ms` | Malay | Bahasa Melayu |
+| `kh` | Khmer | ភាសាខ្មែរ |
+| `multi` | Multilingual | Mixed language responses |
+
+## API Endpoints
+
+### POST /api/chatbot/
+
+Send a message to the chatbot.
+
+**Request Body:**
+```json
+{
+  "message": "string",           // User message
+  "chatbot_type": "string",     // "customer", "staff", "manager", "admin"
+  "outlet_id": "number",        // Outlet ID for settings lookup
+  "language": "string"          // Language code (optional, overrides settings)
+}
+```
+
+**Response:**
+```json
+{
+  "intent": "string",           // Detected intent
+  "response": "string",         // Bot response text
+  "action": "string|null",      // Optional action hint
+  "data": "object|null"        // Optional additional data
+}
+```
+
+**Error Responses:**
+- `403`: Chatbot is disabled for this outlet
+
+### GET /api/chatbot/test
+
+Test endpoint to verify chatbot is running.
+
+## Intent Categories
+
+### Basic Intents
+
+| Intent | Patterns | Description |
+|--------|----------|-------------|
+| `greeting` | hi, hello, hey | Welcome message |
+| `thanks` | thank you, thanks | Acknowledgment |
+| `bye` | goodbye, bye | Farewell |
+| `help` | help, what can you do | Help information |
+
+### Order Intents
+
+| Intent | Patterns | Description |
+|--------|----------|-------------|
+| `order` | i want to order, place order | Order placement |
+| `menu` | menu, what's available | Menu display |
+| `status` | order status, where's my food | Order tracking |
+| `payment` | pay, how to pay | Payment info |
+
+### Restaurant Operations (Staff+)
+
+| Intent | Patterns | Description |
+|--------|----------|-------------|
+| `sales` | today's sales, revenue | Sales reports |
+| `tables_served` | tables served, occupied | Table status |
+| `pending_orders` | pending orders | Kitchen queue |
+| `kitchen_status` | orders in kitchen | Kitchen display |
+| `ready_orders` | ready orders | Pickup queue |
+
+## File Structure
+
+```
+backend/app/
+├── routes/
+│   └── chatbot.py              # API endpoints
+├── ai/
+│   ├── chatbot.py              # Main chatbot logic
+│   └── translations.py        # Language translations
+```
+
+## Translation System
+
+### Supported Languages
+
+1. **English (en)** - Default language
+2. **Chinese (zh)** - 简体中文
+3. **Malay (ms)** - Bahasa Melayu
+4. **Khmer (kh)** - ភាសាខ្មែរ
+5. **Multilingual (multi)** - Mixed responses
+
+### Translation Keys
+
+| Key | Description |
+|-----|-------------|
+| `greeting` | Welcome message |
+| `menu_header` | Menu section header |
+| `menu_footer` | Menu section footer |
+| `help_staff` | Staff help message |
+| `help_manager` | Manager help message |
+| `help_admin` | Admin help message |
+| `ai_fallback_intro` | AI fallback greeting |
+| `ai_error` | AI error message |
+| `thanks` | Thank you response |
+| `bye` | Farewell message |
+| `qr_*` | Quick reply labels |
+
+## Flow Diagram
+
+```
+User Message
+     │
+     ▼
+┌─────────────┐
+│ Intent      │
+│ Detection   │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────┐     ┌──────────────┐
+│ Settings    │────▶│ Check        │
+│ Lookup       │     │ ai_enabled   │
+└──────┬──────┘     └──────┬───────┘
+       │                     │
+       │              ┌──────┴───────┐
+       │              │ Disabled?     │
+       │              └──────┬───────┘
+       │                     │ Yes → Error 403
+       │                     │ No
+       │                     ▼
+       ▼              ┌──────────────┐
+┌─────────────┐      │ Language     │
+│ Matched     │      │ from Settings│
+│ Handler     │      │ or Request   │
+└──────┬──────┘      └──────┬───────┘
+       │                     │
+       ▼                     ▼
+┌─────────────────────────────────────┐
+│ Generate Response (in selected lang)│
+└──────────────────┬──────────────────┘
+                   │
+                   ▼
+            ┌─────────────┐
+            │ Bot Response │
+            └─────────────┘
+```
+
+## Implementation Notes
+
+### September 26, 2026 - Language Integration
+
+**Changes Made:**
+
+1. **New File**: `backend/app/ai/translations.py`
+   - Translation dictionaries for all 5 languages
+   - `t()` function for looking up translations
+   - `get_quick_replies()` for localized quick replies
+   - `get_status_text()` for localized status messages
+
+2. **Updated**: `backend/app/routes/chatbot.py`
+   - Added `language` parameter to ChatRequest
+   - Added check for `ai_enabled` setting
+   - Pass language and bot settings to chatbot handler
+
+3. **Updated**: `backend/app/ai/chatbot.py`
+   - Added `language`, `bot_name`, `bot_greeting` to `__init__`
+   - All response handlers now use `t()` function
+   - AI fallback includes language instruction
+
+4. **Updated**: `frontend/src/pages/Settings.jsx`
+   - Added Khmer (`kh`) to language dropdown
+
+5. **Updated**: `frontend/src/pages/Chatbot.jsx`
+   - Fetch bot settings on mount
+   - Check `ai_enabled` before showing chatbot
+   - Display custom `bot_name` and `bot_greeting`
+   - Pass `language` to API requests
+
+### Translation Coverage
+
+| Component | Status |
+|-----------|--------|
+| Greeting | ✅ Fully translated |
+| Menu responses | ✅ Fully translated |
+| Help messages | ✅ Fully translated |
+| AI fallback | ✅ Fully translated |
+| Quick replies | ✅ Translated |
+| Order status | ⚠️ Partial (status codes) |
+| Built-in intents | ⚠️ Partial (some hardcoded) |
+
+### Limitations
+
+1. **Some hardcoded strings remain** in certain handlers
+2. **Order status codes** still use English
+3. **Dynamic content** (menu items, prices) not translated
+4. **AI responses** depend on MiniMax language capability
+
+## Future Improvements
+
+- [ ] Translate all hardcoded strings
+- [ ] Add `get_status_text()` to all status handlers
+- [ ] Add language detection for user messages
+- [ ] Persist language preference per user
+- [ ] Add RTL support for Khmer
