@@ -134,7 +134,7 @@ CREATE TABLE competitor_menus (
 ### User Flow
 
 ```
-1. User enters location (or uses POS location)
+1. User enters location (or uses GPS button)
 2. User selects radius: 1km, 2km, 3km, 5km, 10km
 3. User clicks "Discover Competitors"
 4. System calls Geoapify API
@@ -144,17 +144,41 @@ CREATE TABLE competitor_menus (
 8. User selects and saves
 ```
 
+### GPS Location Feature
+
+Users can now use their device's GPS to automatically get their current location:
+
+**How it works:**
+1. User clicks "GPS" button next to location input
+2. Browser requests location permission
+3. If granted, coordinates are reverse-geocoded to address
+4. Location field is auto-filled
+5. User proceeds with discovery
+
+**Benefits:**
+- No manual typing required
+- Accurate to user's actual position
+- Works especially for mobile users
+
 ### UI Components
 
 #### Search Form
 ```
 ┌─────────────────────────────────────────┐
-│  📍 Location: [Kuala Lumpur        🔍]  │
+│  📍 Location: [Enter location    ][GPS] │
 │  📏 Radius:    [5km ▼]                 │
 │                                         │
 │  [Discover Competitors]                 │
 └─────────────────────────────────────────┘
 ```
+
+**GPS Button States:**
+| State | Display |
+|-------|---------|
+| Default | Green GPS button |
+| Loading | Spinning loader |
+| Success | Location auto-filled |
+| Error | Alert message |
 
 #### Results List
 ```
@@ -530,6 +554,13 @@ frontend/src/pages/AI/tabs/CompetitorTab.jsx
     - viewMode toggle: 'discover', 'list', 'compare'
     - DiscoverView React component
     - Discover-related state variables
+
+frontend/src/pages/AI/tabs/CompetitorDiscoverTab.jsx
+    Added:
+    - handleUseMyLocation() - GPS location function
+    - isGettingLocation state for loading
+    - "GPS" button next to location input
+    - Reverse geocoding to convert coords to address
 ```
 
 ---
