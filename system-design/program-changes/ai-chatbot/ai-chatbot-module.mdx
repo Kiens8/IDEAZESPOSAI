@@ -68,6 +68,39 @@ Send a message to the chatbot.
 **Error Responses:**
 - `403`: Chatbot is disabled for this outlet
 
+### GET /api/chatbot/greeting
+
+Get translated greeting message.
+
+**Query Parameters:**
+- `outlet_id` (required): Outlet ID for settings lookup
+- `language` (optional): Language code (default: "en")
+
+**Response:**
+```json
+{
+  "greeting": "string",         // Translated greeting text
+  "bot_name": "string"          // Bot name from settings
+}
+```
+
+### GET /api/chatbot/quick-replies
+
+Get localized quick reply buttons.
+
+**Query Parameters:**
+- `language` (optional): Language code (default: "en")
+
+**Response:**
+```json
+{
+  "quick_replies": [
+    {"label": "string", "message": "string"},
+    ...
+  ]
+}
+```
+
 ### GET /api/chatbot/test
 
 Test endpoint to verify chatbot is running.
@@ -141,6 +174,7 @@ backend/app/
 
 ## Flow Diagram
 
+### Chat Message Flow
 ```
 User Message
      │
@@ -179,6 +213,48 @@ User Message
             └─────────────┘
 ```
 
+### Chatbot Initialization Flow
+```
+Frontend Loads
+      │
+      ▼
+┌─────────────────┐
+│ Fetch Settings   │──────────┐
+│ /api/settings/{id}          │
+└────────┬────────┘          │
+         │                    │
+         ▼                    ▼
+┌─────────────────┐   ┌──────────────┐
+│ ai_enabled?     │   │ bot_greeting │
+│   │ No          │   │ is set?      │
+└────┬───────────┘   └──────┬───────┘
+     │ Yes                    │Yes
+     ▼                        ▼
+┌─────────────┐       ┌─────────────────┐
+│ Show        │       │ Use Custom      │
+│ Disabled Msg│       │ bot_greeting    │
+└─────────────┘       └────────┬────────┘
+                                │ No
+                                ▼
+                    ┌─────────────────────────┐
+                    │ GET /api/chatbot/greeting│
+                    │ ?outlet_id=X&language=Y │
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                    ┌─────────────────────────┐
+                    │ GET /api/chatbot/      │
+                    │ quick-replies?language=Y│
+                    └────────────┬────────────┘
+                                 │
+                                 ▼
+                        ┌─────────────────┐
+                        │ Display Chatbot │
+                        │ with translated │
+                        │ greeting & QRs │
+                        └─────────────────┘
+```
+
 ## Implementation Notes
 
 ### September 26, 2026 - Language Integration
@@ -195,6 +271,8 @@ User Message
    - Added `language` parameter to ChatRequest
    - Added check for `ai_enabled` setting
    - Pass language and bot settings to chatbot handler
+   - Added `/greeting` endpoint for translated greeting
+   - Added `/quick-replies` endpoint for localized quick replies
 
 3. **Updated**: `backend/app/ai/chatbot.py`
    - Added `language`, `bot_name`, `bot_greeting` to `__init__`
@@ -209,6 +287,8 @@ User Message
    - Check `ai_enabled` before showing chatbot
    - Display custom `bot_name` and `bot_greeting`
    - Pass `language` to API requests
+   - Fetch greeting from `/greeting` endpoint (translated)
+   - Fetch quick replies from `/quick-replies` endpoint (localized)
 
 ### Translation Coverage
 
