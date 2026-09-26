@@ -213,9 +213,20 @@ Add language dropdown in the customer order app header.
 
 ## Site App (Priority 3)
 
+### Site App Structure
+
+The Site App contains two parts:
+
+| Part | Routes | Description |
+|------|--------|-------------|
+| **Public Website** | `/`, `/login`, `/signup`, `/forgot-password` | Public pages |
+| **Customer Portal** | `/portal`, `/portal/billing` | Customer ordering & billing |
+
+Both use the same source code and database (`website_api.db`).
+
 ### Language Setting
 
-The site app (landing page, ordering) is a public website, so:
+The site app is a public website, so:
 - Default language: English
 - User can select their preferred language
 - Preference stored in localStorage
@@ -224,15 +235,16 @@ The site app (landing page, ordering) is a public website, so:
 
 | File | Changes |
 |------|---------|
-| `site-app/src/i18n/` | Translation files |
-| `site-app/src/contexts/LanguageContext.jsx` | Language context |
-| `site-app/src/components/LanguageSelector.jsx` | Language dropdown |
+| `site/src/i18n/` | Translation files |
+| `site/src/contexts/LanguageContext.tsx` | Language context |
+| `site/src/components/LanguageSelector.tsx` | Language dropdown |
 
 ### Site App Features
 
-1. Language selector in header
+1. Language selector in header (visible on all pages)
 2. Default to English
 3. Persists user selection in localStorage
+4. Applies to both Public Website AND Customer Portal
 
 ---
 
@@ -438,9 +450,9 @@ function getItemName(item, language) {
 |-----|----------|-----|
 | Frontend POS | `pos_ai.db` | Backend API (port 8000) |
 | Customer Order App | `pos_ai.db` | Backend API (port 8000) |
-| Site App | `website_api.db` | Website API (port 9000) |
+| Site App (Public + Portal) | `website_api.db` | Website API (port 9000) |
 
-*Note: Each app has its own database and API. Translations for menu items and categories are stored in `pos_ai.db` (used by POS and Customer Apps).*
+*Note: Each app has its own database and API. Translations for menu items and categories are stored in `pos_ai.db` (used by POS and Customer Apps). The Site App uses `website_api.db` for its public pages and customer portal.*
 
 ---
 
@@ -479,14 +491,20 @@ function getItemName(item, language) {
 | `customer-app/src/components/LanguageSelector.jsx` | Create |
 | `customer-app/src/App.jsx` | Modify |
 
-### Site App
+### Site App (includes Customer Portal)
 
 | File | Action |
 |------|--------|
-| `site-app/src/i18n/` | Create |
-| `site-app/src/contexts/LanguageContext.jsx` | Create |
-| `site-app/src/components/LanguageSelector.jsx` | Create |
-| `site-app/src/App.jsx` | Modify |
+| `site/src/i18n/locales/en.json` | Create |
+| `site/src/i18n/locales/zh.json` | Create |
+| `site/src/i18n/locales/ms.json` | Create |
+| `site/src/i18n/locales/kh.json` | Create |
+| `site/src/i18n/LanguageContext.tsx` | Create |
+| `site/src/i18n/useTranslation.ts` | Create |
+| `site/src/contexts/LanguageContext.tsx` | Create |
+| `site/src/components/LanguageSelector.tsx` | Create |
+| `site/src/app/layout.tsx` | Modify - wrap with provider |
+| `site/src/app/portal/**` | Modify - use translations |
 
 ---
 
