@@ -114,6 +114,120 @@ The Inventory Management module tracks ingredients and raw materials used in men
 
 > **✅ Phase 1 Complete** - Backend API + Frontend pages
 
+---
+
+## Phase 1 Enhancement: Stock Management Settings (Planned)
+
+### Overview
+
+Add stock management controls to prevent overselling and automate inventory tracking.
+
+### New Database Table: `inventory_settings`
+
+```sql
+CREATE TABLE inventory_settings (
+  id INTEGER PRIMARY KEY,
+  outlet_id INTEGER REFERENCES outlets(id),
+  inventory_enabled BOOLEAN DEFAULT false,
+  updated_at DATETIME
+);
+```
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `outlet_id` | INTEGER | Foreign key to outlets table |
+| `inventory_enabled` | BOOLEAN | Master toggle - when ON, enables all stock features below |
+
+### Feature Toggle Behavior
+
+When `inventory_enabled = true`, these features are ACTIVE:
+
+| Feature | Description |
+|---------|-------------|
+| **Out of Stock Blocking** | Block "Add to Cart" if any recipe ingredient is low/out of stock |
+| **Auto Decrement Stock** | Automatically reduce ingredient stock when order status = "ready" |
+| **Low Stock Badge** | Show warning badge on menu items in Customer App and Staff Order Screen |
+
+When `inventory_enabled = false`, all stock checking is bypassed.
+
+### New API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/settings/inventory?outlet_id=X` | Get inventory settings |
+| PUT | `/api/settings/inventory` | Update inventory settings |
+
+### Stock Status Logic
+
+Menu items with recipes will have a `stock_status` field:
+
+| Status | Condition | Display |
+|--------|-----------|---------|
+| `available` | All ingredients > min_stock_level | No badge |
+| `low_stock` | Any ingredient <= min_stock_level AND > 0 | 🟡 "Low Stock" badge |
+| `out_of_stock` | Any ingredient = 0 | 🔴 "Out of Stock" badge |
+
+### Order Flow: Add to Cart
+
+```
+User clicks "Add to Cart"
+         ↓
+    inventory_enabled = true?
+         ↓
+       No → Allow (skip stock check)
+       Yes → Continue
+         ↓
+    Has Recipe?
+         ↓
+       No → Allow
+       Yes → Check ingredient stock
+         ↓
+    Any ingredient <= min_stock?
+         ↓
+       No → Allow Add to Cart
+       Yes → BLOCK + Show Error
+```
+
+### Order Flow: Status = "Ready" (Auto Decrement)
+
+```
+Order Status → READY
+         ↓
+    inventory_enabled = true?
+         ↓
+       No → No Action
+       Yes → Continue
+         ↓
+    For each recipe ingredient:
+      new_stock = current_stock - recipe_qty
+         ↓
+    Update database
+         ↓
+    Check: Any now <= min_stock?
+         ↓
+       Yes → Trigger Low Stock Alert
+```
+
+### Badge Display
+
+| Screen | Badge Shown? |
+|--------|--------------|
+| Staff Order Screen | ✅ When inventory_enabled=true AND low/out of stock |
+| Customer Order App | ✅ When inventory_enabled=true AND low/out of stock |
+
+### Implementation Tasks
+
+| Task | Priority |
+|------|----------|
+| Create `inventory_settings` table | High |
+| Add API endpoints for settings | High |
+| Add Settings → Inventory tab (gated by inventory features) | High |
+| Add `stock_status` to menu items API | High |
+| Implement Add to Cart blocking | High |
+| Implement Auto Decrement on "ready" | Medium |
+| Add badges to Staff Order Screen | Medium |
+| Add badges to Customer Order App | Medium |
+
 ### Phase 2: Enhanced
 
 **Advanced features for better control.**
