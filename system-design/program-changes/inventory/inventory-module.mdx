@@ -8,6 +8,50 @@ description: Design specification for inventory management in IDEAZES POS AI
 **Date:** September 27, 2026  
 **Version:** 2.0 (Simplified)
 
+## Implementation Status
+
+| Phase | Status | Completed |
+|-------|--------|----------|
+| Phase 1: Core Inventory | ✅ Completed | Backend API: September 27, 2026 |
+| Phase 2: Enhanced | ⏳ Pending | - |
+| Phase 3: Enterprise | ⏳ Pending | - |
+
+### Backend API - Implemented (September 27, 2026)
+
+**Files Created:**
+- `backend/app/models/inventory.py` - Ingredient, Recipe, RecipeIngredient, StockMovement models
+- `backend/app/routes/inventory.py` - All inventory API endpoints
+
+**Database Tables Created:**
+- `ingredients`
+- `recipes`
+- `recipe_ingredients`
+- `stock_movements`
+
+**Modified Files:**
+- `backend/app/models/__init__.py` - Added inventory model imports
+- `backend/app/models/models.py` - Added `has_recipe` to MenuItem
+- `backend/app/main.py` - Registered inventory router
+
+### API Endpoints Available
+
+| Method | Endpoint | Status |
+|--------|----------|--------|
+| GET | `/api/inventory/ingredients?outlet_id=X` | ✅ Working |
+| POST | `/api/inventory/ingredients?outlet_id=X` | ✅ Working |
+| GET | `/api/inventory/ingredients/low-stock` | ✅ Working |
+| GET | `/api/inventory/ingredients/{id}` | ✅ Working |
+| PUT | `/api/inventory/ingredients/{id}` | ✅ Working |
+| DELETE | `/api/inventory/ingredients/{id}` | ✅ Working |
+| POST | `/api/inventory/ingredients/{id}/adjust` | ✅ Working |
+| GET | `/api/inventory/recipes/{menu_item_id}` | ✅ Working |
+| PUT | `/api/inventory/recipes/{menu_item_id}` | ✅ Working |
+| DELETE | `/api/inventory/recipes/{menu_item_id}` | ✅ Working |
+| GET | `/api/inventory/stock-movements` | ✅ Working |
+| POST | `/api/inventory/stock-movements/purchase` | ✅ Working |
+| POST | `/api/inventory/stock-movements/waste` | ✅ Working |
+| GET | `/api/inventory/cost/{menu_item_id}` | ✅ Working |
+
 ## Overview
 
 The Inventory Management module tracks ingredients and raw materials used in menu preparation for each outlet, enabling accurate food cost calculation, low-stock alerts, and automated reorder notifications.
@@ -35,13 +79,15 @@ The Inventory Management module tracks ingredients and raw materials used in men
 
 **Essential features for basic inventory management.**
 
-- [ ] Ingredient CRUD
-- [ ] Recipe management (link ingredients to menu items)
-- [ ] Actual cost calculation
-- [ ] Stock level tracking
-- [ ] Low stock alerts
-- [ ] Stock adjustment (manual count)
-- [ ] Stock movement history
+- [x] Ingredient CRUD
+- [x] Recipe management (link ingredients to menu items)
+- [x] Actual cost calculation
+- [x] Stock level tracking
+- [x] Low stock alerts
+- [x] Stock adjustment (manual count)
+- [x] Stock movement history
+
+> **Backend API Completed** - Frontend pages pending
 
 ### Phase 2: Enhanced
 
