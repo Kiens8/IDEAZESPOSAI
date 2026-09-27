@@ -129,6 +129,9 @@ CREATE TABLE inventory_settings (
   id INTEGER PRIMARY KEY,
   outlet_id INTEGER REFERENCES outlets(id),
   inventory_enabled BOOLEAN DEFAULT false,
+  out_of_stock_blocking BOOLEAN DEFAULT false,
+  auto_decrement_stock BOOLEAN DEFAULT false,
+  low_stock_badge BOOLEAN DEFAULT false,
   updated_at DATETIME
 );
 ```
@@ -136,19 +139,38 @@ CREATE TABLE inventory_settings (
 | Column | Type | Description |
 |--------|------|-------------|
 | `outlet_id` | INTEGER | Foreign key to outlets table |
-| `inventory_enabled` | BOOLEAN | Master toggle - when ON, enables all stock features below |
+| `inventory_enabled` | BOOLEAN | Master toggle - enables the other 3 settings |
+| `out_of_stock_blocking` | BOOLEAN | Block "Add to Cart" if ingredient is low/out of stock |
+| `auto_decrement_stock` | BOOLEAN | Reduce ingredient stock when order status = "ready" |
+| `low_stock_badge` | BOOLEAN | Show warning badge on menu items |
 
 ### Feature Toggle Behavior
 
-When `inventory_enabled = true`, these features are ACTIVE:
+```
+Settings → Inventory (only visible if outlet has inventory features)
+│
+└── Inventory Module Enabled: [Toggle YES/NO]
+    │
+    ├── When YES → Enable individual feature toggles:
+    │   ├── Out of Stock Blocking: [Toggle YES/NO]
+    │   │   └── Block "Add to Cart" if any recipe ingredient is low/out of stock
+    │   │
+    │   ├── Auto Decrement Stock: [Toggle YES/NO]
+    │   │   └── Automatically reduce ingredient stock when order status = "ready"
+    │   │
+    │   └── Low Stock Badge: [Toggle YES/NO]
+    │       └── Show warning badge on menu items in Customer App and Staff Order Screen
+    │
+    └── When NO → All stock checking disabled (no blocking, no auto-decrement, no badges)
+```
 
-| Feature | Description |
-|---------|-------------|
-| **Out of Stock Blocking** | Block "Add to Cart" if any recipe ingredient is low/out of stock |
-| **Auto Decrement Stock** | Automatically reduce ingredient stock when order status = "ready" |
-| **Low Stock Badge** | Show warning badge on menu items in Customer App and Staff Order Screen |
+### Individual Feature Behavior
 
-When `inventory_enabled = false`, all stock checking is bypassed.
+| Feature | When OFF | When ON |
+|---------|----------|---------|
+| **Out of Stock Blocking** | Allow ordering even if low stock | Block "Add to Cart" if ingredient <= min_stock |
+| **Auto Decrement Stock** | No stock reduction | Decrement ingredients when order status = "ready" |
+| **Low Stock Badge** | No badge shown | Show badge on menu items |
 
 ### New API Endpoints
 
@@ -217,16 +239,17 @@ Order Status → READY
 
 ### Implementation Tasks
 
-| Task | Priority |
-|------|----------|
-| Create `inventory_settings` table | High |
-| Add API endpoints for settings | High |
-| Add Settings → Inventory tab (gated by inventory features) | High |
-| Add `stock_status` to menu items API | High |
-| Implement Add to Cart blocking | High |
-| Implement Auto Decrement on "ready" | Medium |
-| Add badges to Staff Order Screen | Medium |
-| Add badges to Customer Order App | Medium |
+| Priority | Task |
+|----------|------|
+| 1 | Create `inventory_settings` table with 4 toggle fields |
+| 2 | Add API: GET `/api/settings/inventory?outlet_id=X` |
+| 3 | Add API: PUT `/api/settings/inventory` |
+| 4 | Add Settings → Inventory tab (gated by inventory features) |
+| 5 | Add `stock_status` to menu items API |
+| 6 | Implement Add to Cart blocking (when out_of_stock_blocking = true) |
+| 7 | Implement Auto Decrement on order "ready" (when auto_decrement_stock = true) |
+| 8 | Add badges to Staff Order Screen (when low_stock_badge = true) |
+| 9 | Add badges to Customer Order App (when low_stock_badge = true) |
 
 ### Phase 2: Enhanced
 
