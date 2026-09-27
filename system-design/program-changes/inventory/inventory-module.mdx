@@ -5,15 +5,16 @@ description: Design specification for inventory management in IDEAZES POS AI
 
 # Inventory Management Module
 
-**Date:** September 25, 2026
+**Date:** September 27, 2026  
+**Version:** 2.0 (Simplified)
 
 ## Overview
 
 The Inventory Management module tracks ingredients and raw materials used in menu preparation for each outlet, enabling accurate food cost calculation, low-stock alerts, and automated reorder notifications.
 
-**This module uses the POS Backend API** (not the website API) as it operates at the outlet/POS level.
+**This module uses the POS Backend API** (`pos_ai.db`) as it operates at the outlet/POS level.
 
-**Multi-outlet Support:** Each outlet has its own inventory. The `outlet_id` field ensures inventory is isolated per outlet.
+**Per-Outlet Design:** Each outlet manages its own inventory. The `outlet_id` field ensures inventory data is isolated per outlet.
 
 ---
 
@@ -25,32 +26,47 @@ The Inventory Management module tracks ingredients and raw materials used in men
 | **Stock Monitoring** | Track ingredient levels and alert when low |
 | **Waste Reduction** | Identify shrinkage and waste patterns |
 | **Profitability** | Help restaurants understand true gross margins |
-| **Scalability** | Support multi-outlet (Enterprise plan) |
 
 ---
 
-## Scope
+## Implementation Phases
 
-### Included (Phase 1 - Basic)
-- Ingredient management (CRUD)
-- Recipe/recipe card management
-- Actual cost calculation per menu item
-- Low stock alerts
-- Stock level tracking
-- Basic reports
+### Phase 1: Core Inventory (MVP)
 
-### Excluded (Phase 2 - Advanced)
-- Supplier management
-- Purchase orders
-- Barcode scanning
-- Multi-location transfers
-- Advanced forecasting
+**Essential features for basic inventory management.**
+
+- [ ] Ingredient CRUD
+- [ ] Recipe management (link ingredients to menu items)
+- [ ] Actual cost calculation
+- [ ] Stock level tracking
+- [ ] Low stock alerts
+- [ ] Stock adjustment (manual count)
+- [ ] Stock movement history
+
+### Phase 2: Enhanced
+
+**Advanced features for better control.**
+
+- [ ] Waste tracking & reporting
+- [ ] Cost analysis report
+- [ ] Stock status report
+- [ ] Export to CSV
+
+### Phase 3: Enterprise (Future)
+
+**Multi-outlet and supplier features.**
+
+- [ ] Multi-outlet support
+- [ ] Supplier management
+- [ ] Purchase orders
+- [ ] Inter-outlet transfers
+- [ ] Advanced forecasting
 
 ---
 
 ## Database Schema
 
-**Note:** Inventory tables are stored in the **POS Backend database** (`pos_ai.db`) to support outlet-level operations. Each outlet manages its own inventory.
+**Database:** `pos_ai.db` (POS Backend)
 
 ### Existing Tables (Modified)
 
@@ -73,12 +89,12 @@ The Inventory Management module tracks ingredients and raw materials used in men
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INT (PK) | Primary key |
+| `outlet_id` | INT (FK) | Outlet reference |
 | `name` | VARCHAR(255) | Ingredient name (e.g., "Chicken Breast") |
 | `unit` | VARCHAR(50) | Unit of measurement (e.g., "kg", "liter", "pcs") |
 | `unit_cost` | DECIMAL(10,4) | Cost per unit |
 | `current_stock` | DECIMAL(12,4) | Current stock quantity |
 | `min_stock_level` | DECIMAL(12,4) | Alert threshold |
-| `outlet_id` | INT (FK) | Which outlet (NULL = all, for multi-outlet) |
 | `is_active` | BOOLEAN | Active/inactive |
 | `created_at` | DATETIME | Creation timestamp |
 | `updated_at` | DATETIME | Last update timestamp |
@@ -88,6 +104,7 @@ The Inventory Management module tracks ingredients and raw materials used in men
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INT (PK) | Primary key |
+| `outlet_id` | INT (FK) | Outlet reference |
 | `menu_item_id` | INT (FK) | Link to menu item |
 | `created_at` | DATETIME | Creation timestamp |
 | `updated_at` | DATETIME | Last update timestamp |
@@ -107,23 +124,13 @@ The Inventory Management module tracks ingredients and raw materials used in men
 | Column | Type | Description |
 |--------|------|-------------|
 | `id` | INT (PK) | Primary key |
+| `outlet_id` | INT (FK) | Outlet reference |
 | `ingredient_id` | INT (FK) | Link to ingredient |
 | `quantity` | DECIMAL(12,4) | Amount (positive = in, negative = out) |
 | `movement_type` | ENUM | `purchase`, `usage`, `adjustment`, `waste` |
 | `reference_id` | INT | Order ID or adjustment ID |
 | `notes` | TEXT | Optional notes |
 | `created_at` | DATETIME | When movement occurred |
-
-#### `suppliers` (Phase 2)
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | INT (PK) | Primary key |
-| `name` | VARCHAR(255) | Supplier name |
-| `contact_email` | VARCHAR(255) | Contact email |
-| `contact_phone` | VARCHAR(50) | Contact phone |
-| `address` | TEXT | Address |
-| `is_active` | BOOLEAN | Active/inactive |
 
 ---
 
@@ -208,7 +215,7 @@ else:
 3. For each menu item:
    a. Check if has_recipe = true
    b. If yes, deduct ingredients from stock:
-      - stock_movements记录 (type: usage)
+      - Record stock_movement (type: usage)
       - ingredients.current_stock -= quantity
 4. If ingredient hits min_stock_level → ALERT
 ```
@@ -234,22 +241,22 @@ When `current_stock <= min_stock_level`:
 
 ## Reports
 
-### 1. Cost Analysis Report
+### Phase 1: Cost Analysis Report
 
 | Menu Item | Sales Qty | Revenue | Est. Cost | Actual Cost | Variance |
-|-----------|----------|---------|-----------|------------|----------|
+|-----------|----------|---------|------------|-------------|----------|
 | Nasi Goreng | 150 | $1,500 | $525 | $960 | +$435 |
 | Mee Goreng | 80 | $800 | $280 | $512 | +$232 |
 
-### 2. Stock Status Report
+### Phase 2: Stock Status Report
 
 | Ingredient | Current Stock | Min Level | Status | Last Purchase |
-|------------|---------------|-----------|--------|---------------|
+|-----------|---------------|-----------|--------|---------------|
 | Rice | 50 kg | 20 kg | ✅ OK | Sep 20, 2026 |
 | Chicken | 2.5 kg | 5 kg | ⚠️ LOW | Sep 22, 2026 |
 | Oil | 100 L | 30 L | ✅ OK | Sep 18, 2026 |
 
-### 3. Waste Report
+### Phase 2: Waste Report
 
 | Date | Ingredient | Quantity | Value | Reason |
 |------|-----------|----------|-------|--------|
@@ -264,13 +271,8 @@ When `current_stock <= min_stock_level`:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/ingredients` | List ingredients for outlet |
-| POST | `/api/ingredients` | Create ingredient |
-| GET | `/api/ingredients/{id}` | Get ingredient |
-| PUT | `/api/ingredients/{id}` | Update ingredient |
-| DELETE | `/api/ingredients/{id}` | Delete ingredient |
-| GET | `/api/ingredients/low-stock` | Get low stock alerts |
-| POST | `/api/ingredients/{id}/adjust` | Manual stock adjustment |
+| GET | `/api/inventory/ingredients` | List ingredients for outlet |
+| POST | `/api/inventory/ingredients` | Create ingredient |
 | GET | `/api/inventory/ingredients/{id}` | Get ingredient |
 | PUT | `/api/inventory/ingredients/{id}` | Update ingredient |
 | DELETE | `/api/inventory/ingredients/{id}` | Delete ingredient |
@@ -281,162 +283,90 @@ When `current_stock <= min_stock_level`:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/recipes/{menu_item_id}` | Get recipe for menu item |
-| PUT | `/api/recipes/{menu_item_id}` | Update recipe |
-| DELETE | `/api/recipes/{menu_item_id}` | Delete recipe |
+| GET | `/api/inventory/recipes/{menu_item_id}` | Get recipe for menu item |
+| PUT | `/api/inventory/recipes/{menu_item_id}` | Update recipe |
+| DELETE | `/api/inventory/recipes/{menu_item_id}` | Delete recipe |
 
 ### Stock Movements
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/stock-movements` | List movements (with filters) |
-| POST | `/api/stock-movements/purchase` | Record purchase |
-| GET | `/api/stock-movements/{ingredient_id}` | Movements for ingredient |
+| GET | `/api/inventory/stock-movements` | List movements (with filters) |
+| POST | `/api/inventory/stock-movements/purchase` | Record purchase |
+| POST | `/api/inventory/stock-movements/waste` | Record waste |
+| POST | `/api/inventory/stock-movements/adjust` | Manual adjustment |
+| GET | `/api/inventory/stock-movements/{ingredient_id}` | Movements for ingredient |
 
 ### Reports
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/reports/cost-analysis` | Cost analysis report |
-| GET | `/api/reports/stock-status` | Stock status report |
-| GET | `/api/reports/waste` | Waste report |
+| GET | `/api/inventory/reports/cost-analysis` | Cost analysis report |
+| GET | `/api/inventory/reports/stock-status` | Stock status report |
+| GET | `/api/inventory/reports/waste` | Waste report |
 
 ---
 
 ## Frontend UI
 
-**Note:** This module uses the POS Frontend (not Admin Frontend) as inventory is managed at the outlet level.
-
 ### POS Frontend Pages
 
-1. **Ingredients** (`/inventory/ingredients`)
-   - Table view with search/filter
-   - Add/Edit ingredient modal
-   - Stock level indicator
-   - Low stock badge
+**Path:** `frontend/src/pages/Inventory/`
 
-2. **Recipe Builder** (`/inventory/recipes/{menu_item_id}`)
-   - Link from Menu Items page
-   - Add/remove ingredients
-   - Quantity inputs
-   - Real-time cost calculation
+| Page | Route | Description |
+|------|-------|-------------|
+| Ingredients | `/inventory/ingredients` | Table view, add/edit ingredient |
+| Recipe Builder | `/inventory/recipes/:menuItemId` | Link from Menu Items page |
+| Stock Movements | `/inventory/movements` | Filter by date, type, ingredient |
+| Reports | `/inventory/reports` | Cost | Stock | Waste tabs |
 
-3. **Stock Movements** (`/inventory/movements`)
-   - Filter by date, type, ingredient
-   - Purchase entry form
-   - Adjustment form
-
-4. **Reports** (`/inventory/reports`)
-   - Tab navigation: Cost | Stock | Waste
-   - Export to CSV
-
-### Customer Portal
-
+### Customer App / Site App
 - No inventory features visible to customers
-
----
-
-## Enterprise Features (Multi-Outlet)
-
-For Enterprise plan with multiple outlets:
-
-| Feature | Description |
-|---------|-------------|
-| `outlet_id` in ingredients | Each outlet has own stock |
-| Transfer between outlets | Move stock between locations |
-| Consolidated reports | Aggregate across outlets |
-| Outlet-specific recipes | Recipe costs vary by location |
-
----
-
-## Implementation Phases
-
-### Phase 1: Basic Inventory (MVP)
-- [ ] Ingredient CRUD
-- [ ] Basic recipe management
-- [ ] Actual cost calculation
-- [ ] Stock level tracking
-- [ ] Low stock alerts
-- [ ] Basic reports
-
-### Phase 2: Enhanced
-- [ ] Supplier management
-- [ ] Purchase order basics
-- [ ] Waste tracking
-- [ ] Stock movement history
-- [ ] Export features
-
-### Phase 3: Enterprise
-- [ ] Multi-outlet support
-- [ ] Inter-outlet transfers
-- [ ] Advanced forecasting
-- [ ] Barcode support
-- [ ] Supplier integration
 
 ---
 
 ## Files to Create/Modify
 
-### New Files
+### Backend (POS Backend API)
 
-```
-website_api/
-├── app/
-│   ├── models/
-│   │   └── inventory.py          # Ingredient, Recipe, StockMovement models
-│   └── routes/
-│       └── inventory.py           # Inventory API endpoints
-├── scripts/
-│   └── inventory_services.py     # Cost calculation, alerts
-└── tests/
-    └── test_inventory.py
-```
+| File | Action | Description |
+|------|--------|-------------|
+| `backend/app/models/inventory.py` | Create | Ingredient, Recipe, StockMovement models |
+| `backend/app/routes/inventory.py` | Create | Inventory API endpoints |
+| `backend/app/models/menu_items.py` | Modify | Add `has_recipe` field |
+| `backend/app/routes/menu_items.py` | Modify | Return `actual_cost` in response |
 
-### Modified Files
+### Frontend (POS Frontend)
 
-```
-website_api/
-├── app/
-│   ├── models/
-│   │   └── menu_items.py        # Add has_recipe field
-│   └── routes/
-│       └── menu_items.py         # Return actual_cost
-```
-
-### POS Frontend
-
-```
-frontend-pos/
-├── src/
-│   └── pages/
-│       ├── Inventory/
-│       │   ├── Ingredients.jsx
-│       │   ├── RecipeBuilder.jsx
-│       │   ├── StockMovements.jsx
-│       │   └── InventoryReports.jsx
-│       └── components/
-│           └── InventoryWidgets.jsx
-```
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/pages/Inventory/Ingredients.jsx` | Create | Ingredient management page |
+| `frontend/src/pages/Inventory/RecipeBuilder.jsx` | Create | Recipe builder page |
+| `frontend/src/pages/Inventory/StockMovements.jsx` | Create | Stock movements page |
+| `frontend/src/pages/Inventory/Reports.jsx` | Create | Reports page |
+| `frontend/src/App.jsx` | Modify | Add inventory routes |
+| `frontend/src/components/Sidebar.jsx` | Modify | Add inventory menu item |
 
 ---
 
 ## Rollout Strategy
 
-1. **Database migration** - Add new tables, no breaking changes
-2. **Backend API** - All endpoints working
-3. **Admin UI** - Ingredients page first
-4. **Recipe linking** - Connect to menu items
-5. **Cost display** - Show actual vs estimated
-6. **Stock alerts** - Notification system
-7. **Reports** - Cost analysis
+1. **Database migration** - Add new tables
+2. **Backend API** - All inventory endpoints working
+3. **Ingredients page** - CRUD operations
+4. **Recipe builder** - Connect to menu items
+5. **Cost display** - Show actual vs estimated in menu items
+6. **Stock alerts** - Low stock notifications
+7. **Auto-deduction** - Deduct stock when orders placed
+8. **Reports** - Cost, stock, waste reports
 
 ---
 
 ## Considerations
 
 ### Performance
-- `actual_cost` calculated on-the-fly (not stored) - simple SUM query
-- Index on `ingredients.outlet_id` for multi-outlet filtering
+- `actual_cost` calculated on-the-fly (not stored)
+- Index on `ingredients.outlet_id` for filtering
 - Cache cost calculations if menu items > 1000
 
 ### Data Integrity
@@ -446,9 +376,26 @@ frontend-pos/
 
 ### Migration
 - Existing `estimated_cost` preserved
-- New `actual_cost` calculated from recipes when created
+- New `actual_cost` calculated when recipe is created
 - No data loss
 
 ---
 
-*Last Updated: September 25, 2026*
+## Comparison: Before vs After
+
+### Before (No Inventory Module)
+- Menu items have only `estimated_cost`
+- No tracking of actual ingredient usage
+- No visibility into stock levels
+- Gross margin based on guesswork
+
+### After (With Inventory Module)
+- Menu items have `actual_cost` from recipes
+- Real-time stock deduction on orders
+- Low stock alerts
+- Accurate gross margin calculation
+- Waste tracking
+
+---
+
+*Last Updated: September 27, 2026*
