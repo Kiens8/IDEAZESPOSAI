@@ -12,7 +12,7 @@ description: Design specification for inventory management in IDEAZES POS AI
 
 | Phase | Status | Completed |
 |-------|--------|----------|
-| Phase 1: Core Inventory | ✅ Completed | Backend API: September 27, 2026 |
+| Phase 1: Core Inventory | ✅ Completed | September 27, 2026 |
 | Phase 2: Enhanced | ⏳ Pending | - |
 | Phase 3: Enterprise | ⏳ Pending | - |
 
@@ -28,10 +28,25 @@ description: Design specification for inventory management in IDEAZES POS AI
 - `recipe_ingredients`
 - `stock_movements`
 
+**Database Column Added:**
+- `menu_items.has_recipe` - Boolean flag indicating if item has inventory recipe
+
 **Modified Files:**
 - `backend/app/models/__init__.py` - Added inventory model imports
-- `backend/app/models/models.py` - Added `has_recipe` to MenuItem
+- `backend/app/models/models.py` - Added `has_recipe` to MenuItem model
+- `backend/app/routes/menu.py` - Added `has_recipe` to MenuItemResponse
 - `backend/app/main.py` - Registered inventory router
+
+### Frontend Pages - Implemented (September 27, 2026)
+
+**Files Created:**
+- `frontend/src/pages/Inventory/Ingredients.jsx` - Ingredient management page
+- `frontend/src/pages/Inventory/RecipeBuilder.jsx` - Recipe builder page
+- `frontend/src/pages/Inventory/StockMovements.jsx` - Stock movements tracking page
+
+**Modified Files:**
+- `frontend/src/App.jsx` - Added inventory routes and imports
+- `frontend/src/pages/MenuManagement.jsx` - Added actual cost display and recipe badge
 
 ### API Endpoints Available
 
@@ -51,6 +66,14 @@ description: Design specification for inventory management in IDEAZES POS AI
 | POST | `/api/inventory/stock-movements/purchase` | ✅ Working |
 | POST | `/api/inventory/stock-movements/waste` | ✅ Working |
 | GET | `/api/inventory/cost/{menu_item_id}` | ✅ Working |
+
+### Frontend Routes
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/inventory/ingredients` | Ingredients | Ingredient CRUD, low stock alerts |
+| `/inventory/recipes` | RecipeBuilder | Link ingredients to menu items |
+| `/inventory/movements` | StockMovements | Track purchases, waste, adjustments |
 
 ## Overview
 
@@ -84,10 +107,12 @@ The Inventory Management module tracks ingredients and raw materials used in men
 - [x] Actual cost calculation
 - [x] Stock level tracking
 - [x] Low stock alerts
-- [x] Stock adjustment (manual count)
+- [x] Stock adjustment (purchase/waste)
 - [x] Stock movement history
+- [x] Cost display in Menu Management (actual cost + margin)
+- [x] Recipe badge on menu items
 
-> **Backend API Completed** - Frontend pages pending
+> **✅ Phase 1 Complete** - Backend API + Frontend pages
 
 ### Phase 2: Enhanced
 
