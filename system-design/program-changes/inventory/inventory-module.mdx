@@ -116,11 +116,13 @@ The Inventory Management module tracks ingredients and raw materials used in men
 
 ---
 
-## Phase 1 Enhancement: Stock Management Settings (Planned)
+## Phase 1 Enhancement: Stock Management Settings ✅ COMPLETED
 
 ### Overview
 
 Add stock management controls to prevent overselling and automate inventory tracking.
+
+**Status: ✅ IMPLEMENTED - September 28, 2026**
 
 ### New Database Table: `inventory_settings`
 
@@ -135,6 +137,15 @@ CREATE TABLE inventory_settings (
   updated_at DATETIME
 );
 ```
+
+**Files Created/Modified:**
+- `backend/app/models/inventory.py` - Added `InventorySettings` model
+- `backend/app/routes/inventory_settings.py` - New API routes
+- `backend/app/routes/order.py` - Added `check_stock_blocking()` and `auto_decrement_stock()` functions
+- `backend/app/routes/menu.py` - Added `stock_status` field to menu items
+- `frontend/src/pages/Settings.jsx` - Added Inventory Settings tab
+- `frontend/src/pages/StaffOrder.jsx` - Added low stock badges
+- `customer-app/js/app.js` - Added low stock badges
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -176,8 +187,8 @@ Settings → Inventory (only visible if outlet has inventory features)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/settings/inventory?outlet_id=X` | Get inventory settings |
-| PUT | `/api/settings/inventory` | Update inventory settings |
+| GET | `/api/inventory-settings?outlet_id=X` | Get inventory settings |
+| PUT | `/api/inventory-settings` | Update inventory settings |
 
 ### Stock Status Logic
 
@@ -239,17 +250,28 @@ Order Status → READY
 
 ### Implementation Tasks
 
-| Priority | Task |
-|----------|------|
-| 1 | Create `inventory_settings` table with 4 toggle fields |
-| 2 | Add API: GET `/api/settings/inventory?outlet_id=X` |
-| 3 | Add API: PUT `/api/settings/inventory` |
-| 4 | Add Settings → Inventory tab (gated by inventory features) |
-| 5 | Add `stock_status` to menu items API |
-| 6 | Implement Add to Cart blocking (when out_of_stock_blocking = true) |
-| 7 | Implement Auto Decrement on order "ready" (when auto_decrement_stock = true) |
-| 8 | Add badges to Staff Order Screen (when low_stock_badge = true) |
-| 9 | Add badges to Customer Order App (when low_stock_badge = true) |
+| Priority | Task | Status |
+|----------|------|--------|
+| 1 | Create `inventory_settings` table with 4 toggle fields | ✅ Completed |
+| 2 | Add API: GET `/api/inventory-settings?outlet_id=X` | ✅ Completed |
+| 3 | Add API: PUT `/api/inventory-settings` | ✅ Completed |
+| 4 | Add Settings → Inventory tab (gated by inventory features) | ✅ Completed |
+| 5 | Add `stock_status` to menu items API | ✅ Completed |
+| 6 | Implement Add to Cart blocking (when out_of_stock_blocking = true) | ✅ Completed |
+| 7 | Implement Auto Decrement on order "ready" (when auto_decrement_stock = true) | ✅ Completed |
+| 8 | Add badges to Staff Order Screen (when low_stock_badge = true) | ✅ Completed |
+| 9 | Add badges to Customer Order App (when low_stock_badge = true) | ✅ Completed |
+
+### Implementation Notes
+
+**Root Causes Fixed During Implementation:**
+1. `outlet_id` not in `OrderResponse` - API response showed null
+2. Decimal vs Float subtraction in stock calculation
+3. Order items not loaded properly for auto-decrement
+
+**Blocking Behavior:**
+- `out_of_stock` (stock = 0): BLOCKED (API rejects order)
+- `low_stock` (stock ≤ min): Allowed with confirmation dialog
 
 ### Phase 2: Enhanced
 
