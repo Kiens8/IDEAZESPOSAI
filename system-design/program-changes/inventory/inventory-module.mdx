@@ -15,6 +15,7 @@ description: Design specification for inventory management in IDEAZES POS AI
 | Phase 1: Core Inventory | ✅ Completed | September 27, 2026 |
 | Phase 1 Enhancement: Stock Settings | ✅ Completed | September 28, 2026 |
 | Phase 2: Enhanced Reports | ✅ Completed | September 28, 2026 |
+| Phase 2: Notification System | ✅ Completed | September 28, 2026 |
 | Phase 3: Enterprise | ⏳ Pending | - |
 
 ### Backend API - Implemented (September 27, 2026)
@@ -508,11 +509,140 @@ Inventory Reports (New Page)
 
 ---
 
+## Phase 2: Notification System ✅ COMPLETED
+
+**Status: ✅ IMPLEMENTED - September 28, 2026**
+
+### Overview
+
+Added inventory notification system to alert staff/admin when stock needs attention. Notifications appear in a bell icon in the header.
+
+### Notification Types
+
+| Type | Trigger Condition | Recipients |
+|------|------------------|------------|
+| **Low Stock Alert** | Stock ≤ min_stock_level | All Staff |
+| **Out of Stock Alert** | Stock = 0 | All Staff |
+| **Critical Low** | Stock < 20% of min_stock_level | Admin Only |
+
+### Implementation
+
+**Files Created:**
+- `backend/app/routes/notifications.py` - Notification API endpoints
+- `frontend/src/components/NotificationBell.jsx` - Bell icon component
+
+**Files Modified:**
+- `backend/app/models/inventory.py` - Added InventoryNotification model and notification settings fields
+- `backend/app/models/models.py` - Added relationship to Outlet
+- `backend/app/routes/order.py` - Trigger notification check after auto-decrement
+- `frontend/src/App.jsx` - Added NotificationBell to header
+- `frontend/src/pages/Settings.jsx` - Added notification settings UI
+
+**Database Changes:**
+- `inventory_settings` table - Added columns:
+  - `notifications_enabled` (Boolean, default: true)
+  - `notify_low_stock` (Boolean, default: true)
+  - `notify_out_of_stock` (Boolean, default: true)
+  - `notify_critical_low` (Boolean, default: false)
+- `inventory_notifications` table - New table:
+  ```sql
+  CREATE TABLE inventory_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      outlet_id INTEGER NOT NULL,
+      ingredient_id INTEGER NOT NULL,
+      notification_type TEXT NOT NULL,
+      message TEXT NOT NULL,
+      is_read BOOLEAN DEFAULT 0,
+      is_resolved BOOLEAN DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      read_at DATETIME,
+      FOREIGN KEY (outlet_id) REFERENCES outlets(id),
+      FOREIGN KEY (ingredient_id) REFERENCES ingredients(id)
+  )
+  ```
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/inventory/notifications` | List notifications for outlet |
+| GET | `/api/inventory/notifications/unread-count` | Get unread count |
+| POST | `/api/inventory/notifications/mark-read` | Mark as read |
+| POST | `/api/inventory/notifications/check-stock` | Trigger stock check |
+| DELETE | `/api/inventory/notifications/{id}` | Dismiss notification |
+| GET | `/api/inventory/notifications/settings` | Get notification settings |
+| PUT | `/api/inventory/notifications/settings` | Update notification settings |
+
+### Notification Bell UI
+
+```
+┌─────────────────────────────────────────┐
+│ 🔔 Notifications (3)                  X │
+├─────────────────────────────────────────┤
+│ 🟡 Chicken Wings low stock             X │
+│   3.5kg (min: 5kg)                    │
+│   5 min ago                            │
+├─────────────────────────────────────────┤
+│ 🔴 Buffalo Sauce                        X │
+│   OUT OF STOCK                         │
+│   1 hour ago                           │
+├─────────────────────────────────────────┤
+│ 🟡 Bean Sprout low stock              X │
+│   4kg (min: 5kg)                      │
+│   2 hours ago                          │
+├─────────────────────────────────────────┤
+│        Refresh Stock Check              │
+└─────────────────────────────────────────┘
+```
+
+### Notification Settings UI (in Inventory Settings)
+
+```
+┌────────────────────────────────────────────────┐
+│ Enable Notifications                       [●] │
+│ Show inventory alerts in header bell icon     │
+│                                                │
+│ Notify On:                                    │
+│ ┌──────────────────────────────────────────┐ │
+│ │ Low Stock Alert                      [●] │ │
+│ │ When Stock ≤ min. Recipients: All Staff │ │
+│ └──────────────────────────────────────────┘ │
+│ ┌──────────────────────────────────────────┐ │
+│ │ Out of Stock Alert                    [●] │ │
+│ │ When Stock = 0. Recipients: All Staff   │ │
+│ └──────────────────────────────────────────┘ │
+│ ┌──────────────────────────────────────────┐ │
+│ │ Critical Low                         [○] │ │
+│ │ When Stock < 20% of min. Admin Only    │ │
+│ └──────────────────────────────────────────┘ │
+└────────────────────────────────────────────────┘
+```
+
+### Behavior
+
+1. **Bell Visibility**: Bell is only visible when `notifications_enabled = true`
+2. **Auto-Check**: Notifications are checked when:
+   - Order status changes to "Ready" (auto-decrement stock)
+   - Manual "Refresh Stock Check" button clicked
+3. **Auto-Resolution**: Notifications auto-resolve when stock is restored above threshold
+4. **Polling**: Frontend polls every 30 seconds for updates
+5. **Badge Count**: Red badge shows unread notification count
+
+### Notification Settings Logic
+
+- When "Enable Notifications" is OFF → All notification toggles turn OFF automatically
+- When "Enable Notifications" is toggled OFF → Bell icon is hidden from header
+- Notification sub-settings only editable when master toggle is ON
+
+---
+
 - [ ] Create Inventory Reports page with tabs
 - [ ] Cost Analysis tab
 - [ ] Stock Status tab
 - [ ] Waste Report tab
 - [ ] Export CSV functionality
+- [x] Notification Bell in header
+- [x] Notification Settings in Inventory Settings
 
 ### Phase 3: Enterprise (Future)
 
