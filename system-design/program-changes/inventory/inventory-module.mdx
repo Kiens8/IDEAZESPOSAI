@@ -13,7 +13,8 @@ description: Design specification for inventory management in IDEAZES POS AI
 | Phase | Status | Completed |
 |-------|--------|----------|
 | Phase 1: Core Inventory | ✅ Completed | September 27, 2026 |
-| Phase 2: Enhanced | ⏳ Pending | - |
+| Phase 1 Enhancement: Stock Settings | ✅ Completed | September 28, 2026 |
+| Phase 2: Enhanced Reports | ✅ Completed | September 28, 2026 |
 | Phase 3: Enterprise | ⏳ Pending | - |
 
 ### Backend API - Implemented (September 27, 2026)
@@ -113,6 +114,193 @@ The Inventory Management module tracks ingredients and raw materials used in men
 - [x] Recipe badge on menu items
 
 > **✅ Phase 1 Complete** - Backend API + Frontend pages
+
+---
+
+## Phase 2: Enhanced Reports ✅ COMPLETED
+
+**Status: ✅ IMPLEMENTED - September 28, 2026**
+
+### Overview
+
+Enhanced the Inventory Reports page with interactive dashboards, charts, and actionable insights across all report types.
+
+### Implementation: Reports Page with Tabs
+
+**File:** `frontend/src/pages/Inventory/Reports.jsx`
+
+**Tabs Implemented:**
+1. **Cost Analysis** - Ingredient cost breakdown with trends
+2. **Stock Status** - Real-time stock levels with alerts
+3. **Waste Report** - Waste tracking and analysis
+4. **Export CSV** - Data export functionality
+
+---
+
+### Tab 1: Cost Analysis ✅
+
+**Features Implemented:**
+
+| Feature | Description |
+|---------|-------------|
+| Period Toggle | Switch between Daily / Weekly / Monthly view |
+| Summary Cards | Total Cost, Ingredients Used, Periods Tracked |
+| Cost Trend Chart | Bar chart showing cost over last 14 days |
+| Top Cost Contributors | Top 5 highest cost ingredients with ranking badges |
+| Ingredient Table | Price, qty used, cost breakdown with filter |
+
+**UI Layout:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Cost Analysis    [Daily] [Weekly] [Monthly]                │
+├─────────────────────────────────────────────────────────────┤
+│ ┌────────────┐ ┌────────────┐ ┌────────────┐               │
+│ │ Total Cost │ │ Ingredients│ │ Periods   │               │
+│ │ $XX.XX    │ │ XX        │ │ XX        │               │
+│ └────────────┘ └────────────┘ └────────────┘               │
+│ ┌───────────────────────┐ ┌───────────────────────┐       │
+│ │ Cost Trend (14 days)  │ │ Top Contributors      │       │
+│ │ ▓▓▓▓▓▓              │ │ 1. Chicken $45        │       │
+│ │ ▓▓▓▓▓                │ │ 2. Beef $38          │       │
+│ └───────────────────────┘ └───────────────────────┘       │
+│ ┌─────────────────────────────────────────────────────┐     │
+│ │ Ingredient | Used | Unit Cost | Total Cost          │     │
+│ └─────────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Backend API Used:**
+- `GET /api/inventory/stock-movements?movement_type=usage` - Usage data
+- `GET /api/inventory/ingredients` - Ingredient details for cost calculation
+
+**Data Calculated:**
+- Total cost = SUM(|quantity| × unit_cost) per ingredient
+- Trend = grouped by date, last 14 days
+
+---
+
+### Tab 2: Stock Status ✅
+
+**Features Implemented:**
+
+| Feature | Description |
+|---------|-------------|
+| Summary Cards | Total Items, Stock Value ($), Low/Out Count |
+| Filter Buttons | All / Low Stock / Out of Stock (with counts) |
+| Table View | Sortable by urgency (critical items first) |
+| Days Until Stockout | Based on daily usage rate calculation |
+| Stock Value | qty × unit_cost per ingredient |
+| Alert Icons | 🔴⚠️✅ indicators |
+| Stock Bar | Visual percentage bar |
+
+**UI Layout:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ┌────────────┐ ┌────────────┐ ┌────────────┐               │
+│ │ Total Items│ │ Stock Value│ │ Low / Out │               │
+│ │ 45        │ │ $12,450   │ │ 5 / 2     │               │
+│ └────────────┘ └────────────┘ └────────────┘               │
+│ [All (45)] [Low Stock (5)] [Out of Stock (2)]             │
+│ ┌─────────────────────────────────────────────────────┐     │
+│ │ Ingredient │ Stock    │ Value  │ Days │ Status      │     │
+│ │ 🔴 Chicken│ ▓▓░░ 50 │ $850   │ 3 days│ Low Stock  │     │
+│ │ ⚠️ Beef  │ ▓▓▓░ 75 │ $420   │ 8 days│ Low Stock  │     │
+│ │ ✅ Rice   │ ▓▓▓▓▓ 95 │ $120   │ 30 days│ OK        │     │
+│ └─────────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Backend API Used:**
+- `GET /api/inventory/ingredients` - Current stock levels
+- `GET /api/inventory/stock-movements?movement_type=usage` - Usage rate calculation
+
+**Calculations:**
+- Stock Value = current_stock × unit_cost
+- Days Until Stockout = current_stock / avg_daily_usage (from movements)
+- Sort priority: Out of Stock → Low Stock → Days until stockout
+
+---
+
+### Tab 3: Waste Report ✅
+
+**Features Implemented:**
+
+| Feature | Description |
+|---------|-------------|
+| Summary Cards | Total Waste (units), Waste %, Cost of Waste |
+| Waste Trend Chart | Bar chart showing waste over last 14 days |
+| Waste by Reason | Categorized breakdown (from notes field) |
+| Waste Percentage | Waste ÷ Total Consumed × 100 |
+| Detail Table | Per-ingredient waste with color-coded % |
+
+**UI Layout:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│ ┌────────────┐ ┌────────────┐ ┌────────────┐               │
+│ │ Total Waste│ │ Waste %   │ │ Cost of Waste│             │
+│ │ 2.0 units │ │ 8.5%     │ │ $125.00   │               │
+│ └────────────┘ └────────────┘ └────────────┘               │
+│ ┌───────────────────────┐ ┌───────────────────────┐       │
+│ │ Waste Trend (14 days) │ │ Waste by Reason       │       │
+│ │ ▓▓▓▓▓                │ │ Expired: 40%          │       │
+│ │ ▓▓▓                   │ │ Damaged: 35%          │       │
+│ └───────────────────────┘ │ Prep: 25%             │       │
+│                          └───────────────────────┘       │
+│ ┌─────────────────────────────────────────────────────┐     │
+│ │ Ingredient | Waste Qty | Waste % | Cost              │     │
+│ └─────────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Backend API Used:**
+- `GET /api/inventory/stock-movements?movement_type=waste` - Waste data
+- `GET /api/inventory/stock-movements?movement_type=purchase` - For % calculation
+- `GET /api/inventory/ingredients` - Unit costs
+
+**Calculations:**
+- Waste % = waste_qty / (purchased - current_stock) × 100
+- Reason categorization from `notes` field in movements
+
+---
+
+### Tab 4: Export CSV ✅
+
+**Features:**
+- Export All Ingredients
+- Export Low Stock Only
+- Includes: Name, Unit, Current Stock, Min Level, Unit Cost, Status
+
+---
+
+### Phase 2 Implementation Tasks
+
+| Task | Status |
+|------|--------|
+| Create Inventory Reports page with tabs | ✅ Completed |
+| Cost Analysis tab (summary cards, chart, table) | ✅ Completed |
+| Stock Status tab (summary cards, filters, table) | ✅ Completed |
+| Waste Report tab (summary cards, trend, categorization) | ✅ Completed |
+| Export CSV functionality | ✅ Completed |
+
+---
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `frontend/src/pages/Inventory/Reports.jsx` | Complete rewrite with enhanced tabs |
+
+---
+
+### Database Note
+
+**Important:** The backend uses file-based SQLite database:
+- Path: `/root/.openclaw/workspace/mydoc/Projects/POS_AI/database/pos_ai.db`
+- Previously used in-memory SQLite which lost data on restart
+
+Stock movements are created automatically when:
+- `auto_decrement_stock = true` → Creates `usage` movements when order status = "ready"
+- Waste movements manually created via waste tracking
 
 ---
 
