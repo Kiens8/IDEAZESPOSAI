@@ -273,14 +273,58 @@ Order Status → READY
 - `out_of_stock` (stock = 0): BLOCKED (API rejects order)
 - `low_stock` (stock ≤ min): Allowed with confirmation dialog
 
-### Phase 2: Enhanced
+### Phase 2: Enhanced (Planned)
 
 **Advanced features for better control.**
 
-- [ ] Waste tracking & reporting
-- [ ] Cost analysis report
-- [ ] Stock status report
-- [ ] Export to CSV
+**Implementation Approach: One Screen with Tabs**
+
+```
+Inventory Reports (New Page)
+├── Tab 1: Cost Analysis
+├── Tab 2: Stock Status
+├── Tab 3: Waste Report
+└── Tab 4: Export CSV
+```
+
+#### New Files
+
+| File | Description |
+|------|-------------|
+| `frontend/src/pages/Inventory/Reports.jsx` | Main reports page with tabs |
+
+#### Report Details
+
+**Tab 1: Cost Analysis**
+- Show cost breakdown by menu item
+- Compare estimated vs actual cost
+- Profit margin calculation
+- Filters: Date range, Category, Outlet
+
+**Tab 2: Stock Status**
+- Current stock levels for all ingredients
+- Visual indicators (low stock, out of stock)
+- Quick actions: Reorder alert
+- Filters: Outlet, Ingredient category
+
+**Tab 3: Waste Report**
+- Track waste by ingredient/menu item
+- Waste percentage calculation
+- Cost impact analysis
+- Filters: Date range, Outlet
+
+**Tab 4: Export CSV**
+- Export inventory data to CSV
+- Options: All ingredients, Low stock only, By date range
+- Format options: UTF-8, UTF-8 with BOM
+
+---
+
+- [ ] Create Inventory Reports page with tabs
+- [ ] Cost Analysis tab
+- [ ] Stock Status tab
+- [ ] Waste Report tab
+- [ ] Export CSV functionality
 
 ### Phase 3: Enterprise (Future)
 
