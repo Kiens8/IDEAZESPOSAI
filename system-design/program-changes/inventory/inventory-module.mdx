@@ -16,7 +16,7 @@ description: Design specification for inventory management in IDEAZES POS AI
 | Phase 1 Enhancement: Stock Settings | ✅ Completed | September 28, 2026 |
 | Phase 2: Enhanced Reports | ✅ Completed | September 28, 2026 |
 | Phase 2: Notification System | ✅ Completed | September 28, 2026 |
-| Phase 2: Auto Purchase Suggestion | 🔄 Planned | - |
+| Phase 2: Auto Purchase Suggestion | ✅ Completed | September 28, 2026 |
 | Phase 3: Enterprise | ⏳ Pending | - |
 
 ### Backend API - Implemented (September 27, 2026)
@@ -647,19 +647,20 @@ Added inventory notification system to alert staff/admin when stock needs attent
 
 ---
 
-## Phase 2: Auto Purchase Suggestion (Planned)
+## Phase 2: Auto Purchase Suggestion ✅ COMPLETED
 
-**Status: 🔄 Planned**
+**Status: ✅ IMPLEMENTED - September 28, 2026**
 
 ### Overview
 
-Add intelligent purchase suggestions to help restaurants maintain optimal stock levels. Analyzes usage patterns and suggests order quantities based on consumption data.
+Added intelligent purchase suggestions to help restaurants maintain optimal stock levels. Analyzes usage patterns from stock movements and suggests order quantities based on consumption data.
 
-### Design Principles
+### Implementation
 
-1. **Suggestion-Only Mode**: No purchase order generation (no supplier system yet)
-2. **Focus on Actionable Items**: Show only items that need ordering (stock ≤ min_stock_level)
-3. **Configurable Periods**: 7 days, 30 days (default), 90 days for usage calculation
+**File Modified:**
+- `frontend/src/pages/Inventory/Reports.jsx` - Added PurchaseSuggestionTab
+
+**New Tab:** "Purchase Suggestion" in Inventory Reports (between Waste Report and Export CSV)
 
 ### Calculation Formula
 
@@ -677,26 +678,21 @@ Suggested Order = (Lead Time + Safety Stock) × Daily Usage - Current Stock
 | Safety Stock | 3 days | Buffer days to prevent stockout |
 | Usage Period | 30 days | Historical data for calculation |
 
-### Proposed UI Layout
-
-**New Tab: "Purchase Suggestions" in Inventory Reports**
+### UI Layout
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ Purchase Suggestions                    [🔄 Refresh]        │
 ├─────────────────────────────────────────────────────────────┤
-│ Period: [7D] [30D] [90D]    Settings: Lead [7] Safety [3] │
+│ Period: [7D] [30D] [90D]    Lead [7] days  Safety [3] days │
 ├─────────────────────────────────────────────────────────────┤
 │ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐       │
-│ │ Items to Order│ │ Est. Cost  │ │ Days Covered│       │
-│ │ 3 items    │ │ $285.00   │ │ 14 days   │       │
+│ │ Items to Order│ │ Est. Cost  │ │ Avg Coverage │       │
+│ │ 1 item     │ │ $XX.XX    │ │ XX days    │       │
 │ └──────────────┘ └──────────────┘ └──────────────┘       │
 │ ┌─────────────────────────────────────────────────────┐ │
-│ │ Ingredient │ Stock │ Usage/D │ Days │ Order │ Urgency │ │
-│ ├─────────────────────────────────────────────────────┤ │
-│ │ 🟡 Chicken │ 3.5kg │ 2.5kg │ 1.4d │ 18kg │ HIGH │ │
-│ │ ⚠️ Beef  │ 8kg  │ 1.2kg │ 6.7d │ 12kg │ MED │ │
-│ │ 🔴 Rice   │ 0kg  │ 3kg   │ 0d   │ 30kg │ CRIT │ │
+│ │ Ingredient | Stock | Usage/D | Days | Order | Urgency │ │
+│ │ 🟡 Chicken | 3.5kg | X kg | Xd | XXkg | HIGH    │ │
 │ └─────────────────────────────────────────────────────┘ │
 │                                    [Export CSV]          │
 └─────────────────────────────────────────────────────────────┘
@@ -708,13 +704,18 @@ Suggested Order = (Lead Time + Safety Stock) × Daily Usage - Current Stock
 |-------|-----------|-------------|
 | CRITICAL | Days until stockout = 0 | 🔴 Red |
 | HIGH | Days until stockout ≤ 3 | 🟡 Yellow |
-| MEDIUM | Days until stockout ≤ 7 | 🟡 Yellow |
+| MEDIUM | Days until stockout ≤ 7 | 🟠 Orange |
 | LOW | Days until stockout > 7 | 🟢 Green |
 
-### Features
+### Features Implemented
 
-1. **Quick Period Filters**: [7D] [30D] [90D] buttons for usage period
-2. **Configurable Parameters**: Lead time and safety stock days (inline settings)
+1. ✅ **Quick Period Filters**: [7D] [30D] [90D] buttons for usage period
+2. ✅ **Configurable Parameters**: Lead time and safety stock days (inline inputs)
+3. ✅ **Summary Cards**: Items to Order, Estimated Cost, Average Coverage
+4. ✅ **Urgency Sorting**: Most critical items at top
+5. ✅ **Color-coded Urgency Badges**: CRITICAL/HIGH/MEDIUM/LOW
+6. ✅ **Export CSV**: Download suggestion list
+7. ✅ **Mobile Responsive**: Horizontally scrollable tables
 3. **Summary Cards**: Total items to order, estimated cost, days of coverage
 4. **Urgency Sorting**: Most critical items at top
 5. **Export to CSV**: Download suggestion list
@@ -730,14 +731,14 @@ When supplier system is added:
 
 | Task | Status |
 |------|--------|
-| Create Purchase Suggestions tab in Reports | 🔄 Planned |
-| Usage calculation from stock_movements | 🔄 Planned |
-| Suggestion algorithm (daily usage, days left, order qty) | 🔄 Planned |
-| Period filter buttons (7D, 30D, 90D) | 🔄 Planned |
-| Settings: Lead time & Safety stock inputs | 🔄 Planned |
-| Summary cards (items, cost, coverage) | 🔄 Planned |
-| Urgency indicators | 🔄 Planned |
-| Export CSV functionality | 🔄 Planned |
+| Create Purchase Suggestions tab in Reports | ✅ Completed |
+| Usage calculation from stock_movements | ✅ Completed |
+| Suggestion algorithm (daily usage, days left, order qty) | ✅ Completed |
+| Period filter buttons (7D, 30D, 90D) | ✅ Completed |
+| Settings: Lead time & Safety stock inputs | ✅ Completed |
+| Summary cards (items, cost, coverage) | ✅ Completed |
+| Urgency indicators | ✅ Completed |
+| Export CSV functionality | ✅ Completed |
 
 ---
 
