@@ -742,15 +742,204 @@ When supplier system is added:
 
 ---
 
-### Phase 3: Enterprise (Future)
+## Phase 3: Enterprise 🚧 PLANNED
 
-**Multi-outlet and supplier features.**
+### Overview
 
-- [ ] Multi-outlet support
-- [ ] Supplier management
-- [ ] Purchase orders
-- [ ] Inter-outlet transfers
-- [ ] Advanced forecasting
+Phase 3 adds supplier management, purchase orders, and stock transfer capabilities for full inventory control.
+
+### Features
+
+#### 1. Multi-Outlet Support
+
+**Capabilities:**
+- Centralized view of all outlets' stock
+- Consolidated reports across outlets
+- Stock transfer between outlets
+- Shared ingredient master
+- Cross-outlet low stock alerts
+
+**Stock Transfer Example:**
+```
+Outlet A (KL) has excess: Chicken Wings +10kg
+Outlet B (Penang) is low: Chicken Wings -5kg
+
+→ Admin transfers 5kg from A to B
+→ Both outlets updated automatically
+→ Transfer record created
+```
+
+#### 2. Supplier Management
+
+**Capabilities:**
+- Supplier directory (name, contact, lead time, address)
+- Link ingredients to preferred suppliers
+- Supplier categories for organization
+- Price history per ingredient
+- Contact information management
+
+**Supplier Categories:**
+```
+- Meat & Poultry
+- Seafood
+- Vegetables
+- Dairy
+- General Supplies
+```
+
+#### 3. Purchase Orders (PO)
+
+**Capabilities:**
+- Generate PO from purchase suggestions
+- Auto-select supplier from ingredient settings
+- PO numbering (auto-gen: PO-YYYY-0001)
+- Order status tracking (Pending → Sent → Delivered → Received)
+- Partial delivery handling
+
+**Workflow:**
+```
+1. Purchase Suggestion: Order 15kg Chicken Wings
+         ↓
+2. Click "Generate PO" → Select supplier
+         ↓
+3. PO Created: PO-2026-0001
+         ↓
+4. Supplier delivers → Mark as "Received"
+         ↓
+5. Stock automatically added + movement recorded
+```
+
+#### 4. Inter-Outlet Transfers
+
+**Capabilities:**
+- Request transfer between outlets
+- Approve/reject transfer requests
+- Transfer history with status
+- Optional cost allocation
+
+**Example:**
+```
+Outlet B (Penang) - Low on Chicken
+         ↓
+Creates Transfer Request to Outlet A (KL)
+         ↓
+Outlet A approves → Ships 5kg
+         ↓
+Outlet B receives → Stock updated
+         ↓
+Transfer complete - Both parties notified
+```
+
+---
+
+### Proposed Menu Structure
+
+```
+Inventory (Sidebar Menu)
+├── Ingredients        (existing)
+├── Recipes           (existing)
+├── Stock Movements   (existing)
+├── Inventory Reports (existing)
+│
+├── 🆕 Suppliers      → New page
+│   └── List suppliers, add/edit
+│
+├── 🆕 Purchase Orders → New page
+│   ├── Pending Orders
+│   ├── Order History
+│   └── Receive Stock
+│
+└── 🆕 Stock Transfer → New page
+    ├── Transfer Between Outlets (Inter-Outlet)
+    └── Request/Approve Transfers
+```
+
+---
+
+## Subscription Tiers
+
+### Recommended: Modular Approach (Pay-per-feature)
+
+This approach allows lower entry barrier and upsell potential.
+
+#### Tier Structure
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ INVENTORY MODULE                                           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  STARTER (RM 29/mo)                                        │
+│  ├── Ingredient Management                                  │
+│  ├── Recipe Builder                                         │
+│  ├── Stock Movements (Purchase/Waste)                       │
+│  ├── Basic Reports (Stock Status, Waste)                   │
+│  └── Single Outlet                                          │
+│                                                             │
+│  PROFESSIONAL (RM 59/mo) - Add:                            │
+│  ├── + Cost Analysis & Trends                              │
+│  ├── + Purchase Suggestions                                 │
+│  ├── + Notifications (Low Stock Alerts)                   │
+│  ├── + Multi-Outlet Support                                 │
+│  └── + Stock Transfers (Between Your Outlets)              │
+│                                                             │
+│  ENTERPRISE (RM 99/mo) - Add:                              │
+│  ├── + Supplier Management                                  │
+│  ├── + Purchase Orders                                      │
+│  ├── + Supplier Price History                               │
+│  └── + Inter-Outlet Transfers (Request/Approve)            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Tier Comparison Table
+
+| Feature | Starter | Professional | Enterprise |
+|---------|---------|--------------|------------|
+| Ingredient Management | ✅ | ✅ | ✅ |
+| Recipe Builder | ✅ | ✅ | ✅ |
+| Stock Movements | ✅ | ✅ | ✅ |
+| Stock Status Report | ✅ | ✅ | ✅ |
+| Waste Report | ✅ | ✅ | ✅ |
+| Cost Analysis | - | ✅ | ✅ |
+| Purchase Suggestions | - | ✅ | ✅ |
+| Notifications | - | ✅ | ✅ |
+| Single Outlet | ✅ | - | - |
+| Multi-Outlet | - | ✅ | ✅ |
+| Stock Transfers (Internal) | - | ✅ | ✅ |
+| Supplier Management | - | - | ✅ |
+| Purchase Orders | - | - | ✅ |
+| Supplier Price History | - | - | ✅ |
+| Inter-Outlet Transfers | - | - | ✅ |
+
+#### Implementation Priority
+
+| Priority | Feature | Tier | Notes |
+|----------|---------|------|-------|
+| 1 | Stock Transfer (Internal) | Professional | Simplest to start |
+| 2 | Multi-Outlet View | Professional | Dashboard for all outlets |
+| 3 | Supplier Management | Enterprise | CRUD for suppliers |
+| 4 | Purchase Orders | Enterprise | Generate & track POs |
+| 5 | Inter-Outlet Transfers | Enterprise | Request/Approve flow |
+
+---
+
+### Phase 3 Implementation Tasks
+
+| Task | Status | Tier |
+|------|--------|------|
+| Multi-Outlet Dashboard View | 🔄 Planned | Professional |
+| Stock Transfer Between Outlets | 🔄 Planned | Professional |
+| Supplier Management Page | 🔄 Planned | Enterprise |
+| Link Ingredients to Suppliers | 🔄 Planned | Enterprise |
+| Supplier Categories | 🔄 Planned | Enterprise |
+| Purchase Orders Page | 🔄 Planned | Enterprise |
+| Generate PO from Suggestions | 🔄 Planned | Enterprise |
+| PO Status Tracking | 🔄 Planned | Enterprise |
+| Receive Stock (Auto-update) | 🔄 Planned | Enterprise |
+| Inter-Outlet Transfer Requests | 🔄 Planned | Enterprise |
+| Approve/Reject Transfers | 🔄 Planned | Enterprise |
+| Transfer History | 🔄 Planned | Enterprise |
 
 ---
 
