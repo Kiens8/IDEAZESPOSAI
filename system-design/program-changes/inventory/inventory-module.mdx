@@ -856,92 +856,24 @@ Inventory (Sidebar Menu)
 
 ---
 
-## Subscription Tiers
-
-### Recommended: Modular Approach (Pay-per-feature)
-
-This approach allows lower entry barrier and upsell potential.
-
-#### Tier Structure
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ INVENTORY MODULE                                           │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  STARTER (RM 29/mo)                                        │
-│  ├── Ingredient Management                                  │
-│  ├── Recipe Builder                                         │
-│  ├── Stock Movements (Purchase/Waste)                       │
-│  ├── Basic Reports (Stock Status, Waste)                   │
-│  └── Single Outlet                                          │
-│                                                             │
-│  PROFESSIONAL (RM 59/mo) - Add:                            │
-│  ├── + Cost Analysis & Trends                              │
-│  ├── + Purchase Suggestions                                 │
-│  ├── + Notifications (Low Stock Alerts)                   │
-│  ├── + Multi-Outlet Support                                 │
-│  └── + Stock Transfers (Between Your Outlets)              │
-│                                                             │
-│  ENTERPRISE (RM 99/mo) - Add:                              │
-│  ├── + Supplier Management                                  │
-│  ├── + Purchase Orders                                      │
-│  ├── + Supplier Price History                               │
-│  └── + Inter-Outlet Transfers (Request/Approve)            │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-```
-
-#### Tier Comparison Table
-
-| Feature | Starter | Professional | Enterprise |
-|---------|---------|--------------|------------|
-| Ingredient Management | ✅ | ✅ | ✅ |
-| Recipe Builder | ✅ | ✅ | ✅ |
-| Stock Movements | ✅ | ✅ | ✅ |
-| Stock Status Report | ✅ | ✅ | ✅ |
-| Waste Report | ✅ | ✅ | ✅ |
-| Cost Analysis | - | ✅ | ✅ |
-| Purchase Suggestions | - | ✅ | ✅ |
-| Notifications | - | ✅ | ✅ |
-| Single Outlet | ✅ | - | - |
-| Multi-Outlet | - | ✅ | ✅ |
-| Stock Transfers (Internal) | - | ✅ | ✅ |
-| Supplier Management | - | - | ✅ |
-| Purchase Orders | - | - | ✅ |
-| Supplier Price History | - | - | ✅ |
-| Inter-Outlet Transfers | - | - | ✅ |
-
-#### Implementation Priority
-
-| Priority | Feature | Tier | Notes |
-|----------|---------|------|-------|
-| 1 | Stock Transfer (Internal) | Professional | Simplest to start |
-| 2 | Multi-Outlet View | Professional | Dashboard for all outlets |
-| 3 | Supplier Management | Enterprise | CRUD for suppliers |
-| 4 | Purchase Orders | Enterprise | Generate & track POs |
-| 5 | Inter-Outlet Transfers | Enterprise | Request/Approve flow |
-
----
 
 ### Phase 3 Implementation Tasks
 
-| Task | Status | Tier |
-|------|--------|------|
-| Multi-Outlet Dashboard View | 🔄 Planned | Professional |
-| Stock Transfer Between Outlets | 🔄 Planned | Professional |
-| Supplier Management Page | 🔄 Planned | Enterprise |
-| Link Ingredients to Suppliers | 🔄 Planned | Enterprise |
-| Supplier Categories | 🔄 Planned | Enterprise |
-| Purchase Orders Page | 🔄 Planned | Enterprise |
-| Generate PO from Suggestions | 🔄 Planned | Enterprise |
-| PO Status Tracking | 🔄 Planned | Enterprise |
-| Receive Stock (Auto-update) | 🔄 Planned | Enterprise |
-| Inter-Outlet Transfer Requests | 🔄 Planned | Enterprise |
-| Approve/Reject Transfers | 🔄 Planned | Enterprise |
-| Transfer History | 🔄 Planned | Enterprise |
+| Task | Status |
+|------|--------|
+| Supplier Management Page | ✅ Completed |
+| Purchase Orders Page | ✅ Completed |
+| Stock Transfers Page | ✅ Completed |
+| Supplier CRUD operations | ✅ Completed |
+| PO creation with items | ✅ Completed |
+| PO status tracking | ✅ Completed |
+| Receive stock auto-update | ✅ Completed |
+| Transfer between outlets | ✅ Completed |
+| Approve/Reject transfers | ✅ Completed |
+| Transfer history | 🔄 Planned |
+| Link ingredients to suppliers | 🔄 Planned |
+| Generate PO from suggestions | 🔄 Planned |
 
----
 
 ## Database Schema
 
