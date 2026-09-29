@@ -769,6 +769,24 @@ Outlet B (Penang) is low: Chicken Wings -5kg
 → Transfer record created
 ```
 
+### Stock Transfer Types
+
+**1. Direct Transfer**
+- Outlet A sends stock directly to Outlet B
+- Sender's outlet sees "Approve & Transfer" / "Reject" buttons
+- Receiver's outlet sees "Cancel Request" button
+- Badge: 🔵 Blue "Direct"
+
+**2. Request Transfer**
+- Outlet B requests stock FROM Outlet A
+- Source outlet (Outlet A) sees "Approve & Transfer" / "Reject" buttons
+- Requesting outlet (Outlet B) sees "Cancel Request" button
+- Badge: 🟣 Purple "Request"
+
+**Stock Movement Recording:**
+- Direct Transfer: Deduct from sender, add to receiver (by ingredient_id)
+- Request Transfer: Deduct from source, add to requestor (by ingredient name matching)
+
 #### 2. Supplier Management
 
 **Capabilities:**
@@ -812,20 +830,34 @@ Outlet B (Penang) is low: Chicken Wings -5kg
 #### 4. Inter-Outlet Transfers
 
 **Capabilities:**
-- Request transfer between outlets
-- Approve/reject transfer requests
-- Transfer history with status
-- Optional cost allocation
+- Direct transfer between outlets
+- Request stock from other outlets
+- Approve/reject/cancel transfer requests
+- Transfer history with status tracking
+- Stock movement recording for both parties
 
-**Example:**
+**Direct Transfer Flow:**
 ```
-Outlet B (Penang) - Low on Chicken
+Outlet A (Sender) creates Direct Transfer to Outlet B
          ↓
-Creates Transfer Request to Outlet A (KL)
+Outlet A approves → Stock deducts from Outlet A
          ↓
-Outlet A approves → Ships 5kg
+Stock adds to Outlet B automatically
          ↓
-Outlet B receives → Stock updated
+Outlet B can cancel if needed
+         ↓
+Transfer complete
+```
+
+**Request Transfer Flow:**
+```
+Outlet B (Requestor) creates Request to Outlet A
+         ↓
+Outlet A (Source) approves → Ships stock
+         ↓
+Stock deducts from Outlet A, adds to Outlet B
+         ↓
+Outlet B can cancel request before approval
          ↓
 Transfer complete - Both parties notified
 ```
@@ -868,9 +900,11 @@ Inventory (Sidebar Menu)
 | PO creation with items | ✅ Completed |
 | PO status tracking | ✅ Completed |
 | Receive stock auto-update | ✅ Completed |
-| Transfer between outlets | ✅ Completed |
+| Direct Transfer between outlets | ✅ Completed |
+| Request Transfer between outlets | ✅ Completed |
 | Approve/Reject transfers | ✅ Completed |
-| Transfer history | 🔄 Planned |
+| Cancel transfer (by requestor/receiver) | ✅ Completed |
+| Transfer history | ✅ Completed |
 | Link ingredients to suppliers | 🔄 Planned |
 | Generate PO from suggestions | 🔄 Planned |
 
