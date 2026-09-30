@@ -6,7 +6,7 @@ description: Design specification for inventory management in IDEAZES POS AI
 # Inventory Management Module
 
 **Date:** September 30, 2026  
-**Version:** 2.1 (Transfer & Supplier Features Added)
+**Version:** 2.2 (PO Auto-Supplier Grouping)
 
 ## Implementation Status
 
@@ -906,6 +906,86 @@ Transfer complete - Both parties notified
 
 ---
 
+### 5. Purchase Orders with Auto-Supplier Grouping
+
+**New Workflow (September 30, 2026)**
+
+**Key Concept:** Items are grouped automatically by their **Preferred Supplier** when creating Purchase Orders.
+
+**Ingredient Link to Supplier:**
+Each ingredient can have:
+- `category` - Category classification (Meat & Poultry, Seafood, Vegetables, Dairy, etc.)
+- `supplier_id` - **Preferred Supplier** for this ingredient
+- Supplier prices stored in `supplier_ingredient_prices` table
+
+**PO Creation Flow:**
+
+**Option 1: From Purchase Suggestions**
+```
+1. User selects items in Purchase Suggestion tab
+         ↓
+2. Clicks "Generate PO (X)" button
+         ↓
+3. System auto-groups by Preferred Supplier:
+   - Group A: Tan Supply → Chicken Wings, Beef
+   - Group B: Fresh Veg → Cabbage, Carrot
+         ↓
+4. Preview shows separate PO per supplier:
+   ┌─────────────────────────────────────┐
+   │ 🟣 Tan Meat & Poultry Supply         │
+   │   Chicken Wings: 15kg @ RM8.00     │
+   │   Beef Steak: 10kg @ RM25.00       │
+   │   Total: RM 370.00                 │
+   └─────────────────────────────────────┘
+   ┌─────────────────────────────────────┐
+   │ 🟢 Fresh Farm Vegetables             │
+   │   Cabbage: 5kg @ RM0.80            │
+   │   Carrot: 4kg @ RM0.60             │
+   │   Total: RM 6.40                   │
+   └─────────────────────────────────────┘
+         ↓
+5. User reviews quantities, edits if needed
+         ↓
+6. Clicks "Create 2 POs" → Creates separate POs for each supplier!
+```
+
+**Option 2: Normal PO Creation**
+```
+1. User clicks "New Order"
+         ↓
+2. Adds items freely (no supplier selection needed)
+   - System shows each ingredient's preferred supplier
+         ↓
+3. Preview auto-groups by supplier (same as above)
+         ↓
+4. User clicks "Create 2 POs"
+```
+
+**Unassigned Items Handling:**
+```
+Items without Preferred Supplier appear in "Unassigned" section:
+
+┌─────────────────────────────────────┐
+│ ⚠️ Unassigned Items                  │
+│   Salt: [Select supplier ▼]          │
+│   Sugar: [Select supplier ▼]         │
+└─────────────────────────────────────┘
+
+User must assign supplier before creating POs.
+```
+
+**Price Priority:**
+1. Use **supplier price** from `supplier_ingredient_prices` if available
+2. Fall back to **ingredient unit_cost** if no supplier price set
+
+**Benefits:**
+- ✅ Save time - No manual supplier grouping
+- ✅ One click creates multiple POs
+- ✅ Clear preview before submission
+- ✅ Handles multi-supplier ordering efficiently
+
+---
+
 ### Proposed Menu Structure
 
 ```
@@ -947,26 +1027,30 @@ Inventory (Sidebar Menu)
 | Approve/Reject transfers | ✅ Completed |
 | Cancel transfer (by requestor/receiver) | ✅ Completed |
 | Transfer history | ✅ Completed |
-| Link ingredients to suppliers | 🔄 Planned |
-| Generate PO from suggestions | 🔄 Planned |
+| Link ingredients to suppliers | ✅ Completed |
+| Supplier pricing per ingredient | ✅ Completed |
+| Generate PO from suggestions | ✅ Completed |
+| Ingredient categories | ✅ Completed |
+| Auto-group PO by supplier | ✅ Completed |
 
 ---
 
 ## Future Enhancements
 
-### High Priority
+### ✅ Completed (September 30, 2026)
 
-| Enhancement | Description | Benefit |
-|-------------|-------------|---------|
-| **Link ingredients to suppliers** | Associate preferred supplier per ingredient | Foundation for PO automation |
-| **Supplier pricing per ingredient** | Store price per supplier, compare costs | Enable price comparison & savings |
-| **Generate PO from suggestions** | One-click convert purchase suggestions to PO | Save time on manual PO creation |
+| Enhancement | Description |
+|-------------|-------------|
+| **Link ingredients to suppliers** | Preferred supplier per ingredient |
+| **Supplier pricing per ingredient** | Store & compare supplier prices |
+| **Generate PO from suggestions** | One-click PO creation from low stock |
+| **Ingredient categories** | Categories for filtering & organization |
+| **Auto-group PO by supplier** | Separate POs per supplier automatically |
 
 ### Medium Priority
 
 | Enhancement | Description | Benefit |
 |-------------|-------------|---------|
-| **Ingredient categories** | Group ingredients (Meat, Seafood, Dairy, etc.) | Better organization & filtering |
 | **Price history tracking** | Record cost changes per ingredient over time | Identify cost trends |
 | **Expiry date tracking** | Track best-before dates for ingredients | Reduce waste from expired items |
 | **Stock take / Cycle count** | Manual verification against system stock | Improve inventory accuracy |
