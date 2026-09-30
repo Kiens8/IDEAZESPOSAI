@@ -5,8 +5,8 @@ description: Design specification for inventory management in IDEAZES POS AI
 
 # Inventory Management Module
 
-**Date:** September 27, 2026  
-**Version:** 2.0 (Simplified)
+**Date:** September 30, 2026  
+**Version:** 2.1 (Transfer & Supplier Features Added)
 
 ## Implementation Status
 
@@ -17,7 +17,7 @@ description: Design specification for inventory management in IDEAZES POS AI
 | Phase 2: Enhanced Reports | ✅ Completed | September 28, 2026 |
 | Phase 2: Notification System | ✅ Completed | September 28, 2026 |
 | Phase 2: Auto Purchase Suggestion | ✅ Completed | September 28, 2026 |
-| Phase 3: Enterprise | ⏳ Pending | - |
+| Phase 3: Enterprise | ✅ Completed | September 30, 2026 |
 
 ### Backend API - Implemented (September 27, 2026)
 
@@ -742,7 +742,7 @@ When supplier system is added:
 
 ---
 
-## Phase 3: Enterprise 🚧 PLANNED
+## Phase 3: Enterprise ✅ COMPLETED
 
 ### Overview
 
@@ -759,15 +759,17 @@ Phase 3 adds supplier management, purchase orders, and stock transfer capabiliti
 - Shared ingredient master
 - Cross-outlet low stock alerts
 
-**Stock Transfer Example:**
-```
-Outlet A (KL) has excess: Chicken Wings +10kg
-Outlet B (Penang) is low: Chicken Wings -5kg
+**Stock Transfer Types:**
 
-→ Admin transfers 5kg from A to B
-→ Both outlets updated automatically
-→ Transfer record created
-```
+**1. Direct Transfer:**
+- Outlet A sends stock directly to Outlet B
+- Badge: 🔵 Blue "Direct"
+- Sender approves → Stock moves
+
+**2. Request Transfer:**
+- Outlet B requests stock FROM Outlet A
+- Badge: 🟣 Purple "Request"
+- Source approves → Stock moves
 
 ### Stock Transfer Types
 
@@ -787,6 +789,30 @@ Outlet B (Penang) is low: Chicken Wings -5kg
 - Direct Transfer: Deduct from sender, add to receiver (by ingredient_id)
 - Request Transfer: Deduct from source, add to requestor (by ingredient name matching)
 
+### Stock Transfer UI Specifications
+
+| Element | Style |
+|---------|-------|
+| Icon | `ArrowUpDown` (Lucide icon) with purple gradient background |
+| Badge - Direct | 🔵 Blue (`bg-blue-100 text-blue-700`) |
+| Badge - Request | 🟣 Purple (`bg-purple-100 text-purple-700`) |
+| Header Gradient | Purple (`from-purple-500 to-indigo-600`) |
+| All Buttons | Blue (`bg-blue-600`) |
+
+### Button Visibility Rules
+
+**Direct Transfer:**
+| Outlet Role | Buttons Shown |
+|-------------|---------------|
+| Sender | ✅ Approve & Transfer / ❌ Reject |
+| Receiver | 🔵 Cancel Request |
+
+**Request Transfer:**
+| Outlet Role | Buttons Shown |
+|-------------|---------------|
+| Source (has stock) | ✅ Approve & Transfer / ❌ Reject |
+| Requestor (wants stock) | 🔵 Cancel Request |
+
 #### 2. Supplier Management
 
 **Capabilities:**
@@ -804,6 +830,14 @@ Outlet B (Penang) is low: Chicken Wings -5kg
 - Dairy
 - General Supplies
 ```
+
+**Supplier UI Specifications:**
+| Element | Style |
+|---------|-------|
+| Icon | `Store` (Lucide icon) with purple gradient background |
+| "Add Supplier" Button | Blue (`bg-blue-600`) |
+| "Create/Update Supplier" Button (Modal) | Blue (`bg-blue-600`) |
+| Header Gradient | Purple (`from-purple-500 to-indigo-600`) |
 
 #### 3. Purchase Orders (PO)
 
@@ -826,6 +860,14 @@ Outlet B (Penang) is low: Chicken Wings -5kg
          ↓
 5. Stock automatically added + movement recorded
 ```
+
+**Purchase Orders UI Specifications:**
+| Element | Style |
+|---------|-------|
+| Icon | `ShoppingCart` (Lucide icon) with purple gradient background |
+| "New Order" Button | Blue (`bg-blue-600`) |
+| "Create Order" Button (Modal) | Blue (`bg-blue-600`) |
+| Header Gradient | Purple (`from-purple-500 to-indigo-600`) |
 
 #### 4. Inter-Outlet Transfers
 
@@ -1243,4 +1285,4 @@ When `current_stock <= min_stock_level`:
 
 ---
 
-*Last Updated: September 27, 2026*
+*Last Updated: September 30, 2026*
