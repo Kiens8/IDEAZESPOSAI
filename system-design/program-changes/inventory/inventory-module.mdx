@@ -6,7 +6,7 @@ description: Design specification for inventory management in IDEAZES POS AI
 # Inventory Management Module
 
 **Date:** September 30, 2026  
-**Version:** 2.2 (PO Auto-Supplier Grouping)
+**Version:** 2.3 (PO View & Print)
 
 ## Implementation Status
 
@@ -986,6 +986,43 @@ User must assign supplier before creating POs.
 
 ---
 
+### 6. PO View & Print
+
+**New Feature (September 30, 2026)**
+
+**Capabilities:**
+- View complete PO details in modal
+- Print-friendly layout
+- Shows supplier, items, quantities, prices, totals
+
+**View PO Modal:**
+```
+┌─────────────────────────────────────┐
+│ Purchase Order                       │
+│ PO-2026-00123                       │
+│                                     │
+│ Status: [Pending]                    │
+│ Date: 30/09/2026                    │
+│ Expected: 03/10/2026                │
+│                                     │
+│ Supplier: Tan Meat & Poultry Supply  │
+│                                     │
+│ Items                              │
+│ ┌─────────────────────────────┐   │
+│ │ Item        Qty    Price     │   │
+│ │ Chicken     15kg   RM 8.00  │   │
+│ │ Beef Steak  10kg   RM25.00  │   │
+│ │ Total       RM 370.00       │   │
+│ └─────────────────────────────┘   │
+│                                     │
+│ Notes: Please deliver by 9am        │
+│                                     │
+│ [Close]  [🖨️ Print]               │
+└─────────────────────────────────────┘
+```
+
+---
+
 ### Proposed Menu Structure
 
 ```
@@ -1032,6 +1069,7 @@ Inventory (Sidebar Menu)
 | Generate PO from suggestions | ✅ Completed |
 | Ingredient categories | ✅ Completed |
 | Auto-group PO by supplier | ✅ Completed |
+| PO View & Print | ✅ Completed |
 
 ---
 
@@ -1046,6 +1084,7 @@ Inventory (Sidebar Menu)
 | **Generate PO from suggestions** | One-click PO creation from low stock |
 | **Ingredient categories** | Categories for filtering & organization |
 | **Auto-group PO by supplier** | Separate POs per supplier automatically |
+| **PO View & Print** | View PO details and print |
 
 ### Medium Priority
 
