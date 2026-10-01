@@ -1,0 +1,301 @@
+# Future Enhancements - Frontend POS App
+
+> Document created: October 2, 2026
+> Last updated: October 2, 2026
+
+---
+
+## Executive Summary
+
+This document outlines the recommended future enhancements for the IDEA ZeroS POS AI Frontend application. The goal is to transform the current MVP into a comprehensive, production-ready POS system that meets the demands of real-world F&B operations.
+
+---
+
+## Current Features ✅
+
+| Category | Features |
+|----------|----------|
+| **Core** | Dashboard, Orders, Kitchen Display, Order History |
+| **Management** | Menu, Staff, Outlets, Tables |
+| **Customer** | Loyalty, Vouchers, Promotions |
+| **Inventory** | Ingredients, Recipes, Suppliers, Purchase Orders, Stock Transfers, Stock Movements |
+| **Reports** | Sales, Walk-in vs Registered, Loyalty, Payment Stats |
+| **Settings** | Tax (SST/VAT), Service Tax, Payment Methods, Currency |
+| **AI** | Chatbot, AI Tools |
+
+---
+
+## Priority 1: High Priority (Critical for F&B Operations)
+
+### 1. Order Modifiers & Customization
+
+**Description:** Allow customers to customize their orders with modifiers.
+
+**Features:**
+- Extra toppings / Remove ingredients
+- Size options (Small, Medium, Large)
+- Spice levels (Mild, Medium, Hot, Extra Hot)
+- Special instructions per item
+- Add-ons at additional cost
+
+**Impact:**
+- Essential for F&B businesses (cafes, restaurants, fast food)
+- Increases average order value through upselling
+- Reduces kitchen errors with clear modifications
+
+**Implementation Effort:** Medium
+
+---
+
+### 2. Combo / Set Meals
+
+**Description:** Bundle multiple items together at a discounted price.
+
+**Features:**
+- Create combo sets (e.g., Set A: Burger + Fries + Drink)
+- Allow substitution of items within combo
+- Different pricing tiers for combos
+- Combo-specific modifiers
+
+**Impact:**
+- Increases average order value by 20-30%
+- Drives faster checkout for repetitive orders
+- Common requirement for QSR and fast-casual restaurants
+
+**Implementation Effort:** Medium
+
+---
+
+### 3. Split Bill Enhancements
+
+**Description:** Advanced bill splitting capabilities for group dining.
+
+**Features:**
+- Split by item (each item to different person)
+- Split by seat / Person (equal items per person)
+- Equal split among X persons
+- Split by payment method (some cash, some card)
+- Multiple payment methods in single transaction
+- Track who paid what
+
+**Current Status:** Partial implementation exists
+
+**Impact:**
+- Critical for fine dining and group bookings
+- Reduces payment disputes
+- Improves customer satisfaction
+
+**Implementation Effort:** Low-Medium
+
+---
+
+## Priority 2: Medium Priority (Operational Efficiency)
+
+### 4. Kitchen Routing / Station Labels
+
+**Description:** Route order items to specific kitchen stations.
+
+**Features:**
+- Assign menu items to stations (Grill, Fryer, Salad, Bar, Dessert)
+- Multiple printers for different stations
+- Kitchen Display System (KDS) per station
+- Fire course / Course sequencing
+- Bump bar / kitchen bump functionality
+
+**Impact:**
+- Reduces ticket time
+- Improves kitchen organization
+- Essential for high-volume operations
+
+**Implementation Effort:** Medium
+
+---
+
+### 5. Cash Drawer Management
+
+**Description:** Track and reconcile cash transactions.
+
+**Features:**
+- Cash float setup at shift start
+- Cash up / Cash reconciliation (X-Read, Z-Read)
+- Track cash sales vs card vs e-wallet
+- Cash drops during the day
+- Over/short tracking
+- Opening and closing cash counts
+
+**Impact:**
+- Critical for cash-heavy businesses
+- Reduces shrinkage and theft
+- Required for end-of-day closing
+
+**Implementation Effort:** Low-Medium
+
+---
+
+### 6. Shift Reports
+
+**Description:** Comprehensive shift-based reporting and closing.
+
+**Features:**
+- X-Read (current shift summary without reset)
+- Z-Read (daily total with reset)
+- Shift-wise breakdowns
+- Staff clock-in/out report
+- Cash reconciliation per shift
+- Auto-close old shifts after configurable time
+
+**Impact:**
+- Essential for daily operations
+- Enables accountability per shift
+- Required for business reporting
+
+**Implementation Effort:** Medium
+
+---
+
+### 7. Low Stock Alerts
+
+**Description:** Automated notifications when inventory runs low.
+
+**Features:**
+- Configurable low stock threshold per ingredient
+- Push notifications in-app
+- Email alerts to managers
+- Auto-suggest purchase orders when low
+- Ingredient usage forecasting
+
+**Impact:**
+- Prevents out-of-stock situations
+- Reduces kitchen rush for missing items
+- Improves inventory management
+
+**Implementation Effort:** Low-Medium
+
+---
+
+## Priority 3: Lower Priority (Growth Features)
+
+### 8. Order Types
+
+**Description:** Support different order fulfillment types.
+
+**Features:**
+- Dine In (with table assignment)
+- Takeaway
+- Delivery (with driver assignment)
+- Drive-thru
+- Self-pickup
+
+**Impact:**
+- Different workflows for each type
+- Enables delivery integrations
+- Future growth for delivery services
+
+**Implementation Effort:** Medium
+
+---
+
+### 9. Waste & Comp Tracking
+
+**Description:** Track wastage and complimentary items.
+
+**Features:**
+- Mark items as wasted (broken, expired, mistakes)
+- Reason codes for wastage
+- Complimentary item tracking
+- Cost calculation for wastage
+- Wastage reports
+
+**Impact:**
+- Identifies operational issues
+- Helps reduce food costs
+- Required for cost control
+
+**Implementation Effort:** Low
+
+---
+
+### 10. Customer Display / Kiosk
+
+**Description:** Customer-facing order confirmation and self-ordering.
+
+**Features:**
+- Order confirmation display (customer-facing screen)
+- Self-ordering kiosk mode
+- Menu browsing on customer display
+- Order review before payment
+- Integration with queue management
+
+**Impact:**
+- Reduces counter staff workload
+- Enables 24/7 self-service
+- Future expansion for quick-service restaurants
+
+**Implementation Effort:** High
+
+---
+
+## Technical Considerations
+
+### Database Schema Updates
+
+Most features will require:
+1. New tables for modifiers, combos, stations
+2. Extension to order_items table for modifiers
+3. New tracking tables for cash/logs/waste
+
+### API Changes
+
+- New endpoints for modifiers, combos, stations
+- Extended order creation with order_type
+- New reporting endpoints for shifts, cash
+
+### Frontend Changes
+
+- New UI components for modifiers modal
+- Combo builder interface
+- Kitchen routing display
+- Cash drawer interface
+
+---
+
+## Implementation Roadmap
+
+### Phase 1 (1-2 weeks)
+1. Order Modifiers & Customization
+2. Split Bill Enhancements
+
+### Phase 2 (2-3 weeks)
+3. Combo / Set Meals
+4. Shift Reports
+
+### Phase 3 (2-3 weeks)
+5. Kitchen Routing
+6. Cash Drawer Management
+
+### Phase 4 (2-4 weeks)
+7. Low Stock Alerts
+8. Waste Tracking
+
+### Phase 5 (3-4 weeks)
+9. Order Types
+10. Customer Display / Kiosk
+
+---
+
+## Appendix: Feature Request Template
+
+When prioritizing new features, evaluate:
+
+| Criteria | Weight |
+|----------|--------|
+| Revenue Impact | 30% |
+| Customer Demand | 25% |
+| Operational Efficiency | 20% |
+| Development Effort | 15% |
+| Technical Risk | 10% |
+
+---
+
+*Document maintained by: Lumi AI*
+*For questions or suggestions, contact the development team*
