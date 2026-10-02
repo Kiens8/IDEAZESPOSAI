@@ -1,4 +1,4 @@
-# Future Enhancements - Frontend POS App
+# Future Enhancements - IDEA ZeroS POS AI
 
 > Document created: October 2, 2026
 > Last updated: October 2, 2026
@@ -7,9 +7,11 @@
 
 ## Executive Summary
 
-This document outlines the recommended future enhancements for the IDEA ZeroS POS AI Frontend application. The goal is to transform the current MVP into a comprehensive, production-ready POS system that meets the demands of real-world F&B operations.
+This document outlines the recommended future enhancements for the IDEA ZeroS POS AI system, covering both the Frontend POS App and the Marketing Website (site.ideazes.com). The goal is to transform the current MVP into a comprehensive, production-ready POS system that meets the demands of real-world F&B operations.
 
 ---
+
+## Part 1: Frontend POS App Enhancements
 
 ## Current Features ✅
 
@@ -89,9 +91,72 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ---
 
+### 4. AI Manager - Dynamic Menu Recommendations
+
+**Description:** AI-powered system that provides dynamic menu recommendations based on live transaction patterns and customer behaviors.
+
+**Features:**
+
+#### Backend (POS Backend API)
+- `POST /api/ai/recommendations` - Get recommendations for current cart
+- `GET /api/ai/menu-insights` - Get menu analytics
+- `GET /api/ai/upsell-suggestions` - Get upsell opportunities
+
+#### Frontend POS (Staff App)
+| Screen | Location | Recommendation Type |
+|--------|----------|-------------------|
+| Order Queue | Side panel or banner | "Customers who ordered X also ordered Y" |
+| Order Creation | After adding item to cart | "Upsell suggestion" popup |
+| Dashboard | AI Insights widget | Top selling combos today |
+| Kitchen Display | Order ticket header | Cross-sell suggestion |
+
+#### Customer Order App (order.ideazes.com)
+| Screen | Location | Recommendation Type |
+|--------|----------|-------------------|
+| Menu Browse | Below each item | "Pairs well with..." |
+| Cart Screen | Before checkout | "You might also like..." |
+| Order Confirmation | Thank you page | "Next time, try..." |
+
+#### Algorithm Implementation
+
+| Option | Approach | Pros | Cons |
+|--------|----------|------|------|
+| A | Rules-Based | Fast, controllable | Limited patterns |
+| B | Association Rules | Data-driven, finds patterns | Needs historical data |
+| C | AI/ML Model | Most accurate, learns | Complex infrastructure |
+
+**Recommended:** Option A + B hybrid
+
+**Implementation Phases:**
+| Phase | Feature | Complexity |
+|-------|---------|------------|
+| 1 | Rules-based upsell suggestions | Low |
+| 2 | "Frequently bought together" engine | Medium |
+| 3 | Time-based recommendations | Low |
+| 4 | Customer personalization | Medium |
+| 5 | AI model training (future) | High |
+
+**Files to Create/Modify:**
+| File | Action |
+|------|--------|
+| `backend/app/routes/ai_recommendations.py` | New endpoint |
+| `backend/app/services/recommendation_engine.py` | New service |
+| `frontend/src/components/AIUpsellPopup.jsx` | New component |
+| `frontend/src/pages/OrderQueue.jsx` | Add upsell logic |
+
+**Impact:**
+- Directly increases average order value
+- Provides 24/7 AI-powered sales assistant
+- Differentiates from competitors
+- Drives upsell revenue automatically
+
+**Implementation Effort:** Medium
+
+---
+
 ## Priority 2: Medium Priority (Operational Efficiency)
 
-### 4. Kitchen Routing / Station Labels
+### 5. Kitchen Routing / Station Labels
 
 **Description:** Route order items to specific kitchen stations.
 
@@ -111,7 +176,7 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ---
 
-### 5. Cash Drawer Management
+### 6. Cash Drawer Management
 
 **Description:** Track and reconcile cash transactions.
 
@@ -132,7 +197,7 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ---
 
-### 6. Shift Reports
+### 7. Shift Reports
 
 **Description:** Comprehensive shift-based reporting and closing.
 
@@ -153,7 +218,7 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ---
 
-### 7. Low Stock Alerts
+### 8. Low Stock Alerts
 
 **Description:** Automated notifications when inventory runs low.
 
@@ -175,7 +240,7 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ## Priority 3: Lower Priority (Growth Features)
 
-### 8. Order Types
+### 9. Order Types
 
 **Description:** Support different order fulfillment types.
 
@@ -195,7 +260,7 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ---
 
-### 9. Waste & Comp Tracking
+### 10. Waste & Comp Tracking
 
 **Description:** Track wastage and complimentary items.
 
@@ -215,7 +280,7 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ---
 
-### 10. Customer Display / Kiosk
+### 11. Customer Display / Kiosk
 
 **Description:** Customer-facing order confirmation and self-ordering.
 
@@ -235,51 +300,262 @@ This document outlines the recommended future enhancements for the IDEA ZeroS PO
 
 ---
 
-## Technical Considerations
-
-### Database Schema Updates
-
-Most features will require:
-1. New tables for modifiers, combos, stations
-2. Extension to order_items table for modifiers
-3. New tracking tables for cash/logs/waste
-
-### API Changes
-
-- New endpoints for modifiers, combos, stations
-- Extended order creation with order_type
-- New reporting endpoints for shifts, cash
-
-### Frontend Changes
-
-- New UI components for modifiers modal
-- Combo builder interface
-- Kitchen routing display
-- Cash drawer interface
-
----
-
-## Implementation Roadmap
+## POS App Implementation Roadmap
 
 ### Phase 1 (1-2 weeks)
 1. Order Modifiers & Customization
 2. Split Bill Enhancements
 
 ### Phase 2 (2-3 weeks)
-3. Combo / Set Meals
-4. Shift Reports
+3. **AI Manager - Dynamic Recommendations**
+4. Combo / Set Meals
 
 ### Phase 3 (2-3 weeks)
 5. Kitchen Routing
-6. Cash Drawer Management
+6. Shift Reports
 
 ### Phase 4 (2-4 weeks)
-7. Low Stock Alerts
-8. Waste Tracking
+7. Cash Drawer Management
+8. Low Stock Alerts
 
 ### Phase 5 (3-4 weeks)
 9. Order Types
-10. Customer Display / Kiosk
+10. Waste Tracking
+
+### Phase 6 (3-4 weeks)
+11. Customer Display / Kiosk
+
+---
+
+## Part 2: Marketing Website (site.ideazes.com) Enhancements
+
+## Current Site Features ✅
+
+| Section | Content |
+|---------|---------|
+| **Hero** | Tagline, CTA, Dashboard preview |
+| **Features** | Staff App, KDS, Order Queue, AI Manager, AI Insights, Open API |
+| **Pricing** | 4-tier pricing (Starter, Basic, Pro, Enterprise) with currency toggle |
+| **FAQ** | 7 common questions |
+| **CTA** | Free trial & Demo scheduling |
+| **Footer** | Standard links |
+
+---
+
+## Recommended Website Enhancements
+
+### Priority 1: High Impact (Quick Wins)
+
+#### 1. More Social Proof
+
+**Features:**
+- Customer testimonials / case studies
+- Success stories with metrics (e.g., "Reduced order time by 40%")
+- Number of restaurants using the system
+- Partner logos (payment gateways, delivery platforms)
+
+**Impact:** Builds trust and credibility
+
+**Implementation Effort:** Low
+
+---
+
+#### 2. Video Demo
+
+**Features:**
+- Product walkthrough video on homepage
+- Kitchen workflow video
+- 30-second demo reel
+- YouTube/Vimeo embed support
+
+**Implementation Options:**
+| Option | Source | Effort |
+|--------|--------|--------|
+| YouTube | https://www.youtube.com/watch?v=xxxxx | Low |
+| Vimeo | https://vimeo.com/xxxxx | Low |
+| Self-hosted | MP4 file upload | Medium |
+
+**Placement Options:**
+- Hero section (replaces dashboard preview image)
+- OR separate "See It In Action" section below features
+
+**Impact:** High engagement, shows product in action
+
+**Implementation Effort:** Low-Medium
+
+---
+
+#### 3. Enhanced Features Section
+
+**Currently Missing Showcase:**
+- Inventory management (Ingredients, Recipes, Suppliers)
+- Loyalty & Voucher system
+- Promotions engine
+- Multi-outlet management
+- Reports & Analytics
+- Stock alerts & notifications
+- Staff clock in/out
+- AI Manager recommendations (NEW)
+
+**Impact:** Shows full product capabilities
+
+**Implementation Effort:** Low
+
+---
+
+#### 4. Live Chat / Contact Form
+
+**Features:**
+- Pre-sales chat widget (Tidio, Intercom, or similar)
+- Contact form for enterprise inquiries
+- Callback request option
+- WhatsApp integration
+
+**Impact:** Immediate customer engagement
+
+**Implementation Effort:** Low
+
+---
+
+### Priority 2: Medium Impact
+
+#### 5. Comparison Table
+
+**Features:**
+- Side-by-side comparison with competitors
+- "Why choose us" differentiators
+- Feature matrix (what's included in each plan)
+
+**Impact:** Helps customers make decision
+
+**Implementation Effort:** Low
+
+---
+
+#### 6. Trust Badges
+
+**Features:**
+- Security certifications
+- Payment processor logos (Visa, Mastercard, Maybank, etc.)
+- "Used by 500+ restaurants" badge
+- 24/7 support badge
+- SSL / Data protection badges
+
+**Impact:** Builds credibility
+
+**Implementation Effort:** Low
+
+---
+
+#### 7. Interactive Pricing Calculator
+
+**Features:**
+- Calculate cost based on number of outlets/staff
+- Show savings with annual billing
+- Add-ons pricing (extra staff, extra outlets)
+
+**Impact:** Transparency, reduces friction
+
+**Implementation Effort:** Medium
+
+---
+
+### Priority 3: Growth Features
+
+#### 8. Case Studies / Blog
+
+**Features:**
+- Restaurant success stories
+- Industry insights
+- How-to guides
+- Video tutorials
+
+**Impact:** SEO, thought leadership
+
+**Implementation Effort:** Medium
+
+---
+
+#### 9. Demo Booking System
+
+**Features:**
+- Calendar integration (Calendly or similar)
+- Time zone selection
+- Auto-confirmation emails
+- Reminder notifications
+
+**Impact:** Converts more enterprise leads
+
+**Implementation Effort:** Medium
+
+---
+
+#### 10. Onboarding Preview
+
+**Features:**
+- Sneak peek of POS interface
+- Step-by-step setup flow preview
+- "See how easy it is" interactive tour
+
+**Impact:** Reduces perceived complexity
+
+**Implementation Effort:** Medium
+
+---
+
+## Website Implementation Roadmap
+
+### Phase 1 (1-2 days)
+1. Add trust badges
+2. Enhance features section
+3. Add testimonials
+
+### Phase 2 (2-3 days)
+4. Video demo embed (YouTube)
+5. Live chat widget
+6. Comparison table
+
+### Phase 3 (3-5 days)
+7. Interactive pricing calculator
+8. Demo booking calendar
+9. Onboarding preview tour
+
+---
+
+## Technical Considerations
+
+### Database Schema Updates
+
+For AI Recommendations:
+1. New table: `recommendation_rules` - stores manual upsell rules
+2. New table: `item_affinities` - computed frequently-bought-together
+3. New table: `recommendation_logs` - track recommendation performance
+
+### API Changes
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/ai/recommendations` | POST | Get cart recommendations |
+| `/api/ai/menu-insights` | GET | Get menu analytics |
+| `/api/ai/upsell-suggestions` | GET | Get upsell opportunities |
+
+### Frontend Changes
+
+#### POS Frontend
+- New `AIUpsellPopup` component
+- Recommendations sidebar in OrderQueue
+- AI Insights widget on Dashboard
+
+#### Customer Order App
+- New `MenuRecommendations` component
+- "Pairs well with" section on menu items
+- "You might also like" in cart
+
+#### Marketing Website
+- Video embed component
+- Testimonials carousel
+- Live chat integration
+- Pricing calculator component
 
 ---
 
@@ -294,6 +570,56 @@ When prioritizing new features, evaluate:
 | Operational Efficiency | 20% |
 | Development Effort | 15% |
 | Technical Risk | 10% |
+
+---
+
+## Appendix: AI Manager - Implementation Details
+
+### Data Inputs Required
+- Historical order data (order_items)
+- Current cart items
+- Time of day / day of week
+- Customer purchase history (loyalty data)
+- Menu item details (prices, categories)
+
+### Algorithm Options
+
+| Option | Approach | Best For |
+|--------|----------|----------|
+| A | Rules-Based | Quick wins, controllable |
+| B | Association Rules (Apriori) | Data-driven patterns |
+| C | Collaborative Filtering | Personalization |
+| D | Deep Learning | Best accuracy |
+
+### Recommended Implementation Path
+
+```
+Phase 1: Rules-Based
+├── Hardcoded upsell pairs
+├── Time-based suggestions
+└── Category affinity rules
+
+Phase 2: Association Analysis
+├── Compute frequently bought together
+├── Update recommendations nightly
+└── Blend with rules
+
+Phase 3: Personalization
+├── Customer purchase history
+├── Loyalty tier adjustments
+└── A/B testing framework
+
+Phase 4: Advanced ML (Future)
+├── Train recommendation model
+├── Real-time inference
+└── Continuous learning
+```
+
+### Success Metrics
+- Recommendation click-through rate
+- Items added via recommendation
+- Revenue per order (uplift)
+- Customer feedback
 
 ---
 
