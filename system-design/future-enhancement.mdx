@@ -2,624 +2,801 @@
 
 > Document created: October 2, 2026
 > Last updated: October 2, 2026
+> Focus: AI-Powered Restaurant Operations
 
 ---
 
 ## Executive Summary
 
-This document outlines the recommended future enhancements for the IDEAZES POS AI system, covering both the Frontend POS App and the Marketing Website (site.ideazes.com). The goal is to transform the current MVP into a comprehensive, production-ready POS system that meets the demands of real-world F&B operations.
+IDEAZES POS AI is positioned as an **AI-first POS system** for modern restaurants. This document outlines the strategic roadmap for transforming the current MVP into a comprehensive AI-powered restaurant management system.
+
+**Core Philosophy:** Let AI handle routine decisions, so staff can focus on customer service.
 
 ---
 
-## Part 1: Frontend POS App Enhancements
+## Our AI Vision
 
-## Current Features ✅
+The IDEA ZES AI Manager is the **central brain** that:
 
-| Category | Features |
-|----------|----------|
-| **Core** | Dashboard, Orders, Kitchen Display, Order History |
-| **Management** | Menu, Staff, Outlets, Tables |
-| **Customer** | Loyalty, Vouchers, Promotions |
-| **Inventory** | Ingredients, Recipes, Suppliers, Purchase Orders, Stock Transfers, Stock Movements |
-| **Reports** | Sales, Walk-in vs Registered, Loyalty, Payment Stats |
-| **Settings** | Tax (SST/VAT), Service Tax, Payment Methods, Currency |
-| **AI** | Chatbot, AI Tools |
+- 🤖 **Monitors** all store operations in real-time
+- 🔮 **Predicts** issues before they happen
+- 💡 **Recommends** actions to increase revenue
+- ⚡ **Automates** routine decisions
+- 📈 **Learns** from patterns over time
 
 ---
 
-## Priority 1: High Priority (Critical for F&B Operations)
+## Part 1: AI Features (Primary Focus)
+
+## Why AI-First?
+
+| Benefit | Impact |
+|---------|--------|
+| **Revenue Increase** | AI upsells can increase average order value by 10-30% |
+| **Cost Reduction** | Smart inventory reduces waste by 15-25% |
+| **Better Decisions** | Data-driven insights vs gut feeling |
+| **Competitive Edge** | "AI-powered" attracts tech-savvy customers |
+| **24/7 Intelligence** | Never miss an opportunity |
+
+---
+
+## AI Feature Roadmap
+
+### Tier 1: Revenue AI (Highest Priority)
+
+These features directly impact revenue through AI-powered upsells and recommendations.
+
+---
+
+### AI-1: Dynamic Menu Recommendations
+
+**What It Does:**
+Analyzes cart contents, time of day, and customer history to suggest relevant items.
+
+**How It Works:**
+
+```
+Customer adds Coffee to cart
+    ↓
+AI analyzes: "Coffee + Pastry" bought together 73% of time
+    ↓
+AI suggests: "Add a croissant for RM 8.90? → Save 15% with combo!"
+    ↓
+Customer accepts → Revenue +15%
+```
+
+**Where It Appears:**
+
+| App | Location | Suggestion Type |
+|-----|----------|-----------------|
+| **POS Staff** | After adding item | "Upsell popup" |
+| **POS Staff** | OrderQueue sidebar | "Frequently bought together" |
+| **Customer App** | Menu item page | "Pairs well with..." |
+| **Customer App** | Cart screen | "You might also like..." |
+| **Customer App** | Order confirmation | "Next time, try..." |
+
+**Business Impact:**
+- Average order value ↑ 10-20%
+- Customer satisfaction ↑ (relevant suggestions)
+- No extra staff effort required
+
+**Implementation Steps:**
+
+```
+Step 1: Create recommendation service
+├── backend/app/services/recommendation_engine.py
+├── get_cart_recommendations(cart_items)
+├── get_frequently_bought_together(item_id)
+└── get_time_based_recommendations()
+
+Step 2: Create API endpoints
+├── POST /api/ai/recommendations
+├── GET /api/ai/frequently-bought
+└── POST /api/ai/track-recommendation
+
+Step 3: Frontend integration
+├── Create AIUpsellPopup.jsx
+├── Add to StaffOrder.jsx cart flow
+├── Add to OrderQueue.jsx sidebar
+└── Add to Customer App menu pages
+
+Step 4: Enable tracking
+├── Log when recommendation shown
+├── Log when recommendation accepted
+└── Calculate conversion rate
+```
+
+**Files to Create:**
+| File | Purpose |
+|------|---------|
+| `backend/app/services/recommendation_engine.py` | Core recommendation logic |
+| `backend/app/routes/ai_recommendations.py` | API endpoints |
+| `frontend/src/components/AIUpsellPopup.jsx` | Upsell popup component |
+| `frontend/src/components/AIRecommendationsPanel.jsx` | Sidebar panel |
+| `order-app/src/components/MenuRecommendations.jsx` | Customer app recommendations |
+
+**Effort:** 1-2 weeks
+
+---
+
+### AI-2: AI Conversational Ordering
+
+**What It Does:**
+Allows customers to order via natural conversation with AI chatbot.
+
+**How It Works:**
+
+```
+Customer: "I want pasta with no mushrooms"
+    ↓
+AI understands intent + modifiers
+    ↓
+AI: "Sure! I've added Penne Arrabiata (no mushrooms) to your order. 
+     Would you like garlic bread as a side? It's a popular choice!"
+    ↓
+Customer: "Yes, add it"
+    ↓
+AI: "Great! Anything to drink?"
+    ↓
+Customer: "One iced lemon tea please"
+    ↓
+AI: "Perfect! Your order total is RM 45.90. 
+     Shall I proceed to payment?"
+    ↓
+Customer: "Yes"
+    ↓
+Order created automatically ✓
+```
+
+**Benefits:**
+- Hands-free ordering (customers can browse while ordering)
+- Natural upselling through conversation
+- Reduces cart abandonment
+- 24/7 ordering capability
+
+**Implementation Steps:**
+
+```
+Step 1: Enhance existing chatbot
+├── Use existing Chatbot.jsx as base
+├── Add order-specific intents
+├── Create order-taking conversation flow
+└── Integrate with cart API
+
+Step 2: Add conversation management
+├── conversation_context table
+├── Track conversation state
+└── Handle multi-turn dialogues
+
+Step 3: Add to Customer App
+├── Floating chat button
+├── Chat-based ordering interface
+└── Order confirmation from chat
+```
+
+**Effort:** 2-3 weeks
+
+---
+
+### AI-3: Personalized Customer Experience
+
+**What It Does:**
+Tailors the experience for each customer based on their order history and preferences.
+
+**Features:**
+
+| Feature | Description | Example |
+|---------|-------------|---------|
+| **Smart Greetings** | Welcome returning customers | "Welcome back, Jane! Your usual Nasi Lemak is one click away 😊" |
+| **Preference Prediction** | Remembers favorite combinations | "We remember you like extra spicy!" |
+| **Dynamic Pricing** | Personalized discounts | "As a Gold member, you get 15% off today!" |
+| **Birthday Specials** | Automated birthday rewards | "Happy Birthday! Enjoy a free dessert on us 🎂" |
+| **Order Suggestions** | Based on past orders | "Hungry again? Your usual lunch combo?" |
+
+**Implementation Steps:**
+
+```
+Step 1: Customer preference engine
+├── Analyze order history per customer
+├── Identify top items, modifiers, time patterns
+├── Store preferences in customer profile
+└── Generate personalized greeting/text
+
+Step 2: Loyalty tier integration
+├── Connect recommendations to loyalty tier
+├── Apply personalized discounts
+└── Track preference for analytics
+
+Step 3: Frontend display
+├── Personalized dashboard on login
+├── "Your usual" quick reorder button
+└── Birthday banner when applicable
+```
+
+**Effort:** 1-2 weeks
+
+---
+
+### Tier 2: Operations AI (High Priority)
+
+These features optimize operations and reduce costs.
+
+---
+
+### AI-4: Demand Forecasting
+
+**What It Does:**
+Predicts future sales based on historical data, weather, events, and trends.
+
+**How It Helps:**
+
+```
+Tomorrow's Weather: Rainy 🌧️
+    ↓
+AI Forecast: "Rainy days = 25% increase in delivery orders"
+    ↓
+Recommendation:
+├── 📦 Stock up on delivery packaging
+├── 🧑‍🍳 Schedule 1 extra delivery rider
+├── 🍲 Popular comfort foods: Nasi Lemak, Mee Goreng
+└── 💰 Expected revenue: RM 3,200 (vs RM 2,500 on normal days)
+```
+
+**Predictions Available:**
+- Hourly sales for today/tomorrow
+- Daily sales for the week
+- Popular items by time slot
+- Staff needed by hour
+- Ingredient usage forecast
+
+**Benefits:**
+- Reduce food waste (15-25% savings)
+- Optimize staff scheduling
+- Better inventory ordering
+- Prepare for high-demand periods
+
+**Implementation Steps:**
+
+```
+Step 1: Historical analysis
+├── Build time-series model from order data
+├── Identify patterns: time, day, weather, events
+├── Calculate baseline forecasts
+└── Store forecast data
+
+Step 2: External data integration
+├── Weather API integration (free tier available)
+├── Calendar event detection (public holidays)
+├── School holidays for Malaysia
+└── Local events (if available via API)
+
+Step 3: Dashboard widget
+├── "AI Forecast" card on Dashboard
+├── Show tomorrow's prediction
+├── Show confidence level
+└── Show recommended actions
+```
+
+**Effort:** 1-2 weeks
+
+---
+
+### AI-5: Smart Inventory Prediction
+
+**What It Does:**
+Automatically calculates optimal stock levels and predicts when items will run out.
+
+**How It Works:**
+
+```
+Current Stock: Chicken Breast = 50 portions
+    ↓
+AI Analysis:
+├── Today's chicken orders: 25 portions
+├── Current trend: +10% vs last week
+├── Tomorrow's forecast: 28 portions (rainy day)
+└── Supplier lead time: 2 days
+    ↓
+AI Alert:
+⚠️ "Chicken Breast will run out in 1.5 days"
+💡 "Suggested order: 60 portions from [Supplier Name]"
+📅 "Order by 2 PM today for next-day delivery"
+```
+
+**Features:**
+| Feature | Description |
+|---------|-------------|
+| **Stockout Prediction** | Alert X days before running out |
+| **Auto-Suggest PO** | Generate purchase order from predictions |
+| **Supplier Intelligence** | Track supplier delays, suggest alternatives |
+| **Waste Reduction** | Match ordering to actual demand |
+
+**Implementation Steps:**
+
+```
+Step 1: Ingredient consumption tracking
+├── Enhance order → ingredient mapping
+├── Calculate usage per menu item sold
+├── Daily/weekly consumption rates
+└── Predict future needs
+
+Step 2: Stock level monitoring
+├── Connect to inventory (ingredients) API
+├── Real-time stock tracking
+├── Calculate days until stockout
+└── Alert thresholds per ingredient
+
+Step 3: Purchase order integration
+├── Auto-generate suggested PO
+├── Link to supplier information
+├── One-click approve PO
+└── Track PO fulfillment
+```
+
+**Effort:** 2-3 weeks
+
+---
+
+### AI-6: Kitchen Optimization
+
+**What It Does:**
+Routes orders to kitchen stations and predicts cooking times.
+
+**How It Works:**
+
+```
+New Order Received:
+├── Item A (Grill) → Sent to Grill Station
+├── Item B (Fryer) → Sent to Fryer Station  
+├── Item C (Salad) → Sent to Cold Station
+    ↓
+AI Calculation:
+├── Estimated cook time: 12 minutes
+├── Current queue: 5 orders
+├── Expected completion: 4:32 PM
+    ↓
+Customer receives: "Your order will be ready at 4:32 PM 🦸"
+```
+
+**Features:**
+| Feature | Description |
+|---------|-------------|
+| **Station Routing** | Auto-route items to correct stations |
+| **Cook Time Prediction** | Real-time ETA for each order |
+| **Bottleneck Detection** | Alert when station is overloaded |
+| **Course Sequencing** | Fire courses in optimal order |
+
+**Benefits:**
+- Faster order completion
+- Fewer kitchen errors
+- Better customer communication
+- Identify slow stations for training
+
+**Implementation Steps:**
+
+```
+Step 1: Station assignment
+├── Define stations per outlet (Grill, Fryer, Salad, etc.)
+├── Link menu items to stations
+└── Route items on order creation
+
+Step 2: Time estimation
+├── Calculate average cook time per item
+├── Factor in current queue length
+├── Factor in time of day (rush hour vs slow)
+└── Provide real-time updates
+
+Step 3: Kitchen display integration
+├── Group orders by station
+├── Show estimated completion time
+├── Alert when order is delayed
+└── Track station performance
+```
+
+**Effort:** 2-3 weeks
+
+---
+
+### AI-7: Fraud & Anomaly Detection
+
+**What It Does:**
+Detects suspicious activities that might indicate fraud or errors.
+
+**What It Detects:**
+
+| Anomaly | Pattern | Alert |
+|---------|---------|-------|
+| **Void Abuse** | More than 3 voids in an hour | "⚠️ High void rate detected at Counter 1" |
+| **Discount Abuse** | 50%+ discount on order | "⚠️ Large discount applied - approval needed" |
+| **Cash Discrepancy** | Cash vs expected after Z-Read | "⚠️ RM 45 over in cash drawer" |
+| **Unusual Hours** | Orders placed at odd hours | "⚠️ Order created at 3 AM by staff: John" |
+| **Price Manipulation** | Item priced below cost | "⚠️ Price override detected" |
+
+**Benefits:**
+- Reduce shrinkage and theft
+- Catch errors before they become losses
+- Accountability for staff actions
+- Peace of mind for owners
+
+**Implementation Steps:**
+
+```
+Step 1: Define anomaly rules
+├── Void rate thresholds per hour
+├── Discount percentage limits
+├── Cash reconciliation tolerance
+├── Price override boundaries
+└── Unusual time windows
+
+Step 2: Real-time monitoring
+├── Log all sensitive actions
+├── Check against rules on each action
+├── Generate alerts when triggered
+└── Store anomaly history
+
+Step 3: Dashboard alerts
+├── "AI Alerts" panel on Dashboard
+├── Push notification for critical alerts
+├── Alert history with resolution tracking
+└── Weekly anomaly report
+```
+
+**Effort:** 1-2 weeks
+
+---
+
+### AI-8: Staff Performance Insights
+
+**What It Does:**
+Analyzes staff productivity and provides actionable coaching insights.
+
+**Insights Available:**
+
+```
+Staff: Ahmed
+├── Orders processed today: 45
+├── Average time per order: 2m 30s
+├── Upsell acceptance rate: 23%
+├── Void rate: 2%
+├── vs Store Average: ⬆️ 15% faster
+    ↓
+AI Insight: "Ahmed is your top performer this week!
+             Consider having him mentor new staff."
+```
+
+**Features:**
+| Metric | What It Measures |
+|--------|-----------------|
+| **Order Speed** | Time from creation to payment |
+| **Upsell Rate** | % of orders with AI upsell accepted |
+| **Void Rate** | % of orders voided |
+| **Table Turnover** | Time from sit to pay (dine-in) |
+| **Customer Rating** | Feedback scores (if available) |
+
+**Benefits:**
+- Identify training needs
+- Recognize top performers
+- Optimize staff scheduling
+- Incentivize improvement
+
+**Implementation Steps:**
+
+```
+Step 1: Staff action logging
+├── Log each order with staff_id
+├── Track order lifecycle timestamps
+├── Link to upsell actions
+└── Link to void/cancel events
+
+Step 2: Analytics calculation
+├── Calculate per-staff metrics daily
+├── Compare to store average
+├── Track trends over time
+└── Generate insight text
+
+Step 3: Staff management view
+├── Staff performance dashboard
+├── Sort by metric
+├── Show trend indicators
+└── Export reports
+```
+
+**Effort:** 1 week
+
+---
+
+### Tier 3: Customer Experience AI (Medium Priority)
+
+These features enhance the customer-facing app.
+
+---
+
+### AI-9: AI Smart Search
+
+**What It Does:**
+Natural language search for menu items.
+
+**How It Works:**
+
+```
+Customer types: "something spicy"
+    ↓
+AI understands: Wants spicy food
+    ↓
+Results:
+├── 🌶️ Chicken Wings (Extra Hot) - RM 18.90
+├── 🌶️ Mee Goreng Mamak - RM 14.90
+├── 🌶️ Curry Laksa (Spicy) - RM 15.90
+└── 🔥 Ask for "Extra Spicy" on any dish +RM 1
+```
+
+**Features:**
+| Search Type | Example |
+|-------------|---------|
+| **Natural Language** | " vegetarian pasta" |
+| **By Feeling** | "comfort food" or "light meal" |
+| **By Context** | "what goes well with steak?" |
+| **Image Search** | (Future) Upload photo to find similar |
+
+**Implementation Steps:**
+
+```
+Step 1: Search enhancement
+├── Build menu item embeddings
+├── Create search API with AI understanding
+├── Return ranked results
+└── Show recommendations with results
+
+Step 2: Conversational search
+├── "I need something for 4 people under RM 100"
+├── "What do you recommend for someone who doesn't eat pork?"
+└── Interactive search refinement
+```
+
+**Effort:** 1-2 weeks
+
+---
+
+### AI-10: Voice Ordering
+
+**What It Does:**
+Hands-free order taking via speech recognition.
+
+**How It Works:**
+
+```
+Customer taps microphone icon
+    ↓
+Customer speaks: "One latte, one croissant, and the daily special please"
+    ↓
+AI converts speech to order
+    ↓
+AI confirms: "I've added:
+             • Latte - RM 12
+             • Croissant - RM 8.90
+             • Today's Special: Grilled Chicken Salad - RM 18
+             
+             Total: RM 38.90. Add to order?"
+    ↓
+Customer: "Yes please"
+    ↓
+Order created ✓
+```
+
+**Benefits:**
+- Accessibility (hands-free)
+- Faster ordering (speech vs typing)
+- Reduced cart abandonment
+- Unique selling point
+
+**Implementation Steps:**
+
+```
+Step 1: Speech-to-text integration
+├── Use Web Speech API (free, browser-native)
+├── Or use cloud service (Google, AWS)
+├── Handle accents and noise
+└── Support English and Malay
+
+Step 2: Order parsing
+├── Extract items from speech
+├── Handle modifiers (no ice, extra sugar)
+├── Confirm with customer
+└── Handle corrections
+
+Step 3: Voice response
+├── Text-to-speech for confirmation
+├── Natural conversation flow
+└── Fallback to text if voice fails
+```
+
+**Effort:** 1-2 weeks
+
+---
+
+## AI Implementation Summary
+
+### Quick Reference
+
+| Code | Feature | Impact | Effort | Priority |
+|------|---------|--------|--------|----------|
+| AI-1 | Dynamic Menu Recommendations | Revenue ↑ | 1-2w | 🔴 High |
+| AI-2 | Conversational Ordering | UX ↑ | 2-3w | 🟡 Medium |
+| AI-3 | Personalized Experience | Loyalty ↑ | 1-2w | 🔴 High |
+| AI-4 | Demand Forecasting | Cost ↓ | 1-2w | 🔴 High |
+| AI-5 | Smart Inventory | Waste ↓ | 2-3w | 🔴 High |
+| AI-6 | Kitchen Optimization | Speed ↑ | 2-3w | 🟡 Medium |
+| AI-7 | Fraud Detection | Security ↑ | 1-2w | 🟡 Medium |
+| AI-8 | Staff Insights | Efficiency ↑ | 1w | 🟢 Low |
+| AI-9 | Smart Search | UX ↑ | 1-2w | 🟢 Low |
+| AI-10 | Voice Ordering | UX ↑ | 1-2w | 🟢 Low |
+
+---
+
+### Recommended Implementation Order
+
+```
+Phase 1 (Weeks 1-2): AI-1 + AI-3
+├── Quick wins for revenue
+├── Menu recommendations + personalization
+└── Fastest time to value
+
+Phase 2 (Weeks 3-4): AI-4 + AI-5
+├── Operations optimization
+├── Inventory intelligence
+└── Cost reduction focus
+
+Phase 3 (Weeks 5-7): AI-6 + AI-7
+├── Kitchen + security
+├── Operational efficiency
+└── Staff performance
+
+Phase 4 (Weeks 8-10): AI-2 + AI-8
+├── Advanced features
+├── Conversational ordering
+└── Staff insights
+
+Phase 5 (Weeks 11-13): AI-9 + AI-10
+├── Customer experience
+├── Search + voice
+└── Differentiation features
+```
+
+---
+
+## Part 2: Non-AI Features (Supporting)
+
+These features support the AI features but are lower priority.
 
 ### 1. Order Modifiers & Customization
 
-**Description:** Allow customers to customize their orders with modifiers.
+**Why It Matters:** Required for AI upsells to work (AI needs to suggest extras/add-ons)
 
 **Features:**
-- Extra toppings / Remove ingredients
-- Size options (Small, Medium, Large)
-- Spice levels (Mild, Medium, Hot, Extra Hot)
-- Special instructions per item
+- Extra toppings, sizes, spice levels
+- Special instructions
 - Add-ons at additional cost
 
-**Impact:**
-- Essential for F&B businesses (cafes, restaurants, fast food)
-- Increases average order value through upselling
-- Reduces kitchen errors with clear modifications
-
-**Implementation Effort:** Medium
+**Effort:** Medium
 
 ---
 
 ### 2. Combo / Set Meals
 
-**Description:** Bundle multiple items together at a discounted price.
+**Why It Matters:** Natural upsell opportunity for AI to recommend
 
 **Features:**
-- Create combo sets (e.g., Set A: Burger + Fries + Drink)
-- Allow substitution of items within combo
-- Different pricing tiers for combos
+- Bundle items at discount
 - Combo-specific modifiers
+- Quick combo selection
 
-**Impact:**
-- Increases average order value by 20-30%
-- Drives faster checkout for repetitive orders
-- Common requirement for QSR and fast-casual restaurants
-
-**Implementation Effort:** Medium
+**Effort:** Medium
 
 ---
 
 ### 3. Split Bill Enhancements
 
-**Description:** Advanced bill splitting capabilities for group dining.
+**Why It Matters:** Customer convenience feature
 
 **Features:**
-- Split by item (each item to different person)
-- Split by seat / Person (equal items per person)
-- Equal split among X persons
-- Split by payment method (some cash, some card)
-- Multiple payment methods in single transaction
-- Track who paid what
+- Split by person
+- Split by item
+- Multiple payment methods
 
-**Current Status:** Partial implementation exists
-
-**Impact:**
-- Critical for fine dining and group bookings
-- Reduces payment disputes
-- Improves customer satisfaction
-
-**Implementation Effort:** Low-Medium
+**Effort:** Low-Medium
 
 ---
 
-### 4. AI Manager - Dynamic Menu Recommendations
+### 4. Cash Drawer Management
 
-**Description:** AI-powered system that provides dynamic menu recommendations based on live transaction patterns and customer behaviors.
-
-**Features:**
-
-#### Backend (POS Backend API)
-- `POST /api/ai/recommendations` - Get recommendations for current cart
-- `GET /api/ai/menu-insights` - Get menu analytics
-- `GET /api/ai/upsell-suggestions` - Get upsell opportunities
-
-#### Frontend POS (Staff App)
-| Screen | Location | Recommendation Type |
-|--------|----------|-------------------|
-| Order Queue | Side panel or banner | "Customers who ordered X also ordered Y" |
-| Order Creation | After adding item to cart | "Upsell suggestion" popup |
-| Dashboard | AI Insights widget | Top selling combos today |
-| Kitchen Display | Order ticket header | Cross-sell suggestion |
-
-#### Customer Order App (order.ideazes.com)
-| Screen | Location | Recommendation Type |
-|--------|----------|-------------------|
-| Menu Browse | Below each item | "Pairs well with..." |
-| Cart Screen | Before checkout | "You might also like..." |
-| Order Confirmation | Thank you page | "Next time, try..." |
-
-#### Algorithm Implementation
-
-| Option | Approach | Pros | Cons |
-|--------|----------|------|------|
-| A | Rules-Based | Fast, controllable | Limited patterns |
-| B | Association Rules | Data-driven, finds patterns | Needs historical data |
-| C | AI/ML Model | Most accurate, learns | Complex infrastructure |
-
-**Recommended:** Option A + B hybrid
-
-**Implementation Phases:**
-| Phase | Feature | Complexity |
-|-------|---------|------------|
-| 1 | Rules-based upsell suggestions | Low |
-| 2 | "Frequently bought together" engine | Medium |
-| 3 | Time-based recommendations | Low |
-| 4 | Customer personalization | Medium |
-| 5 | AI model training (future) | High |
-
-**Files to Create/Modify:**
-| File | Action |
-|------|--------|
-| `backend/app/routes/ai_recommendations.py` | New endpoint |
-| `backend/app/services/recommendation_engine.py` | New service |
-| `frontend/src/components/AIUpsellPopup.jsx` | New component |
-| `frontend/src/pages/OrderQueue.jsx` | Add upsell logic |
-
-**Impact:**
-- Directly increases average order value
-- Provides 24/7 AI-powered sales assistant
-- Differentiates from competitors
-- Drives upsell revenue automatically
-
-**Implementation Effort:** Medium
-
----
-
-## Priority 2: Medium Priority (Operational Efficiency)
-
-### 5. Kitchen Routing / Station Labels
-
-**Description:** Route order items to specific kitchen stations.
+**Why It Matters:** Complements AI fraud detection
 
 **Features:**
-- Assign menu items to stations (Grill, Fryer, Salad, Bar, Dessert)
-- Multiple printers for different stations
-- Kitchen Display System (KDS) per station
-- Fire course / Course sequencing
-- Bump bar / kitchen bump functionality
-
-**Impact:**
-- Reduces ticket time
-- Improves kitchen organization
-- Essential for high-volume operations
-
-**Implementation Effort:** Medium
-
----
-
-### 6. Cash Drawer Management
-
-**Description:** Track and reconcile cash transactions.
-
-**Features:**
-- Cash float setup at shift start
-- Cash up / Cash reconciliation (X-Read, Z-Read)
-- Track cash sales vs card vs e-wallet
-- Cash drops during the day
+- Cash reconciliation
+- X-Read / Z-Read
 - Over/short tracking
-- Opening and closing cash counts
 
-**Impact:**
-- Critical for cash-heavy businesses
-- Reduces shrinkage and theft
-- Required for end-of-day closing
-
-**Implementation Effort:** Low-Medium
+**Effort:** Low-Medium
 
 ---
 
-### 7. Shift Reports
+### 5. Kitchen Routing
 
-**Description:** Comprehensive shift-based reporting and closing.
+**Why It Matters:** Enables AI kitchen optimization
 
 **Features:**
-- X-Read (current shift summary without reset)
-- Z-Read (daily total with reset)
-- Shift-wise breakdowns
-- Staff clock-in/out report
-- Cash reconciliation per shift
-- Auto-close old shifts after configurable time
+- Station assignment
+- Kitchen display per station
+- Cook time estimation
 
-**Impact:**
-- Essential for daily operations
-- Enables accountability per shift
-- Required for business reporting
-
-**Implementation Effort:** Medium
+**Effort:** Medium
 
 ---
 
-### 8. Low Stock Alerts
+## Database Schema Changes
 
-**Description:** Automated notifications when inventory runs low.
+### New Tables for AI
 
-**Features:**
-- Configurable low stock threshold per ingredient
-- Push notifications in-app
-- Email alerts to managers
-- Auto-suggest purchase orders when low
-- Ingredient usage forecasting
-
-**Impact:**
-- Prevents out-of-stock situations
-- Reduces kitchen rush for missing items
-- Improves inventory management
-
-**Implementation Effort:** Low-Medium
+| Table | Purpose |
+|-------|---------|
+| `item_affinities` | Stores frequently-bought-together data |
+| `customer_preferences` | Stores per-customer preferences |
+| `ai_alerts` | Stores anomaly/fraud alerts |
+| `recommendation_logs` | Tracks AI recommendation performance |
+| `demand_forecasts` | Stores predicted sales data |
+| `staff_metrics` | Stores calculated staff performance |
 
 ---
 
-## Priority 3: Lower Priority (Growth Features)
+## Marketing Website Enhancements
 
-### 9. Order Types
+### AI-Focused Updates
 
-**Description:** Support different order fulfillment types.
+Update site to emphasize AI capabilities:
 
-**Features:**
-- Dine In (with table assignment)
-- Takeaway
-- Delivery (with driver assignment)
-- Drive-thru
-- Self-pickup
-
-**Impact:**
-- Different workflows for each type
-- Enables delivery integrations
-- Future growth for delivery services
-
-**Implementation Effort:** Medium
+| Section | Change |
+|---------|--------|
+| **Hero** | "AI-Powered POS for Modern Restaurants" |
+| **Features** | Replace generic with specific AI features |
+| **AI Demo Section** | Show AI recommendations in action |
+| **Case Studies** | "How AI increased sales by 23%" |
+| **Pricing** | "AI included in all plans" |
 
 ---
 
-### 10. Waste & Comp Tracking
+## Success Metrics
 
-**Description:** Track wastage and complimentary items.
+Track AI feature success:
 
-**Features:**
-- Mark items as wasted (broken, expired, mistakes)
-- Reason codes for wastage
-- Complimentary item tracking
-- Cost calculation for wastage
-- Wastage reports
-
-**Impact:**
-- Identifies operational issues
-- Helps reduce food costs
-- Required for cost control
-
-**Implementation Effort:** Low
+| Metric | Target |
+|--------|--------|
+| Recommendation CTR | > 15% |
+| Upsell Acceptance Rate | > 10% |
+| Avg Order Value Uplift | > 10% |
+| Inventory Waste Reduction | > 15% |
+| Fraud Detection Rate | 100% of anomalies |
+| Customer NPS (AI features) | > 50 |
 
 ---
 
-### 11. Customer Display / Kiosk
-
-**Description:** Customer-facing order confirmation and self-ordering.
-
-**Features:**
-- Order confirmation display (customer-facing screen)
-- Self-ordering kiosk mode
-- Menu browsing on customer display
-- Order review before payment
-- Integration with queue management
-
-**Impact:**
-- Reduces counter staff workload
-- Enables 24/7 self-service
-- Future expansion for quick-service restaurants
-
-**Implementation Effort:** High
-
----
-
-## POS App Implementation Roadmap
-
-### Phase 1 (1-2 weeks)
-1. Order Modifiers & Customization
-2. Split Bill Enhancements
-
-### Phase 2 (2-3 weeks)
-3. **AI Manager - Dynamic Recommendations**
-4. Combo / Set Meals
-
-### Phase 3 (2-3 weeks)
-5. Kitchen Routing
-6. Shift Reports
-
-### Phase 4 (2-4 weeks)
-7. Cash Drawer Management
-8. Low Stock Alerts
-
-### Phase 5 (3-4 weeks)
-9. Order Types
-10. Waste Tracking
-
-### Phase 6 (3-4 weeks)
-11. Customer Display / Kiosk
-
----
-
-## Part 2: Marketing Website (site.ideazes.com) Enhancements
-
-## Current Site Features ✅
-
-| Section | Content |
-|---------|---------|
-| **Hero** | Tagline, CTA, Dashboard preview |
-| **Features** | Staff App, KDS, Order Queue, AI Manager, AI Insights, Open API |
-| **Pricing** | 4-tier pricing (Starter, Basic, Pro, Enterprise) with currency toggle |
-| **FAQ** | 7 common questions |
-| **CTA** | Free trial & Demo scheduling |
-| **Footer** | Standard links |
-
----
-
-## Recommended Website Enhancements
-
-### Priority 1: High Impact (Quick Wins)
-
-#### 1. More Social Proof
-
-**Features:**
-- Customer testimonials / case studies
-- Success stories with metrics (e.g., "Reduced order time by 40%")
-- Number of restaurants using the system
-- Partner logos (payment gateways, delivery platforms)
-
-**Impact:** Builds trust and credibility
-
-**Implementation Effort:** Low
-
----
-
-#### 2. Video Demo
-
-**Features:**
-- Product walkthrough video on homepage
-- Kitchen workflow video
-- 30-second demo reel
-- YouTube/Vimeo embed support
-
-**Implementation Options:**
-| Option | Source | Effort |
-|--------|--------|--------|
-| YouTube | https://www.youtube.com/watch?v=xxxxx | Low |
-| Vimeo | https://vimeo.com/xxxxx | Low |
-| Self-hosted | MP4 file upload | Medium |
-
-**Placement Options:**
-- Hero section (replaces dashboard preview image)
-- OR separate "See It In Action" section below features
-
-**Impact:** High engagement, shows product in action
-
-**Implementation Effort:** Low-Medium
-
----
-
-#### 3. Enhanced Features Section
-
-**Currently Missing Showcase:**
-- Inventory management (Ingredients, Recipes, Suppliers)
-- Loyalty & Voucher system
-- Promotions engine
-- Multi-outlet management
-- Reports & Analytics
-- Stock alerts & notifications
-- Staff clock in/out
-- AI Manager recommendations (NEW)
-
-**Impact:** Shows full product capabilities
-
-**Implementation Effort:** Low
-
----
-
-#### 4. Live Chat / Contact Form
-
-**Features:**
-- Pre-sales chat widget (Tidio, Intercom, or similar)
-- Contact form for enterprise inquiries
-- Callback request option
-- WhatsApp integration
-
-**Impact:** Immediate customer engagement
-
-**Implementation Effort:** Low
-
----
-
-### Priority 2: Medium Impact
-
-#### 5. Comparison Table
-
-**Features:**
-- Side-by-side comparison with competitors
-- "Why choose us" differentiators
-- Feature matrix (what's included in each plan)
-
-**Impact:** Helps customers make decision
-
-**Implementation Effort:** Low
-
----
-
-#### 6. Trust Badges
-
-**Features:**
-- Security certifications
-- Payment processor logos (Visa, Mastercard, Maybank, etc.)
-- "Used by 500+ restaurants" badge
-- 24/7 support badge
-- SSL / Data protection badges
-
-**Impact:** Builds credibility
-
-**Implementation Effort:** Low
-
----
-
-#### 7. Interactive Pricing Calculator
-
-**Features:**
-- Calculate cost based on number of outlets/staff
-- Show savings with annual billing
-- Add-ons pricing (extra staff, extra outlets)
-
-**Impact:** Transparency, reduces friction
-
-**Implementation Effort:** Medium
-
----
-
-### Priority 3: Growth Features
-
-#### 8. Case Studies / Blog
-
-**Features:**
-- Restaurant success stories
-- Industry insights
-- How-to guides
-- Video tutorials
-
-**Impact:** SEO, thought leadership
-
-**Implementation Effort:** Medium
-
----
-
-#### 9. Demo Booking System
-
-**Features:**
-- Calendar integration (Calendly or similar)
-- Time zone selection
-- Auto-confirmation emails
-- Reminder notifications
-
-**Impact:** Converts more enterprise leads
-
-**Implementation Effort:** Medium
-
----
-
-#### 10. Onboarding Preview
-
-**Features:**
-- Sneak peek of POS interface
-- Step-by-step setup flow preview
-- "See how easy it is" interactive tour
-
-**Impact:** Reduces perceived complexity
-
-**Implementation Effort:** Medium
-
----
-
-## Website Implementation Roadmap
-
-### Phase 1 (1-2 days)
-1. Add trust badges
-2. Enhance features section
-3. Add testimonials
-
-### Phase 2 (2-3 days)
-4. Video demo embed (YouTube)
-5. Live chat widget
-6. Comparison table
-
-### Phase 3 (3-5 days)
-7. Interactive pricing calculator
-8. Demo booking calendar
-9. Onboarding preview tour
-
----
-
-## Technical Considerations
-
-### Database Schema Updates
-
-For AI Recommendations:
-1. New table: `recommendation_rules` - stores manual upsell rules
-2. New table: `item_affinities` - computed frequently-bought-together
-3. New table: `recommendation_logs` - track recommendation performance
-
-### API Changes
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/ai/recommendations` | POST | Get cart recommendations |
-| `/api/ai/menu-insights` | GET | Get menu analytics |
-| `/api/ai/upsell-suggestions` | GET | Get upsell opportunities |
-
-### Frontend Changes
-
-#### POS Frontend
-- New `AIUpsellPopup` component
-- Recommendations sidebar in OrderQueue
-- AI Insights widget on Dashboard
-
-#### Customer Order App
-- New `MenuRecommendations` component
-- "Pairs well with" section on menu items
-- "You might also like" in cart
-
-#### Marketing Website
-- Video embed component
-- Testimonials carousel
-- Live chat integration
-- Pricing calculator component
-
----
-
-## Appendix: Feature Request Template
-
-When prioritizing new features, evaluate:
-
-| Criteria | Weight |
-|----------|--------|
-| Revenue Impact | 30% |
-| Customer Demand | 25% |
-| Operational Efficiency | 20% |
-| Development Effort | 15% |
-| Technical Risk | 10% |
-
----
-
-## Appendix: AI Manager - Implementation Details
-
-### Data Inputs Required
-- Historical order data (order_items)
-- Current cart items
-- Time of day / day of week
-- Customer purchase history (loyalty data)
-- Menu item details (prices, categories)
-
-### Algorithm Options
-
-| Option | Approach | Best For |
-|--------|----------|----------|
-| A | Rules-Based | Quick wins, controllable |
-| B | Association Rules (Apriori) | Data-driven patterns |
-| C | Collaborative Filtering | Personalization |
-| D | Deep Learning | Best accuracy |
-
-### Recommended Implementation Path
-
-```
-Phase 1: Rules-Based
-├── Hardcoded upsell pairs
-├── Time-based suggestions
-└── Category affinity rules
-
-Phase 2: Association Analysis
-├── Compute frequently bought together
-├── Update recommendations nightly
-└── Blend with rules
-
-Phase 3: Personalization
-├── Customer purchase history
-├── Loyalty tier adjustments
-└── A/B testing framework
-
-Phase 4: Advanced ML (Future)
-├── Train recommendation model
-├── Real-time inference
-└── Continuous learning
-```
-
-### Success Metrics
-- Recommendation click-through rate
-- Items added via recommendation
-- Revenue per order (uplift)
-- Customer feedback
+## Technical Appendix
+
+### External APIs Needed
+
+| Service | Purpose | Cost |
+|---------|---------|------|
+| OpenWeatherMap | Weather data | Free tier |
+| Calendar/Holiday API | Event detection | Free tier |
+| Cloud Speech-to-Text | Voice ordering | Pay-per-use |
+| Cloud AI/ML | Advanced recommendations | Pay-per-use |
+
+### Performance Considerations
+
+| Concern | Solution |
+|---------|----------|
+| AI query speed | Cache recommendations, pre-compute nightly |
+| Real-time updates | Use WebSocket for live alerts |
+| Scale | Start simple, upgrade to ML as needed |
 
 ---
 
