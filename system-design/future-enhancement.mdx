@@ -98,6 +98,7 @@ Analyzes cart contents, time of day, and customer history to suggest relevant it
 |------|-------|--------|
 | App JS | `customer-app/js/app.js` | ✅ Modified |
 | Cart Modal HTML | `customer-app/index.html` | ✅ Modified |
+| Confirmation Page | `customer-app/js/app.js`, `customer-app/index.html` | ✅ Modified |
 
 #### Where It Appears:
 
@@ -221,22 +222,44 @@ Step 3: Customer App - Chat ordering UI
 **What It Does:**
 Tailors the experience for each customer based on their order history and preferences.
 
+#### Implementation Status: 🚧 In Progress
+
+**Backend - Completed:**
+| File | Path | Status |
+|------|-------|--------|
+| Customer Preference Engine | `backend/app/ai/customer_preference_engine.py` | ✅ Created |
+| Personalization Endpoints | `backend/app/routes/ai/__init__.py` (added at end) | ✅ Created |
+
+**Backend API Endpoints:**
+| Endpoint | Method | Purpose |
+|---------|--------|---------|
+| `/api/ai/customer/{id}/profile` | GET | Get customer profile with preferences |
+| `/api/ai/customer/{id}/recommendations` | GET | Get personalized recommendations |
+| `/api/ai/customer/{id}/greeting` | GET | Get personalized greeting |
+| `/api/ai/customer/{id}/loyalty` | GET | Get loyalty status and rewards |
+
+**Customer App - Completed:**
+| File | Path | Status |
+|------|-------|--------|
+| App JS | `customer-app/js/app.js` | ✅ Modified |
+| Index HTML | `customer-app/index.html` | ✅ Modified |
+
 #### App Scope
 
 | App | Required | Files to Create/Modify |
 |-----|----------|----------------------|
-| **Backend API** | ✅ Required | `backend/app/services/customer_preference_engine.py`, `backend/app/routes/ai_personalization.py` |
-| **Frontend POS** | ✅ Required | `frontend/src/components/AICustomerInsights.jsx`, `frontend/src/pages/Dashboard.jsx` |
-| **Customer App** | ✅ Required | `order-app/src/components/PersonalizedGreeting.jsx`, `order-app/src/pages/Home.jsx`, `order-app/src/components/YourUsual.jsx` |
+| **Backend API** | ✅ Required | `backend/app/ai/customer_preference_engine.py`, `backend/app/routes/ai/__init__.py` |
+| **Frontend POS** | ⏳ Pending | `frontend/src/components/AICustomerInsights.jsx`, `frontend/src/pages/Dashboard.jsx` |
+| **Customer App** | ✅ In Progress | `customer-app/js/app.js`, `customer-app/index.html` |
 
 **Where It Appears:**
 
-| App | Screen | Location | Content |
-|-----|--------|----------|---------|
-| **Frontend POS** | Dashboard | AI Insights card | Staff performance, alerts |
-| **Customer App** | Home | Top banner | "Welcome back, [Name]!" |
-| **Customer App** | Home | Quick reorder | "Your usual order" button |
-| **Customer App** | Menu | Item badges | "Your favorite: Extra spicy" |
+| App | Screen | Location | Content | Status |
+|-----|--------|----------|---------|--------|
+| **Frontend POS** | Dashboard | AI Insights card | Staff performance, alerts | ⏳ Pending |
+| **Customer App** | Home | Top banner | "Welcome back, [Name]!" | ✅ Done |
+| **Customer App** | Home | Quick reorder | "Your usual order" button | ✅ Done |
+| **Customer App** | Menu | Item badges | "Your favorite: Extra spicy" | ⏳ Pending |
 
 **Features:**
 
