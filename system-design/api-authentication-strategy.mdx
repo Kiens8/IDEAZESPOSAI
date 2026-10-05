@@ -873,7 +873,54 @@ curl -H "X-Customer-Id: 1" http://localhost:8000/api/customer/features
 
 ---
 
-## Phase 3: Backend POS API Key Differentiation (IMPLEMENTED)
+## Phase 3: Backend POS API Key Differentiation (IN PROGRESS)
+
+### Implementation Status (2026-10-06)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Auth Middleware | ✅ Complete | Created `app/middleware/auth.py` |
+| BFF Router | ✅ Complete | Re-created `app/routes/customer_bff.py` |
+| Menu Endpoint | ✅ Complete | `/api/menu/categories` has permission check |
+| Other Endpoints | ⏳ Pending | order, loyalty, vouchers, tables, etc. |
+
+### What's Implemented
+
+#### 1. Auth Middleware: `backend/app/middleware/auth.py`
+
+```python
+# 3 dependency options:
+require_permission("menu:write")   # API key REQUIRED, fails if missing
+optional_permission("menu:read")     # API key OPTIONAL, allows anonymous
+
+# 3-Tier Key Config:
+PERMISSIONS = {
+    "frontend_pos_key": { permissions: ["admin:*", ...], rate_limit: 0 },
+    "customer_app_key": { permissions: ["menu:read", ...], rate_limit: 0 },
+    "external_dev_key": { permissions: ["menu:read", ...], rate_limit: 100 },
+}
+```
+
+#### 2. BFF Router: `backend/app/routes/customer_bff.py`
+
+```python
+# Endpoints:
+# GET /api/customer/features - Get customer features
+# GET /api/customer/subscription - Get subscription
+# GET /api/customer/plans - Get plans
+```
+
+### What Remains
+
+| Task | Status |
+|------|--------|
+| Apply to order.py | ⏳ Pending |
+| Apply to loyalty.py | ⏳ Pending |
+| Apply to vouchers.py | ⏳ Pending |
+| Apply to tables.py | ⏳ Pending |
+| Apply to promotions.py | ⏳ Pending |
+| Apply to chatbot.py | ⏳ Pending |
+| Apply to admin endpoints | ⏳ Pending |
 
 ### 3-Tier API Key Architecture
 
