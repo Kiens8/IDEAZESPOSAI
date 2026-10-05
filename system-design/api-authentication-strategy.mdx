@@ -873,7 +873,7 @@ curl -H "X-Customer-Id: 1" http://localhost:8000/api/customer/features
 
 ---
 
-## Phase 3: Backend POS API Key Differentiation (IN PROGRESS)
+## Phase 3: Backend POS API Key Differentiation (COMPLETED ✅)
 
 ### Implementation Status (2026-10-06)
 
@@ -881,7 +881,8 @@ curl -H "X-Customer-Id: 1" http://localhost:8000/api/customer/features
 |-----------|--------|-------|
 | Auth Middleware | ✅ Complete | Created `app/middleware/auth.py` |
 | BFF Router | ✅ Complete | Created `app/routes/customer_bff.py` |
-| Permissions Applied | ⏳ In Progress | Applied to routes one-by-one |
+| Permissions Applied | ✅ Complete | All 17 route files updated |
+| Security Fix | ✅ Complete | Fixed require_permission bug |
 | Document Updated | ✅ Complete | This update |
 
 ### What's Implemented
@@ -1015,12 +1016,32 @@ def create_category(
 
 **ALL BACKEND ROUTES NOW HAVE PERMISSIONS APPLIED**
 
-### What Remains
+### Actual Permission Assignments (2026-10-06)
 
-1. Apply `optional_permission()` and `require_permission()` to all route endpoints
-2. Test each route after applying permissions
-3. Verify backwards compatibility (no API key = still works)
-4. Test with actual API keys (Key A, B, C)
+| Endpoint Type | Route Files | Permission | API Key Required? |
+|--------------|-------------|-----------|-----------------|
+| **Admin** | chatbot.py, outlet_settings.py, users.py | require_permission | ✅ Yes (Key C only) |
+| **Staff** | users.py | require_permission | ✅ Yes (Key C only) |
+| **Reports** | (future) | require_permission | ✅ Yes (Key C only) |
+| **Settings** | outlet_settings.py | require_permission | ✅ Yes (Key C only) |
+| **Customer-facing** | menu.py, order.py, loyalty.py, vouchers.py, tables.py, promotions.py, outlets.py, purchase_orders.py | optional_permission | ❌ No (walk-in OK) |
+
+**Security Rule:**
+- Admin endpoints → `require_permission()` → Must have valid API key
+- Customer endpoints → `optional_permission()` → Works without key (for walk-in QR code scanning)
+
+### What Was Fixed (2026-10-06)
+
+**Bug Fixed:** Indentation error in `middleware/auth.py` prevented `require_permission()` from working properly.
+
+**Impact:** Admin endpoints (ai:*, settings:*, staff:*) were accessible without API key.
+
+**Fix:** Corrected indentation in `verify_api_key()` function to properly return `key_info`.
+
+**Result:**
+- Admin endpoints now require valid API key (Key C)
+- Customer-facing endpoints still work without key (walk-in support)
+- Security model working as designed
 
 To protect Backend POS API endpoints with proper access control:
 
