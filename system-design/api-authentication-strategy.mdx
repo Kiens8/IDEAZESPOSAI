@@ -871,45 +871,90 @@ pm2 logs pos-backend --lines 20
 curl -H "X-Customer-Id: 1" http://localhost:8000/api/customer/features
 ```
 
-### Phase 3: Backend POS Hybrid (Future)
+---
 
-1. Create API key database table
-2. Implement API key validation middleware
-3. Implement user token validation
-4. Add rate limiting per key
-5. Add permission system
-6. Documentation for external developers
+## Phase 3: Backend POS API Key Differentiation (IMPLEMENTED)
 
-### Phase 4: External Developer Access (Future)
+### 3-Tier API Key Architecture
+
+To protect Backend POS API endpoints with proper access control:
+
+| Key | Name | For | Endpoints | Limits |
+|-----|------|-----|-----------|--------|
+| **Key C** | `frontend_pos_key` | Our Frontend App (app.ideazes.com) | ALL (admin, staff, reports, AI, etc.) | No limits, no expiry |
+| **Key A** | `customer_app_key` | Our Customer App (order.ideazes.com) | Customer-facing only (menu, orders, loyalty, vouchers) | No limits, no expiry |
+| **Key B** | `external_dev_key` | External Developer Apps | Customer-facing only | Rate limit + expiry |
+
+### Permission System
+
+```python
+# Permission format: "resource:action" or "resource:*" for all actions
+
+PERMISSIONS = {
+    # Key C - Frontend App (FULL ACCESS)
+    "frontend_pos_key": [
+        "admin:*", "staff:*", "reports:*", "ai:*", "menu:*", 
+        "orders:*", "tables:*", "kitchen:*", "vouchers:*", 
+        "loyalty:*", "inventory:*", "settings:*",
+    ],
+    
+    # Key A - Customer App (CUSTOMER-FACING ONLY)
+    "customer_app_key": [
+        "menu:read", "orders:read", "orders:write", 
+        "loyalty:read", "loyalty:write", 
+        "vouchers:read", "vouchers:redeem",
+    ],
+    
+    # Key B - External Developer (LIMITED)
+    "external_dev_key": [
+        "menu:read", "orders:read", "orders:write", 
+        "loyalty:read", "vouchers:read", "vouchers:redeem",
+    ],
+}
+```
+
+### IP Allowlist for Key C (Frontend App)
+
+Since Key C has the most power, add IP allowlist for defense-in-depth:
+
+```python
+# Only allow Frontend App server IPs to use Key C permissions
+ALLOWED_FRONTEND_IPS = [
+    "127.0.0.1",
+    "10.0.0.0/8",
+    # Add your server public IPs here
+]
+
+def verify_key_c_request(request: Request):
+    """Verify Key C request is from allowed IP"""
+    client_ip = request.client.host
+    if client_ip not in ALLOWED_FRONTEND_IPS:
+        raise HTTPException(403, "IP not allowed for this operation")
+```
+
+### Rate Limiting
+
+| Key | Rate Limit | Purpose |
+|-----|-----------|---------|
+| Key C | Unlimited | Our frontend app |
+| Key A | Unlimited | Our customer app |
+| Key B | 100 req/min | External developers |
+
+### Walk-in Customer Support
+
+Both Key A and Key B support walk-in customers:
+- Walk-in = `dining_customer_id` from table QR code
+- Logged-in = Registered customer with token
+- Same endpoints work for both
+
+---
+
+## Phase 4: External Developer Portal (Future)
 
 1. Developer registration portal
 2. API key issuance workflow
 3. Developer dashboard with usage stats
-4. Support for OAuth flow (optional)
-
-### Phase 2: Backend POS BFF Implementation (High Priority)
-
-1. Add customer-facing endpoints (`/customer/*`)
-2. Implement BFF proxy to Website API
-3. Remove API key from Customer Order App
-4. Update Customer App to use user token auth
-5. Test BFF flow end-to-end
-
-### Phase 3: Backend POS Hybrid (Future)
-
-1. Create API key database table
-2. Implement API key validation middleware
-3. Implement user token validation
-4. Add rate limiting per key
-5. Add permission system
-6. Documentation for external developers
-
-### Phase 4: External Developer Access (Future)
-
-1. Developer registration portal
-2. API key issuance workflow
-3. Developer dashboard with usage stats
-4. Support for OAuth flow (optional)
+4. Rate limit management
 
 ---
 
