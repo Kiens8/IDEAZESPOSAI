@@ -549,12 +549,186 @@ async def call_website_api(endpoint: str, internal: bool = False):
 
 ## Implementation Phases
 
-### Phase 1: Website API Lockdown (Priority)
+### Phase 1: Website API Lockdown (COMPLETED ✅)
 
-1. Add origin checking middleware
-2. Add blocked user-agent list
-3. Restrict admin endpoints to internal IPs/services
-4. Add `X-Internal-Service` header support for Backend POS
+#### Files Created
+
+##### 1. `/website_api/app/core/tier1_security.py`
+
+New security middleware implementing Tier 1:
+
+```python
+"""
+Tier 1 Security Middleware for Website API
+Implements:
+1. API Key + Origin check
+2. Block Postman/curl/external tools (User-Agent check)
+3. IP restriction for admin endpoints
+4. X-Internal-Service header support for Backend POS
+"""
+
+# Allowed origins for internal apps
+ALLOWED_ORIGINS = [
+    "https://admin.ideazes.com",    # Admin App
+    "https://app.ideazes.com",      # Frontend POS
+    "https://order.ideazes.com",    # Customer Order App
+    "https://site.ideazes.com",     # Site App
+    "https://www.ideazes.com",      # Public website
+    "http://127.0.0.1",
+    "http://localhost",
+]
+
+# Internal IPs
+INTERNAL_IP_PREFIXES = [
+    "127.0.0.1", "localhost", "10.", "192.168.",
+    "172.16.", "172.17.", ..., "172.31.",
+]
+
+# Blocked user agents (API testing tools)
+BLOCKED_USER_AGENTS = [
+    "postman", "thunder client", "httpie", "curl",
+    "insomnia", "wget", "rest-client", " okhttp",
+]
+
+def is_internal_ip(ip: str) -> bool: ...
+def is_internal_service(request: Request) -> bool: ...
+def check_origin_allowed(request: Request) -> bool: ...
+def check_user_agent_blocked(request: Request) -> bool: ...
+async def verify_tier1_request(request: Request) -> dict: ...
+
+class Tier1SecurityMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next): ...
+```
+
+#### Files Modified
+
+##### 2. `/website_api/app/main.py`
+
+Added Tier 1 middleware import and registration:
+
+```python
+from app.core.tier1_security import Tier1SecurityMiddleware
+
+application.add_middleware(Tier1SecurityMiddleware)
+```
+
+##### 3. `/website_api/app/routes/admin.py`
+
+Added origin validation for API key requests:
+
+```python
+from app.core.tier1_security import ALLOWED_ORIGINS, is_internal_service, is_internal_ip
+
+def check_origin_for_api_key(request: Request) -> bool:
+    """
+    Check if origin is allowed for API key requests.
+    Returns True if origin check should be skipped (internal service).
+    """
+    # Skip if internal service
+    if is_internal_service(request):
+        return True
+    
+    # Check origin
+    origin = request.headers.get("origin") or request.headers.get("referer", "")
+    if not origin:
+        client_ip = request.client.host if request.client else ""
+        if is_internal_ip(client_ip):
+            return True
+        return False
+    
+    for allowed in ALLOWED_ORIGINS:
+        if allowed in origin:
+            return True
+    
+    return False
+
+async def get_admin_or_api_key_auth(
+    request: Request,  # Added for origin checking
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    ...
+):
+    # ... existing admin token check ...
+    
+    # Check for API key (external apps like Frontend POS)
+    if x_api_key:
+        # Tier 1: Check origin for API key requests
+        if not check_origin_for_api_key(request):
+            raise HTTPException(
+                status_code=403,
+                detail="Request origin not allowed. API key requests must come from trusted domains."
+            )
+        return {"type": "api_key", "key": x_api_key}
+```
+
+Updated endpoints to pass `request` parameter (3 endpoints):
+- `get_subscriptions()`
+- `get_plans()`
+- `get_customer_features()`
+
+---
+
+### Implementation Summary
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `website_api/app/core/tier1_security.py` | Created | New security middleware |
+| `website_api/app/main.py` | Modified | Register middleware |
+| `website_api/app/routes/admin.py` | Modified | Add origin validation |
+| `website_api/app/models/admin_models.py` | No change | Already has APIKey model |
+| `website_api/app/core/config.py` | No change | Already has CORS_ORIGINS |
+
+---
+
+### Database - API Keys
+
+Location: `website_api/website_api.db`
+
+Table: `api_keys`
+
+| Field | Value |
+|-------|-------|
+| key | `pk_7efDBsHoS-RJCAlQ8liPbkY2IfWTYjHhwZU5aoj6iw8` |
+| name | `pos_frontend_key` |
+| permissions | `["read:customer_features", "read:subscriptions", "read:plans"]` |
+| is_active | `True` |
+
+---
+
+### Service Management
+
+```bash
+# Restart Website API after changes
+pm2 restart website-api
+
+# Check logs
+pm2 logs website-api --lines 20
+```
+
+---
+
+### Phase 2: Backend POS BFF Implementation (High Priority)
+
+1. Add customer-facing endpoints (`/customer/*`)
+2. Implement BFF proxy to Website API
+3. Remove API key from Customer Order App
+4. Update Customer App to use user token auth
+5. Test BFF flow end-to-end
+
+### Phase 3: Backend POS Hybrid (Future)
+
+1. Create API key database table
+2. Implement API key validation middleware
+3. Implement user token validation
+4. Add rate limiting per key
+5. Add permission system
+6. Documentation for external developers
+
+### Phase 4: External Developer Access (Future)
+
+1. Developer registration portal
+2. API key issuance workflow
+3. Developer dashboard with usage stats
+4. Support for OAuth flow (optional)
 
 ### Phase 2: Backend POS BFF Implementation (High Priority)
 
