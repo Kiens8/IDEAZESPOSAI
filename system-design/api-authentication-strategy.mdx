@@ -1,0 +1,439 @@
+---
+title: API Authentication Strategy
+description: Layered authentication approach for Website API and Backend POS API
+---
+
+# API Authentication Strategy
+
+## Overview
+
+This document outlines a **layered authentication strategy** for both Website API and Backend POS API. The approach is designed to:
+
+1. **Block unauthorized external access** (Postman, curl, API testing tools)
+2. **Maintain simple security for internal trusted apps**
+3. **Enable future external developer access** with proper authentication
+
+---
+
+## Two-Tier Security Model
+
+### Tier 1: Website API (Simple & Locked Down)
+
+**Goal: Block all unauthorized external tool access**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Website API (apisite.ideazes.com)            │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  ✅ Allow: Frontend POS (trusted source)                │
+│  ✅ Allow: Customer App (trusted source)                 │
+│  ✅ Allow: Admin Panel (trusted source)                  │
+│  ❌ Block: Postman / curl / external tools              │
+│  ❌ Block: Unknown origins                               │
+│  ❌ Block: External IP addresses                        │
+│                                                          │
+│  Auth: API Key + Origin/IP Restriction                  │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Tier 2: Backend POS API (Full Hybrid for External Devs)
+
+**Goal: Allow trusted external developers with proper auth**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│              Backend POS API (api.ideazes.com)            │
+├─────────────────────────────────────────────────────────┤
+│                                                          │
+│  ✅ Allow: Frontend POS (API key)                        │
+│  ✅ Allow: Customer App (API key)                        │
+│  ✅ Allow: External devs (API key + User token)          │
+│  ❌ Block: Requests without proper authentication         │
+│                                                          │
+│  Auth: Hybrid (API Key + User Token)                    │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Tier 1: Website API Security
+
+### Security Model
+
+Website API uses a **simple but strict security model**:
+
+1. **API Key Validation** - Only requests with valid API key can proceed
+2. **Origin/Referer Check** - Only requests from trusted domains
+3. **IP Restriction** - Admin endpoints restricted to internal IPs
+4. **Tool Blocking** - Explicitly blocks Postman, curl, and similar tools
+
+### Allowed Origins
+
+```python
+ALLOWED_ORIGINS = [
+    # Trusted domains
+    "https://admin.ideazes.com",
+    "https://app.ideazes.com",
+    "https://order.ideazes.com",
+    "https://site.ideazes.com",
+    "https://www.ideazes.com",
+    # Internal IPs
+    "127.0.0.1",
+    "localhost",
+]
+```
+
+### Implementation
+
+```python
+# Website API middleware - Locked down security
+from fastapi import Request, HTTPException
+
+ALLOWED_ORIGINS = [
+    "https://admin.ideazes.com",
+    "https://app.ideazes.com",
+    "https://order.ideazes.com",
+    "https://site.ideazes.com",
+    "https://www.ideazes.com",
+    "127.0.0.1",
+    "localhost",
+]
+
+BLOCKED_USER_AGENTS = [
+    "Postman",
+    "Thunder Client",
+    "HTTPie",
+    "curl",
+    "insomnia",
+]
+
+def verify_request(request: Request):
+    """Verify request is from trusted source"""
+    
+    # 1. Check User-Agent for blocked tools
+    user_agent = request.headers.get("User-Agent", "")
+    for blocked in BLOCKED_USER_AGENTS:
+        if blocked.lower() in user_agent.lower():
+            raise HTTPException(
+                status_code=403,
+                detail="API testing tools are not allowed"
+            )
+    
+    # 2. Check API Key
+    api_key = request.headers.get("X-API-Key")
+    if not api_key or not validate_api_key(api_key):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    # 3. Check Origin/Referer
+    origin = request.headers.get("Origin") or request.headers.get("Referer", "")
+    if origin:
+        allowed = any(o in origin for o in ALLOWED_ORIGINS)
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail="Requests from this origin are not allowed"
+            )
+    
+    # 4. For admin endpoints - restrict to internal IPs
+    if request.url.path.startswith("/api/admin/"):
+        client_ip = request.client.host
+        if not is_internal_ip(client_ip):
+            raise HTTPException(
+                status_code=403,
+                detail="Admin access restricted to internal network"
+            )
+    
+    return True
+
+def is_internal_ip(ip: str) -> bool:
+    """Check if IP is internal"""
+    internal_ranges = [
+        "127.0.0.1",
+        "localhost",
+        "10.",
+        "192.168.",
+        "172.16.", "172.17.", "172.18.", "172.19.",
+        "172.20.", "172.21.", "172.22.", "172.23.",
+        "172.24.", "172.25.", "172.26.", "172.27.",
+        "172.28.", "172.29.", "172.30.", "172.31.",
+    ]
+    return any(ip.startswith(r) for r in internal_ranges)
+```
+
+### Website API Endpoints
+
+#### Public Endpoints (No Auth Required)
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/auth/register` | POST | Customer registration |
+| `/auth/login` | POST | Customer login |
+
+#### Protected Endpoints (API Key + Origin Required)
+
+| Endpoint | Method | Allowed Origins | Description |
+|----------|--------|-----------------|-------------|
+| `/api/admin/subscriptions` | GET | Frontend POS | Get customer subscription |
+| `/api/admin/plans` | GET | Frontend POS | Get available plans |
+| `/api/admin/customer/{id}/features` | GET | Frontend POS, Customer App | Get customer features |
+| `/api/admin/customer/{id}/subscription` | GET | Frontend POS | Get subscription status |
+
+### Summary
+
+| Aspect | Website API |
+|--------|-------------|
+| Auth Type | API Key + Origin + IP |
+| External Tools | BLOCKED |
+| Trusted Apps | Frontend POS, Customer App |
+| User Tokens | Not used |
+| For External Devs | NO |
+
+---
+
+## Tier 2: Backend POS API Security
+
+### Security Model
+
+Backend POS API uses **full hybrid authentication** for future external developer access:
+
+1. **API Key** - Identifies the application/developer
+2. **User Token** - Authenticates the end user
+3. **Rate Limiting** - Prevents abuse
+4. **Permission System** - Granular access control
+
+### Architecture
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  External App   │────▶│   API Gateway   │────▶│   Backend API   │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │  API Key Validation │
+                    │  User Token Check   │
+                    │  Rate Limiting      │
+                    └─────────────────────┘
+```
+
+### Components
+
+#### 1. API Keys (Developer/App Identification)
+
+| Field | Description |
+|-------|-------------|
+| `key_id` | Unique identifier for the API key |
+| `key_hash` | Hashed version of the API key |
+| `app_name` | Name of the application |
+| `developer_id` | Reference to registered developer |
+| `service` | Which service the key is for |
+| `status` | active, suspended, revoked |
+| `rate_limit` | Requests per minute limit |
+| `created_at` | Key creation timestamp |
+
+#### 2. User Tokens (User Authentication)
+
+| Field | Description |
+|-------|-------------|
+| `token_id` | Unique token identifier |
+| `user_id` | Reference to authenticated user |
+| `token_hash` | Hashed version of the token |
+| `expires_at` | Token expiration timestamp |
+| `status` | active, expired, revoked |
+| `created_at` | Token creation timestamp |
+
+### Request Headers
+
+```http
+X-API-Key: <developer_api_key>
+Authorization: Bearer <user_token>
+```
+
+### Trusted Client Implementation
+
+For Frontend POS and Customer App (trusted clients):
+
+```javascript
+// Frontend POS - Simplified headers
+fetch(`${API_BASE}/ai/recommendations/cart`, {
+    headers: {
+        'X-API-Key': 'trusted_pos_key',
+        'X-Customer-Id': customerId
+    }
+})
+```
+
+For External Developers (future):
+
+```javascript
+// External developer app - Full hybrid auth
+fetch(`${API_BASE}/orders/`, {
+    headers: {
+        'X-API-Key': 'developer_api_key',
+        'Authorization': 'Bearer ' + userToken
+    }
+})
+```
+
+### Backend POS API Endpoints
+
+#### Internal Endpoints (Trusted Clients Only)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/menu/*` | GET/POST | API Key | Menu management |
+| `/api/orders/*` | GET/POST | API Key | Order management |
+| `/api/loyalty/*` | GET/POST | API Key | Loyalty points |
+| `/api/vouchers/*` | GET/POST | API Key | Vouchers |
+| `/api/ai/*` | GET/POST | API Key | AI features |
+
+#### External Endpoints (Full Hybrid Auth - Future)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/orders/` | POST | API Key + Token | Create order |
+| `/api/menu/items` | GET | API Key + Token | Get menu |
+| `/api/customer/profile` | GET | API Key + Token | Customer profile |
+
+### Summary
+
+| Aspect | Backend POS API |
+|--------|----------------|
+| Auth Type | Full Hybrid (API Key + User Token) |
+| External Tools | Allowed with proper auth |
+| Trusted Apps | Frontend POS, Customer App |
+| User Tokens | Used for authentication |
+| For External Devs | YES (future) |
+
+---
+
+## Currently Used Endpoints
+
+### Frontend POS and Customer Order App
+
+#### Frontend POS (src/hooks & src/components)
+
+| Endpoint | Method | Auth | File | Purpose |
+|----------|--------|------|------|---------|
+| `/api/admin/subscriptions` | GET | API Key | usePlanLimits.js | Get customer subscription |
+| `/api/admin/plans` | GET | API Key | usePlanLimits.js | Get available plans |
+| `/api/admin/customer/{id}/features` | GET | API Key | useFeatures.jsx | Get customer features |
+| `/api/admin/customer/{id}/subscription` | GET | API Key | FeatureGate.jsx | Get subscription status |
+
+#### Customer Order App (customer-app)
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/api/admin/customer/{customerId}/features` | GET | API Key | Get customer features |
+
+#### Summary
+
+| App | Website API | Backend POS API |
+|-----|-------------|-----------------|
+| Frontend POS | 4 endpoints | All internal endpoints |
+| Customer App | 1 endpoint | All internal endpoints |
+
+---
+
+## Implementation Phases
+
+### Phase 1: Website API Lockdown (Priority)
+
+1. Add origin checking middleware
+2. Add blocked user-agent list
+3. Restrict admin endpoints to internal IPs
+4. Test with Frontend POS and Customer App
+
+### Phase 2: Backend POS Hybrid (Future)
+
+1. Create API key database table
+2. Implement API key validation middleware
+3. Implement user token validation
+4. Add rate limiting per key
+5. Add permission system
+6. Documentation for external developers
+
+### Phase 3: External Developer Access (Future)
+
+1. Developer registration portal
+2. API key issuance workflow
+3. Developer dashboard with usage stats
+4. Support for OAuth flow (optional)
+
+---
+
+## Security Comparison
+
+| Feature | Website API | Backend POS API |
+|---------|-------------|-----------------|
+| API Key | ✅ Yes | ✅ Yes |
+| User Token | ❌ No | ✅ Yes |
+| Origin Check | ✅ Yes | ❌ No |
+| IP Restriction | ✅ Admin only | ❌ No |
+| Rate Limiting | Basic | Advanced |
+| External Devs | ❌ Blocked | ✅ Allowed |
+| Postman/curl | ❌ Blocked | ✅ Allowed |
+
+---
+
+## Database Schema
+
+### API Keys Table
+
+```sql
+CREATE TABLE api_keys (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key_id TEXT UNIQUE NOT NULL,
+    key_hash TEXT NOT NULL,
+    app_name TEXT NOT NULL,
+    service TEXT DEFAULT 'both',
+    permissions TEXT,
+    rate_limit INTEGER DEFAULT 100,
+    status TEXT DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_api_keys_hash ON api_keys(key_hash);
+```
+
+### Service Values
+
+| Service | Description |
+|---------|-------------|
+| `website` | Website API only |
+| `backend` | Backend POS API only |
+| `both` | Both APIs |
+
+---
+
+## Migration Strategy
+
+### For Website API
+
+1. Deploy origin checking middleware
+2. Add blocked user-agents list
+3. Test that Frontend POS and Customer App still work
+4. Monitor for any issues
+
+### For Backend POS API
+
+1. Keep current implementation for trusted clients
+2. Add API key table alongside existing auth
+3. Implement hybrid validation for new endpoints
+4. Migrate trusted clients to new system gradually
+
+---
+
+## Summary
+
+| API | Auth Strategy | External Tools | Target Users |
+|-----|--------------|----------------|--------------|
+| **Website API** | API Key + Origin + IP | BLOCKED | Frontend POS, Customer App only |
+| **Backend POS API** | Full Hybrid (Key + Token) | Allowed | Internal + future external devs |
+
+**Key Principles:**
+1. Website API stays simple but locked down - no external tool access
+2. Backend POS API gets full hybrid for future external developer ecosystem
+3. Unified API key table can be used by both (optional consolidation)
