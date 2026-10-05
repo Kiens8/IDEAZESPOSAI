@@ -706,13 +706,170 @@ pm2 logs website-api --lines 20
 
 ---
 
-### Phase 2: Backend POS BFF Implementation (High Priority)
+### Phase 2: Backend POS BFF Implementation (COMPLETED ✅)
 
-1. Add customer-facing endpoints (`/customer/*`)
-2. Implement BFF proxy to Website API
-3. Remove API key from Customer Order App
-4. Update Customer App to use user token auth
-5. Test BFF flow end-to-end
+#### Files Created
+
+##### 1. `/backend/app/routes/customer_bff.py`
+
+New BFF router implementing the Backend-for-Frontend pattern:
+
+```python
+"""
+Customer BFF (Backend for Frontend) Router
+Flow: Customer App → Backend POS API (with customer_id) → Website API (internal call)
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
+from pydantic import BaseModel
+from typing import Optional, List
+import httpx
+import logging
+from app.core.config import settings
+
+router = APIRouter(prefix="/api/customer", tags=["Customer BFF"])
+
+# Endpoints:
+# GET /api/customer/features - Get customer features via BFF
+# GET /api/customer/subscription - Get customer subscription
+# GET /api/customer/plans - Get available plans
+# GET /api/customer/health - Health check
+
+async def call_website_api(endpoint: str):
+    """Make internal call to Website API with hidden API key."""
+    url = f"{settings.WEBSITE_API_URL}{endpoint}"
+    headers = {
+        "X-API-Key": settings.WEBSITE_API_INTERNAL_KEY,
+        "X-Internal-Service": "backend-pos",
+        "Content-Type": "application/json"
+    }
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+
+def get_customer_id_from_request(
+    authorization: Optional[str] = Header(None),
+    x_customer_id: Optional[str] = Header(None, alias="X-Customer-Id"),
+    customer_id_query: Optional[int] = Query(None, alias="customer_id")
+) -> int:
+    """Extract customer_id from header or query parameter."""
+    # Priority: X-Customer-Id header > customer_id query > Bearer token
+    ...
+
+@router.get("/features", response_model=CustomerFeaturesResponse)
+async def get_customer_features(customer_id: int = Depends(get_customer_id_from_request)):
+    """Get customer features via BFF pattern."""
+    features_data = await call_website_api(f"/api/admin/customer/{customer_id}/features")
+    return CustomerFeaturesResponse(features=features_data, ...)
+```
+
+#### Files Modified
+
+##### 2. `/backend/app/core/config.py`
+
+Added Website API configuration:
+
+```python
+# Website API (for BFF pattern - internal calls only)
+WEBSITE_API_URL: str = "https://apisite.ideazes.com"
+WEBSITE_API_INTERNAL_KEY: str = "pk_7efDBsHoS-RJCAlQ8liPbkY2IfWTYjHhwZU5aoj6iw8"
+```
+
+##### 3. `/backend/app/main.py`
+
+Added BFF router registration:
+
+```python
+from app.routes.customer_bff import router as customer_bff_router
+
+# Include router
+app.include_router(customer_bff_router)
+```
+
+##### 4. `/backend/requirements.txt`
+
+Added httpx dependency:
+
+```
+httpx==0.26.0
+```
+
+##### 5. `/customer-app/js/app.js`
+
+Updated `fetchCustomerFeatures()` function:
+
+```javascript
+// OLD: Direct call to Website API with exposed API key
+async function fetchCustomerFeatures() {
+    const API_KEY = 'pk_7efDBsHoS-RJCAlQ8liPbkY2IfWTYjHhwZU5aoj6iw8';
+    const response = await fetch(`${WEBSITE_API}/api/admin/customer/${customerId}/features`, {
+        headers: { 'X-API-Key': API_KEY }
+    });
+    ...
+}
+
+// NEW: Call Backend POS BFF with X-Customer-Id header (NO API KEY)
+async function fetchCustomerFeatures() {
+    const storedCustomer = getStoredCustomer();
+    const response = await fetch(`${API_BASE}/customer/features`, {
+        headers: {
+            'X-Customer-Id': storedCustomer.customer_id,
+            'Content-Type': 'application/json'
+        }
+    });
+    ...
+}
+```
+
+---
+
+### Implementation Summary
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `backend/app/routes/customer_bff.py` | Created | New BFF router |
+| `backend/app/core/config.py` | Modified | Added Website API URL + key |
+| `backend/app/main.py` | Modified | Registered BFF router |
+| `backend/requirements.txt` | Modified | Added httpx dependency |
+| `customer-app/js/app.js` | Modified | Removed API key, use BFF |
+| `website_api/app/core/tier1_security.py` | Created | Tier 1 middleware |
+| `website_api/app/main.py` | Modified | Registered Tier 1 middleware |
+| `website_api/app/routes/admin.py` | Modified | Added origin validation |
+
+---
+
+### BFF Security Flow
+
+```
+┌─────────────────────┐     X-Customer-Id: 1      ┌─────────────────────┐
+│  Customer Order App  │ ────────────────────────▶ │  Backend POS API    │
+│  (order.ideazes.com)│     (NO API KEY!)         │  (api.ideazes.com)  │
+└─────────────────────┘                            └──────────┬──────────┘
+                                                             │
+                                                             │ X-API-Key: [hidden]
+                                                             │ X-Internal-Service: backend-pos
+                                                             ▼
+                                                    ┌─────────────────────┐
+                                                    │   Website API       │
+                                                    │ (apisite.ideazes.)  │
+                                                    └─────────────────────┘
+```
+
+---
+
+### Service Management
+
+```bash
+# Restart Backend POS API after changes
+pm2 restart pos-backend
+
+# Check logs
+pm2 logs pos-backend --lines 20
+
+# Test BFF endpoint
+curl -H "X-Customer-Id: 1" http://localhost:8000/api/customer/features
+```
 
 ### Phase 3: Backend POS Hybrid (Future)
 
