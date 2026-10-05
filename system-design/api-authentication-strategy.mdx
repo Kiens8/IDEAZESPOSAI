@@ -880,49 +880,132 @@ curl -H "X-Customer-Id: 1" http://localhost:8000/api/customer/features
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Auth Middleware | ✅ Complete | Created `app/middleware/auth.py` |
-| BFF Router | ✅ Complete | Re-created `app/routes/customer_bff.py` |
-| Menu Endpoint | ✅ Complete | `/api/menu/categories` has permission check |
-| Other Endpoints | ⏳ Pending | order, loyalty, vouchers, tables, etc. |
+| BFF Router | ✅ Complete | Created `app/routes/customer_bff.py` |
+| Permissions Applied | ⏳ In Progress | Applied to routes one-by-one |
+| Document Updated | ✅ Complete | This update |
 
 ### What's Implemented
 
 #### 1. Auth Middleware: `backend/app/middleware/auth.py`
 
-```python
-# 3 dependency options:
-require_permission("menu:write")   # API key REQUIRED, fails if missing
-optional_permission("menu:read")     # API key OPTIONAL, allows anonymous
+**Location:** `backend/app/middleware/auth.py`
 
-# 3-Tier Key Config:
+**Features:**
+- 3-Tier Key System (Key C/A/B)
+- `require_permission()` - API key REQUIRED
+- `optional_permission()` - API key OPTIONAL (backwards compatible)
+- Rate limiting per key
+- IP allowlist for Key C (Frontend App)
+
+**3-Tier Key Config:**
+
+```python
 PERMISSIONS = {
-    "frontend_pos_key": { permissions: ["admin:*", ...], rate_limit: 0 },
-    "customer_app_key": { permissions: ["menu:read", ...], rate_limit: 0 },
-    "external_dev_key": { permissions: ["menu:read", ...], rate_limit: 100 },
+    # Key C - Frontend App (FULL ACCESS)
+    "frontend_pos_key": {
+        "key_type": "frontend",
+        "permissions": ["admin:*", "staff:*", "reports:*", "ai:*", ...],
+        "rate_limit": 0,  # Unlimited
+        "allowed_ips": ["127.0.0.1", "localhost"],
+    },
+    # Key A - Customer App (CUSTOMER-FACING ONLY)
+    "customer_app_key": {
+        "key_type": "customer",
+        "permissions": ["menu:read", "orders:read", "orders:write", ...],
+        "rate_limit": 0,
+    },
+    # Key B - External Developer (LIMITED)
+    "external_dev_key": {
+        "key_type": "external",
+        "permissions": ["menu:read", "orders:read", "orders:write", ...],
+        "rate_limit": 100,  # 100 req/min
+    },
 }
 ```
 
 #### 2. BFF Router: `backend/app/routes/customer_bff.py`
 
-```python
-# Endpoints:
-# GET /api/customer/features - Get customer features
-# GET /api/customer/subscription - Get subscription
-# GET /api/customer/plans - Get plans
+**Location:** `backend/app/routes/customer_bff.py`
+
+**Endpoints:**
+- `GET /api/customer/features` - Get customer features via BFF
+- `GET /api/customer/subscription` - Get subscription
+- `GET /api/customer/plans` - Get plans
+- `GET /api/customer/health` - Health check
+
+**BFF Flow:**
 ```
+Customer App → Backend POS API (X-Customer-Id header) → Website API (internal key)
+```
+
+#### 3. Config Update: `backend/app/core/config.py`
+
+```python
+WEBSITE_API_URL: str = "https://apisite.ideazes.com"
+WEBSITE_API_INTERNAL_KEY: str = "pk_7efDBsHoS-..."
+```
+
+### How to Apply Permissions to Routes
+
+To protect an endpoint, add the middleware dependency:
+
+```python
+# In route file (e.g., menu.py):
+from app.middleware.auth import optional_permission, require_permission
+
+# For GET endpoints (read-only):
+@router.get("/categories")
+def get_categories(
+    db: Session = Depends(get_db),
+    key_info: dict = Depends(optional_permission("menu:read"))
+):
+    ...
+
+# For POST/PUT/DELETE endpoints (write):
+@router.post("/categories")
+def create_category(
+    category: CategoryCreate,
+    outlet_id: int,
+    db: Session = Depends(get_db),
+    key_info: dict = Depends(require_permission("menu:write"))
+):
+    ...
+```
+
+### Permission Mapping by Route
+
+| Route File | Read Permission | Write Permission |
+|------------|----------------|------------------|
+| menu.py | menu:read | menu:write |
+| order.py | orders:read | orders:write |
+| loyalty.py | loyalty:read | loyalty:write |
+| vouchers.py | vouchers:read | vouchers:write |
+| tables.py | tables:read | tables:write |
+| promotions.py | promotions:read | promotions:write |
+| chatbot.py | ai:read | ai:write |
+| users.py | staff:read | staff:write |
+| outlets.py | outlets:read | outlets:write |
+| inventory.py | inventory:read | inventory:write |
+| notifications.py | notifications:read | notifications:write |
+| suppliers.py | suppliers:read | suppliers:write |
+
+### Implementation Status
+
+| Route | Status | Notes |
+|-------|--------|-------|
+| customer_bff.py | ✅ Done | BFF pattern for Website API |
+| middleware/auth.py | ✅ Done | Auth system ready |
+| Menu Endpoints | ⏳ Pending | Need to add permissions |
+| Order Endpoints | ⏳ Pending | Need to add permissions |
+| Loyalty Endpoints | ⏳ Pending | Need to add permissions |
+| Other Routes | ⏳ Pending | Need to add permissions |
 
 ### What Remains
 
-| Task | Status |
-|------|--------|
-| Apply to order.py | ⏳ Pending |
-| Apply to loyalty.py | ⏳ Pending |
-| Apply to vouchers.py | ⏳ Pending |
-| Apply to tables.py | ⏳ Pending |
-| Apply to promotions.py | ⏳ Pending |
-| Apply to chatbot.py | ⏳ Pending |
-| Apply to admin endpoints | ⏳ Pending |
-
-### 3-Tier API Key Architecture
+1. Apply `optional_permission()` and `require_permission()` to all route endpoints
+2. Test each route after applying permissions
+3. Verify backwards compatibility (no API key = still works)
+4. Test with actual API keys (Key A, B, C)
 
 To protect Backend POS API endpoints with proper access control:
 
