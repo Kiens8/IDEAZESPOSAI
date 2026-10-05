@@ -192,8 +192,13 @@ Website API uses a **simple but strict security model**:
 from fastapi import Request, HTTPException
 
 ALLOWED_ORIGINS = [
-    "https://admin.ideazes.com",
-    "https://app.ideazes.com",
+    # Internal apps (trusted)
+    "https://admin.ideazes.com",    # Admin App
+    "https://app.ideazes.com",      # Frontend POS
+    "https://order.ideazes.com",     # Customer Order App
+    "https://site.ideazes.com",     # Site App (marketing + auth)
+    "https://www.ideazes.com",      # Public website
+    # Internal IPs
     "127.0.0.1",
     "localhost",
 ]
@@ -261,15 +266,51 @@ def is_internal_service(request: Request) -> bool:
 |----------|--------|-------------|
 | `/auth/register` | POST | Customer registration |
 | `/auth/login` | POST | Customer login |
+| `/auth/forgot-password` | POST | Forgot password |
+| `/auth/reset-password` | POST | Reset password |
+| `/auth/verify-email/{token}` | GET | Email verification |
+| `/plans` | GET | Get subscription plans (Site App) |
+| `/invoices/{id}/view` | GET | View invoice (Site App) |
 
-#### Protected Endpoints (API Key + Internal Only)
+#### Protected Endpoints (API Key + Origin Required)
+
+##### Admin App Endpoints
 
 | Endpoint | Method | Allowed Callers | Description |
 |----------|--------|-----------------|-------------|
-| `/api/admin/subscriptions` | GET | Frontend POS, Backend POS | Get customer subscription |
-| `/api/admin/plans` | GET | Frontend POS, Backend POS | Get available plans |
-| `/api/admin/customer/{id}/features` | GET | Frontend POS, Backend POS | Get customer features |
-| `/api/admin/customer/{id}/subscription` | GET | Frontend POS, Backend POS | Get subscription status |
+| `/api/admin/auth/login` | POST | Admin App | Admin login |
+| `/api/admin/dashboard` | GET | Admin App | Dashboard stats |
+| `/api/admin/customers` | GET | Admin App | Customer management |
+| `/api/admin/subscriptions` | GET | Admin App | Subscription management |
+| `/api/admin/plans` | GET/POST | Admin App | Plan management |
+| `/api/admin/features` | GET | Admin App | Feature management |
+| `/api/admin/customer/{id}/features` | GET | Admin App | Customer features |
+| `/api/admin/invoices` | GET | Admin App | Invoice management |
+| `/api/admin/reports/*` | GET | Admin App | Reports and analytics |
+
+##### Frontend POS Endpoints
+
+| Endpoint | Method | Allowed Callers | Description |
+|----------|--------|-----------------|-------------|
+| `/api/admin/subscriptions` | GET | Frontend POS | Get customer subscription |
+| `/api/admin/plans` | GET | Frontend POS | Get available plans |
+| `/api/admin/customer/{id}/features` | GET | Frontend POS | Get customer features |
+| `/api/admin/customer/{id}/subscription` | GET | Frontend POS | Get subscription status |
+
+##### Customer Order App Endpoints
+
+| Endpoint | Method | Allowed Callers | Description |
+|----------|--------|-----------------|-------------|
+| `/api/admin/customer/{id}/features` | GET | Customer App | Get customer features (BFF via Backend POS) |
+
+##### Site App Endpoints
+
+| Endpoint | Method | Allowed Callers | Description |
+|----------|--------|-----------------|-------------|
+| `/api/auth/me` | GET | Site App | Get current user |
+| `/api/auth/resend-verification` | POST | Site App | Resend verification |
+| `/api/subscriptions/current` | GET | Site App | Current subscription |
+| `/api/subscriptions/upgrade` | POST | Site App | Upgrade subscription |
 
 ### Summary
 
@@ -277,9 +318,39 @@ def is_internal_service(request: Request) -> bool:
 |--------|-------------|
 | Auth Type | API Key + Origin + IP |
 | External Tools | BLOCKED |
-| Direct Callers | Frontend POS, Backend POS (internal) |
+| Direct Callers | Admin App, Frontend POS, Customer App, Site App, Backend POS |
 | External Devs | NO - must go through Backend POS |
 | User Tokens | Not used |
+
+### Tier 1 Implementation Impact
+
+#### Apps Using Website API
+
+| App | Domain | Type | Tier 1 Impact |
+|-----|--------|------|---------------|
+| Admin App | admin.ideazes.com | Internal | ✅ Add to ALLOWED_ORIGINS |
+| Frontend POS | app.ideazes.com | Internal | ✅ Add to ALLOWED_ORIGINS |
+| Customer Order App | order.ideazes.com | Internal | ✅ Add to ALLOWED_ORIGINS |
+| Site App | site.ideazes.com | Internal | ✅ Add to ALLOWED_ORIGINS |
+| Backend POS API | api.ideazes.com | Internal service | ✅ Via X-Internal-Service header |
+
+#### Implementation Changes Required
+
+1. **Website API middleware** - Add 4 internal domains to ALLOWED_ORIGINS:
+   - `https://admin.ideazes.com`
+   - `https://app.ideazes.com`
+   - `https://order.ideazes.com`
+   - `https://site.ideazes.com`
+
+2. **No breaking changes** - All internal apps can be whitelisted
+
+#### Conclusion
+
+| Concern | Assessment |
+|---------|------------|
+| Will Tier 1 break existing apps? | ❌ No - if origins are added to ALLOWED_ORIGINS |
+| Do we need code changes? | ✅ Yes - add 4 origins to middleware |
+| Any app can't use Website API? | ❌ No - all internal apps can be whitelisted |
 
 ---
 
@@ -412,7 +483,21 @@ async def call_website_api(endpoint: str, internal: bool = False):
 
 ## Currently Used Endpoints
 
-### Frontend POS (Direct to Website API)
+### Admin App (admin/)
+
+| Endpoint | Method | Auth | File | Purpose |
+|----------|--------|------|------|---------|
+| `/api/admin/auth/login` | POST | Admin Token | api.js | Admin login |
+| `/api/admin/dashboard` | GET | Admin Token | api.js | Dashboard stats |
+| `/api/admin/customers` | GET | Admin Token | api.js | Customer list |
+| `/api/admin/subscriptions` | GET | Admin Token | api.js | Subscription management |
+| `/api/admin/plans` | GET | Admin Token | api.js | Plan management |
+| `/api/admin/features` | GET | Admin Token | api.js | Feature management |
+| `/api/admin/customer/{id}/features` | GET | Admin Token | api.js | Customer features |
+| `/api/admin/invoices` | GET | Admin Token | api.js | Invoice management |
+| `/api/admin/reports/*` | GET | Admin Token | api.js | Reports |
+
+### Frontend POS (frontend/)
 
 | Endpoint | Method | Auth | File | Purpose |
 |----------|--------|------|------|---------|
@@ -421,19 +506,44 @@ async def call_website_api(endpoint: str, internal: bool = False):
 | `/api/admin/customer/{id}/features` | GET | API Key | useFeatures.jsx | Get customer features |
 | `/api/admin/customer/{id}/subscription` | GET | API Key | FeatureGate.jsx | Get subscription status |
 
-### Customer Order App (Currently Direct - Should Change to BFF)
+### Customer Order App (customer-app/)
 
-**Current (Problem):** Direct call to Website API with exposed key
+**Current (Direct - Should Change to BFF):**
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `/api/admin/customer/{customerId}/features` | GET | API Key | Get customer features |
 
-**Future (BFF Pattern):** Call Backend POS API, which proxies to Website API
+**Future (BFF Pattern):**
 
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
-| `/customer/features` | GET | User Token | Get customer features |
+| `/customer/features` | GET | User Token | Get customer features (via Backend POS) |
+
+### Site App (site/)
+
+| Endpoint | Method | Auth | File | Purpose |
+|----------|--------|------|------|---------|
+| `/api/auth/login` | POST | None | page.tsx | Customer login |
+| `/api/auth/register` | POST | None | page.tsx | Customer registration |
+| `/api/auth/forgot-password` | POST | None | page.tsx | Forgot password |
+| `/api/auth/reset-password` | POST | None | page.tsx | Reset password |
+| `/api/auth/verify-email/{token}` | GET | None | page.tsx | Email verification |
+| `/api/auth/me` | GET | User Token | portal/page.tsx | Get current user |
+| `/api/auth/resend-verification` | POST | User Token | portal/page.tsx | Resend verification |
+| `/api/plans` | GET | None | portal/page.tsx | Get subscription plans |
+| `/api/subscriptions/current` | GET | User Token | portal/page.tsx | Current subscription |
+| `/api/subscriptions/upgrade` | POST | User Token | portal/page.tsx | Upgrade subscription |
+| `/api/invoices/{id}/view` | GET | User Token | invoice/[id]/page.tsx | View invoice |
+
+### Summary of Apps Using Website API
+
+| App | Domain | Endpoints Count | Auth Type |
+|-----|--------|----------------|-----------|
+| Admin App | admin.ideazes.com | ~9 endpoints | Admin Token |
+| Frontend POS | app.ideazes.com | 4 endpoints | API Key |
+| Customer Order App | order.ideazes.com | 1 endpoint (to change) | API Key → User Token |
+| Site App | site.ideazes.com | 11 endpoints | Public + User Token |
 
 ---
 
