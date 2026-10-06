@@ -21,7 +21,6 @@ The API uses API key authentication. Include your API key in the `X-API-Key` hea
 
 | Key Type | Purpose | Access Level |
 |----------|---------|--------------|
-| Frontend Key | Frontend POS App | Full access to all endpoints |
 | Customer Key | Customer Order App | Customer-facing endpoints only |
 | External Key | External Developers | Customer-facing endpoints + rate limited |
 
@@ -36,7 +35,6 @@ curl -X GET "https://api.ideazes.com/api/endpoint" \
 
 | Key Type | Requests/minute |
 |----------|-----------------|
-| Frontend Key | Unlimited |
 | Customer Key | Unlimited |
 | External Key | 100 |
 
@@ -60,19 +58,20 @@ All responses are in JSON format with appropriate HTTP status codes.
 
 ---
 
-## Customer App Endpoints (Public)
+## Customer App Endpoints
 
-These endpoints are designed for **Customer Order Apps** (order.ideazes.com). They provide access to public-facing features.
+These endpoints are designed for **Customer Order Apps**. Use these to build your own ordering system.
 
 ### Getting Started
 
 To build a customer order app, you need:
 
-1. **Outlet Settings** - Get restaurant info and features
+1. **Settings** - Get restaurant info and features
 2. **Menu** - Display menu items and categories
-3. **Orders** - Create and manage orders
-4. **Loyalty** - Walk-in customer handling
-5. **Vouchers** - Validate and redeem vouchers
+3. **Tables** - Table lookup via QR code
+4. **Orders** - Create and manage orders
+5. **Loyalty** - Customer registration and login
+6. **Vouchers** - Validate and redeem vouchers
 
 ---
 
@@ -80,7 +79,7 @@ To build a customer order app, you need:
 
 #### Get Customer Settings
 
-Get public settings for an outlet (no API key required for customer apps).
+Get public settings for an outlet.
 
 ```
 GET /api/customer/settings/{outlet_id}
@@ -102,7 +101,7 @@ GET /api/customer/settings/{outlet_id}
 
 #### Get Order Settings
 
-Get order-related settings for an outlet.
+Get order-related settings (payment methods, tax, etc.).
 
 ```
 GET /api/orders/settings/{outlet_id}
@@ -202,7 +201,7 @@ GET /api/tables?outlet_id={outlet_id}
 
 #### Lookup Table by UUID
 
-Used for QR code scanning.
+Used for QR code scanning (customer scans QR on table).
 
 ```
 GET /api/tables/uuid/{table_uuid}
@@ -347,6 +346,8 @@ GET /api/loyalty/customer/{customer_id}
 
 #### Validate Voucher
 
+Check if a voucher code is valid.
+
 ```
 GET /api/vouchers/validate/{code}
 ```
@@ -382,6 +383,8 @@ GET /api/promotions/active?outlet_id={outlet_id}
 
 #### Calculate Promotion
 
+Calculate the discount for a promotion.
+
 ```
 POST /api/promotions/calculate
 Content-Type: application/json
@@ -389,71 +392,19 @@ Content-Type: application/json
 {
   "outlet_id": 1,
   "subtotal": 50.00,
-  "items": [...]
+  "items": [
+    {"menu_item_id": 1, "quantity": 2, "unit_price": 25.00}
+  ]
 }
 ```
-
----
-
-## Admin Endpoints (Requires API Key)
-
-These endpoints require the **Frontend API Key** and are for POS administration.
-
-### Menu Management
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/menu/categories` | POST | Create category |
-| `/api/menu/categories/{id}` | PUT | Update category |
-| `/api/menu/categories/{id}` | DELETE | Delete category |
-| `/api/menu/items` | POST | Create item |
-| `/api/menu/items/{id}` | PUT | Update item |
-| `/api/menu/items/{id}` | DELETE | Delete item |
-
-### Order Management
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/orders/{id}` | GET | Get order details |
-| `/api/orders/{id}/payments` | POST | Add payment |
-| `/api/orders/{id}/items/{item_id}/cancel` | PATCH | Cancel item |
-
-### Settings Management
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/settings/{outlet_id}` | GET | Get settings (requires API key) |
-| `/api/settings/{outlet_id}` | PUT | Update settings |
-
-### Inventory
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/inventory/ingredients` | GET | List ingredients |
-| `/api/inventory/ingredients` | POST | Create ingredient |
-| `/api/inventory/alerts` | GET | Get low stock alerts |
-| `/api/inventory/stock-movements` | GET | List stock movements |
-
-### Staff Management
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/users` | GET | List staff |
-| `/api/users` | POST | Create staff |
-| `/api/users/{id}` | PUT | Update staff |
-
-### Tables Management
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/tables` | POST | Create table |
-| `/api/tables/{id}` | PUT | Update table |
 
 ---
 
 ## AI Endpoints
 
 ### Customer Insights
+
+Get analytics and insights for an outlet.
 
 ```
 GET /api/ai/customer-insights/{outlet_id}
@@ -478,7 +429,9 @@ GET /api/ai/customer-insights/{outlet_id}
 }
 ```
 
-### Chatbot
+### AI Chatbot
+
+Get AI-powered chatbot responses.
 
 ```
 POST /api/chatbot/
@@ -495,22 +448,48 @@ Content-Type: application/json
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/ai/recommendations/cart` | POST | Cart recommendations |
+| `/api/ai/recommendations/cart` | POST | Get recommendations based on cart items |
 | `/api/ai/recommendations/time-based` | GET | Time-based recommendations |
-| `/api/ai/recommendations/item/{id}` | GET | Item recommendations |
+| `/api/ai/recommendations/item/{id}` | GET | Similar item recommendations |
+| `/api/ai/customer/{id}/recommendations` | GET | Personalized customer recommendations |
 
 ---
 
 ## Geocoding (Competitor Discovery)
 
-### Geocode Address or Coordinates
+### Geocode Address
+
+Convert address text to coordinates.
 
 ```
 GET /api/competitors/geo-code?text=Kuala Lumpur
+```
+
+### Reverse Geocode
+
+Convert coordinates to address.
+
+```
 GET /api/competitors/geo-code?lat=3.1856&lng=101.5979
 ```
 
+**Response:**
+```json
+{
+  "results": [
+    {
+      "lat": 3.1856,
+      "lng": 101.5979,
+      "formatted": "Kuala Lumpur, Malaysia",
+      "name": "Kuala Lumpur"
+    }
+  ]
+}
+```
+
 ### Discover Nearby Places
+
+Find restaurants near a location.
 
 ```
 POST /api/competitors/discover-places
@@ -537,21 +516,24 @@ Content-Type: application/json
 | 429 | Too Many Requests - Rate limit exceeded |
 | 500 | Internal Server Error |
 
+---
+
 ## Build Your Customer Order App
 
-### Example: Display Menu and Create Order
+### Quick Start Example
 
 ```javascript
-// 1. Get outlet settings
+// 1. Get outlet settings (includes customer_id for further calls)
 const settingsRes = await fetch('https://api.ideazes.com/api/customer/settings/1');
 const settings = await settingsRes.json();
+console.log('Restaurant:', settings.restaurant_name);
 
-// 2. Get menu
+// 2. Get menu items
 const menuRes = await fetch('https://api.ideazes.com/api/menu/items?outlet_id=1');
 const menuItems = await menuRes.json();
 
-// 3. Get walk-in customer ID
-const walkinRes = await fetch('https://api.ideazes.com/api/loyalty/walkin-customer/1');
+// 3. Get walk-in customer ID (for anonymous orders)
+const walkinRes = await fetch(`https://api.ideazes.com/api/loyalty/walkin-customer/${settings.customer_id}`);
 const walkin = await walkinRes.json();
 
 // 4. Create order
@@ -562,11 +544,42 @@ const orderRes = await fetch('https://api.ideazes.com/api/orders/', {
     outlet_id: 1,
     order_type: 'dine_in',
     table_id: selectedTable.id,
-    dining_customer_id: walkin.id,
-    items: [{ menu_item_id: 1, quantity: 1, unit_price: 12.90 }]
+    dining_customer_id: walkin.id,  // Use walk-in customer
+    items: [
+      { menu_item_id: 1, quantity: 2, unit_price: 12.90 }
+    ]
   })
 });
 const order = await orderRes.json();
+console.log('Order created:', order.order_number);
+```
+
+### Customer Login Flow
+
+```javascript
+// 1. Register new customer
+await fetch('https://api.ideazes.com/api/loyalty/register', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    customer_id: 1,
+    name: 'John Doe',
+    email: 'john@example.com',
+    phone: '60123456789'
+  })
+});
+
+// 2. Login
+const loginRes = await fetch('https://api.ideazes.com/api/loyalty/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    customer_id: 1,
+    phone: '60123456789'
+  })
+});
+const customer = await loginRes.json();
+// Save customer.id for future requests
 ```
 
 ---
