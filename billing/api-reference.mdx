@@ -1,11 +1,11 @@
 ---
-title: API Overview
-description: IDEAZES POS AI API Reference
+title: API Reference
+description: IDEAZES POS AI API Reference for Developers
 ---
 
 # API Reference
 
-IDEAZES POS AI provides a RESTful API for integrations and custom development.
+IDEAZES POS AI provides a RESTful API for building custom customer order apps and integrations.
 
 ## Base URL
 
@@ -15,84 +15,561 @@ Production: https://api.ideazes.com
 
 ## Authentication
 
-All API requests require authentication using Bearer tokens.
+The API uses API key authentication. Include your API key in the `X-API-Key` header.
 
-### Getting Your API Key
+### API Keys
 
-1. Log in to your admin dashboard
-2. Go to **Settings** → **API**
-3. Generate your API key
+| Key Type | Purpose | Access Level |
+|----------|---------|--------------|
+| Frontend Key | Frontend POS App | Full access to all endpoints |
+| Customer Key | Customer Order App | Customer-facing endpoints only |
+| External Key | External Developers | Customer-facing endpoints + rate limited |
 
-### Using the API Key
-
-Include your API key in the Authorization header:
+### Using Your API Key
 
 ```bash
-curl -X GET "https://api.ideazes.com/v1/endpoint" \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-## Response Format
-
-All responses are in JSON format:
-
-```json
-{
-  "success": true,
-  "data": {
-    "id": 1,
-    "name": "Example"
-  },
-  "error": null
-}
+curl -X GET "https://api.ideazes.com/api/endpoint" \
+  -H "X-API-Key: your_api_key_here"
 ```
 
 ## Rate Limits
 
-| Plan | Requests/minute |
-|------|-----------------|
-| Starter | 100 |
-| Basic | 500 |
-| Pro | 1,000 |
-| Enterprise | Unlimited |
+| Key Type | Requests/minute |
+|----------|-----------------|
+| Frontend Key | Unlimited |
+| Customer Key | Unlimited |
+| External Key | 100 |
 
-## Available Endpoints
+## Response Format
 
-### Authentication
+All responses are in JSON format with appropriate HTTP status codes.
 
-| Endpoint | Method | Description |
-|-----------|--------|-------------|
-| `/api/auth/login` | POST | User login |
-| `/api/auth/logout` | POST | User logout |
-| `/api/auth/me` | GET | Current user info |
+### Success Response
+```json
+{
+  "key": "value"
+}
+```
+
+### Error Response
+```json
+{
+  "detail": "Error message description"
+}
+```
+
+---
+
+## Customer App Endpoints (Public)
+
+These endpoints are designed for **Customer Order Apps** (order.ideazes.com). They provide access to public-facing features.
+
+### Getting Started
+
+To build a customer order app, you need:
+
+1. **Outlet Settings** - Get restaurant info and features
+2. **Menu** - Display menu items and categories
+3. **Orders** - Create and manage orders
+4. **Loyalty** - Walk-in customer handling
+5. **Vouchers** - Validate and redeem vouchers
+
+---
+
+### Settings
+
+#### Get Customer Settings
+
+Get public settings for an outlet (no API key required for customer apps).
+
+```
+GET /api/customer/settings/{outlet_id}
+```
+
+**Response:**
+```json
+{
+  "customer_id": 1,
+  "restaurant_name": "Kens Restaurant",
+  "restaurant_logo": "https://...",
+  "timezone": "Asia/Kuala_Lumpur",
+  "customer_registration_enabled": true,
+  "loyalty_program_enabled": true,
+  "vouchers_enabled": true,
+  "welcome_voucher_enabled": true
+}
+```
+
+#### Get Order Settings
+
+Get order-related settings for an outlet.
+
+```
+GET /api/orders/settings/{outlet_id}
+```
+
+**Response:**
+```json
+{
+  "allow_dine_in": true,
+  "allow_takeaway": true,
+  "allow_delivery": false,
+  "payment_methods": ["cash", "card", "ewallet"],
+  "currency_symbol": "RM",
+  "currency_code": "MYR",
+  "tax_enabled": true,
+  "tax_rate": 6,
+  "tax_inclusive": false,
+  "order_prefix": "ORD",
+  "split_bill_enabled": true,
+  "table_required": true
+}
+```
+
+---
+
+### Menu
+
+#### Get Categories
+
+```
+GET /api/menu/categories?outlet_id={outlet_id}
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "name": "Main Courses",
+    "description": "Our signature dishes",
+    "sort_order": 1,
+    "is_active": true
+  }
+]
+```
+
+#### Get Menu Items
+
+```
+GET /api/menu/items?outlet_id={outlet_id}
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "category_id": 1,
+    "name": "Chicken Rice",
+    "description": "Steamed chicken with fragrant rice",
+    "price": 12.90,
+    "image": "https://...",
+    "is_available": true,
+    "is_active": true
+  }
+]
+```
+
+#### Get Single Menu Item
+
+```
+GET /api/menu/items/{item_id}
+```
+
+---
+
+### Tables
+
+#### Get Tables
+
+```
+GET /api/tables?outlet_id={outlet_id}
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "table_number": "T1",
+    "capacity": 4,
+    "status": "available",
+    "active_orders": 0
+  }
+]
+```
+
+#### Lookup Table by UUID
+
+Used for QR code scanning.
+
+```
+GET /api/tables/uuid/{table_uuid}
+```
+
+**Response:**
+```json
+{
+  "id": 1,
+  "table_number": "T1",
+  "capacity": 4,
+  "outlet_id": 1
+}
+```
+
+---
 
 ### Orders
 
+#### Create Order
+
+```
+POST /api/orders/
+Content-Type: application/json
+
+{
+  "outlet_id": 1,
+  "order_type": "dine_in",
+  "table_id": 1,
+  "dining_customer_id": 7,
+  "items": [
+    {
+      "menu_item_id": 1,
+      "quantity": 2,
+      "unit_price": 12.90,
+      "notes": "Less spicy"
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "id": 123,
+  "order_number": "ORD-20261006-0001",
+  "status": "pending",
+  "total": 25.80
+}
+```
+
+#### Get Orders
+
+```
+GET /api/orders/?outlet_id={outlet_id}
+```
+
+#### Get Active Orders
+
+```
+GET /api/orders/active?outlet_id={outlet_id}
+```
+
+#### Get Order by Number
+
+```
+GET /api/orders/number/{order_number}
+```
+
+#### Update Order Status
+
+```
+PATCH /api/orders/{order_id}/status
+Content-Type: application/json
+
+{
+  "status": "ready"
+}
+```
+
+#### Cancel Order
+
+```
+PATCH /api/orders/{order_id}/cancel
+```
+
+---
+
+### Loyalty
+
+#### Get Walk-in Customer
+
+Get the walk-in customer ID for orders placed by non-logged-in customers.
+
+```
+GET /api/loyalty/walkin-customer/{customer_id}
+```
+
+**Response:**
+```json
+{
+  "id": 7,
+  "name": "Walk-in Customer"
+}
+```
+
+#### Register Customer
+
+```
+POST /api/loyalty/register
+Content-Type: application/json
+
+{
+  "customer_id": 1,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "phone": "60123456789"
+}
+```
+
+#### Login Customer
+
+```
+POST /api/loyalty/login
+Content-Type: application/json
+
+{
+  "customer_id": 1,
+  "phone": "60123456789"
+}
+```
+
+#### Get Customer Profile
+
+```
+GET /api/loyalty/customer/{customer_id}
+```
+
+---
+
+### Vouchers
+
+#### Validate Voucher
+
+```
+GET /api/vouchers/validate/{code}
+```
+
+#### Redeem Voucher
+
+```
+POST /api/vouchers/redeem
+Content-Type: application/json
+
+{
+  "code": "WELCOME10",
+  "dining_customer_id": 7,
+  "order_total": 50.00
+}
+```
+
+#### Get Customer Vouchers
+
+```
+GET /api/vouchers/my-vouchers/{dining_customer_id}
+```
+
+---
+
+### Promotions
+
+#### Get Active Promotions
+
+```
+GET /api/promotions/active?outlet_id={outlet_id}
+```
+
+#### Calculate Promotion
+
+```
+POST /api/promotions/calculate
+Content-Type: application/json
+
+{
+  "outlet_id": 1,
+  "subtotal": 50.00,
+  "items": [...]
+}
+```
+
+---
+
+## Admin Endpoints (Requires API Key)
+
+These endpoints require the **Frontend API Key** and are for POS administration.
+
+### Menu Management
+
 | Endpoint | Method | Description |
-|-----------|--------|-------------|
-| `/api/orders` | GET | List orders |
-| `/api/orders` | POST | Create order |
-| `/api/orders/{id}` | GET | Get order |
-| `/api/orders/{id}` | PUT | Update order |
-| `/api/orders/{id}/status` | PUT | Update status |
+|----------|--------|-------------|
+| `/api/menu/categories` | POST | Create category |
+| `/api/menu/categories/{id}` | PUT | Update category |
+| `/api/menu/categories/{id}` | DELETE | Delete category |
+| `/api/menu/items` | POST | Create item |
+| `/api/menu/items/{id}` | PUT | Update item |
+| `/api/menu/items/{id}` | DELETE | Delete item |
 
-### Subscriptions
+### Order Management
 
 | Endpoint | Method | Description |
-|-----------|--------|-------------|
-| `/api/subscriptions` | GET | List subscriptions |
-| `/api/subscriptions` | POST | Create subscription |
-| `/api/subscriptions/{id}` | GET | Get subscription |
-| `/api/subscriptions/{id}/upgrade` | POST | Upgrade plan |
+|----------|--------|-------------|
+| `/api/orders/{id}` | GET | Get order details |
+| `/api/orders/{id}/payments` | POST | Add payment |
+| `/api/orders/{id}/items/{item_id}/cancel` | PATCH | Cancel item |
 
-## Webhooks
+### Settings Management
 
-Configure webhooks to receive real-time notifications:
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/settings/{outlet_id}` | GET | Get settings (requires API key) |
+| `/api/settings/{outlet_id}` | PUT | Update settings |
 
-- `invoice.created`
-- `invoice.paid`
-- `subscription.created`
-- `subscription.upgraded`
+### Inventory
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/inventory/ingredients` | GET | List ingredients |
+| `/api/inventory/ingredients` | POST | Create ingredient |
+| `/api/inventory/alerts` | GET | Get low stock alerts |
+| `/api/inventory/stock-movements` | GET | List stock movements |
+
+### Staff Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/users` | GET | List staff |
+| `/api/users` | POST | Create staff |
+| `/api/users/{id}` | PUT | Update staff |
+
+### Tables Management
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/tables` | POST | Create table |
+| `/api/tables/{id}` | PUT | Update table |
+
+---
+
+## AI Endpoints
+
+### Customer Insights
+
+```
+GET /api/ai/customer-insights/{outlet_id}
+```
+
+**Response:**
+```json
+{
+  "outlet_id": 1,
+  "period": "last_30_days",
+  "total_orders": 188,
+  "total_customers": 45,
+  "repeat_customers": 12,
+  "avg_order_value": 22.98,
+  "top_items": [
+    {"menu_item_id": 2, "quantity_sold": 59}
+  ],
+  "insights": [
+    "26.7% repeat customer rate",
+    "Average order value: $22.98"
+  ]
+}
+```
+
+### Chatbot
+
+```
+POST /api/chatbot/
+Content-Type: application/json
+
+{
+  "message": "I want to order chicken rice",
+  "outlet_id": 1,
+  "customer_id": 7
+}
+```
+
+### AI Recommendations
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/ai/recommendations/cart` | POST | Cart recommendations |
+| `/api/ai/recommendations/time-based` | GET | Time-based recommendations |
+| `/api/ai/recommendations/item/{id}` | GET | Item recommendations |
+
+---
+
+## Geocoding (Competitor Discovery)
+
+### Geocode Address or Coordinates
+
+```
+GET /api/competitors/geo-code?text=Kuala Lumpur
+GET /api/competitors/geo-code?lat=3.1856&lng=101.5979
+```
+
+### Discover Nearby Places
+
+```
+POST /api/competitors/discover-places
+Content-Type: application/json
+
+{
+  "lat": 3.1856,
+  "lng": 101.5979,
+  "radius_km": 5
+}
+```
+
+---
+
+## Error Codes
+
+| Code | Description |
+|------|-------------|
+| 400 | Bad Request - Invalid parameters |
+| 401 | Unauthorized - Invalid or missing API key |
+| 403 | Forbidden - Insufficient permissions |
+| 404 | Not Found - Resource doesn't exist |
+| 422 | Unprocessable Entity - Validation error |
+| 429 | Too Many Requests - Rate limit exceeded |
+| 500 | Internal Server Error |
+
+## Build Your Customer Order App
+
+### Example: Display Menu and Create Order
+
+```javascript
+// 1. Get outlet settings
+const settingsRes = await fetch('https://api.ideazes.com/api/customer/settings/1');
+const settings = await settingsRes.json();
+
+// 2. Get menu
+const menuRes = await fetch('https://api.ideazes.com/api/menu/items?outlet_id=1');
+const menuItems = await menuRes.json();
+
+// 3. Get walk-in customer ID
+const walkinRes = await fetch('https://api.ideazes.com/api/loyalty/walkin-customer/1');
+const walkin = await walkinRes.json();
+
+// 4. Create order
+const orderRes = await fetch('https://api.ideazes.com/api/orders/', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    outlet_id: 1,
+    order_type: 'dine_in',
+    table_id: selectedTable.id,
+    dining_customer_id: walkin.id,
+    items: [{ menu_item_id: 1, quantity: 1, unit_price: 12.90 }]
+  })
+});
+const order = await orderRes.json();
+```
+
+---
 
 ## Need Help?
 
