@@ -1,8 +1,6 @@
 # Future Enhancements - IDEAZES POS AI
 
-> Document created: October 2, 2026
-> Last updated: October 3, 2026
-> Focus: AI-Powered Restaurant Operations
+> Document created: October 2, 2026 Last updated: October 3, 2026 Focus: AI-Powered Restaurant Operations
 
 ---
 
@@ -31,7 +29,7 @@ The IDEA ZES AI Manager is the **central brain** that:
 ## Why AI-First?
 
 | Benefit | Impact |
-|---------|--------|
+| --- | --- |
 | **Revenue Increase** | AI upsells can increase average order value by 10-30% |
 | **Cost Reduction** | Smart inventory reduces waste by 15-25% |
 | **Better Decisions** | Data-driven insights vs gut feeling |
@@ -43,7 +41,7 @@ The IDEA ZES AI Manager is the **central brain** that:
 ## App Scope Reference
 
 | App | Description | Path |
-|-----|-------------|------|
+| --- | --- | --- |
 | **Frontend POS** | Staff App (app.ideazes.com) | `frontend/src/` |
 | **Customer App** | Customer ordering (order.ideazes.com) | `order-app/src/` |
 | **Backend API** | POS Backend API | `backend/app/` |
@@ -60,13 +58,12 @@ These features directly impact revenue through AI-powered upsells and recommenda
 
 ### AI-1: Dynamic Menu Recommendations
 
-**What It Does:**
-Analyzes cart contents, time of day, and customer history to suggest relevant items.
+**What It Does:** Analyzes cart contents, time of day, and customer history to suggest relevant items.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/ai/recommendation_engine.py`, `backend/app/routes/ai/__init__.py` |
 | **Frontend POS** | ✅ Required | `frontend/src/components/AIUpsellPopup.jsx`, `frontend/src/pages/StaffOrder.jsx` |
 | **Customer App** | ✅ Required | `customer-app/js/app.js`, `customer-app/index.html` |
@@ -74,28 +71,32 @@ Analyzes cart contents, time of day, and customer history to suggest relevant it
 #### Implementation Status: ✅ COMPLETE
 
 **Backend - Completed:**
+
 | File | Path | Status |
-|------|-------|--------|
+| --- | --- | --- |
 | Recommendation Engine | `backend/app/ai/recommendation_engine.py` | ✅ Created |
 | API Endpoints | `backend/app/routes/ai/__init__.py` (added at end) | ✅ Modified |
 
 **Backend API Endpoints:**
+
 | Endpoint | Method | Purpose |
-|---------|--------|---------|
+| --- | --- | --- |
 | `/api/ai/recommendations/cart` | POST | Get upsell suggestions based on cart |
 | `/api/ai/recommendations/item` | POST | Get "Pairs well with..." for item |
 | `/api/ai/recommendations/frequently-bought` | GET | Get frequently bought together |
 | `/api/ai/recommendations/time-based` | GET | Get time-based recommendations |
 
 **Frontend POS - Completed:**
+
 | File | Path | Status |
-|------|-------|--------|
+| --- | --- | --- |
 | AI Upsell Popup | `frontend/src/components/AIUpsellPopup.jsx` | ✅ Created |
 | Staff Order Integration | `frontend/src/pages/StaffOrder.jsx` | ✅ Modified |
 
 **Customer App - Completed:**
+
 | File | Path | Status |
-|------|-------|--------|
+| --- | --- | --- |
 | App JS | `customer-app/js/app.js` | ✅ Modified |
 | Cart Modal HTML | `customer-app/index.html` | ✅ Modified |
 | Confirmation Page | `customer-app/js/app.js`, `customer-app/index.html` | ✅ Modified |
@@ -103,7 +104,7 @@ Analyzes cart contents, time of day, and customer history to suggest relevant it
 #### Where It Appears:
 
 | App | Screen | Location | Suggestion Type | Status |
-|-----|--------|----------|-----------------|--------|
+| --- | --- | --- | --- | --- |
 | **Frontend POS** | StaffOrder | After adding item | "Upsell popup" | ✅ Done |
 | **Frontend POS** | OrderQueue | Sidebar | "Frequently bought together" | ⚠️ Skipped |
 | **Customer App** | Menu Browse | Below menu | "AI Suggests For You" | ✅ Done |
@@ -112,7 +113,7 @@ Analyzes cart contents, time of day, and customer history to suggest relevant it
 
 #### How It Works:
 
-```
+```text
 Frontend POS:
 Staff adds item → Popup shows → Staff clicks "+" to add suggestion
 
@@ -124,6 +125,7 @@ Open cart → "You might also like" shows → Click to add → Checkout
 ```
 
 #### Business Impact:
+
 - Average order value ↑ 10-20%
 - Customer satisfaction ↑ (relevant suggestions)
 - No extra staff effort required
@@ -134,13 +136,12 @@ Open cart → "You might also like" shows → Click to add → Checkout
 
 ### AI-2: AI Conversational Ordering
 
-**What It Does:**
-Allows customers to order via natural conversation with AI chatbot.
+**What It Does:** Allows customers to order via natural conversation with AI chatbot.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/routes/ai_chatbot.py`, `backend/app/services/order_intent_parser.py` |
 | **Frontend POS** | ❌ Not needed | - |
 | **Customer App** | ✅ Required | `order-app/src/components/AIChatOrdering.jsx`, `order-app/src/pages/ChatOrder.jsx` |
@@ -148,13 +149,13 @@ Allows customers to order via natural conversation with AI chatbot.
 **Where It Appears:**
 
 | App | Screen | Location |
-|-----|--------|----------|
+| --- | --- | --- |
 | **Customer App** | Chat Order | Floating chat button |
 | **Customer App** | Menu | AI assistant sidebar |
 
 **How It Works:**
 
-```
+```text
 Customer: "I want pasta with no mushrooms"
     ↓
 AI understands intent + modifiers
@@ -177,6 +178,7 @@ Order created automatically ✓
 ```
 
 **Benefits:**
+
 - Hands-free ordering (customers can browse while ordering)
 - Natural upselling through conversation
 - Reduces cart abandonment
@@ -184,7 +186,7 @@ Order created automatically ✓
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Order intent parser
 ├── Create order_intent_parser.py
 ├── Parse natural language to order items
@@ -205,8 +207,9 @@ Step 3: Customer App - Chat ordering UI
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/order_intent_parser.py` | Backend | Create |
 | `backend/app/routes/ai_chatbot.py` | Backend | Modify |
 | `order-app/src/components/AIChatOrdering.jsx` | Customer App | Create |
@@ -219,47 +222,52 @@ Step 3: Customer App - Chat ordering UI
 
 ### AI-3: Personalized Customer Experience
 
-**What It Does:**
-Tailors the experience for each customer based on their order history and preferences.
+**What It Does:** Tailors the experience for each customer based on their order history and preferences.
 
 #### Implementation Status: ✅ COMPLETE
 
 **Backend - Completed:**
+
 | File | Path | Status |
-|------|-------|--------|
+| --- | --- | --- |
 | Customer Preference Engine | `backend/app/ai/customer_preference_engine.py` | ✅ Created |
 | Personalization Endpoints | `backend/app/routes/ai/__init__.py` (added at end) | ✅ Created |
 
 **Backend API Endpoints:**
+
 | Endpoint | Method | Purpose |
-|---------|--------|---------|
+| --- | --- | --- |
 | `/api/ai/customer/{id}/profile` | GET | Get customer profile with preferences |
 | `/api/ai/customer/{id}/recommendations` | GET | Get personalized recommendations |
 | `/api/ai/customer/{id}/greeting` | GET | Get personalized greeting |
 | `/api/ai/customer/{id}/loyalty` | GET | Get loyalty status and rewards |
 
 **Customer App - Completed:**
+
 | File | Path | Status |
-|------|-------|--------|
+| --- | --- | --- |
 | App JS | `customer-app/js/app.js` | ✅ Modified |
 | Index HTML | `customer-app/index.html` | ✅ Modified |
 
 **Frontend POS - Completed:**
+
 | File | Path | Status |
-|------|-------|--------|
+| --- | --- | --- |
 | Dashboard | `frontend/src/pages/Dashboard.jsx` | ✅ Modified |
 
 **Frontend POS Dashboard Features:**
+
 | Feature | Description |
-|---------|-------------|
+| --- | --- |
 | AI Insights Card | Purple gradient card with forecast, demand, alerts |
 | Today's Forecast | Estimated orders and revenue |
 | Demand Insight | AI-generated demand prediction |
 | Alerts Section | Low stock and other warnings |
 
 **Customer App Features Implemented:**
+
 | Feature | Description |
-|---------|-------------|
+| --- | --- |
 | Personalized Greeting | "Welcome back, John! Your favorite is..." banner |
 | Your Usual | Quick reorder section with top 4 favorite items |
 | Birthday Detection | Special birthday greeting when applicable |
@@ -267,7 +275,7 @@ Tailors the experience for each customer based on their order history and prefer
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/ai/customer_preference_engine.py`, `backend/app/routes/ai/__init__.py` |
 | **Frontend POS** | ⏳ Pending | `frontend/src/components/AICustomerInsights.jsx`, `frontend/src/pages/Dashboard.jsx` |
 | **Customer App** | ✅ In Progress | `customer-app/js/app.js`, `customer-app/index.html` |
@@ -275,7 +283,7 @@ Tailors the experience for each customer based on their order history and prefer
 **Where It Appears:**
 
 | App | Screen | Location | Content | Status |
-|-----|--------|----------|---------|--------|
+| --- | --- | --- | --- | --- |
 | **Frontend POS** | Dashboard | AI Insights card | Staff performance, alerts | ✅ Done |
 | **Customer App** | Home | Top banner | "Welcome back, [Name]!" | ✅ Done |
 | **Customer App** | Home | Quick reorder | "Your usual order" button | ✅ Done |
@@ -284,7 +292,7 @@ Tailors the experience for each customer based on their order history and prefer
 **Features:**
 
 | Feature | Description | Example |
-|---------|-------------|---------|
+| --- | --- | --- |
 | **Smart Greetings** | Welcome returning customers | "Welcome back, Jane! Your usual Nasi Lemak is one click away 😊" |
 | **Preference Prediction** | Remembers favorite combinations | "We remember you like extra spicy!" |
 | **Dynamic Pricing** | Personalized discounts | "As a Gold member, you get 15% off today!" |
@@ -293,7 +301,7 @@ Tailors the experience for each customer based on their order history and prefer
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Customer preference engine
 ├── Analyze order history per customer
 ├── Identify top items, modifiers, time patterns
@@ -317,8 +325,9 @@ Step 4: Customer App - Personalization UI
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/customer_preference_engine.py` | Backend | Create |
 | `backend/app/routes/ai_personalization.py` | Backend | Create |
 | `frontend/src/components/AICustomerInsights.jsx` | Frontend POS | Create |
@@ -339,13 +348,12 @@ These features optimize operations and reduce costs.
 
 ### AI-4: Demand Forecasting
 
-**What It Does:**
-Predicts future sales based on historical data, weather, events, and trends.
+**What It Does:** Predicts future sales based on historical data, weather, events, and trends.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/services/demand_forecast_engine.py`, `backend/app/routes/ai_forecast.py` |
 | **Frontend POS** | ✅ Required | `frontend/src/components/AIForecastWidget.jsx`, `frontend/src/pages/Dashboard.jsx` |
 | **Customer App** | ❌ Not needed | - |
@@ -353,13 +361,13 @@ Predicts future sales based on historical data, weather, events, and trends.
 **Where It Appears:**
 
 | App | Screen | Location | Content |
-|-----|--------|----------|---------|
+| --- | --- | --- | --- |
 | **Frontend POS** | Dashboard | AI Forecast card | Tomorrow's predicted sales |
 | **Frontend POS** | Dashboard | AI Alerts | Weather/event warnings |
 
 **How It Helps:**
 
-```
+```text
 Tomorrow's Weather: Rainy 🌧️
     ↓
 AI Forecast: "Rainy days = 25% increase in delivery orders"
@@ -372,6 +380,7 @@ Recommendation:
 ```
 
 **Predictions Available:**
+
 - Hourly sales for today/tomorrow
 - Daily sales for the week
 - Popular items by time slot
@@ -379,6 +388,7 @@ Recommendation:
 - Ingredient usage forecast
 
 **Benefits:**
+
 - Reduce food waste (15-25% savings)
 - Optimize staff scheduling
 - Better inventory ordering
@@ -386,7 +396,7 @@ Recommendation:
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Historical analysis
 ├── Build time-series model from order data
 ├── Identify patterns: time, day, weather, events
@@ -422,8 +432,9 @@ Step 4: Frontend POS - Dashboard widget
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/demand_forecast_engine.py` | Backend | Create |
 | `backend/app/routes/ai_forecast.py` | Backend | Create |
 | `backend/app/models/models.py` | Backend | Modify - add forecast tables |
@@ -436,13 +447,12 @@ Step 4: Frontend POS - Dashboard widget
 
 ### AI-5: Smart Inventory Prediction
 
-**What It Does:**
-Automatically calculates optimal stock levels and predicts when items will run out.
+**What It Does:** Automatically calculates optimal stock levels and predicts when items will run out.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/services/inventory_prediction_engine.py`, `backend/app/routes/ai_inventory.py` |
 | **Frontend POS** | ✅ Required | `frontend/src/components/AIInventoryAlerts.jsx`, `frontend/src/pages/Inventory/Ingredients.jsx` |
 | **Customer App** | ❌ Not needed | - |
@@ -450,14 +460,14 @@ Automatically calculates optimal stock levels and predicts when items will run o
 **Where It Appears:**
 
 | App | Screen | Location | Content |
-|-----|--------|----------|---------|
+| --- | --- | --- | --- |
 | **Frontend POS** | Ingredients | Alert banner | Low stock warnings |
 | **Frontend POS** | Dashboard | AI Alerts card | Stockout predictions |
 | **Frontend POS** | Purchase Orders | AI Suggestions | Auto-suggested orders |
 
 **How It Works:**
 
-```
+```text
 Current Stock: Chicken Breast = 50 portions
     ↓
 AI Analysis:
@@ -473,8 +483,9 @@ AI Alert:
 ```
 
 **Features:**
+
 | Feature | Description |
-|---------|-------------|
+| --- | --- |
 | **Stockout Prediction** | Alert X days before running out |
 | **Auto-Suggest PO** | Generate purchase order from predictions |
 | **Supplier Intelligence** | Track supplier delays, suggest alternatives |
@@ -482,7 +493,7 @@ AI Alert:
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Ingredient consumption tracking
 ├── Calculate usage per menu item sold
 ├── Link orders → ingredients mapping
@@ -518,8 +529,9 @@ Step 4: Frontend POS - Alert UI
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/inventory_prediction_engine.py` | Backend | Create |
 | `backend/app/routes/ai_inventory.py` | Backend | Create |
 | `frontend/src/components/AIInventoryAlerts.jsx` | Frontend POS | Create |
@@ -532,13 +544,12 @@ Step 4: Frontend POS - Alert UI
 
 ### AI-6: Kitchen Optimization
 
-**What It Does:**
-Routes orders to kitchen stations and predicts cooking times.
+**What It Does:** Routes orders to kitchen stations and predicts cooking times.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/services/kitchen_optimizer.py`, `backend/app/routes/ai_kitchen.py` |
 | **Frontend POS** | ✅ Required | `frontend/src/pages/Kitchen.jsx`, `frontend/src/components/KitchenStationView.jsx` |
 | **Customer App** | ⚠️ Optional | Display only (order ETA) |
@@ -546,14 +557,14 @@ Routes orders to kitchen stations and predicts cooking times.
 **Where It Appears:**
 
 | App | Screen | Location | Content |
-|-----|--------|----------|---------|
+| --- | --- | --- | --- |
 | **Frontend POS** | Kitchen | Main display | Orders grouped by station |
 | **Frontend POS** | Kitchen | Order ticket | Station badge, ETA |
 | **Customer App** | Order Status | Tracker | "Estimated ready: 4:32 PM" |
 
 **How It Works:**
 
-```
+```text
 New Order Received:
 ├── Item A (Grill) → Sent to Grill Station
 ├── Item B (Fryer) → Sent to Fryer Station  
@@ -568,8 +579,9 @@ Customer receives: "Your order will be ready at 4:32 PM 🦸"
 ```
 
 **Features:**
+
 | Feature | Description |
-|---------|-------------|
+| --- | --- |
 | **Station Routing** | Auto-route items to correct stations |
 | **Cook Time Prediction** | Real-time ETA for each order |
 | **Bottleneck Detection** | Alert when station is overloaded |
@@ -577,7 +589,7 @@ Customer receives: "Your order will be ready at 4:32 PM 🦸"
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Station configuration
 ├── Define stations per outlet (Grill, Fryer, Salad, etc.)
 ├── Link menu items to stations
@@ -605,8 +617,9 @@ Step 5: Customer App - Order tracking
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/kitchen_optimizer.py` | Backend | Create |
 | `backend/app/routes/ai_kitchen.py` | Backend | Create |
 | `backend/app/models/models.py` | Backend | Modify - add stations |
@@ -620,13 +633,12 @@ Step 5: Customer App - Order tracking
 
 ### AI-7: Fraud & Anomaly Detection
 
-**What It Does:**
-Detects suspicious activities that might indicate fraud or errors.
+**What It Does:** Detects suspicious activities that might indicate fraud or errors.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/services/anomaly_detector.py`, `backend/app/routes/ai_security.py` |
 | **Frontend POS** | ✅ Required | `frontend/src/components/AIAlertsPanel.jsx`, `frontend/src/pages/Dashboard.jsx` |
 | **Customer App** | ❌ Not needed | - |
@@ -634,14 +646,14 @@ Detects suspicious activities that might indicate fraud or errors.
 **Where It Appears:**
 
 | App | Screen | Location | Content |
-|-----|--------|----------|---------|
+| --- | --- | --- | --- |
 | **Frontend POS** | Dashboard | AI Alerts card | Fraud warnings |
 | **Frontend POS** | Dashboard | Alerts dropdown | Anomaly history |
 
 **What It Detects:**
 
 | Anomaly | Pattern | Alert |
-|---------|---------|-------|
+| --- | --- | --- |
 | **Void Abuse** | More than 3 voids in an hour | "⚠️ High void rate detected at Counter 1" |
 | **Discount Abuse** | 50%+ discount on order | "⚠️ Large discount applied - approval needed" |
 | **Cash Discrepancy** | Cash vs expected after Z-Read | "⚠️ RM 45 over in cash drawer" |
@@ -650,7 +662,7 @@ Detects suspicious activities that might indicate fraud or errors.
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Define anomaly rules
 ├── Void rate thresholds per hour
 ├── Discount percentage limits
@@ -676,8 +688,9 @@ Step 4: Frontend POS - Alert UI
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/anomaly_detector.py` | Backend | Create |
 | `backend/app/routes/ai_security.py` | Backend | Create |
 | `backend/app/models/models.py` | Backend | Modify - add alerts table |
@@ -690,13 +703,12 @@ Step 4: Frontend POS - Alert UI
 
 ### AI-8: Staff Performance Insights
 
-**What It Does:**
-Analyzes staff productivity and provides actionable coaching insights.
+**What It Does:** Analyzes staff productivity and provides actionable coaching insights.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/services/staff_analytics.py`, `backend/app/routes/ai_staff.py` |
 | **Frontend POS** | ✅ Required | `frontend/src/components/AIStaffInsights.jsx`, `frontend/src/pages/Reports.jsx` |
 | **Customer App** | ❌ Not needed | - |
@@ -704,13 +716,13 @@ Analyzes staff productivity and provides actionable coaching insights.
 **Where It Appears:**
 
 | App | Screen | Location | Content |
-|-----|--------|----------|---------|
+| --- | --- | --- | --- |
 | **Frontend POS** | Dashboard | AI Insights card | Staff tips |
 | **Frontend POS** | Reports | Staff Performance tab | Detailed metrics |
 
 **Insights Available:**
 
-```
+```text
 Staff: Ahmed
 ├── Orders processed today: 45
 ├── Average time per order: 2m 30s
@@ -723,8 +735,9 @@ AI Insight: "Ahmed is your top performer this week!
 ```
 
 **Features:**
+
 | Metric | What It Measures |
-|--------|-----------------|
+| --- | --- |
 | **Order Speed** | Time from creation to payment |
 | **Upsell Rate** | % of orders with AI upsell accepted |
 | **Void Rate** | % of orders voided |
@@ -733,7 +746,7 @@ AI Insight: "Ahmed is your top performer this week!
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Staff action logging
 ├── Log each order with staff_id
 ├── Track order lifecycle timestamps
@@ -758,8 +771,9 @@ Step 4: Frontend POS - Insights UI
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/staff_analytics.py` | Backend | Create |
 | `backend/app/routes/ai_staff.py` | Backend | Create |
 | `frontend/src/components/AIStaffInsights.jsx` | Frontend POS | Create |
@@ -777,13 +791,12 @@ These features enhance the customer-facing app.
 
 ### AI-9: AI Smart Search
 
-**What It Does:**
-Natural language search for menu items.
+**What It Does:** Natural language search for menu items.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | `backend/app/services/search_engine.py`, `backend/app/routes/ai_search.py` |
 | **Frontend POS** | ❌ Not needed | - |
 | **Customer App** | ✅ Required | `order-app/src/components/AISmartSearch.jsx`, `order-app/src/pages/Menu.jsx` |
@@ -791,13 +804,13 @@ Natural language search for menu items.
 **Where It Appears:**
 
 | App | Screen | Location | Content |
-|-----|--------|----------|---------|
+| --- | --- | --- | --- |
 | **Customer App** | Menu | Search bar | AI-powered search |
 | **Customer App** | Menu | Results | Smart recommendations |
 
 **How It Works:**
 
-```
+```text
 Customer types: "something spicy"
     ↓
 AI understands: Wants spicy food
@@ -810,15 +823,16 @@ Results:
 ```
 
 **Features:**
+
 | Search Type | Example |
-|-------------|---------|
+| --- | --- |
 | **Natural Language** | "vegetarian pasta" |
 | **By Feeling** | "comfort food" or "light meal" |
 | **By Context** | "what goes well with steak?" |
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Backend - Search enhancement
 ├── Build menu item embeddings
 ├── Create search API with AI understanding
@@ -836,8 +850,9 @@ Step 3: Customer App - Search UI
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `backend/app/services/search_engine.py` | Backend | Create |
 | `backend/app/routes/ai_search.py` | Backend | Create |
 | `order-app/src/components/AISmartSearch.jsx` | Customer App | Create |
@@ -849,13 +864,12 @@ Step 3: Customer App - Search UI
 
 ### AI-10: Voice Ordering
 
-**What It Does:**
-Hands-free order taking via speech recognition.
+**What It Does:** Hands-free order taking via speech recognition.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
-|-----|----------|----------------------|
+| --- | --- | --- |
 | **Backend API** | ✅ Required | Integration with AI-2 (order_intent_parser.py) |
 | **Frontend POS** | ❌ Not needed | - |
 | **Customer App** | ✅ Required | `order-app/src/components/VoiceOrdering.jsx`, `order-app/src/pages/Menu.jsx` |
@@ -863,13 +877,13 @@ Hands-free order taking via speech recognition.
 **Where It Appears:**
 
 | App | Screen | Location | Content |
-|-----|--------|----------|---------|
+| --- | --- | --- | --- |
 | **Customer App** | Menu | Floating mic button | Voice input |
 | **Customer App** | Cart | Mic button | Voice add to cart |
 
 **How It Works:**
 
-```
+```text
 Customer taps microphone icon
     ↓
 Customer speaks: "One latte, one croissant, and the daily special please"
@@ -890,7 +904,7 @@ Order created ✓
 
 **Implementation Steps:**
 
-```
+```text
 Step 1: Customer App - Speech recognition
 ├── Use Web Speech API (free, browser-native)
 ├── Handle accents and noise
@@ -908,8 +922,9 @@ Step 3: Integration with AI-2
 ```
 
 **Files to Create/Modify:**
+
 | File | App | Action |
-|------|-----|--------|
+| --- | --- | --- |
 | `order-app/src/components/VoiceOrdering.jsx` | Customer App | Create |
 | `order-app/src/pages/Menu.jsx` | Customer App | Modify |
 | `order-app/src/pages/Cart.jsx` | Customer App | Modify |
@@ -923,7 +938,7 @@ Step 3: Integration with AI-2
 ### Quick Reference by App
 
 | App | AI Features |
-|-----|-------------|
+| --- | --- |
 | **Frontend POS** | AI-1, AI-3, AI-4, AI-5, AI-6, AI-7, AI-8 |
 | **Customer App** | AI-1, AI-2, AI-3, AI-9, AI-10 |
 | **Backend API** | ALL (AI-1 through AI-10) |
@@ -933,43 +948,34 @@ Step 3: Integration with AI-2
 ### Quick Reference by Feature
 
 | Code | Feature | Backend | Frontend POS | Customer App |
-|------|---------|:-------:|:------------:|:------------:|
+| --- | --- | :-: | :-: | :-: |
 | AI-1 | Dynamic Menu Recommendations | ✅ | ✅ | ✅ |
-| AI-2 | Conversational Ordering | ✅ | | ✅ |
+| AI-2 | Conversational Ordering | ✅ |  | ✅ |
 | AI-3 | Personalized Experience | ✅ | ✅ | ✅ |
 | AI-4 | Demand Forecasting | ✅ | ⏳ | |
 | AI-5 | Smart Inventory | ⏳ | ⏳ | |
 | AI-6 | Kitchen Optimization | ✅ | ✅ | ⚠️ |
-| AI-7 | Fraud Detection | ✅ | ✅ | |
-| AI-8 | Staff Performance | ✅ | ✅ | |
-| AI-9 | Smart Search | ✅ | | ✅ |
-| AI-10 | Voice Ordering | ✅ | | ✅ |
+| AI-7 | Fraud Detection | ✅ | ✅ |  |
+| AI-8 | Staff Performance | ✅ | ✅ |  |
+| AI-9 | Smart Search | ✅ |  | ✅ |
+| AI-10 | Voice Ordering | ✅ |  | ✅ |
 
 ---
 
 ### Priority & Effort Matrix
 
 | Code | Feature | Priority | Effort | Impact | Status |
-|------|---------|:--------:|:------:|:------:|:------:|
+| --- | --- | :-: | :-: | :-: | :-: |
 | AI-1 | Dynamic Menu Recommendations | 🔴 High | 1-2w | Revenue ↑ | ✅ Done |
-| AI-2 | Conversational Ordering | 🟡 Medium | 2-3w | UX ↑ |
+| AI-2 | Conversational Ordering | 🟡 Medium | 2-3w | UX ↑ |  |
 | AI-3 | Personalized Experience | 🔴 High | 1-2w | Loyalty ↑ | ✅ Done |
 | AI-4 | Demand Forecasting | 🔴 High | 1-2w | Cost ↓ | ✅ Backend Complete |
 | AI-5 | Smart Inventory | 🔴 High | 2-3w | Waste ↓ | ⏳ Pending |
-| AI-6 | Kitchen Optimization | 🟡 Medium | 2-3w | Speed ↑ |
-| AI-7 | Fraud Detection | 🟡 Medium | 1-2w | Security ↑ |
-| AI-8 | Staff Performance | 🟢 Low | 1w | Management ↑ |
-| AI-9 | Smart Search | 🟢 Low | 1-2w | UX ↑ |
-| AI-10 | Voice Ordering | 🟢 Low | 1-2w | UX ↑ |
-
----
-
-### Recommended Implementation Order
-
-```
-Phase 1 (Weeks 1-2): AI-1 + AI-3 ✅ COMPLETE
-├── Quick wins for revenue
-├── Menu recommendations + personalization
+| AI-6 | Kitchen Optimization | 🟡 Medium | 2-3w | Speed ↑ |  |
+| AI-7 | Fraud Detection | 🟡 Medium | 1-2w | Security ↑ |  |
+| AI-8 | Staff Performance | 🟢 Low | 1w | Management ↑ |  |
+| AI-9 | Smart Search | 🟢 Low | 1-2w | UX ↑ |  |
+| AI-10 | Voice Ordering | 🟢 Low | 1-2w | UX ↑ |  |
 └── Fastest time to value
 
 Phase 2 (Weeks 3-4): AI-4 + AI-5
@@ -1006,7 +1012,7 @@ These features support the AI features but are lower priority.
 **Why It Matters:** Required for AI upsells to work
 
 | App | Required |
-|-----|----------|
+| --- | --- |
 | **Backend API** | ✅ |
 | **Frontend POS** | ✅ |
 | **Customer App** | ✅ |
@@ -1020,7 +1026,7 @@ These features support the AI features but are lower priority.
 **Why It Matters:** Natural upsell opportunity for AI
 
 | App | Required |
-|-----|----------|
+| --- | --- |
 | **Backend API** | ✅ |
 | **Frontend POS** | ✅ |
 | **Customer App** | ✅ |
@@ -1034,7 +1040,7 @@ These features support the AI features but are lower priority.
 **Why It Matters:** Customer convenience
 
 | App | Required |
-|-----|----------|
+| --- | --- |
 | **Backend API** | ✅ |
 | **Frontend POS** | ✅ |
 | **Customer App** | ⚠️ |
@@ -1048,7 +1054,7 @@ These features support the AI features but are lower priority.
 ### New Tables for AI
 
 | Table | Purpose | AI Features |
-|-------|---------|-------------|
+| --- | --- | --- |
 | `item_affinities` | Frequently-bought-together data | AI-1 |
 | `customer_preferences` | Per-customer preferences | AI-3 |
 | `ai_alerts` | Fraud/security alerts | AI-7 |
@@ -1066,7 +1072,7 @@ These features support the AI features but are lower priority.
 Update site to emphasize AI capabilities:
 
 | Section | Change |
-|---------|--------|
+| --- | --- |
 | **Hero** | "AI-Powered POS for Modern Restaurants" |
 | **Features** | Replace generic with specific AI features |
 | **AI Demo Section** | Show AI recommendations in action |
@@ -1080,13 +1086,13 @@ Update site to emphasize AI capabilities:
 Track AI feature success:
 
 | Metric | Target |
-|--------|--------|
-| Recommendation CTR | > 15% |
-| Upsell Acceptance Rate | > 10% |
-| Avg Order Value Uplift | > 10% |
-| Inventory Waste Reduction | > 15% |
+| --- | --- |
+| Recommendation CTR | \> 15% |
+| Upsell Acceptance Rate | \> 10% |
+| Avg Order Value Uplift | \> 10% |
+| Inventory Waste Reduction | \> 15% |
 | Fraud Detection Rate | 100% of anomalies |
-| Customer NPS (AI features) | > 50 |
+| Customer NPS (AI features) | \> 50 |
 
 ---
 
@@ -1095,7 +1101,7 @@ Track AI feature success:
 ### External APIs Needed
 
 | Service | Purpose | Cost |
-|---------|---------|------|
+| --- | --- | --- |
 | OpenWeatherMap | Weather data | Free tier |
 | Calendar/Holiday API | Event detection | Free tier |
 | Cloud Speech-to-Text | Voice ordering | Pay-per-use |
@@ -1104,7 +1110,7 @@ Track AI feature success:
 ### Performance Considerations
 
 | Concern | Solution |
-|---------|----------|
+| --- | --- |
 | AI query speed | Cache recommendations, pre-compute nightly |
 | Real-time updates | Use WebSocket for live alerts |
 | Scale | Start simple, upgrade to ML as needed |
@@ -1123,5 +1129,4 @@ When starting development of each AI feature:
 
 ---
 
-*Document maintained by: Lumi AI*
-*For questions or suggestions, contact the development team*
+_Document maintained by: Lumi AI_ _For questions or suggestions, contact the development team_
