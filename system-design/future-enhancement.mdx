@@ -447,7 +447,7 @@ Step 4: Frontend POS - Dashboard widget
 
 ### AI-5: Smart Inventory Prediction
 
-**What It Does:** Automatically calculates optimal stock levels and predicts when items will run out.
+**What It Does:** Predicts when inventory will run out based on consumption trends and AI demand forecasting. Goes beyond basic low-stock alerts to calculate exact stockout dates.
 
 #### App Scope
 
@@ -457,76 +457,106 @@ Step 4: Frontend POS - Dashboard widget
 | **Frontend POS** | ✅ Required | `frontend/src/components/AIInventoryAlerts.jsx`, `frontend/src/pages/Inventory/Ingredients.jsx` |
 | **Customer App** | ❌ Not needed | - |
 
+**Current System (Already Built):**
+
+| Feature | Endpoint | Status |
+| --- | --- | --- |
+| Low stock alerts | `/api/inventory/alerts` | ✅ Exists |
+| Notification system | `/api/inventory/notifications` | ✅ Exists |
+| Purchase orders | `/api/inventory/purchase-orders` | ✅ Exists |
+| Supplier management | `/api/inventory/suppliers` | ✅ Exists |
+
+**What AI-5 Adds (Predictive, Not Yet Built):**
+
+| Feature | Description | Priority |
+| --- | --- | --- |
+| **Stockout Date Prediction** | "Chicken will run out in 1.5 days" - calculates exact days until stockout | 🔴 High |
+| **Consumption Trend Analysis** | Tracks usage patterns, +10% vs last week | 🔴 High |
+| **AI Demand Integration** | Uses AI-4 demand forecast to predict ingredient needs | 🔴 High |
+| **Smart Order Timing** | "Order by 2PM for next-day delivery" based on supplier lead time | 🟡 Medium |
+| **AI-Suggested Quantities** | Auto-calculate order qty based on predicted demand, not just reorder levels | 🟡 Medium |
+
 **Where It Appears:**
 
-| App | Screen | Location | Content |
-| --- | --- | --- | --- |
-| **Frontend POS** | Ingredients | Alert banner | Low stock warnings |
-| **Frontend POS** | Dashboard | AI Alerts card | Stockout predictions |
-| **Frontend POS** | Purchase Orders | AI Suggestions | Auto-suggested orders |
+| App | Screen | Location | Content | Plan |
+| --- | --- | --- | --- | --- |
+| **Frontend POS** | Ingredients | New column | "Runs out in 1.5 days" | Enterprise |
+| **Frontend POS** | Ingredients | Detail view/tooltip | Trend: +10% vs last week | Enterprise |
+| **Frontend POS** | Purchase Orders | Header alert | "3 items need ordering" | Enterprise |
+| **Frontend POS** | Purchase Orders | Create/Edit PO | AI-suggested quantities | Enterprise |
+| **Dashboard** | ❌ None | - | Not shown (all plans share) | - |
 
-**How It Works:**
+**Note:** Dashboard is plan-agnostic (all plans see it). AI-5 features are Enterprise-only, so they are gated at Ingredients and Purchase Orders page level.
+
+**How It Works (New AI Logic):**
 
 ```text
 Current Stock: Chicken Breast = 50 portions
     ↓
-AI Analysis:
+AI Analysis (NEW - not yet built):
 ├── Today's chicken orders: 25 portions
 ├── Current trend: +10% vs last week
-├── Tomorrow's forecast: 28 portions (rainy day)
+├── Tomorrow's forecast (AI-4): 28 portions (rainy day)
+├── AI Predicted daily usage: 26 portions
 └── Supplier lead time: 2 days
     ↓
-AI Alert:
+AI Prediction (NEW):
 ⚠️ "Chicken Breast will run out in 1.5 days"
-💡 "Suggested order: 60 portions from [Supplier Name]"
 📅 "Order by 2 PM today for next-day delivery"
+💡 "Suggested order: 60 portions (based on 3-day forecast)"
 ```
 
 **Features:**
 
-| Feature | Description |
-| --- | --- |
-| **Stockout Prediction** | Alert X days before running out |
-| **Auto-Suggest PO** | Generate purchase order from predictions |
-| **Supplier Intelligence** | Track supplier delays, suggest alternatives |
-| **Waste Reduction** | Match ordering to actual demand |
+| Feature | Description | Status |
+| --- | --- | --- |
+| **Stockout Prediction** | Alert X days before running out | ⏳ To Build |
+| **AI-Suggested Quantities** | Based on AI-4 demand forecast, not just min stock | ⏳ To Build |
+| **Smart Order Timing** | Optimal order time based on supplier lead time | ⏳ To Build |
+| **Consumption Trends** | Weekly/monthly usage patterns | ⏳ To Build |
+| Low stock warnings | Basic alert when below threshold | ✅ Exists |
+| Auto-Suggest PO | Manual PO creation | ✅ Exists |
+| Supplier management | Supplier CRUD | ✅ Exists |
 
 **Implementation Steps:**
 
 ```text
-Step 1: Backend - Ingredient consumption tracking
-├── Calculate usage per menu item sold
-├── Link orders → ingredients mapping
+Step 1: Backend - Ingredient consumption tracking (NEW)
+├── Calculate usage per menu item sold (orders → ingredients)
 ├── Daily/weekly consumption rates
+├── Trend analysis (+10% vs last week)
 └── Predict future needs
 
-Step 2: Backend - Stock monitoring
-├── Connect to inventory (ingredients) API
-├── Real-time stock tracking
+Step 2: Backend - Stockout prediction engine (NEW)
 ├── Calculate days until stockout
-└── Alert thresholds per ingredient
+├── Factor in AI-4 demand forecast
+├── Generate "runs out in X days" prediction
+└── Store prediction in cache
 
-Step 3: Backend - Create inventory API
-├── GET /api/ai/inventory/predictions
-├── GET /api/ai/inventory/alerts
-└── POST /api/ai/inventory/suggest-order
+Step 3: Backend - Create prediction API (NEW)
+├── GET /api/ai/inventory/predictions (days until stockout)
+├── GET /api/ai/inventory/suggest-order (AI-calculated qty)
+└── GET /api/ai/inventory/consumption-trends
+
+Step 4: Frontend POS - Prediction UI (NEW)
+├── Add "Runs out in X days" column to Ingredients table
+├── Add AI suggestion card to Purchase Orders
+└── Integrate with AI-4 demand forecast
 
 **Backend API Security Requirements:**
 | Endpoint | Method | Permission | API Key Required |
 |---------|--------|------------|-----------------|
 | `/api/ai/inventory/predictions` | GET | `require_permission("ai:read")` | ✅ Yes |
-| `/api/ai/inventory/alerts` | GET | `require_permission("ai:read")` | ✅ Yes |
 | `/api/ai/inventory/suggest-order` | POST | `require_permission("ai:read")` | ✅ Yes |
+| `/api/ai/inventory/consumption-trends` | GET | `require_permission("ai:read")` | ✅ Yes |
 
-**Implementation Status:** ⏳ Pending Frontend Integration
-- Backend API: Ready for implementation
-- Frontend POS: Pending (not yet integrated)
+**Implementation Status:** ⏳ Backend & Frontend - To Be Built
 
-Step 4: Frontend POS - Alert UI
-├── Create AIInventoryAlerts.jsx
-├── Add to Ingredients.jsx
-└── Add to Dashboard alerts
-```
+**What to Build:**
+- Backend: Prediction engine linking orders → ingredients → consumption trends
+- Backend: Stockout date calculation
+- Frontend: "Runs out in X days" display
+- Integration: AI-4 demand forecast → inventory prediction
 
 **Files to Create/Modify:**
 
