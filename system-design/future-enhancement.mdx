@@ -697,7 +697,7 @@ Step 5: Customer App - Order tracking
 | --- | --- | --- | --- |
 | **Cancel Abuse** | Staff POS - when order cancelled | >3 cancels per hour | "⚠️ High cancel rate (5) by John at Counter 1" |
 | **Unusual Hours** | Staff POS - when order created | Outside operating hours | "⚠️ Order created at 3 AM by staff: John" |
-| **Price Manipulation** | Menu Items (Manager/Admin) - when price edited | Price below ingredient cost | "⚠️ Chicken Breast price set below cost by Admin" |
+| **Price Manipulation** | Menu Items (Manager/Admin) - when price edited | Price below cost (inventory subscribers: actual ingredient cost; non-inventory: estimated_cost from menu item) | "⚠️ Chicken Breast price set below cost by Admin" |
 
 **What It Does NOT Detect (Not Applicable):**
 - ❌ Discount Abuse - Staff POS does not allow discounts
