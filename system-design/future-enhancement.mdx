@@ -674,7 +674,7 @@ Step 5: Customer App - Order tracking
 
 ### AI-7: Fraud & Anomaly Detection
 
-**What It Does:** Detects suspicious activities that might indicate fraud or errors.
+**What It Does:** Detects suspicious activities that might indicate fraud or errors by staff or managers.
 
 #### App Scope
 
@@ -691,52 +691,57 @@ Step 5: Customer App - Order tracking
 | **Frontend POS** | Dashboard | AI Alerts card | Fraud warnings |
 | **Frontend POS** | Dashboard | Alerts dropdown | Anomaly history |
 
-**What It Detects:**
+**What It Detects (Applicable Features):**
 
-| Anomaly | Pattern | Alert |
-| --- | --- | --- |
-| **Void Abuse** | More than 3 voids in an hour | "⚠️ High void rate detected at Counter 1" |
-| **Discount Abuse** | 50%+ discount on order | "⚠️ Large discount applied - approval needed" |
-| **Cash Discrepancy** | Cash vs expected after Z-Read | "⚠️ RM 45 over in cash drawer" |
-| **Unusual Hours** | Orders placed at odd hours | "⚠️ Order created at 3 AM by staff: John" |
-| **Price Manipulation** | Item priced below cost | "⚠️ Price override detected" |
+| Anomaly | Detection Point | Pattern | Alert |
+| --- | --- | --- | --- |
+| **Cancel Abuse** | Staff POS - when order cancelled | >3 cancels per hour | "⚠️ High cancel rate (5) by John at Counter 1" |
+| **Unusual Hours** | Staff POS - when order created | Outside operating hours | "⚠️ Order created at 3 AM by staff: John" |
+| **Price Manipulation** | Menu Items (Manager/Admin) - when price edited | Price below ingredient cost | "⚠️ Chicken Breast price set below cost by Admin" |
+
+**What It Does NOT Detect (Not Applicable):**
+- ❌ Discount Abuse - Staff POS does not allow discounts
+- ❌ Cash Discrepancy - No Z-Read cash counting data
 
 **Implementation Steps:**
 
 ```text
 Step 1: Backend - Define anomaly rules
-├── Void rate thresholds per hour
-├── Discount percentage limits
-├── Cash reconciliation tolerance
-├── Price override boundaries
-└── Unusual time windows
+├── Cancel rate thresholds per hour per staff
+├── Operating hours from outlet settings
+├── Cost price comparison for menu items
+└── Alert severity levels
 
 Step 2: Backend - Real-time monitoring
-├── Log all sensitive actions
-├── Check against rules on each action
+├── Log order cancellations (track staff, counter, time)
+├── Check order creation time vs outlet operating hours
+├── Compare menu item price vs ingredient cost
 ├── Generate alerts when triggered
 └── Store anomaly history
 
 Step 3: Backend - Security API
-├── GET /api/ai/security/alerts
-├── POST /api/ai/security/acknowledge
-└── GET /api/ai/security/stats
+├── GET /api/ai/security/alerts (list alerts)
+├── POST /api/ai/security/alerts/{id}/acknowledge
+└── GET /api/ai/security/stats (summary)
 
 Step 4: Frontend POS - Alert UI
 ├── Create AIAlertsPanel.jsx
-├── Add to Dashboard.jsx
+├── Add to Dashboard.jsx (Enterprise plan only)
 └── Show real-time alerts
+
+**Note:** These alerts are Enterprise-only features. Dashboard is shared across all plans,
+so alerts should only appear for Enterprise plan users.
 ```
 
 **Files to Create/Modify:**
 
-| File | App | Action |
-| --- | --- | --- |
-| `backend/app/services/anomaly_detector.py` | Backend | Create |
-| `backend/app/routes/ai_security.py` | Backend | Create |
-| `backend/app/models/models.py` | Backend | Modify - add alerts table |
-| `frontend/src/components/AIAlertsPanel.jsx` | Frontend POS | Create |
-| `frontend/src/pages/Dashboard.jsx` | Frontend POS | Modify |
+| File | App | Action | Status |
+| --- | --- | --- | --- |
+| `backend/app/services/anomaly_detector.py` | Backend | Create | ⏳ Pending |
+| `backend/app/routes/ai_security.py` | Backend | Create | ⏳ Pending |
+| `backend/app/models/models.py` | Backend | Modify - add alerts table | ⏳ Pending |
+| `frontend/src/components/AIAlertsPanel.jsx` | Frontend POS | Create | ⏳ Pending |
+| `frontend/src/pages/Dashboard.jsx` | Frontend POS | Modify | ⏳ Pending |
 
 **Effort:** 1-2 weeks
 
@@ -996,7 +1001,7 @@ Step 3: Integration with AI-2
 | AI-4 | Demand Forecasting | ✅ | ✅ | |
 | AI-5 | Smart Inventory | ✅ | ✅ | |
 | AI-6 | Kitchen Optimization | ✅ | ✅ | ⚠️ |
-| AI-7 | Fraud Detection | ✅ | ✅ |  |
+| AI-7 | Fraud Detection | ⏳ | ⏳ |  |
 | AI-8 | Staff Performance | ✅ | ✅ |  |
 | AI-9 | Smart Search | ✅ |  | ✅ |
 | AI-10 | Voice Ordering | ✅ |  | ✅ |
@@ -1013,7 +1018,7 @@ Step 3: Integration with AI-2
 | AI-4 | Demand Forecasting | 🔴 High | 1-2w | Cost ↓ | ✅ COMPLETE |
 | AI-5 | Smart Inventory | 🔴 High | 2-3w | Waste ↓ | ✅ COMPLETE |
 | AI-6 | Kitchen Optimization | 🟡 Medium | 2-3w | Speed ↑ |  |
-| AI-7 | Fraud Detection | 🟡 Medium | 1-2w | Security ↑ |  |
+| AI-7 | Fraud Detection | 🟡 Medium | 1-2w | Security ↑ | ⏳ Pending |
 | AI-8 | Staff Performance | 🟢 Low | 1w | Management ↑ |  |
 | AI-9 | Smart Search | 🟢 Low | 1-2w | UX ↑ |  |
 | AI-10 | Voice Ordering | 🟢 Low | 1-2w | UX ↑ |  |
