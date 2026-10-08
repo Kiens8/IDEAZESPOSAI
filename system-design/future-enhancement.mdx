@@ -724,9 +724,17 @@ Step 3: Backend - Security API
 ├── POST /api/ai/security/alerts/{id}/acknowledge
 └── GET /api/ai/security/stats (summary)
 
+**Backend API Security Requirements:**
+| Endpoint | Method | Permission | API Key Header |
+|---------|--------|------------|----------------|
+| `/api/ai/security/alerts` | GET | `require_permission("ai:read")` | `X-API-Key: frontend_pos_key` |
+| `/api/ai/security/alerts/{id}` | GET | `require_permission("ai:read")` | `X-API-Key: frontend_pos_key` |
+| `/api/ai/security/alerts/{id}/acknowledge` | POST | `require_permission("ai:read")` | `X-API-Key: frontend_pos_key` |
+| `/api/ai/security/stats` | GET | `require_permission("ai:read")` | `X-API-Key: frontend_pos_key` |
+
 Step 4: Frontend POS - Alert UI
 ├── Create AIAlertsPanel.jsx
-├── Add to Dashboard.jsx (Enterprise plan only)
+├── Add to Dashboard.jsx (all plans)
 └── Show real-time alerts
 
 **Note:** AI-7 Fraud Detection alerts are available for **ALL plans** (Basic, Standard, Enterprise). Unlike AI-4 and AI-5 which are Enterprise-only (tied to inventory/forecasting), fraud detection is a universal security need for all businesses.
