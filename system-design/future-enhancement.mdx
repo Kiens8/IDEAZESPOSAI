@@ -751,9 +751,14 @@ Step 4: Frontend POS - Alert UI
 | `frontend/src/pages/Dashboard.jsx` | Frontend POS | Modify | ✅ Complete |
 
 **Implementation Notes:**
-- Cancel Abuse: Integrated into order cancellation flow
-- Unusual Hours: Integrated into order creation flow
-- Price Manipulation: Detection ready - needs menu item price update endpoint integration
+- Cancel Abuse: Integrated into order cancellation flow (order.py)
+- Unusual Hours: Integrated into order creation flow (order.py)
+- Price Manipulation: Fully integrated into menu item price update (menu.py)
+
+**Price Manipulation Cost Source:**
+- Inventory subscribers: Uses ingredient actual cost from recipes
+- Non-inventory subscribers: Uses estimated_cost from menu item
+- Alert includes `cost_source` field to identify which was used
 
 **Effort:** 1-2 weeks
 
