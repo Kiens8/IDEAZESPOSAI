@@ -843,8 +843,27 @@ Step 4: Frontend POS - Insights UI
 | --- | --- | --- |
 | `backend/app/services/order_analytics.py` | Backend | Create |
 | `backend/app/routes/ai_orders.py` | Backend | Create |
+| `backend/app/main.py` | Backend | Modify - add router |
 | `frontend/src/components/AIOrderInsights.jsx` | Frontend POS | Create |
-| `frontend/src/pages/Dashboard.jsx` | Frontend POS | Modify |
+| `frontend/src/pages/Dashboard.jsx` | Frontend POS | Modify - add component |
+
+**Implementation Details:**
+
+| Component | Path | Description |
+| --- | --- | --- |
+| Order Analytics Engine | `backend/app/services/order_analytics.py` | Calculates order metrics, peak hours, trends |
+| API Routes | `backend/app/routes/ai_orders.py` | Endpoints: /insights, /peak-hours, /trends, /top-items |
+| Frontend Component | `frontend/src/components/AIOrderInsights.jsx` | Dashboard card with metrics display |
+| Dashboard Integration | `frontend/src/pages/Dashboard.jsx` | Added AIOrderInsights to 2-row layout |
+
+**API Endpoints:**
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/ai/orders/insights` | GET | Order insights with summary, trends, peak hours |
+| `/api/ai/orders/peak-hours` | GET | Peak hours analysis |
+| `/api/ai/orders/trends` | GET | 7-day order trends |
+| `/api/ai/orders/top-items` | GET | Top selling items |
 
 **Effort:** 1 week
 
