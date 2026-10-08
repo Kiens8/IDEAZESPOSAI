@@ -764,85 +764,91 @@ Step 4: Frontend POS - Alert UI
 
 ---
 
-### AI-8: Staff Performance Insights
+### AI-8: Order Performance Insights
 
-**What It Does:** Analyzes staff productivity and provides actionable coaching insights.
+**What It Does:** Analyzes order patterns and provides operational insights to improve efficiency and revenue.
 
 #### App Scope
 
 | App | Required | Files to Create/Modify |
 | --- | --- | --- |
-| **Backend API** | ✅ Required | `backend/app/services/staff_analytics.py`, `backend/app/routes/ai_staff.py` |
-| **Frontend POS** | ✅ Required | `frontend/src/components/AIStaffInsights.jsx`, `frontend/src/pages/Reports.jsx` |
+| **Backend API** | ✅ Required | `backend/app/services/order_analytics.py`, `backend/app/routes/ai_orders.py` |
+| **Frontend POS** | ✅ Required | `frontend/src/components/AIOrderInsights.jsx`, `frontend/src/pages/Dashboard.jsx` |
 | **Customer App** | ❌ Not needed | - |
 
 **Where It Appears:**
 
 | App | Screen | Location | Content |
 | --- | --- | --- | --- |
-| **Frontend POS** | Dashboard | AI Insights card | Staff tips |
-| **Frontend POS** | Reports | Staff Performance tab | Detailed metrics |
+| **Frontend POS** | Dashboard | AI Insights card | Order performance tips |
+| **Frontend POS** | Reports | Order Analytics tab | Detailed metrics |
 
 **Insights Available:**
 
 ```text
-Staff: Ahmed
-├── Orders processed today: 45
-├── Average time per order: 2m 30s
-├── Upsell acceptance rate: 23%
-├── Void rate: 2%
-├── vs Store Average: ⬆️ 15% faster
+Order Performance Today
+├── Orders: 87 (⬆️ 12% vs yesterday)
+├── Avg Order Value: RM 45.20 (⬆️ 5%)
+├── Avg Completion Time: 18m 30s
+├── Peak Hour: 12:00-13:00 (23 orders)
+├── Upsell Attachment Rate: 34%
     ↓
-AI Insight: "Ahmed is your top performer this week!
-             Consider having him mentor new staff."
+AI Insight: "Lunch rush peaks at 12pm.
+             Consider adding one more prep station."
 ```
 
 **Features:**
 
 | Metric | What It Measures |
 | --- | --- |
-| **Order Speed** | Time from creation to payment |
-| **Upsell Rate** | % of orders with AI upsell accepted |
-| **Void Rate** | % of orders voided |
-| **Table Turnover** | Time from sit to pay (dine-in) |
-| **Customer Rating** | Feedback scores (if available) |
+| **Order Volume** | Total orders per day/hour |
+| **Avg Order Value** | Revenue per order trend |
+| **Order Completion Time** | Time from creation to payment |
+| **Peak Hours** | Busiest periods identification |
+| **Order Type Mix** | Dine-in vs takeaway vs delivery ratio |
+| **Upsell Performance** | AI upsell acceptance rate by order |
+| **Popular Items** | Top selling items by period |
 
 **Implementation Steps:**
 
 ```text
-Step 1: Backend - Staff action logging
-├── Log each order with staff_id
-├── Track order lifecycle timestamps
-├── Link to upsell actions
-└── Link to void/cancel events
+Step 1: Backend - Order analytics engine
+├── Calculate hourly/daily order metrics
+├── Aggregate order type distribution
+├── Track average order value trends
+├── Identify peak hours from order timestamps
+└── Link upsell acceptance to orders
 
 Step 2: Backend - Analytics calculation
-├── Calculate per-staff metrics daily
-├── Compare to store average
-├── Track trends over time
-└── Generate insight text
+├── Compare to historical averages
+├── Calculate growth/decline trends
+├── Generate actionable insights
+└── Track improvement suggestions
 
-Step 3: Backend - Staff API
-├── GET /api/ai/staff/:id/performance
-├── GET /api/ai/staff/leaderboard
-└── GET /api/ai/staff/insights
+Step 3: Backend - Order Analytics API
+├── GET /api/ai/orders/insights
+├── GET /api/ai/orders/peak-hours
+├── GET /api/ai/orders/trends
+└── GET /api/ai/orders/top-items
 
 Step 4: Frontend POS - Insights UI
-├── Create AIStaffInsights.jsx
-├── Add to Dashboard.jsx
-└── Add Staff Performance tab to Reports.jsx
+├── Create AIOrderInsights.jsx
+├── Add to Dashboard.jsx AI Insights row
+└── Add Order Analytics tab to Reports.jsx
 ```
 
 **Files to Create/Modify:**
 
 | File | App | Action |
 | --- | --- | --- |
-| `backend/app/services/staff_analytics.py` | Backend | Create |
-| `backend/app/routes/ai_staff.py` | Backend | Create |
-| `frontend/src/components/AIStaffInsights.jsx` | Frontend POS | Create |
-| `frontend/src/pages/Reports.jsx` | Frontend POS | Modify |
+| `backend/app/services/order_analytics.py` | Backend | Create |
+| `backend/app/routes/ai_orders.py` | Backend | Create |
+| `frontend/src/components/AIOrderInsights.jsx` | Frontend POS | Create |
+| `frontend/src/pages/Dashboard.jsx` | Frontend POS | Modify |
 
 **Effort:** 1 week
+
+**Note:** Replaces original AI-8 Staff Performance proposal. Order data already captures `user_id` (staff who created order) and full order lifecycle - this focuses on operational insights rather than individual staff tracking.
 
 ---
 
@@ -1019,7 +1025,7 @@ Step 3: Integration with AI-2
 | AI-5 | Smart Inventory | ✅ | ✅ | |
 | AI-6 | Kitchen Optimization | ✅ | ✅ | ⚠️ |
 | AI-7 | Fraud Detection | ✅ | ✅ |  |
-| AI-8 | Staff Performance | ✅ | ✅ |  |
+| AI-8 | Order Performance | ✅ | ✅ |  |
 | AI-9 | Smart Search | ✅ |  | ✅ |
 | AI-10 | Voice Ordering | ✅ |  | ✅ |
 
@@ -1036,7 +1042,7 @@ Step 3: Integration with AI-2
 | AI-5 | Smart Inventory | 🔴 High | 2-3w | Waste ↓ | ✅ COMPLETE |
 | AI-6 | Kitchen Optimization | 🟡 Medium | 2-3w | Speed ↑ |  |
 | AI-7 | Fraud Detection | 🟡 Medium | 1-2w | Security ↑ | ✅ COMPLETE |
-| AI-8 | Staff Performance | 🟢 Low | 1w | Management ↑ |  |
+| AI-8 | Order Performance | 🟢 Low | 1w | Operations ↑ |  |
 | AI-9 | Smart Search | 🟢 Low | 1-2w | UX ↑ |  |
 | AI-10 | Voice Ordering | 🟢 Low | 1-2w | UX ↑ |  |
 └── Fastest time to value
@@ -1053,7 +1059,7 @@ Phase 3 (Weeks 5-7): AI-6 + AI-7
 ├── Operational efficiency
 └── Staff performance
 
-Phase 4 (Weeks 8-10): AI-2 + AI-8
+Phase 4 (Weeks 8-10): AI-2 + AI-8 (Order Performance)
 ├── Advanced features
 ├── Conversational ordering
 └── Staff insights
@@ -1123,7 +1129,7 @@ These features support the AI features but are lower priority.
 | `ai_alerts` | Fraud/security alerts | AI-7 |
 | `recommendation_logs` | Track recommendation performance | AI-1 |
 | `demand_forecasts` | Predicted sales data | AI-4 |
-| `staff_metrics` | Calculated staff performance | AI-8 |
+| `order_metrics` | Calculated order performance | AI-8 |
 | `kitchen_stations` | Station configuration | AI-6 |
 
 ---
