@@ -208,15 +208,25 @@ Step 3: Customer App - Chat ordering UI
 
 **Files to Create/Modify:**
 
-| File | App | Action |
-| --- | --- | --- |
-| `backend/app/services/order_intent_parser.py` | Backend | Create |
-| `backend/app/routes/ai_chatbot.py` | Backend | Modify |
-| `order-app/src/components/AIChatOrdering.jsx` | Customer App | Create |
-| `order-app/src/pages/ChatOrder.jsx` | Customer App | Create |
-| `order-app/src/App.jsx` | Customer App | Modify - add route |
+| File | App | Action | Status |
+| --- | --- | --- | --- |
+| `backend/app/services/nlp_engine.py` | Backend | Create | ✅ Complete |
+| `backend/app/services/order_intent_parser.py` | Backend | Create | ✅ Complete |
+| `backend/app/routes/ai_chatbot.py` | Backend | Create | ✅ Complete |
+| `backend/app/main.py` | Backend | Modify | ✅ Complete |
+| `order-app/src/components/AIChatOrdering.jsx` | Customer App | Create | ⏳ Pending |
+| `order-app/src/pages/ChatOrder.jsx` | Customer App | Create | ⏳ Pending |
+| `order-app/src/App.jsx` | Customer App | Modify | ⏳ Pending |
 
-**Effort:** 2-3 weeks
+**Backend API Endpoints (Complete):**
+
+| Endpoint | Method | Description | Status |
+| --- | --- | --- | --- |
+| `/api/ai/chat/order` | POST | Chat ordering | ✅ Complete |
+| `/api/ai/chat/search-and-order` | POST | Combined search & order | ✅ Complete |
+| `/api/ai/chat/suggest` | GET | Menu suggestions | ✅ Complete |
+
+**Effort:** 2-3 weeks (Backend ✅ Done, Customer App ⏳ Pending)
 
 ---
 
@@ -939,14 +949,22 @@ Step 3: Customer App - Search UI
 
 **Files to Create/Modify:**
 
-| File | App | Action |
-| --- | --- | --- |
-| `backend/app/services/search_engine.py` | Backend | Create |
-| `backend/app/routes/ai_search.py` | Backend | Create |
-| `order-app/src/components/AISmartSearch.jsx` | Customer App | Create |
-| `order-app/src/pages/Menu.jsx` | Customer App | Modify |
+| File | App | Action | Status |
+| --- | --- | --- | --- |
+| `backend/app/services/nlp_engine.py` | Backend | Create | ✅ Complete |
+| `backend/app/services/search_engine.py` | Backend | Create | ✅ Complete |
+| `backend/app/routes/ai_search.py` | Backend | Create | ✅ Complete |
+| `order-app/src/components/AISmartSearch.jsx` | Customer App | Create | ⏳ Pending |
+| `order-app/src/pages/Menu.jsx` | Customer App | Modify | ⏳ Pending |
 
-**Effort:** 1-2 weeks
+**Backend API Endpoints (Complete):**
+
+| Endpoint | Method | Description | Status |
+| --- | --- | --- | --- |
+| `/api/ai/search` | GET | Natural language search | ✅ Complete |
+| `/api/ai/search/suggestions` | GET | Autocomplete | ✅ Complete |
+
+**Effort:** 1-2 weeks (Backend ✅ Done, Customer App ⏳ Pending)
 
 ---
 
@@ -1027,14 +1045,16 @@ Step 3: Integration with AI-2
 
 **Rationale:** Both features share a common NLP engine for understanding natural language. Building them together is more efficient.
 
-#### Combined Scope
+#### Implementation Status
 
-| Feature | What It Does |
+| Part | Status |
 | --- | --- |
-| **AI-9: Smart Search** | Customer searches "something spicy" or "vegetarian pasta" |
-| **AI-2: Conversational Ordering** | Customer chats "I want pasta, no mushrooms" to order |
+| **Backend NLP Engine** | ✅ Complete |
+| **Backend AI-9 (Smart Search)** | ✅ Complete |
+| **Backend AI-2 (Chat Ordering)** | ✅ Complete |
+| **Customer App UI** | ⏳ Pending |
 
-#### Shared Components
+#### Shared Components (Backend Complete)
 
 | Component | Description |
 | --- | --- |
@@ -1045,26 +1065,26 @@ Step 3: Integration with AI-2
 #### Implementation Order
 
 ```
-Week 1-2: Build NLP Engine
-├── Text preprocessing
-├── Intent classification (search vs order)
-├── Entity extraction (items, modifiers)
-└── Shared API endpoints
+Week 1-2: Build NLP Engine ✅ Done
+├── Text preprocessing ✅
+├── Intent classification (search vs order) ✅
+├── Entity extraction (items, modifiers) ✅
+└── Shared API endpoints ✅
 
-Week 3-4: AI-9 (Smart Search)
-├── Search query understanding
-├── Menu item embeddings
-├── Ranked search results
-└── Customer App search UI
+Week 3-4: AI-9 (Smart Search) ✅ Backend Done
+├── Search query understanding ✅
+├── Menu item embeddings ✅
+├── Ranked search results ✅
+└── Customer App search UI ⏳ Pending
 
-Week 5-6: AI-2 (Chat Ordering)
-├── Conversation state machine
-├── Order confirmation flow
-├── Cart integration
-└── Customer App chat UI
+Week 5-6: AI-2 (Chat Ordering) ✅ Backend Done
+├── Conversation state machine ✅
+├── Order confirmation flow ✅
+├── Cart integration ✅
+└── Customer App chat UI ⏳ Pending
 ```
 
-#### Effort: 5-6 weeks combined (vs 4-5 weeks if separate)
+#### Effort: 5-6 weeks (Backend ✅ Done, Customer App ⏳ Pending)
 
 ---
 
@@ -1127,7 +1147,15 @@ Week 5-6: AI-2 (Chat Ordering)
 | Code | Feature | Priority | Effort | Impact | Status |
 | --- | --- | :-: | :-: | :-: | :-: |
 | AI-1 | Dynamic Menu Recommendations | 🔴 High | 1-2w | Revenue ↑ | ✅ Done |
-| AI-2 | Conversational Ordering | 🟡 Medium | 2-3w | UX ↑ |  |
+| AI-2 | Conversational Ordering | 🟡 Medium | 2-3w | UX ↑ | ✅ Backend Done |
+| AI-3 | Personalized Experience | 🔴 High | 1-2w | Loyalty ↑ | ✅ Done |
+| AI-4 | Demand Forecasting | 🔴 High | 1-2w | Cost ↓ | ✅ COMPLETE |
+| AI-5 | Smart Inventory | 🟡 Medium | 2-3w | Cost ↓ | ⏳ Pending |
+| AI-6 | Kitchen Optimization | 🟡 Medium | 2-3w | Speed ↑ | ⏳ Pending |
+| AI-7 | Fraud Detection | 🔴 High | 1-2w | Security ↑ | ✅ COMPLETE |
+| AI-8 | Order Performance | 🟢 Low | 1w | Operations ↑ | ✅ COMPLETE |
+| AI-9 | Smart Search | 🟢 Low | 1-2w | UX ↑ | ✅ Backend Done |
+| AI-10 | Voice Ordering | 🟢 Low | 1-2w | UX ↑ | ⏳ Pending
 | AI-3 | Personalized Experience | 🔴 High | 1-2w | Loyalty ↑ | ✅ Done |
 | AI-4 | Demand Forecasting | 🔴 High | 1-2w | Cost ↓ | ✅ COMPLETE |
 | AI-5 | Smart Inventory | 🔴 High | 2-3w | Waste ↓ | ✅ COMPLETE |
