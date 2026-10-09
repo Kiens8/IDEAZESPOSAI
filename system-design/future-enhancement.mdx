@@ -1021,6 +1021,78 @@ Step 3: Integration with AI-2
 
 ---
 
+## AI Implementation Roadmap
+
+### Phase 1: AI-9 + AI-2 (Natural Language Ordering)
+
+**Rationale:** Both features share a common NLP engine for understanding natural language. Building them together is more efficient.
+
+#### Combined Scope
+
+| Feature | What It Does |
+| --- | --- |
+| **AI-9: Smart Search** | Customer searches "something spicy" or "vegetarian pasta" |
+| **AI-2: Conversational Ordering** | Customer chats "I want pasta, no mushrooms" to order |
+
+#### Shared Components
+
+| Component | Description |
+| --- | --- |
+| **NLP Engine** | Single natural language understanding service |
+| **Intent Classifier** | Understands if user wants to search or order |
+| **Entity Extractor** | Extracts items, modifiers, quantities |
+
+#### Implementation Order
+
+```
+Week 1-2: Build NLP Engine
+├── Text preprocessing
+├── Intent classification (search vs order)
+├── Entity extraction (items, modifiers)
+└── Shared API endpoints
+
+Week 3-4: AI-9 (Smart Search)
+├── Search query understanding
+├── Menu item embeddings
+├── Ranked search results
+└── Customer App search UI
+
+Week 5-6: AI-2 (Chat Ordering)
+├── Conversation state machine
+├── Order confirmation flow
+├── Cart integration
+└── Customer App chat UI
+```
+
+#### Effort: 5-6 weeks combined (vs 4-5 weeks if separate)
+
+---
+
+### Phase 2: AI-10 (Voice Ordering)
+
+**Rationale:** Voice ordering reuses Phase 1's NLP engine, adding only speech-to-text capability.
+
+#### Implementation
+
+| Component | Description |
+| --- | --- |
+| **Speech-to-Text** | Web Speech API (browser-native, free) |
+| **Voice UI** | Microphone button, real-time transcription |
+| **Integration** | Connects to Phase 1's intent parser |
+
+#### Effort: 1-2 weeks (after Phase 1)
+
+---
+
+### Benefits of This Approach
+
+1. **Shared NLP Brain** - One engine understands both search and order queries
+2. **Consistent UX** - Customer learns natural language once
+3. **Efficient Development** - ~30% less code than building separately
+4. **Easy to Extend** - Future voice features use same foundation
+
+---
+
 ## AI Implementation Summary
 
 ### Quick Reference by App
