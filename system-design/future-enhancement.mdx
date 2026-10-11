@@ -1269,6 +1269,112 @@ Update site to emphasize AI capabilities:
 
 ---
 
+---
+
+## Phase 6: Customer Notification System ✅ COMPLETED
+
+Enable admin to send notifications (news, promotions, system messages) to customers.
+
+### Overview
+
+```
+┌─────────────────┐           ┌─────────────────┐           ┌─────────────────┐
+│   Admin App     │──────────▶│   Website API   │◀─────────│  Customer Site  │
+│  (website_api)  │           │ (apisite.idea) │          │ (site.ideazes) │
+└─────────────────┘           └─────────────────┘           └─────────────────┘
+                                        │
+                                        ▼
+                               ┌─────────────────┐
+                               │  Website DB     │
+                               │ (website_api.db)|
+                               └─────────────────┘
+```
+
+### Database Schema (website_api.db)
+
+**Table: `notifications`**
+
+| Column | Type | Description |
+| --- | --- | --- |
+| id | INTEGER (PK) | Auto-increment |
+| title | VARCHAR(255) | Notification title |
+| message | TEXT | Notification content |
+| type | VARCHAR(20) | 'news', 'promo', 'system' |
+| target_outlet_id | INTEGER | NULL = all outlets, or specific outlet |
+| is_active | BOOLEAN | Active or archived |
+| created_at | DATETIME | Creation time |
+| created_by | INTEGER | Admin user ID |
+
+**Table: `customer_notifications`**
+
+| Column | Type | Description |
+| --- | --- | --- |
+| id | INTEGER (PK) | Auto-increment |
+| customer_id | INTEGER | Customer ID |
+| notification_id | INTEGER (FK) | Link to notification |
+| is_read | BOOLEAN | Read status |
+| read_at | DATETIME | When read |
+
+### API Endpoints (website_api)
+
+#### Admin Endpoints (requires admin auth)
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/api/notifications` | Create new notification |
+| GET | `/api/notifications` | List all notifications |
+| DELETE | `/api/notifications/{id}` | Delete notification |
+| POST | `/api/notifications/broadcast/{id}` | Broadcast to all customers |
+
+#### Customer Endpoints (requires auth)
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/notifications/customer/{customer_id}` | Get notifications for customer |
+| PUT | `/api/notifications/{id}/read/{customer_id}` | Mark notification as read |
+
+### Frontend Changes
+
+#### Admin App ✅
+- New page: "Notifications" (`admin/src/pages/Notifications.jsx`)
+- Form fields: Title, Message, Type
+- List view of sent notifications with delete option
+- Auto-broadcast to all customers on create
+
+#### Customer Site (site.ideazes.com) ✅
+- Bell icon in header with unread badge count (`site/src/components/Notifications.tsx`)
+- Dropdown showing recent notifications (max 10)
+- Click to mark as read
+- Auto-polls every 30 seconds
+
+### Implementation Phases
+
+| Phase | Component | Status |
+| --- | --- | --- |
+| 1 | Database tables + API endpoints | ✅ Complete |
+| 2 | Admin App notification page | ✅ Complete |
+| 3 | Customer Site bell icon + dropdown | ✅ Complete |
+
+### App Scope
+
+| Component | Files Created/Modified |
+| --- | --- |
+| Website API | `website_api/app/routes/customer_notifications.py` (new) |
+| | `website_api/app/main.py` (added router) |
+| Admin App | `admin/src/pages/Notifications.jsx` (new) |
+| | `admin/src/App.jsx` (added route) |
+| | `admin/src/components/Sidebar.jsx` (added menu) |
+| Customer Site | `site/src/components/Notifications.tsx` (new) |
+| | `site/src/app/portal/page.tsx` (added bell icon) |
+
+### Priority & Effort
+
+| Feature | Priority | Effort | Impact |
+| --- | --- | --- | --- |
+| Customer Notification System | 🟡 Medium | ~2 hours | Customer Engagement ↑ |
+
+---
+
 ## Success Metrics
 
 Track AI feature success:
