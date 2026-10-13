@@ -6,7 +6,7 @@ description: Multi-language support for Site Apps, Frontend POS, and Customer Or
 # Language Switching System
 
 **Date:** October 13, 2026  
-**Last Updated:** October 13, 2026 (Phase 1 Implementation Complete)
+**Last Updated:** October 13, 2026 (Phase 1 Implementation Complete - ~90%)
 
 ---
 
@@ -35,7 +35,7 @@ This document outlines the language switching system to support 4 languages acro
 
 ## Implementation Status
 
-### ✅ Phase 1: Frontend POS — COMPLETE
+### ✅ Phase 1: Frontend POS — ~90% COMPLETE
 
 #### Core Infrastructure (✅ Done)
 
@@ -45,7 +45,7 @@ This document outlines the language switching system to support 4 languages acro
 | Translation Hook | `frontend/src/i18n/useTranslation.js` | ✅ Implemented |
 | Index Export | `frontend/src/i18n/index.js` | ✅ Implemented |
 | Language Provider | `frontend/src/App.jsx` | ✅ Wrapped with LanguageProvider |
-| Translation Files | `frontend/src/i18n/locales/en.json` | ✅ 200+ keys |
+| Translation Files | `frontend/src/i18n/locales/en.json` | ✅ ~280 keys |
 | | `frontend/src/i18n/locales/zh.json` | ✅ Translated |
 | | `frontend/src/i18n/locales/ms.json` | ✅ Translated |
 | | `frontend/src/i18n/locales/kh.json` | ✅ Translated |
@@ -60,25 +60,25 @@ This document outlines the language switching system to support 4 languages acro
 | OutletSettings API | `backend/app/routes/outlet_settings.py` | Added `language` to SettingsBase |
 | Database Migration | `database/pos_ai.db` | ✅ ALTER TABLE executed |
 
-#### Pages Updated with Translations (✅ Done)
+#### Pages Updated with Translations (✅ ~90% Done)
 
-| Page | Title | Nav Labels | Buttons | Forms |
-|------|-------|-----------|---------|-------|
-| Dashboard | ✅ | — | — | — |
-| Login | ✅ | — | ✅ | ✅ |
-| Kitchen | ✅ | — | ✅ | — |
-| MenuManagement | ✅ | — | ✅ | ✅ |
-| OrderQueue | ✅ | — | ⏳ Partial | ⏳ Partial |
-| OrderHistory | ✅ | — | — | — |
-| Tables | ✅ | — | — | — |
-| Reports | ✅ | — | — | — |
-| Promotions | ✅ | — | — | — |
-| Loyalty | ✅ | — | — | — |
-| Vouchers | ✅ | — | — | — |
-| OutletManagement | ✅ | — | — | — |
-| StaffOrder | ✅ | — | — | — |
-| StaffManagement | ✅ | — | ✅ | ✅ |
-| Settings | ✅ Business Tab | ✅ | ✅ | ✅ |
+| Page | Title | Nav Labels | Buttons | Forms | Status Badges | Payment Dialog |
+|------|-------|-----------|---------|-------|---------------|----------------|
+| Dashboard | ✅ | — | — | — | — | — |
+| Login | ✅ | — | ✅ | ✅ | — | — |
+| Kitchen | ✅ | — | ✅ | — | ✅ | — |
+| MenuManagement | ✅ | — | ✅ | ✅ | — | — |
+| OrderQueue | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| OrderHistory | ✅ | — | — | — | — | — |
+| Tables | ✅ | — | — | — | — | — |
+| Reports | ✅ | — | — | — | — | — |
+| Promotions | ✅ | — | — | — | — | — |
+| Loyalty | ✅ | — | — | — | — | — |
+| Vouchers | ✅ | — | — | — | — | — |
+| OutletManagement | ✅ | — | — | — | — | — |
+| StaffOrder | ✅ | — | — | — | — | — |
+| StaffManagement | ✅ | — | ✅ | ✅ | — | — |
+| Settings | ✅ Business Tab | ✅ | ✅ | ✅ | — | — |
 
 #### Sidebar Navigation (✅ Done)
 
@@ -88,26 +88,19 @@ This document outlines the language switching system to support 4 languages acro
 | Mobile Nav Labels | ✅ All items translated |
 | Logout Button | ✅ Translated |
 
-#### Remaining Work (⏳ Not Started)
+#### Remaining Work (⏳ ~10% Remaining)
 
 | Item | Description | Priority |
 |------|-------------|----------|
-| Kitchen.jsx | Status badges, action buttons | Medium |
-| OrderQueue.jsx | Status headers, payment dialog, action buttons | Medium |
-| MenuManagement.jsx | Remaining form labels, category modal | Low |
-| Settings.jsx | Other tabs (Restaurant, Currency, Tax, Payment, Receipt, Kitchen, Order, AI, QR, Security, Customer, Inventory) | High |
-| Validation Messages | Form validation error messages | Medium |
-| Error Messages | Error handling strings | Medium |
+| Settings.jsx | Other tabs (Restaurant, Currency, Tax, Payment, Receipt, Kitchen, Order, AI, QR, Security, Customer, Inventory) - form labels need t() updates | Medium |
+| Validation Messages | Form validation error messages (e.g., "Required field", "Invalid email") | Medium |
+| Error Messages | Error handling strings in catch blocks | Low |
 
 ---
 
 ### ⏳ Phase 2: Customer Order App — NOT STARTED
 
-See [Phase 2 Section](#customer-order-app) below.
-
 ### ⏳ Phase 3: Site App — NOT STARTED
-
-See [Phase 3 Section](#site-app-public--customer-portal) below.
 
 ---
 
@@ -132,66 +125,39 @@ src/
 │   ├── LanguageContext.jsx   # React context provider
 │   ├── useTranslation.js       # Custom hook: t('key.subkey')
 │   └── locales/
-│       ├── en.json            # English (base language)
-│       ├── zh.json            # Chinese
-│       ├── ms.json            # Malay
-│       └── kh.json            # Khmer
+│       ├── en.json            # English (base language) - ~280 keys
+│       ├── zh.json            # Chinese - Translated
+│       ├── ms.json            # Malay - Translated
+│       └── kh.json            # Khmer - Translated
 ```
 
-### Translation File Format
+### Current Translation Keys (en.json - Phase 1 ~90% Complete)
 
-All translation files use **flat key naming** with dot notation:
+**Total: ~280 translation keys**
 
-```json
-{
-  "common.save": "Save",
-  "common.cancel": "Cancel",
-  "common.delete": "Delete",
-  "common.edit": "Edit",
-  "common.loading": "Loading...",
-  "common.error": "Error",
-  "common.success": "Success",
-  "menu.dashboard": "Dashboard",
-  "menu.orders": "Orders",
-  "menu.settings": "Settings",
-  "auth.login": "Login",
-  "auth.logout": "Logout",
-  "auth.email": "Email",
-  "auth.password": "Password",
-  "settings.language": "Language",
-  "settings.outlet": "Outlet Settings"
-}
-```
-
-### Current Translation Keys (en.json - Phase 1 Complete)
-
-```json
-{
-  "common.*": "16 keys - save, cancel, delete, edit, add, close, loading, error, success, confirm, search, filter, export, print, view, actions, status, active, inactive, all, none, yes, no, back, next, submit, reset, required",
-  "menu.*": "17 keys - dashboard, orders, menu, kitchen, tables, settings, reports, inventory, staff, customers, loyalty, promotions, vouchers, ai, chatbot, competitors",
-  "auth.*": "13 keys - login, logout, email, password, forgotPassword, welcome, loginTitle, invalidCredentials, plus additional login page strings",
-  "staff.*": "18 keys - title, addStaff, editStaff, staffName, email, role, pin, password, language, roleAdmin, roleManager, roleStaff, deleteConfirm, clockIn, clockOut, clockedIn, clockedOut",
-  "settings.*": "21 keys - title, business, outlet, general, language, businessTab, outletName, businessId, phone, address, currency, tax, payment, printer, receipt, order, ai, security, backup",
-  "dashboard.*": "6 keys - todayOrders, todayRevenue, activeOrders, avgOrderValue, recentOrders, noActiveOrders",
-  "orders.*": "22 keys - title, new, newOrders, confirmedOrders, pending, confirmed, preparing, ready, served, cancelled, dineIn, takeaway, delivery, table, customer, subtotal, tax, discount, total, payment, notes, items, quantity, unitPrice, itemTotal, queue",
-  "kitchen.*": "13 keys - title, newOrders, inProgress, completed, ready, allOrders, startPrepare, markReady, serve, confirmOrder, allCaughtUp, noActiveOrders",
-  "menuManagement.*": "14 keys - title, categories, items, addCategory, editCategory, manageCategories, addItem, editItem, itemName, description, selectCategory, category, price, image, available, unavailable, sortOrder",
-  "tables.*": "14 keys - title, addTable, editTable, tableNumber, capacity, qrCode, status, available, occupied, reserved, generateQr",
-  "reports.*": "12 keys - title, sales, inventory, staff, daily, weekly, monthly, dateRange, totalSales, totalOrders, averageOrder, topItems",
-  "inventory.*": "12 keys - title, items, stock, lowStock, addItem, editItem, quantity, unit, minStock, cost, supplier",
-  "loyalty.*": "9 keys - title, customers, points, tiers, rewards, addPoints, redeem, pointsHistory",
-  "promotions.*": "10 keys - title, active, upcoming, expired, addPromotion, discount, buyGet, startDate, endDate",
-  "vouchers.*": "11 keys - title, addVoucher, code, discountType, percentage, fixedAmount, minSpend, validUntil, usageLimit, used",
-  "ai.*": "8 keys - title, chatbot, forecast, inventory, competitors, security, search",
-  "errors.*": "10 keys - required, invalidEmail, invalidPassword, minLength, maxLength, notFound, serverError, networkError, unauthorized",
-  "validation.*": "5 keys - minSpending, couponExpired, couponUsed, invalidCoupon",
-  "staffOrder.*": "1 key - title",
-  "orderHistory.*": "1 key - title",
-  "outlets.*": "4 keys - title, addOutlet, editOutlet, outletName"
-}
-```
-
-**Total: ~200+ translation keys implemented**
+| Category | Keys | Status |
+|----------|------|--------|
+| `common.*` | 20 keys | ✅ Complete |
+| `menu.*` | 18 keys | ✅ Complete |
+| `auth.*` | 13 keys | ✅ Complete |
+| `staff.*` | 18 keys | ✅ Complete |
+| `settings.*` | 30+ keys | ✅ Business tab done, others have keys |
+| `dashboard.*` | 6 keys | ✅ Complete |
+| `orders.*` | 35+ keys | ✅ Complete |
+| `kitchen.*` | 13 keys | ✅ Complete |
+| `menuManagement.*` | 16 keys | ✅ Complete |
+| `tables.*` | 11 keys | ✅ Complete |
+| `reports.*` | 12 keys | ✅ Complete |
+| `inventory.*` | 12 keys | ✅ Complete |
+| `loyalty.*` | 9 keys | ✅ Complete |
+| `promotions.*` | 10 keys | ✅ Complete |
+| `vouchers.*` | 11 keys | ✅ Complete |
+| `ai.*` | 8 keys | ✅ Complete |
+| `errors.*` | 10 keys | ✅ Complete |
+| `validation.*` | 5 keys | ✅ Complete |
+| `staffOrder.*` | 1 key | ✅ Complete |
+| `orderHistory.*` | 1 key | ✅ Complete |
+| `outlets.*` | 4 keys | ✅ Complete |
 
 ---
 
@@ -215,18 +181,6 @@ When adding new UI text, you must add the key to **all 4 language files**:
   "newFeature.title": "新功能",
   "newFeature.description": "这是一个新功能"
 }
-
-// ms.json
-{
-  "newFeature.title": "Ciri Baharu",
-  "newFeature.description": "Ini adalah ciri baharu"
-}
-
-// kh.json
-{
-  "newFeature.title": "មុខងារថ្មី",
-  "newFeature.description": "នេះគឺជាមុខងារថ្មី"
-}
 ```
 
 ### Step 2: Use the Translation Hook in Components
@@ -248,11 +202,7 @@ function NewFeaturePage() {
 
 ### Step 3: Fallback is Automatic
 
-If a key is missing in the selected language, it falls back to English:
-
-```javascript
-// If 'newFeature.title' is missing in zh.json, it returns "New Feature"
-```
+If a key is missing in the selected language, it falls back to English.
 
 ### Translation Key Naming Conventions
 
@@ -261,22 +211,6 @@ If a key is missing in the selected language, it falls back to English:
 | Use **dot notation** for hierarchy | `menu.dashboard`, `auth.login` |
 | Use **camelCase** for keys | `orderHistory`, `tableNumber` |
 | Use **lowercase** for top-level categories | `common`, `menu`, `auth`, `settings` |
-| Be **descriptive** | `error.invalidPassword` not `err.1` |
-
-### Category Reference
-
-Use these standard categories to keep keys consistent:
-
-| Category | Purpose |
-|----------|---------|
-| `common` | Shared elements (buttons, labels, messages) |
-| `menu` | Navigation menu items |
-| `auth` | Login, logout, registration |
-| `settings` | Settings pages |
-| `orders` | Order-related UI |
-| `reports` | Report labels |
-| `errors` | Error messages |
-| `validation` | Form validation messages |
 
 ---
 
@@ -284,20 +218,10 @@ Use these standard categories to keep keys consistent:
 
 ### Language Setting Locations
 
-Language can be set at two levels:
-
 | Level | Location | Who Changes It |
 |-------|----------|----------------|
 | **User Personal** | Staff Management → Add/Edit Staff modal | Admin |
 | **Outlet Default** | Settings → Business Tab | Admin/Owner |
-
-### User Personal Language (Staff Management)
-
-Language dropdown in the **Add Staff** and **Edit Staff** modals.
-
-### Outlet Default Language (Settings → Business Tab)
-
-Language field in the Business section of Settings.
 
 ### Files Changed - Phase 1
 
@@ -308,7 +232,7 @@ frontend/src/i18n/index.js
 frontend/src/i18n/LanguageContext.jsx
 frontend/src/i18n/useTranslation.js
 frontend/src/i18n/locales/
-frontend/src/i18n/locales/en.json
+frontend/src/i18n/locales/en.json (~280 keys)
 frontend/src/i18n/locales/zh.json
 frontend/src/i18n/locales/ms.json
 frontend/src/i18n/locales/kh.json
@@ -344,22 +268,11 @@ Update user language preference.
 
 ```json
 // Request
-{
-  "language": "en|zh|ms|kh"
-}
+{ "language": "en|zh|ms|kh" }
 
 // Response
-{
-  "success": true,
-  "language": "zh"
-}
+{ "success": true, "language": "zh" }
 ```
-
-#### GET /api/users/{id}
-Returns user info including `language` field.
-
-#### GET /api/outlet-settings
-Returns outlet settings including `language` field.
 
 ### Database Changes (pos_ai.db)
 
@@ -373,15 +286,9 @@ ALTER TABLE outlet_settings ADD COLUMN language VARCHAR(10) DEFAULT 'en';
 
 ---
 
-## Customer Order App {#customer-order-app}
+## Customer Order App (Phase 2)
 
-### Language Selector
-
-- Language dropdown in header
-- Persist selection in localStorage (`customer_language`)
-- No login required
-
-### Implementation Details
+Not started yet.
 
 | File | Changes |
 |------|---------|
@@ -391,80 +298,11 @@ ALTER TABLE outlet_settings ADD COLUMN language VARCHAR(10) DEFAULT 'en';
 | `customer-app/src/components/LanguageSelector.jsx` | Language dropdown |
 | `customer-app/src/App.jsx` | Apply LanguageProvider |
 
-### Customer Session Storage
-
-| Storage | Key | Description |
-|--------|-----|-------------|
-| localStorage | `customer_language` | Selected language |
-
 ---
 
-## Site App (Public + Customer Portal) {#site-app-public--customer-portal}
+## Site App (Phase 3)
 
-### Overview
-
-- Public Website: `/`, `/login`, `/signup`, `/forgot-password`
-- Customer Portal: `/portal`, `/portal/*`
-- Both use same source code and database (`website_api.db`)
-- Default language: English
-- Preference stored in localStorage
-
-### Implementation Details
-
-| File | Changes |
-|------|---------|
-| `site/src/i18n/locales/en.json` | Translation strings |
-| `site/src/i18n/locales/zh.json` | Translation strings |
-| `site/src/i18n/locales/ms.json` | Translation strings |
-| `site/src/i18n/locales/kh.json` | Translation strings |
-| `site/src/i18n/LanguageContext.tsx` | Language context |
-| `site/src/i18n/useTranslation.ts` | Translation hook |
-| `site/src/components/LanguageSelector.tsx` | Language dropdown |
-| `site/src/app/layout.tsx` | Wrap with LanguageProvider |
-
-### Site App Features
-
-1. Language selector in header (visible on all pages)
-2. Default to English
-3. Persists user selection in localStorage
-4. Applies to both Public Website AND Customer Portal
-
----
-
-## Menu Items & Categories Translation
-
-### Approach: Manual Input via Menu Management
-
-Menu items and categories support manual translation via Menu Management screen.
-
-### Database Changes (pos_ai.db)
-
-**menu_items Table:**
-```sql
-ALTER TABLE menu_items ADD COLUMN name_zh VARCHAR(255);
-ALTER TABLE menu_items ADD COLUMN name_ms VARCHAR(255);
-ALTER TABLE menu_items ADD COLUMN name_kh VARCHAR(255);
-```
-
-**categories Table:**
-```sql
-ALTER TABLE categories ADD COLUMN name_zh VARCHAR(255);
-ALTER TABLE categories ADD COLUMN name_ms VARCHAR(255);
-ALTER TABLE categories ADD COLUMN name_kh VARCHAR(255);
-```
-
-### Display Logic
-
-```javascript
-function getItemName(item, language) {
-  switch(language) {
-    case 'zh': return item.name_zh || item.name;
-    case 'ms': return item.name_ms || item.name;
-    case 'kh': return item.name_kh || item.name;
-    default: return item.name;
-  }
-}
-```
+Not started yet.
 
 ---
 
@@ -475,23 +313,13 @@ function getItemName(item, language) {
 | **Phase 1** | Translation files (en, zh, ms, kh) | ✅ Done | 4 |
 | | Language context & hooks | ✅ Done | 2 |
 | | Backend API changes | ✅ Done | 3 |
-| | Frontend POS integration | ✅ Partial | 6 |
-| **Phase 1 Total** | | ✅ ~80% | **~15 hours** |
+| | Frontend POS integration | ✅ ~90% | 12 |
+| **Phase 1 Total** | | ✅ ~90% | **~21 hours** |
 | **Phase 2** | Customer Order App integration | ⏳ Not Started | 6 |
 | **Phase 2 Total** | | | **6 hours** |
 | **Phase 3** | Site App integration | ⏳ Not Started | 6 |
 | **Phase 3 Total** | | | **6 hours** |
-| **Grand Total** | | | **~27 hours** |
-
----
-
-## Database Separation
-
-| App | Database | API |
-|-----|----------|-----|
-| Frontend POS | `pos_ai.db` | Backend API (port 8000) |
-| Customer Order App | `pos_ai.db` | Backend API (port 8000) |
-| Site App (Public + Portal) | `website_api.db` | Website API (port 9000) |
+| **Grand Total** | | | **~33 hours** |
 
 ---
 
@@ -503,7 +331,7 @@ function getItemName(item, language) {
 - [ ] Menu items display in selected language (future - menu translation not implemented yet)
 - [ ] Customer app language persists in browser (Phase 2)
 - [ ] Fallback to English when translation key missing
-- [ ] All pages updated with t() function
+- [x] All pages updated with t() function (partial - ~90%)
 
 ---
 
@@ -522,35 +350,3 @@ function getItemName(item, language) {
 Khmer may need RTL support in the future. When implementing:
 - Add `dir="rtl"` attribute to `<html>` or relevant container
 - CSS should handle mirrored layouts
-
-### Translation Key Auditing
-
-When adding new UI, maintain a translation key checklist:
-
-```
-✓ Key added to en.json (base)
-✓ Key added to zh.json
-✓ Key added to ms.json
-✓ Key added to kh.json
-✓ Component uses t('key') not hardcoded string
-✓ Fallback works when key is missing
-```
-
----
-
-## Files Summary
-
-### Phase 1 Files (Frontend POS)
-
-**New:**
-- `frontend/src/i18n/` (entire folder, 6 files)
-- `frontend/src/i18n/locales/` (4 JSON files)
-
-**Modified:**
-- `frontend/src/App.jsx` - Added LanguageProvider, nav translations
-- 15 page components - Added t() translations
-- 3 backend files - Added language field
-
-### Phase 2 Files (Customer Order App) - NOT CREATED YET
-
-### Phase 3 Files (Site App) - NOT CREATED YET
