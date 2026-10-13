@@ -1,23 +1,27 @@
 ---
 title: Language Switching System
-description: Multi-language support for Frontend POS, Customer Order Apps, and Site Apps
+description: Multi-language support for Site Apps, Frontend POS, and Customer Order Apps
 ---
 
 # Language Switching System
 
-**Date:** September 27, 2026
-
-## Overview
-
-This document outlines the language switching system to support 4 languages across the IDEAZES POS ecosystem:
-- English (en)
-- Chinese (zh) - 简体中文
-- Malay (ms) - Bahasa Melayu
-- Khmer (kh) - ភាសាខ្មែរ
+**Date:** October 13, 2026
 
 ---
 
-## Languages Supported
+## Overview
+
+This document outlines the language switching system to support 4 languages across the IDEAZES ecosystem.
+
+### Apps Covered
+
+| App | Routes | Database |
+|-----|--------|----------|
+| **Site App** (Public + Portal) | `/`, `/login`, `/signup`, `/portal/*` | `website_api.db` |
+| **Frontend POS** | All POS routes | `pos_ai.db` |
+| **Customer Order App** | `/order/*` | `pos_ai.db` |
+
+### Languages Supported
 
 | Code | Language | Display Name |
 |------|----------|--------------|
@@ -28,59 +32,26 @@ This document outlines the language switching system to support 4 languages acro
 
 ---
 
-## Architecture
+## Priority System
 
-### Priority System
-
-| App | Priority Order | Database |
-|-----|---------------|----------|
-| **Frontend POS** | User setting > Outlet setting > Default (en) | pos_ai.db |
-| **Customer Order App** | User selection (stored in browser) > Outlet setting > Default (en) | pos_ai.db |
-| **Site App** | User preference (localStorage) > Default (en) | website_api.db |
-
-### Database Changes
-
-#### pos_ai.db (Frontend POS & Customer Apps)
-
-**outlet_settings Table**
-```sql
-ALTER TABLE outlet_settings ADD COLUMN language VARCHAR(10) DEFAULT 'en';
-```
-
-**users Table**
-```sql
-ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT NULL;
-```
-
-**customer_sessions Table**
-```sql
-ALTER TABLE customer_sessions ADD COLUMN language VARCHAR(10) DEFAULT NULL;
-```
-
-#### website_api.db (Site App)
-
-Site app has its own database (`website_api.db`) for public-facing website.
-
-### Date/Time & Currency Format
-
-| App | Date/Time Format | Currency Format |
-|-----|-----------------|----------------|
-| **Frontend POS** | Follows outlet settings (timezone) | Follows outlet settings (currency_symbol) |
-| **Customer Order App** | Follows outlet settings (timezone) | Follows outlet settings (currency_symbol) |
-| **Site App** | Uses site's timezone setting | Uses site's currency setting |
-
-*Note: These are already configured in outlet_settings table.*
+| App | Priority Order | Storage |
+|-----|---------------|---------|
+| **Frontend POS** | User setting > Outlet setting > Default (en) | Database |
+| **Customer Order App** | User selection > Outlet setting > Default (en) | localStorage |
+| **Site App** (Public + Portal) | User preference > Default (en) | localStorage |
 
 ---
 
 ## Translation Files Structure
 
+Each app has its own `i18n` folder with the same structure:
+
 ```
 src/
 ├── i18n/
-│   ├── index.js
-│   ├── LanguageContext.jsx
-│   ├── useTranslation.js
+│   ├── index.js              # Export translation hook
+│   ├── LanguageContext.jsx   # React context provider
+│   ├── useTranslation.js     # Custom hook: t('key.subkey')
 │   └── locales/
 │       ├── en.json
 │       ├── zh.json
@@ -88,120 +59,178 @@ src/
 │       └── kh.json
 ```
 
+### Translation File Format
+
+All translation files use **flat key naming** with dot notation:
+
+```json
+{
+  "common.save": "Save",
+  "common.cancel": "Cancel",
+  "common.delete": "Delete",
+  "common.edit": "Edit",
+  "common.loading": "Loading...",
+  "common.error": "Error",
+  "common.success": "Success",
+  "menu.dashboard": "Dashboard",
+  "menu.orders": "Orders",
+  "menu.settings": "Settings",
+  "auth.login": "Login",
+  "auth.logout": "Logout",
+  "auth.email": "Email",
+  "auth.password": "Password",
+  "settings.language": "Language",
+  "settings.outlet": "Outlet Settings"
+}
+```
+
 ---
 
-## Frontend POS (Priority 1)
+## How to Add New UI Strings (Future UI Changes)
 
-### User Settings Page (New)
+This is the **key workflow** for maintaining translations when you add new features or UI.
 
-Create a new page for user settings to change password and language preference.
+### Step 1: Add Key to All Translation Files
 
-**Route:** `/user-settings`
+When adding new UI text, you must add the key to **all 4 language files**:
 
-**Features:**
-1. Change password (current, new, confirm)
-2. Language preference dropdown
+```json
+// en.json
+{
+  "newFeature.title": "New Feature",
+  "newFeature.description": "This is a new feature"
+}
 
-**UI Design:**
+// zh.json
+{
+  "newFeature.title": "新功能",
+  "newFeature.description": "这是一个新功能"
+}
+
+// ms.json
+{
+  "newFeature.title": "Ciri Baharu",
+  "newFeature.description": "Ini adalah ciri baharu"
+}
+
+// kh.json
+{
+  "newFeature.title": "មុខងារថ្មី",
+  "newFeature.description": "នេះគឺជាមុខងារថ្មី"
+}
 ```
-┌─────────────────────────────────────┐
-│ [👤] User Settings                 │
-│                                     │
-│ ─────────────────────────────────── │
-│                                     │
-│ Language Preference                  │
-│ [English                    ▼]       │
-│                                     │
-│ ─────────────────────────────────── │
-│                                     │
-│ Change Password                     │
-│ Current Password: [............]     │
-│ New Password:      [............]     │
-│ Confirm Password: [............]      │
-│                                     │
-│        [Save Changes]                │
-└─────────────────────────────────────┘
+
+### Step 2: Use the Translation Hook in Components
+
+```jsx
+import { useTranslation } from '../i18n/useTranslation';
+
+function NewFeaturePage() {
+  const { t } = useTranslation();
+  
+  return (
+    <div>
+      <h1>{t('newFeature.title')}</h1>
+      <p>{t('newFeature.description')}</p>
+    </div>
+  );
+}
 ```
 
-**Settings -> Business Location**
+### Step 3: Fallback is Automatic
 
-Add language field in Business location section:
+If a key is missing in the selected language, it falls back to English:
+
+```javascript
+// If 'newFeature.title' is missing in zh.json, it returns "New Feature"
 ```
-Language: [English ▼]
-```
+
+### Translation Key Naming Conventions
+
+| Rule | Example |
+|------|---------|
+| Use **dot notation** for hierarchy | `menu.dashboard`, `auth.login` |
+| Use **camelCase** for keys | `orderHistory`, `tableNumber` |
+| Use **lowercase** for top-level categories | `common`, `menu`, `auth`, `settings` |
+| Be **descriptive** | `error.invalidPassword` not `err.1` |
+
+### Category Reference
+
+Use these standard categories to keep keys consistent:
+
+| Category | Purpose |
+|----------|---------|
+| `common` | Shared elements (buttons, labels, messages) |
+| `menu` | Navigation menu items |
+| `auth` | Login, logout, registration |
+| `settings` | Settings pages |
+| `orders` | Order-related UI |
+| `reports` | Report labels |
+| `errors` | Error messages |
+| `validation` | Form validation messages |
+
+---
+
+## Frontend POS
 
 ### Implementation Details
 
 | File | Changes |
-|------|----------|
-| `src/pages/UserSettings.jsx` | NEW - User settings page |
-| `src/App.jsx` | Add route `/user-settings` |
-| `src/i18n/locales/*.json` | Translation strings |
-| `src/i18n/LanguageContext.jsx` | NEW - Language context |
-| `src/i18n/useTranslation.js` | NEW - Translation hook |
-| `backend/app/routes/users.py` | Add password change + language API |
+|------|---------|
+| `frontend/src/i18n/LanguageContext.jsx` | NEW - Language context |
+| `frontend/src/i18n/useTranslation.js` | NEW - Translation hook |
+| `frontend/src/i18n/locales/en.json` | Translation strings |
+| `frontend/src/i18n/locales/zh.json` | Translation strings |
+| `frontend/src/i18n/locales/ms.json` | Translation strings |
+| `frontend/src/i18n/locales/kh.json` | Translation strings |
+| `frontend/src/App.jsx` | Wrap with LanguageProvider |
+| `frontend/src/pages/Settings.jsx` | Add language preference |
+| `backend/app/routes/users.py` | Add language API |
 | `backend/app/routes/outlet_settings.py` | Add language field |
 
 ### API Endpoints
 
-#### PUT /api/users/{id}/password
-Change user password.
-
-**Request:**
-```json
-{
-  "current_password": "string",
-  "new_password": "string"
-}
-```
-
 #### PUT /api/users/{id}/language
 Update user language preference.
 
-**Request:**
 ```json
 {
   "language": "en|zh|ms|kh"
 }
 ```
 
+#### GET /api/users/{id}
+Returns user info including `language` field.
+
+#### GET /api/outlet-settings
+Returns outlet settings including `language` field.
+
+### Database Changes (pos_ai.db)
+
+```sql
+ALTER TABLE outlet_settings ADD COLUMN language VARCHAR(10) DEFAULT 'en';
+ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT NULL;
+```
+
 ---
 
-## Customer Order App (Priority 2)
+## Customer Order App
 
 ### Language Selector
 
-Add language dropdown in the customer order app header.
-
-**Features:**
-1. Language dropdown in header
-2. Persist selection in localStorage
-3. No login required
-
-**UI Design:**
-```
-┌─────────────────────────────────────┐
-│ [Logo]  [EN ▼]  [🛒 Cart]         │
-│                                     │
-│ [Language: English ▼]               │
-│                                     │
-└─────────────────────────────────────┘
-```
-
-**Dropdown Options:**
-- English
-- 简体中文
-- Bahasa Melayu
-- ភាសាខ្មែរ
+- Language dropdown in header
+- Persist selection in localStorage (`customer_language`)
+- No login required
 
 ### Implementation Details
 
 | File | Changes |
 |------|---------|
-| `customer-app/src/i18n/` | Translation files |
-| `customer-app/src/contexts/LanguageContext.jsx` | Language context |
+| `customer-app/src/i18n/locales/*.json` | Translation files |
+| `customer-app/src/i18n/LanguageContext.jsx` | Language context |
+| `customer-app/src/i18n/useTranslation.js` | Translation hook |
 | `customer-app/src/components/LanguageSelector.jsx` | Language dropdown |
-| `customer-app/src/App.jsx` | Apply language context |
+| `customer-app/src/App.jsx` | Apply LanguageProvider |
 
 ### Customer Session Storage
 
@@ -211,33 +240,28 @@ Add language dropdown in the customer order app header.
 
 ---
 
-## Site App (Priority 3)
+## Site App (Public + Customer Portal)
 
-### Site App Structure
+### Overview
 
-The Site App contains two parts:
-
-| Part | Routes | Description |
-|------|--------|-------------|
-| **Public Website** | `/`, `/login`, `/signup`, `/forgot-password` | Public pages |
-| **Customer Portal** | `/portal`, `/portal/billing` | Customer ordering & billing |
-
-Both use the same source code and database (`website_api.db`).
-
-### Language Setting
-
-The site app is a public website, so:
+- Public Website: `/`, `/login`, `/signup`, `/forgot-password`
+- Customer Portal: `/portal`, `/portal/*`
+- Both use same source code and database (`website_api.db`)
 - Default language: English
-- User can select their preferred language
 - Preference stored in localStorage
 
-**Implementation Details:**
+### Implementation Details
 
 | File | Changes |
 |------|---------|
-| `site/src/i18n/` | Translation files |
-| `site/src/contexts/LanguageContext.tsx` | Language context |
+| `site/src/i18n/locales/en.json` | Translation strings |
+| `site/src/i18n/locales/zh.json` | Translation strings |
+| `site/src/i18n/locales/ms.json` | Translation strings |
+| `site/src/i18n/locales/kh.json` | Translation strings |
+| `site/src/i18n/LanguageContext.tsx` | Language context |
+| `site/src/i18n/useTranslation.ts` | Translation hook |
 | `site/src/components/LanguageSelector.tsx` | Language dropdown |
+| `site/src/app/layout.tsx` | Wrap with LanguageProvider |
 
 ### Site App Features
 
@@ -248,144 +272,13 @@ The site app is a public website, so:
 
 ---
 
-## Translation File Format
-
-### Example: en.json
-```json
-{
-  "common": {
-    "save": "Save",
-    "cancel": "Cancel",
-    "delete": "Delete",
-    "edit": "Edit",
-    "loading": "Loading...",
-    "error": "Error",
-    "success": "Success"
-  },
-  "menu": {
-    "dashboard": "Dashboard",
-    "orders": "Orders",
-    "menu": "Menu",
-    "kitchen": "Kitchen",
-    "tables": "Tables",
-    "settings": "Settings",
-    "reports": "Reports"
-  },
-  "auth": {
-    "login": "Login",
-    "logout": "Logout",
-    "email": "Email",
-    "password": "Password",
-    "current_password": "Current Password",
-    "new_password": "New Password"
-  },
-  "settings": {
-    "language": "Language",
-    "outlet_settings": "Outlet Settings",
-    "business_info": "Business Information"
-  }
-}
-```
-
-### Example: zh.json
-```json
-{
-  "common": {
-    "save": "保存",
-    "cancel": "取消",
-    "delete": "删除",
-    "edit": "编辑",
-    "loading": "加载中...",
-    "error": "错误",
-    "success": "成功"
-  },
-  "menu": {
-    "dashboard": "仪表板",
-    "orders": "订单",
-    "menu": "菜单",
-    "kitchen": "厨房",
-    "tables": "餐桌",
-    "settings": "设置",
-    "reports": "报告"
-  },
-  "auth": {
-    "login": "登录",
-    "logout": "退出",
-    "email": "邮箱",
-    "password": "密码",
-    "current_password": "当前密码",
-    "new_password": "新密码"
-  },
-  "settings": {
-    "language": "语言",
-    "outlet_settings": "门店设置",
-    "business_info": "商业信息"
-  }
-}
-```
-
----
-
-## Implementation Phases
-
-### Phase 1: Frontend POS
-
-1. Create translation files (en, zh, ms, kh)
-2. Create LanguageContext
-3. Create useTranslation hook
-4. Update App.jsx to wrap with LanguageProvider
-5. Add language field to outlet_settings API
-6. Create UserSettings page (password change + language)
-7. Add language dropdown to Settings -> Business
-8. Update all POS pages to use t() function
-
-### Phase 2: Customer Order App
-
-1. Create translation files
-2. Create LanguageContext
-3. Create LanguageSelector component
-4. Add to customer app header
-5. Persist to localStorage
-
-### Phase 3: Site App
-
-1. Create translation files
-2. Integrate language context
-3. Add language selector
-4. Use outlet setting as default
-
----
-
 ## Menu Items & Categories Translation
 
 ### Approach: Manual Input via Menu Management
 
-For menu items and categories (food names, descriptions), the system will allow manual translation input in the Menu Management screen.
+Menu items and categories support manual translation via Menu Management screen.
 
-### Menu Items - UI Design:
-```
-┌─────────────────────────────────────────┐
-│ Item Name (English): [Pad Thai        ] │
-│ Item Name (Chinese):  [泰式炒河粉       ] │
-│ Item Name (Malay):   [Mie Goreng Siam ] │
-│ Item Name (Khmer):   [ភេសជាតាខ្មែរ      ] │
-│                                         │
-│ Category: [Main Course ▼]               │
-│ Price: [25.00                          │
-└─────────────────────────────────────────┘
-```
-
-### Categories - UI Design:
-```
-┌─────────────────────────────────────────┐
-│ Category Name (English): [Main Course  ] │
-│ Category Name (Chinese):  [主菜           ] │
-│ Category Name (Malay):   [Makanan Utama] │
-│ Category Name (Khmer):   [ម្ហូបដ៏ធំ] │
-└─────────────────────────────────────────┘
-```
-
-### Database Changes:
+### Database Changes (pos_ai.db)
 
 **menu_items Table:**
 ```sql
@@ -401,14 +294,8 @@ ALTER TABLE categories ADD COLUMN name_ms VARCHAR(255);
 ALTER TABLE categories ADD COLUMN name_kh VARCHAR(255);
 ```
 
-### Language Detection Logic (Display):
+### Display Logic
 
-For both menu items and categories:
-1. Check if user's language preference is set
-2. If translation exists for that language, display it
-3. Fallback to English if no translation
-
-**Example Display Logic:**
 ```javascript
 function getItemName(item, language) {
   switch(language) {
@@ -426,85 +313,26 @@ function getItemName(item, language) {
 
 | Phase | Task | Hours |
 |-------|------|-------|
-| **Phase 1** | Translation files | 4 |
+| **Phase 1** | Translation files (en, zh, ms, kh) | 4 |
 | | Language context & hooks | 2 |
 | | Backend API changes | 3 |
-| | User Settings page | 4 |
-| | Update POS pages | 8 |
-| **Phase 1 Total** | | **21 hours** |
-| **Phase 2** | Translation files | 4 |
-| | Customer app integration | 6 |
-| **Phase 2 Total** | | **10 hours** |
-| **Phase 3** | Translation files | 4 |
-| | Site app integration | 6 |
-| **Phase 3 Total** | | **10 hours** |
-| **Grand Total** | | **41 hours** |
+| | Frontend POS integration | 8 |
+| **Phase 1 Total** | | **17 hours** |
+| **Phase 2** | Customer Order App integration | 6 |
+| **Phase 2 Total** | | **6 hours** |
+| **Phase 3** | Site App integration | 6 |
+| **Phase 3 Total** | | **6 hours** |
+| **Grand Total** | | **29 hours** |
 
 ---
 
-## Important Notes
-
-### Database Separation
+## Database Separation
 
 | App | Database | API |
 |-----|----------|-----|
 | Frontend POS | `pos_ai.db` | Backend API (port 8000) |
 | Customer Order App | `pos_ai.db` | Backend API (port 8000) |
 | Site App (Public + Portal) | `website_api.db` | Website API (port 9000) |
-
-*Note: Each app has its own database and API. Translations for menu items and categories are stored in `pos_ai.db` (used by POS and Customer Apps). The Site App uses `website_api.db` for its public pages and customer portal.*
-
----
-
-## Files to Create/Modify
-
-### Backend
-
-| File | Action |
-|------|--------|
-| `backend/app/models/models.py` | Add language fields |
-| `backend/app/routes/users.py` | Add password change + language APIs |
-| `backend/app/routes/outlet_settings.py` | Add language field |
-
-### Frontend POS
-
-| File | Action |
-|------|--------|
-| `frontend/src/i18n/index.js` | Create |
-| `frontend/src/i18n/LanguageContext.jsx` | Create |
-| `frontend/src/i18n/useTranslation.js` | Create |
-| `frontend/src/i18n/locales/en.json` | Create |
-| `frontend/src/i18n/locales/zh.json` | Create |
-| `frontend/src/i18n/locales/ms.json` | Create |
-| `frontend/src/i18n/locales/kh.json` | Create |
-| `frontend/src/pages/UserSettings.jsx` | Create |
-| `frontend/src/App.jsx` | Modify - add route |
-| `frontend/src/pages/Settings.jsx` | Modify - add language field |
-| `frontend/src/pages/*` | Modify - use t() function |
-
-### Customer Order App
-
-| File | Action |
-|------|--------|
-| `customer-app/src/i18n/` | Create |
-| `customer-app/src/contexts/LanguageContext.jsx` | Create |
-| `customer-app/src/components/LanguageSelector.jsx` | Create |
-| `customer-app/src/App.jsx` | Modify |
-
-### Site App (includes Customer Portal)
-
-| File | Action |
-|------|--------|
-| `site/src/i18n/locales/en.json` | Create |
-| `site/src/i18n/locales/zh.json` | Create |
-| `site/src/i18n/locales/ms.json` | Create |
-| `site/src/i18n/locales/kh.json` | Create |
-| `site/src/i18n/LanguageContext.tsx` | Create |
-| `site/src/i18n/useTranslation.ts` | Create |
-| `site/src/contexts/LanguageContext.tsx` | Create |
-| `site/src/components/LanguageSelector.tsx` | Create |
-| `site/src/app/layout.tsx` | Modify - wrap with provider |
-| `site/src/app/portal/**` | Modify - use translations |
 
 ---
 
@@ -515,15 +343,36 @@ function getItemName(item, language) {
 - [ ] Outlet language setting is default for new users
 - [ ] Menu items display in selected language
 - [ ] Customer app language persists in browser
-- [ ] Fallback to English when translation missing
-- [ ] Password change works correctly
-- [ ] All pages updated with translations
+- [ ] Fallback to English when translation key missing
+- [ ] All pages updated with t() function
 
 ---
 
-## Open Questions
+## Future Considerations
 
-1. **RTL Support:** Khmer may need RTL support in future
-2. **Date/Time Format:** Should format adapt to locale?
-3. **Currency Format:** Should currency symbol placement change?
-4. **Menu Categories:** Need translation for category names?
+### Adding a New Language
+
+1. Create new `xx.json` in `locales/` folder
+2. Copy structure from `en.json`
+3. Translate all keys
+4. Add language to LanguageSelector dropdown
+5. Update `useTranslation.js` to include new language
+
+### RTL Support
+
+Khmer may need RTL support in the future. When implementing:
+- Add `dir="rtl"` attribute to `<html>` or relevant container
+- CSS should handle mirrored layouts
+
+### Translation Key Auditing
+
+When adding new UI, maintain a translation key checklist:
+
+```
+✓ Key added to en.json (base)
+✓ Key added to zh.json
+✓ Key added to ms.json
+✓ Key added to kh.json
+✓ Component uses t('key') not hardcoded string
+✓ Fallback works when key is missing
+```
