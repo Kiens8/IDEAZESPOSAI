@@ -173,6 +173,51 @@ Use these standard categories to keep keys consistent:
 
 ## Frontend POS
 
+### Language Setting Locations
+
+Language can be set at two levels:
+
+| Level | Location | Who Changes It |
+|-------|----------|----------------|
+| **User Personal** | Staff Management → Add/Edit Staff modal | Admin |
+| **Outlet Default** | Settings → Business Tab | Admin/Owner |
+
+### User Personal Language (Staff Management)
+
+Add language dropdown in the **Add Staff** and **Edit Staff** modals.
+
+**UI Design (Add/Edit Staff Modal):**
+```
+┌─────────────────────────────────────────┐
+│ Add Staff                           [X]  │
+│                                         │
+│ Name:     [John Doe                  ]   │
+│ Email:    [john@example.com          ]   │
+│ Role:     [Staff                   ▼]   │
+│ Password: [················          ]   │
+│ Language: [English                  ▼]   │
+│                                         │
+│        [Cancel]    [Save]              │
+└─────────────────────────────────────────┘
+```
+
+### Outlet Default Language (Settings → Business Tab)
+
+Add language field in the Business section of Settings.
+
+**UI Design (Settings → Business Tab):**
+```
+┌─────────────────────────────────────────┐
+│ Business                                │
+│                                         │
+│ Outlet Name: [My Restaurant          ]   │
+│ Business ID: [1234567890             ]   │
+│ Phone:      [+60 12-345 6789        ]   │
+│ Language:   [English                ▼]   │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
 ### Implementation Details
 
 | File | Changes |
@@ -184,7 +229,8 @@ Use these standard categories to keep keys consistent:
 | `frontend/src/i18n/locales/ms.json` | Translation strings |
 | `frontend/src/i18n/locales/kh.json` | Translation strings |
 | `frontend/src/App.jsx` | Wrap with LanguageProvider |
-| `frontend/src/pages/Settings.jsx` | Add language preference |
+| `frontend/src/pages/StaffManagement.jsx` | Add language field in Add/Edit modal |
+| `frontend/src/pages/Settings.jsx` | Add language field in Business Tab |
 | `backend/app/routes/users.py` | Add language API |
 | `backend/app/routes/outlet_settings.py` | Add language field |
 
