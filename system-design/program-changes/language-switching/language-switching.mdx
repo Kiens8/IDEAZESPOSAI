@@ -6,86 +6,74 @@ description: Multi-language support for Site Apps, Frontend POS, and Customer Or
 # Language Switching System
 
 **Date:** October 13, 2026  
-**Last Updated:** October 13, 2026 (Phase 1 COMPLETE)
+**Last Updated:** October 28, 2026 (design review — status corrected, stack updated to 2026 standards)
 
 ---
 
 ## Overview
 
-This document outlines the language switching system to support 4 languages across the IDEAZES ecosystem.
+This document outlines the language switching system to support **3 languages** across the IDEAZES ecosystem.
 
 ### Apps Covered
 
-| App | Routes | Database |
-|-----|--------|----------|
-| **Site App** (Public + Portal) | `/`, `/login`, `/signup`, `/portal/*` | `website_api.db` |
-| **Frontend POS** | All POS routes | `pos_ai.db` |
-| **Customer Order App** | `/order/*` | `pos_ai.db` |
+| App | Routes | Database | Stack |
+|-----|--------|----------|-------|
+| **Site App** (Public + Portal) | `/`, `/login`, `/signup`, `/portal/*` | `website_api.db` | Next.js 16 + React 19 + Tailwind v4 |
+| **Frontend POS** | All POS routes | `pos_ai.db` | Vite + React 18 (SPA) |
+| **Customer Order App** | `/order/*` | `pos_ai.db` | Vanilla JS (PWA) |
 
-### Languages Supported
+> **Out of scope:** the **Admin App** (`admin.ideazes.com`) is intentionally excluded from this document and from this phase of work. It can be added later as its own phase — see [Future Considerations](#future-considerations).
 
-| Code | Language | Display Name |
-|------|----------|--------------|
-| `en` | English | English |
-| `zh` | Chinese | 简体中文 |
-| `ms` | Malay | Bahasa Melayu |
-| `kh` | Khmer | ភាសាខ្មែរ |
+---
+
+## Languages Supported
+
+| Code | BCP-47 Tag | Language | Display Name | Direction |
+|------|-----------|----------|--------------|-----------|
+| `en` | `en-US` | English | English | LTR |
+| `zh` | `zh-Hans` | Chinese (Simplified) | 简体中文 | LTR |
+| `km` | `km-KH` | Khmer | ភាសាខ្មែរ | LTR |
+
+### Locale Code Correction (October 28, 2026)
+
+The earlier draft used `kh` for Khmer. That was incorrect.
+
+- `kh` is the ISO 639-2 **bibliographic** code for Khmer. The BCP-47 / ISO 639-1 language subtag is **`km`**.
+- `ms` (Malay / Bahasa Melayu) has been **removed** from the supported set — Malay is no longer required.
+- Chinese is pinned to Simplified (`zh-Hans`) rather than the generic `zh`, so a future Traditional Chinese locale can be added without breaking existing users.
+
+Use the **short code** (`en`, `zh`, `km`) in the database column and in `Intl`/library calls; use the **full BCP-47 tag** in `<html lang>`, `hreflang`, and locale-prefixed URLs.
+
+### Text Direction (October 28, 2026)
+
+The earlier draft stated that "Khmer may need RTL support". That was incorrect.
+
+- **Khmer is a left-to-right (LTR) script.** Khmer, Chinese and English are all LTR.
+- RTL support is only required if we later add **Arabic, Hebrew, Persian or Urdu**. Until then, no `dir="rtl"` handling is needed.
+- To make a future RTL locale cheap, use **CSS logical properties** from the start (Tailwind: `ms-`/`me-`, `ps-`/`pe-`, `start-`/`end-`, `text-start`/`text-end`) instead of `ml-`/`mr-`/`left-`/`right-`.
 
 ---
 
 ## Implementation Status
 
-### ✅ Phase 1: Frontend POS — **COMPLETE** ✅
+### ⚠️ Phase 1: Frontend POS — **NOT IMPLEMENTED (previous implementation reverted)**
 
-#### Core Infrastructure
+An earlier implementation of Phase 1 was completed on October 13, 2026 (LanguageContext, translation hook, ~330 keys × 4 languages, backend `language` columns, 17 pages wired). **That implementation was reverted when the application program was rolled back to its previous state.**
 
-| Component | File | Status |
-|-----------|------|--------|
-| Language Context | `frontend/src/i18n/LanguageContext.jsx` | ✅ |
-| Translation Hook | `frontend/src/i18n/useTranslation.js` | ✅ |
-| Index Export | `frontend/src/i18n/index.js` | ✅ |
-| Language Provider | `frontend/src/App.jsx` | ✅ |
-| Translation Files | `frontend/src/i18n/locales/*.json` | ✅ ~330 keys each |
+Verified state of the current codebase (October 28, 2026):
 
-#### Backend Changes
+| Item | Expected (old doc) | Actual now |
+|------|--------------------|-----------|
+| `frontend/src/i18n/` directory | present | **absent** |
+| `LanguageContext.jsx` / `useTranslation.js` | present | **absent** |
+| `users.language` column in `pos_ai.db` | present | **absent** |
+| `outlet_settings.language` column in `pos_ai.db` | present | **absent** |
+| `PATCH /api/users/{id}/language` route | present | **absent** |
+| `LanguageProvider` in `frontend/src/App.jsx` | present | **absent** |
 
-| Component | Status |
-|-----------|--------|
-| User Model (language field) | ✅ |
-| OutletSettings Model (language field) | ✅ |
-| Users API (PATCH /{id}/language) | ✅ |
-| OutletSettings API (language in settings) | ✅ |
-| Database Migration (ALTER TABLE) | ✅ |
+**Treat this document as a design and implementation plan, not a status report.**
 
-#### Pages Updated
-
-| Page | Status |
-|------|--------|
-| Dashboard | ✅ |
-| Login | ✅ |
-| Kitchen | ✅ |
-| MenuManagement | ✅ |
-| OrderQueue | ✅ |
-| OrderHistory | ✅ |
-| Tables | ✅ |
-| Reports | ✅ |
-| Promotions | ✅ |
-| Loyalty | ✅ |
-| Vouchers | ✅ |
-| OutletManagement | ✅ |
-| StaffOrder | ✅ |
-| StaffManagement | ✅ |
-| **Settings** | ✅ **All form labels translated** |
-
-#### Sidebar Navigation
-
-| Component | Status |
-|-----------|--------|
-| Desktop Sidebar Labels | ✅ All 17 menu items |
-| Mobile Nav Labels | ✅ All items |
-| Logout Button | ✅ |
-
----
+> Note: `bot_language` on the bot model (and its dropdown in Settings → Business) **does** still exist in the backend. That field controls the AI chatbot's reply language and is independent of the UI locale — see [Bot Language Unification](#bot-language-unification).
 
 ### ⏳ Phase 2: Customer Order App — NOT STARTED
 
@@ -93,57 +81,112 @@ This document outlines the language switching system to support 4 languages acro
 
 ---
 
-## Translation Keys Summary
+## Technology Stack (revised October 28, 2026)
 
-**Total: ~330 translation keys per language**
+The original plan used a hand-rolled `LanguageContext` + flat JSON files. That approach is a generation behind current practice. The revised plan uses the standard 2026 libraries:
 
-| Category | Keys | Status |
-|----------|------|--------|
-| `common.*` | ~20 keys | ✅ Complete |
-| `menu.*` | ~18 keys | ✅ Complete |
-| `auth.*` | ~13 keys | ✅ Complete |
-| `staff.*` | ~18 keys | ✅ Complete |
-| `settings.*` | ~50 keys | ✅ Complete |
-| `orders.*` | ~35 keys | ✅ Complete |
-| `kitchen.*` | ~13 keys | ✅ Complete |
-| `tables.*` | ~11 keys | ✅ Complete |
-| `reports.*` | ~12 keys | ✅ Complete |
-| `inventory.*` | ~12 keys | ✅ Complete |
-| `loyalty.*` | ~9 keys | ✅ Complete |
-| `promotions.*` | ~10 keys | ✅ Complete |
-| `vouchers.*` | ~11 keys | ✅ Complete |
-| `ai.*` | ~8 keys | ✅ Complete |
-| `errors.*` | ~10 keys | ✅ Complete |
-| `validation.*` | ~5 keys | ✅ Complete |
-| Other categories | ~80 keys | ✅ Complete |
+| App | Library | Version | Why |
+|-----|---------|---------|-----|
+| **Frontend POS** | `i18next` + `react-i18next` | v26.x / v17.x | ICU plurals, namespaces, typed resources, lazy loading |
+| **Customer Order App** | `i18next` (core only) | v26.x | No framework in this app — `data-i18n` attributes on DOM nodes |
+| **Site App** | `next-intl` | 4.14.x | Native Next.js App Router support: locale routing, RSC, `hreflang`, static generation per locale |
+
+### What we gain over the hand-rolled approach
+
+- **Compile-time key safety** — with i18next v25+ `CustomTypeOptions`, a mistyped key (`t('menu.dishes')` when the key is `menu.dish`) is a **TypeScript error**, not a silent English string in front of a customer.
+- **Namespaces** — split by feature area (`common`, `menu`, `settings`, `orders`, …) so each bundle loads only the keys it needs instead of one monolithic JSON.
+- **ICU plurals & gender** — `"{{count}} item"` / `"{{count}} items"` handled by `Intl.PluralRules` instead of manual `count === 1` checks. Chinese and Khmer each use a single plural form; the API stays correct if Arabic is added later.
+- **Lazy loading** — locale JSON is fetched on demand, keeping the customer app's first paint fast on low-end Android.
+- **Per-namespace fallback** — a missing `km` key falls back to `en` for that namespace only.
+- **Managed platform** — `i18next-parser` extracts keys from source, `eslint-plugin-i18n` flags missing/unused keys, and a CI parity check fails the build when locales drift apart.
+
+### Key Management
+
+```
+locales/
+├── en/
+│   ├── common.json
+│   ├── menu.json
+│   └── ...
+├── zh/
+│   ├── common.json
+│   └── ...
+└── km/
+    ├── common.json
+    └── ...
+```
+
+Adding a new language means adding **one folder** — there is no need to copy `en.json` and prune it, because fallback is handled per key by the library.
 
 ---
 
-## How to Add New UI Strings
+## Locale Detection & Persistence
 
-### Step 1: Add Key to All Translation Files
+| App | Detection | Persistence |
+|-----|-----------|-------------|
+| **Frontend POS** | User setting → Outlet setting → Default (`en`) | Database (`users.language`, `outlet_settings.language`) |
+| **Customer Order App** | Browser `navigator.language` → `Accept-Language` → Default (`en`) | `localStorage` (+ PWA cache) |
+| **Site App** | `Accept-Language` header → cookie → Default (`en`) | **Cookie** (not `localStorage`) |
 
-```json
-// en.json
-{ "newFeature.title": "New Feature" }
-// zh.json
-{ "newFeature.title": "新功能" }
-```
+**Why a cookie for the Site App:** the locale must be readable on the server so the first HTML response is already in the correct language. With `localStorage` the page renders in English and then swaps — a visible flash, a hydration mismatch, and wrong text for search crawlers. `next-intl` handles this with a locale-prefixed route plus a cookie.
 
-### Step 2: Use the Translation Hook in Components
+---
 
-```jsx
-import { useTranslation } from '../i18n/useTranslation';
+## Number, Currency & Date Formatting
 
-function NewFeaturePage() {
-  const { t } = useTranslation();
-  return <h1>{t('newFeature.title')}</h1>;
-}
-```
+**This is a critical separation and was missing from the original design.**
 
-### Step 3: Fallback is Automatic
+`outlet_settings` already carries business formatting settings:
 
-If a key is missing, it falls back to English.
+- `currency_symbol`, `currency_code`
+- `decimal_places`
+- `date_format`, `timezone`
+
+These are **business locale** and must be driven by `outlet_settings`, **not** by the UI language. Switching the UI to Chinese or Khmer must never reformat prices or change the timezone.
+
+Implementation:
+
+- Prices → `Intl.NumberFormat(locale, { style: 'currency', currency: currencyCode, minimumFractionDigits: decimalPlaces })`
+- Dates → `Intl.DateTimeFormat(locale, { timeZone: outletTimezone, ... })`
+- `locale` here is the **UI locale** (affects digit grouping and separators); `currencyCode` / `timezone` / `decimalPlaces` come from the **outlet settings**.
+
+For the Site App, `next-intl` provides `useFormatter()` (client) and `getFormatter()` (server) for exactly this.
+
+---
+
+## Typography / Font Stack
+
+The POS and Admin CSS currently declare a **Latin-only font stack**. Khmer and Chinese will fall back to whatever the OS substitutes, which produces inconsistent rendering across staff devices and customer phones.
+
+Required additions (self-hosted via `@fontsource` or Google Fonts, with `font-display: swap`):
+
+| Script | Font |
+|--------|------|
+| Khmer | **Noto Sans Khmer** |
+| Chinese (Simplified) | Noto Sans SC (or system CJK stack) |
+| Latin | Inter / system stack (existing) |
+
+Load per-locale rather than shipping all three to every device (the CJK font in particular is megabytes).
+
+---
+
+## SEO (Site App)
+
+The Site App has `sitemap.ts` and `robots.ts` but no locale story. With multi-language support:
+
+- Use **locale-prefixed routes**: `/en/about`, `/zh/about`, `/km/about` (next-intl `defineRouting` supports custom pathnames per locale too, e.g. `/zh/about` / `/km/about-about`)
+- Emit **`hreflang` alternates** for every page so search engines index each language version
+- Include each locale in `sitemap.ts`
+- Set **`<html lang={locale}>`** on every layout — required for screen readers, browser translation prompts and SEO
+- Keep one canonical URL per page (`alternates.canonical`)
+
+---
+
+## Bot Language Unification
+
+The backend already has `bot_language` on the bot model, exposed in Settings → Business. It controls chatbot reply language independently of the UI locale.
+
+Recommendation: treat it as a **default for the AI chatbot only**, and when the user has a UI language set, prefer the UI locale for chatbot replies unless the outlet has explicitly overridden it. This avoids the current odd state where the screen is in Khmer but the chatbot answers in English.
 
 ---
 
@@ -151,124 +194,120 @@ If a key is missing, it falls back to English.
 
 | App | Priority Order | Storage |
 |-----|---------------|---------|
-| **Frontend POS** | User setting > Outlet setting > Default (en) | Database |
-| **Customer Order App** | User selection > Outlet setting > Default (en) | localStorage |
-| **Site App** | User preference > Default (en) | localStorage |
+| **Frontend POS** | User setting > Outlet setting > Default (`en`) | Database |
+| **Customer Order App** | User selection > Outlet setting > Default (`en`) | localStorage |
+| **Site App** | User preference > `Accept-Language` > Default (`en`) | Cookie |
 
 ---
 
-## Frontend POS - Implementation Details
+## Per-Phase Implementation Plan
 
-### Language Setting Locations
+### Phase 1 — Frontend POS (Vite + React 18)
 
-| Level | Location | Who Changes It |
-|-------|----------|----------------|
-| **User Personal** | Staff Management → Add/Edit Staff modal | Admin |
-| **Outlet Default** | Settings → Business Tab | Admin/Owner |
-
-### Files Created
+**Infrastructure**
 
 ```
 frontend/src/i18n/
-frontend/src/i18n/index.js
-frontend/src/i18n/LanguageContext.jsx
-frontend/src/i18n/useTranslation.js
-frontend/src/i18n/locales/en.json (~330 keys)
-frontend/src/i18n/locales/zh.json
-frontend/src/i18n/locales/ms.json
-frontend/src/i18n/locales/kh.json
+├── index.js                    # i18next init, namespaces, fallback
+├── I18nProvider.jsx            # wraps app, syncs DB user language
+├── useTranslation.js           # thin wrapper over react-i18next
+├── LocaleSync.jsx              # DB → i18next language sync
+└── locales/
+    ├── en/*.json
+    ├── zh/*.json
+    └── km/*.json
+
+frontend/src/i18n/i18next.d.ts   # CustomTypeOptions — typed keys
 ```
 
-### Files Modified
+**Backend**
 
-```
-frontend/src/App.jsx
-frontend/src/pages/Dashboard.jsx
-frontend/src/pages/Login.jsx
-frontend/src/pages/Kitchen.jsx
-frontend/src/pages/MenuManagement.jsx
-frontend/src/pages/OrderQueue.jsx
-frontend/src/pages/OrderHistory.jsx
-frontend/src/pages/Tables.jsx
-frontend/src/pages/Reports.jsx
-frontend/src/pages/Promotions.jsx
-frontend/src/pages/Loyalty.jsx
-frontend/src/pages/Vouchers.jsx
-frontend/src/pages/OutletManagement.jsx
-frontend/src/pages/StaffOrder.jsx
-frontend/src/pages/StaffManagement.jsx
-frontend/src/pages/Settings.jsx
-backend/app/models/models.py
-backend/app/routes/users.py
-backend/app/routes/outlet_settings.py
-```
+| Component | Change |
+|-----------|--------|
+| `backend/app/models/models.py` | `users.language` (String(10), default `'en'`) |
+| `backend/app/models/models.py` | `outlet_settings.language` (String(10), default `'en'`) |
+| `backend/app/routes/users.py` | `PATCH /api/users/{id}/language` |
+| `backend/app/routes/outlet_settings.py` | `language` in settings payload |
+| Migration | `ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT 'en';` / same for `outlet_settings` |
 
-### API Endpoints
+**Pages** — Dashboard, Login, Kitchen, MenuManagement, OrderQueue, OrderHistory, Tables, Reports, Promotions, Loyalty, Vouchers, OutletManagement, StaffOrder, StaffManagement, Settings (all form labels), Sidebar (desktop + mobile), Logout button, plus Inventory and AI Tools pages added since the original plan.
 
-#### PATCH /api/users/{id}/language
-```json
-// Request: { "language": "en|zh|ms|kh" }
-// Response: { "success": true, "language": "zh" }
-```
+**Language setting locations**
 
-### Database Changes (pos_ai.db)
+| Level | Location | Who Changes It |
+|-------|----------|----------------|
+| **User personal** | Staff Management → Add/Edit Staff modal | Admin |
+| **Outlet default** | Settings → Business Tab | Admin / Owner |
 
-```sql
-ALTER TABLE users ADD COLUMN language VARCHAR(10) DEFAULT 'en';
-ALTER TABLE outlet_settings ADD COLUMN language VARCHAR(10) DEFAULT 'en';
-```
+**Currency/date work** (new) — replace hardcoded price/date formatting in Reports, OrderHistory, Dashboard and POS receipts with `Intl.NumberFormat` / `Intl.DateTimeFormat` driven by outlet settings.
+
+### Phase 2 — Customer Order App (Vanilla JS)
+
+| File | Change |
+|------|--------|
+| `customer-app/js/i18n.js` | i18next core init, lazy-loaded locale JSON |
+| `customer-app/js/app.js` | `data-i18n` attributes on static strings; `t()` for dynamic ones |
+| `customer-app/js/components/…` | Language selector component |
+| `customer-app/manifest.json` | Locale-aware PWA caching of translation files |
+
+**Menu item names** — restaurant-specific content (dish names, descriptions) should live in the **database** with a translation column/table, not in the translation JSON files, so staff can add their own translations through the Menu Management UI.
+
+### Phase 3 — Site App (Next.js 16)
+
+| File | Change |
+|------|--------|
+| `site/src/i18n/routing.ts` | `defineRouting` — locales `en`, `zh`, `km`; locale-prefixed paths |
+| `site/src/i18n/request.ts` | `getRequestConfig` — negotiation + cookie |
+| `site/src/i18n/navigation.ts` | locale-aware `Link` / `redirect` |
+| `site/src/middleware.ts` (or `proxy.ts`) | locale detection & redirect |
+| `site/src/app/[locale]/layout.tsx` | `<html lang>`, `NextIntlClientProvider`, font loading |
+| `site/src/app/[locale]/**` | move existing routes under the locale segment |
+| `site/src/app/sitemap.ts` | per-locale entries + hreflang alternates |
+| `site/src/app/layout.tsx` | root layout → `generateStaticParams` per locale |
+
+### Phase 4 (optional) — Admin App
+
+Not in scope for this document. When added, it should follow the same Phase 1 pattern (i18next + react-i18next, DB-backed per-user and per-outlet settings) and reuse the same `locales/` files so translations are not duplicated.
 
 ---
 
-## Customer Order App (Phase 2) - NOT STARTED
+## Effort Estimate (revised October 28, 2026)
 
-| File | Changes |
-|------|---------|
-| `customer-app/src/i18n/locales/*.json` | Translation files |
-| `customer-app/src/i18n/LanguageContext.jsx` | Language context |
-| `customer-app/src/i18n/useTranslation.js` | Translation hook |
-| `customer-app/src/components/LanguageSelector.jsx` | Language dropdown |
-| `customer-app/src/App.jsx` | Apply LanguageProvider |
+The original 43-hour estimate assumed a hand-rolled system with 4 languages and did not cover the Admin app, currency/date formatting, font stacks, SEO, or CI checks.
 
----
+| Phase | Scope | Status | Hours |
+|-------|-------|--------|-------|
+| **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | Not started | 8 |
+| | Backend models, routes, migration | Not started | 4 |
+| | Frontend POS integration (18 pages + sidebar + settings) | Not started | 20 |
+| | Currency/date formatting via `Intl` + outlet settings | Not started | 6 |
+| | Font stacks (Noto Sans Khmer, CJK) | Not started | 2 |
+| **Phase 1 Total** | | | **~40 hours** |
+| **Phase 2** | Customer Order App (vanilla JS) | Not started | 12–16 |
+| **Phase 3** | Site App (routing, RSC, hreflang, sitemap) | Not started | 14–18 |
+| **Phase 4** | Admin App (optional, out of scope) | Not started | 8–10 |
+| **Grand Total** | | | **~74–84 hours** |
 
-## Site App (Phase 3) - NOT STARTED
-
-| File | Changes |
-|------|---------|
-| `site/src/i18n/locales/*.json` | Translation files |
-| `site/src/i18n/LanguageContext.tsx` | Language context |
-| `site/src/i18n/useTranslation.ts` | Translation hook |
-| `site/src/components/LanguageSelector.tsx` | Language dropdown |
-| `site/src/app/layout.tsx` | Wrap with LanguageProvider |
-
----
-
-## Effort Estimate
-
-| Phase | Task | Status | Hours |
-|-------|------|--------|-------|
-| **Phase 1** | Translation files (en, zh, ms, kh) | ✅ Done | 4 |
-| | Language context & hooks | ✅ Done | 2 |
-| | Backend API changes | ✅ Done | 3 |
-| | Frontend POS integration | ✅ Done | 22 |
-| **Phase 1 Total** | | ✅ **COMPLETE** | **~31 hours** |
-| **Phase 2** | Customer Order App | ⏳ Not Started | 6 |
-| **Phase 3** | Site App | ⏳ Not Started | 6 |
-| **Grand Total** | | | **~43 hours** |
+> The higher number is deliberate: it buys compile-time key safety, correct plural/number/date behaviour, proper SSR locale handling and SEO, instead of a context provider that silently falls back to English.
 
 ---
 
 ## Testing Checklist
 
-- [ ] Language switcher changes all UI labels
+- [ ] Language switcher changes all UI labels in every locale
+- [ ] Missing key falls back to English **and** the fallback is visible in dev mode
+- [ ] TypeScript/ESLint key-parity check passes in CI (no missing or unused keys)
 - [ ] User language preference persists after logout/login
-- [ ] Outlet language setting is default for new users
-- [ ] Menu items display in selected language (future)
-- [ ] Customer app language persists (Phase 2)
-- [x] Fallback to English when translation key missing
-- [x] All pages updated with t() function
-- [x] Core infrastructure works
+- [ ] Outlet language setting applies as the default for new users
+- [ ] Prices render with the outlet's currency and decimal places in **all** languages
+- [ ] Dates render in the outlet's timezone in all languages
+- [ ] Khmer and Chinese render correctly (Noto Sans Khmer / CJK font loaded, no tofu boxes)
+- [ ] `<html lang>` matches the active locale on the Site App
+- [ ] `hreflang` + sitemap contain every locale for every page
+- [ ] No hydration warning when the locale is set by cookie
+- [ ] Customer app language persists across reloads (PWA offline)
+- [ ] Menu item names display in the selected language (DB-driven)
+- [ ] Chatbot replies follow the UI language unless overridden in outlet settings
 
 ---
 
@@ -276,14 +315,29 @@ ALTER TABLE outlet_settings ADD COLUMN language VARCHAR(10) DEFAULT 'en';
 
 ### Adding a New Language
 
-1. Create new `xx.json` in `locales/` folder
-2. Copy structure from `en.json`
-3. Translate all keys
-4. Add language to LanguageSelector dropdown
-5. Update `LanguageContext.jsx` LANGUAGES array
+1. Create a new locale folder under `locales/` (one JSON file per namespace)
+2. Translate the keys — no need to copy `en` (fallback is automatic per key)
+3. Add the locale to the `supportedLngs` / `locales` array in the i18n config
+4. Add the route segment (Site App) and the selector entry
+5. Add the font stack entry if the script needs one
+6. Add `generateStaticParams` entry (Site App) so the new locale is pre-rendered
 
-### RTL Support
+### RTL Support (only if Arabic / Hebrew / Persian / Urdu is added)
 
-Khmer may need RTL support in the future:
-- Add `dir="rtl"` attribute to `<html>`
-- CSS should handle mirrored layouts
+- Add `dir="rtl"` handling driven by the locale (not hardcoded)
+- Ensure all spacing uses CSS logical properties (`ms-`/`me-`/`ps-`/`pe-`) — this is why Phase 1 uses logical properties from the start
+- Mirror icon-only directional controls
+- Khmer and Chinese need **no** RTL work — they are LTR
+
+### Translation Management Platform (optional)
+
+If restaurant staff or external translators will contribute, a TMS becomes worthwhile:
+
+- **Tolgee** (open-source, self-hostable, in-context editing)
+- **Lokalise / Phrase / Crowdin** (hosted, professional workflow)
+
+These can also feed the CI key-parity check directly instead of a manual one.
+
+### Machine Translation
+
+For the initial 3-locale rollout, machine translation with human review is acceptable for long-form content (menu descriptions, help text). Short UI labels should be hand-translated — bad translations on buttons are highly visible.
