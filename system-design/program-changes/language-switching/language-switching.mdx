@@ -76,7 +76,27 @@ An earlier implementation of Phase 1 was completed on October 13, 2026 and later
 | Login page, sidebar, top bar, mobile nav | ✅ localized |
 | `scripts/check-i18n-parity.mjs` (wired to `prebuild`) | ✅ live |
 
-**Phase 1 completed 28 October 2026.** Every page of the POS Frontend is now on the i18next layer — 33 namespaces, 1,755 keys per locale (5,265 strings), 99 locale files, 41 source files rendering through `t()`.
+**Phase 1 completed 28 October 2026.** Every page of the POS Frontend is now on the i18next layer — 33 namespaces, 1,773 keys per locale (5,319 strings), 99 locale files, 41 source files rendering through `t()`.
+
+**Hardening pass — 29 October 2026 (same phase, post-completion).** Phase 1 was signed off on the
+28th, but the day after it was stress-tested in the running app and several real defects were found
+and fixed. All of them are Phase 1 scope (the UI must show the right language and the right data):
+
+| Area | Problem found | Fix |
+|---|---|---|
+| AI Tools → Competitor Discover | The restaurant insight was always English | The model now writes the analysis in the outlet's language directly; the translation service is kept as a safety net |
+| AI Tools → Competitor Analysis | The AI pricing insights were always English | Same — the pricing prompt carries a language rule, and only translates if the model answers in English anyway |
+| AI Tools → Competitor Analysis | A literal `{{total}}` was rendered | The code passed `{ count }` while the key used `{{total}}`; both are passed now, with proper plural forms |
+| AI Tools → Competitor Discover | The AI analysis never actually ran | MiniMax-M3 is a reasoning model, so the reply began with a `<think>` block and `json.loads()` always failed — every result silently fell back to generic text |
+| AI Tools → Competitor Discover | The insight took over a minute | Thinking disabled for structured output, analysis and website lookup run in parallel, and the result is cached in `ai_insight_cache` |
+| AI Chatbot | "Opening hours" and "Location" returned invented data | Both handlers returned hard-coded placeholder text; they now read the outlet settings and say so honestly when a value is not set |
+| Settings → Restaurant | The hours form showed 09:00–22:00 for every unset day | The `|| '09:00'` fallback rendered a default as if it were a stored value; unset days are now empty with a placeholder, plus an "apply to all days" button |
+| Settings → Restaurant | A day with no hours set was saved as empty strings | Unset days are dropped on save, so "not set" stays distinguishable from "closed" |
+
+The translation service itself was also hardened: a 30 s read timeout was too short for the model
+(`generate_text` now takes a timeout), a 4,096-token ceiling left the model with an **empty** response
+because its reasoning consumed the budget (raised to 16,000), and two outlets asking for the same
+sentence at the same time could collide on the cache's unique index (now a savepoint + update).
 
 | Namespace group | Namespaces |
 |---|---|
@@ -694,13 +714,13 @@ The original 43-hour estimate assumed a hand-rolled system with 4 languages and 
 
 | Phase | Scope | Status | Hours |
 |-------|-------|--------|-------|
-| **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | **Complete (Oct 28)** — 33 ns, 1,755 keys/locale | 8 |
+| **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | **Complete (Oct 28)** — 33 ns, 1,773 keys/locale | 8 |
 | | Backend models, routes, migration | **Complete (Oct 28)** — `users.language`, `outlet_settings.language`, `PATCH /api/users/{id}/language` | 4 |
 | | Frontend POS integration (all 23 routes + sidebar + settings) | **Complete (Oct 28)** — 69 route renders verified in 3 locales | 20 |
 | | Currency/date formatting via `Intl` + outlet settings | **Complete (Oct 28)** — `src/utils/format.js` | 6 |
 | | Font stacks (Noto Sans Khmer, CJK) | **Complete (Oct 28)** — self-hosted Khmer subset + system CJK stack | 2 |
 | **Phase 1 Total** | | | **~40 hours** |
-| **Phase 2** | Customer Order App (vanilla JS) | Not started | 12–16 |
+| **Phase 2** | Customer Order App (vanilla JS) | **Not started — the recommended next phase** | 12–16 |
 | **Phase 3** | Site App (routing, RSC, hreflang, sitemap) | ✅ Done (Oct 28) | 14–18 |
 | **Phase 4** | Admin App (optional, out of scope) | Not started | 8–10 |
 | **Grand Total** | | | **~74–84 hours** |
@@ -922,6 +942,33 @@ English AI layer bolted on:
 - The AI Tools → AI Insight narrative summary
 
 ### How it works
+
+> **Update — 29 October 2026.** The AI Tools were added to this list: the competitor
+> discovery insight and the AI pricing insights are now localized as well. Two new
+> `kind` values (`competitor_insight`, `competitor_pricing`) reuse the same service.
+>
+> For the AI Tools the model is asked to **write the answer in the outlet's language
+> directly**, instead of writing English and translating afterwards. That is one AI
+> call instead of two, and it produced a noticeable speed-up. The translation service
+> is kept as a safety net: if the answer still comes back in English (detected by
+> checking for characters of the target script), it is translated after all.
+>
+> A second table, `ai_insight_cache`, caches the finished answer itself against a
+> hash of the data it was derived from, so re-opening a screen or re-analysing the
+> same restaurant is instant instead of another model round trip:
+>
+> | Column | Purpose |
+> |--------|---------|
+> | `kind` | `competitor_analysis` \| `competitor_pricing` |
+> | `source_hash` | sha256 of the data the answer was derived from (plus a prompt version, so a prompt change invalidates the old answers) |
+> | `locale` | `en` \| `zh` \| `km` |
+> | `result` | the json answer |
+>
+> One more finding worth recording: **MiniMax-M3 is a reasoning model**, and for
+> structured output it spent ~2,600 characters of `<think>` reasoning before every
+> answer. Sending `"thinking": {"type": "disabled"}` with the request cut the call
+> from 8.8 s to 3.5 s, with identical output. The translation service uses the same
+> switch (2.3 s → 1.0 s).
 
 The same approach the **Site App** already uses for plan and feature copy
 (`website_api/app/services/translation.py`): the text is machine-translated by
