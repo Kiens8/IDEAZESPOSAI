@@ -56,7 +56,7 @@ The earlier draft stated that "Khmer may need RTL support". That was incorrect.
 
 ## Implementation Status
 
-### 🟡 Phase 1: Frontend POS — **FOUNDATION COMPLETE** ✅ (started October 28, 2026)
+### ✅ Phase 1: Frontend POS — **COMPLETE** ✅ (28 October 2026)
 
 An earlier implementation of Phase 1 was completed on October 13, 2026 and later **reverted** when the application program was rolled back. Phase 1 has now been rebuilt from scratch against the current codebase.
 
@@ -76,7 +76,17 @@ An earlier implementation of Phase 1 was completed on October 13, 2026 and later
 | Login page, sidebar, top bar, mobile nav | ✅ localized |
 | `scripts/check-i18n-parity.mjs` (wired to `prebuild`) | ✅ live |
 
-**What is still open (the page bodies):** the remaining pages — Dashboard, Menu, Orders, Kitchen, Tables, Reports, Inventory, AI tools, Promotions, Loyalty, Vouchers, Chatbot, Staff Order, Outlets — are still hard-coded English. They are migrated namespace by namespace in the next step; every namespace is added to `en`, `zh` and `km` together and the parity check fails the build if one of them drifts.
+**Phase 1 completed 28 October 2026.** Every page of the POS Frontend is now on the i18next layer — 33 namespaces, 1,755 keys per locale (5,265 strings), 99 locale files, 41 source files rendering through `t()`.
+
+| Namespace group | Namespaces |
+|---|---|
+| Shell | `common`, `layout`, `login`, `notifications` |
+| Counter | `dashboard`, `orders`, `orderHistory`, `kitchen`, `tables`, `menu`, `staffOrder`, `staff` |
+| Management | `settings`, `outlets`, `chatbot`, `promotions`, `loyalty`, `vouchers`, `reports` |
+| Inventory | `inventory`, `ingredients`, `recipes`, `stockMovements`, `stockTransfers`, `suppliers`, `purchaseOrders`, `inventoryReports` |
+| AI | `ai`, `aiInsights`, `aiMenuAnalytics`, `aiCompetitors`, `aiCampaigns`, `aiComponents` |
+
+Verified in a real browser: **23 routes × 3 locales = 69 renders, zero untranslated keys, zero JS errors.**
 
 **Treat this document as a design and implementation plan, not a status report.**
 
@@ -684,7 +694,7 @@ The original 43-hour estimate assumed a hand-rolled system with 4 languages and 
 
 | Phase | Scope | Status | Hours |
 |-------|-------|--------|-------|
-| **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | Foundation done (Oct 28) | 8 |
+| **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | **Complete (Oct 28)** — 33 ns, 1,755 keys/locale | 8 |
 | | Backend models, routes, migration | Not started | 4 |
 | | Frontend POS integration (18 pages + sidebar + settings) | Not started | 20 |
 | | Currency/date formatting via `Intl` + outlet settings | Not started | 6 |
@@ -762,3 +772,19 @@ translation is persisted, a human can correct it later directly in the
 database, and an admin-side translation editor can be added without changing
 the delivery mechanism. See the "Auto-translated database content" section for
 the full design, and "Phase 3 — Complete Change Inventory" for the file list.
+
+## Phase 1 — implementation notes and traps (28 October 2026)
+
+**Two traps that cost real debugging time — both are now documented in the code:**
+
+1. **react-i18next v17 returns a wrapper, not the instance.** `useTranslation()` returns an object whose own property descriptors are copied from the instance. Calling `changeLanguage()` on it mutates only the wrapper's private copy of `language` — the shared instance never sees the change, no component re-renders, and the UI silently stays in the old language. Always drive language changes through the imported instance (`import i18n from './i18n'`). Symptom: `document.documentElement.lang` says the new locale while the text is still the old one.
+
+2. **`parseMissingKeyHandler` swallows `defaultValue`.** i18next calls it as `(key, defaultValue, options)` and **replaces** the resolved value with its return. A handler of `(key) => key` therefore discards any `defaultValue` the caller supplied — which is exactly how unknown API enum values (a status or payment method the server has never sent) are kept from rendering a raw key path. The handler is now `(key, defaultValue) => defaultValue ?? key`.
+
+**Build-time guards in place:**
+
+- `scripts/check-i18n-parity.mjs` → wired to `prebuild`, so `npm run build` fails on locale drift, empty values or ICU placeholder mismatch
+- `i18next.d.ts` → typed keys, activates automatically when the app moves to TypeScript
+- Vite `import.meta.glob` discovers namespaces from the filenames — no registry to forget
+
+**Verified:** 23 routes × 3 locales = 69 browser renders, zero untranslated keys, zero console errors. The admin account was left on `en`.
