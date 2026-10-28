@@ -832,3 +832,21 @@ A concrete trap: `Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'MYR
 - `frontend/scripts/test-format.mjs` — **30 assertions** covering grouping, decimals, every date pattern, month-name localization, timezone shifts and the core rule (currency and date pattern identical in all three languages). Wired into `npm run verify`.
 - Browser: the Khmer font file loads, `document.fonts.check()` passes, and a canvas width comparison confirms the face is genuinely applied (107.0px vs 160.0px for the fallback) rather than merely declared.
 - Functional regression re-run after the change: **23/23 routes clean, zero uncaught exceptions, every tab still renders a distinct panel.**
+
+---
+
+## Bug fix — AI purchase-order predictions vanished (28 October 2026)
+
+**Symptom:** on the Purchase Orders page the AI panel showed *Loading AI predictions…* and then disappeared, leaving no trace.
+
+**Two separate causes, one visible symptom:**
+
+1. **Backend logic flaw (`backend/app/services/inventory_prediction_engine.py`).** `predict_stockout_date()` checked consumption history *before* checking whether stock had already fallen to or below the minimum level. An ingredient with no stock movements in the last 7 days returned `status: "unknown"` and `days_until_stockout: None`, and `get_urgent_ordering_list()` filtered those out. The result: an outlet with sparse movement history showed **zero** AI warnings while sitting on **11 ingredients already at or below their minimum stock level** (Rice 8.8/20 kg, Milk 0.8/5 L, Tomato 2/4 kg, Salmon 1.5/3 kg …).
+
+   The minimum-stock check now runs first: an ingredient at or below its minimum level is `critical` regardless of consumption history, and `critical` items are always included in the urgent list. The endpoint now returns **11 items, $182.86 estimated cost** (previously 0).
+
+2. **Frontend feedback (`frontend/src/components/AIInventoryAlerts.jsx`).** When there were no alerts the component did `return null`, so a spinner was replaced by nothing — which reads as a broken feature rather than a completed check. It now renders a calm, muted *Stock levels checked — all stock levels are healthy* strip instead of vanishing.
+
+**Lesson worth keeping:** an empty result is only reassuring if you can tell it apart from a failure. Both halves of this bug were "silence" — one from a filter that was too strict, one from a `return null`.
+
+Verified in the browser: the alert banner shows *11 items need ordering* with a working *View AI Suggestions* modal (11 rows), and the empty state renders correctly in English, Chinese and Khmer. Regression re-run: 23/23 routes clean, zero page errors.
