@@ -697,8 +697,8 @@ The original 43-hour estimate assumed a hand-rolled system with 4 languages and 
 | **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | **Complete (Oct 28)** — 33 ns, 1,755 keys/locale | 8 |
 | | Backend models, routes, migration | **Complete (Oct 28)** — `users.language`, `outlet_settings.language`, `PATCH /api/users/{id}/language` | 4 |
 | | Frontend POS integration (all 23 routes + sidebar + settings) | **Complete (Oct 28)** — 69 route renders verified in 3 locales | 20 |
-| | Currency/date formatting via `Intl` + outlet settings | Not started | 6 |
-| | Font stacks (Noto Sans Khmer, CJK) | Not started | 2 |
+| | Currency/date formatting via `Intl` + outlet settings | **Complete (Oct 28)** — `src/utils/format.js` | 6 |
+| | Font stacks (Noto Sans Khmer, CJK) | **Complete (Oct 28)** — self-hosted Khmer subset + system CJK stack | 2 |
 | **Phase 1 Total** | | | **~40 hours** |
 | **Phase 2** | Customer Order App (vanilla JS) | Not started | 12–16 |
 | **Phase 3** | Site App (routing, RSC, hreflang, sitemap) | ✅ Done (Oct 28) | 14–18 |
@@ -788,3 +788,47 @@ the full design, and "Phase 3 — Complete Change Inventory" for the file list.
 - Vite `import.meta.glob` discovers namespaces from the filenames — no registry to forget
 
 **Verified:** 23 routes × 3 locales = 69 browser renders, zero untranslated keys, zero console errors. The admin account was left on `en`.
+
+---
+
+## Phase 1 (cont.) — business formatting and fonts (28 October 2026)
+
+The last two Phase 1 items, completed after the page migration.
+
+### Business formatting — `src/utils/format.js`
+
+**The rule the module exists to enforce:** the *UI language* and the *business locale* are two different things and never move together. Switching the interface to Chinese or Khmer must not reformat prices, change the currency symbol, or shift the timezone.
+
+A concrete trap: `Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'MYR' }).format(1234.5)` returns `"MYR 1,234.50"` while `en-MY` returns `"RM 1,234.50"`. Using the UI locale with `style: 'currency'` therefore silently swaps the symbol the moment a staff member switches language. The module instead formats the **number** with the outlet's business locale and prints the outlet's own `currency_symbol`.
+
+| Concern | Source | Affected by UI language? |
+|---|---|---|
+| Currency symbol | `outlet_settings.currency_symbol` | **No** |
+| Decimal places | `outlet_settings.decimal_places` | **No** |
+| Digit grouping / separators | business locale, derived from `currency_code` / `country` | **No** |
+| Date pattern (`DD/MM/YYYY`, `MM/DD/YYYY`, `YYYY-MM-DD`) | `outlet_settings.date_format` | **No** — the identifier is a business setting and is never translated |
+| Timezone | `outlet_settings.timezone` | **No** |
+| Month names, AM/PM marker | UI language | **Yes** — these are words |
+
+`formatCurrency` / `formatDate` / `formatDateTime` / `formatTime` / `formatNumber` live in one module; `src/hooks/useSettings.js` re-exports them so existing call sites keep working.
+
+**Pre-existing bugs found and fixed while consolidating:**
+- `OrderQueue.jsx` passed a *currency symbol string* where the formatter expected a settings object, so receipts fell back to `$` instead of the outlet's symbol.
+- `OrderHistory`, `MenuManagement`, `OrderHistory` order totals and the reports KPI/table components hardcoded `$` — a Malaysian outlet would have shown dollars on every report.
+- `MenuManagement`, `Reports` and `Dashboard` each defined a **local** `formatCurrency`/`fmtCurrency` that shadowed the shared one, so the outlet's decimal places and grouping were ignored.
+- The inventory pages formatted money with `toFixed(2)` instead of the outlet's `decimal_places`.
+- All of it is now one code path: prices, receipts, the ESC/POS printer stream, CSV exports, dashboards, reports and the AI widgets.
+
+**Deliberately left alone:** CSV cells stay bare numbers (`1234.50`, no symbol, no thousands separator) — one CSV builder does not escape commas, so a grouped value would break the column layout. A spreadsheet should receive a number, not a price.
+
+### Fonts
+
+- **Noto Sans Khmer** is self-hosted in three subsets (`khmer`, `latin-ext`, `latin`) with `unicode-range` on each and `font-display: swap`. A device downloads the ~59 KB Khmer subset only once Khmer characters actually appear — the Latin subsets stay unloaded.
+- **Chinese** uses the system CJK stack (PingFang SC → Hiragino Sans GB → Microsoft YaHei → Noto Sans SC → Noto Sans CJK SC). A self-hosted SC font is several megabytes and is not worth the bandwidth.
+- The stack is Latin → Khmer → CJK → system, so Latin text stays on the OS UI font while Khmer and Chinese pick up a proper face.
+
+### Verification
+
+- `frontend/scripts/test-format.mjs` — **30 assertions** covering grouping, decimals, every date pattern, month-name localization, timezone shifts and the core rule (currency and date pattern identical in all three languages). Wired into `npm run verify`.
+- Browser: the Khmer font file loads, `document.fonts.check()` passes, and a canvas width comparison confirms the face is genuinely applied (107.0px vs 160.0px for the fallback) rather than merely declared.
+- Functional regression re-run after the change: **23/23 routes clean, zero uncaught exceptions, every tab still renders a distinct panel.**
