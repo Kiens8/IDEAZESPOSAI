@@ -884,3 +884,25 @@ Verified in the browser: the alert banner shows *11 items need ordering* with a 
 - Full functional regression: 23/23 routes clean, 55 mutations attempted and blocked, zero uncaught exceptions; every tab on all 7 tabbed pages renders a distinct panel.
 
 **One trap worth recording:** the first attempt used `t('header:menu')` inside `App()`, which had no `t` in scope. Plain JavaScript gives no compile-time error for this — the build passed and the app rendered a blank screen with `t is not defined` in the console. The header audit caught it immediately, but it would have been invisible in a build log.
+
+---
+
+## Audit — which AI Tools content comes from MiniMax and which is computed (28 October 2026)
+
+| AI Tools tab | Endpoint | Figures & structure | Narrative |
+|---|---|---|---|
+| AI Insight | `POST /api/ai/insights` | program (SQL) | **MiniMax M3** |
+| Menu Analytics | `GET /api/ai/menu-analytics` | program only | – |
+| AI Campaigns | `GET /api/ai/campaigns` | program only (rule templates) | – |
+| Competitor Discovery | `POST /api/competitors/analyze-discovered` | scrape | **MiniMax** |
+| Competitor Analysis | `POST /api/competitors/analyze` | scrape | **MiniMax** |
+| Competitor AI Insight | `GET /api/competitors/ai-insights/{outlet_id}` | comparisons from the DB | **MiniMax** |
+| Chatbot | `app/ai/chatbot.py` | – | **MiniMax** |
+
+The AI Insight tab is therefore **hybrid**: every number it shows is computed by the program, and only the written summary comes from the model. MiniMax M3 is called through `https://api.minimax.io/v1/chat/completions` with a 30-second timeout; the response's `<think>` reasoning tags are stripped before display.
+
+**Two risks worth closing later:**
+1. Every LLM call site swallows its errors. If MiniMax is unreachable, over quota, or the key is invalid, the AI Insight tab silently shows the program-generated template sentence ("During this period, you had N orders totaling $X") which reads like an insight but is not one. The fix is a `summary_source` field (`llm` / `fallback`) returned by the API and shown as a badge in the UI — the same rule that came out of the AI prediction bug: silence must never be ambiguous.
+2. Two MiniMax endpoints are in use — `/v1/chat/completions` in `app/ai/minimax.py` and `app/routes/ai/__init__.py`, and the legacy `/v1/text/chatcompletion_v2` in `app/routes/competitors.py`, which also repeats the API key inline. Both still work, but they should be consolidated onto one endpoint with the key in the environment only.
+
+**Hardening applied:** `app/ai/minimax.py` `generate_text()` now strips `<think>` reasoning tags centrally, so no caller can leak raw model reasoning into the UI.
