@@ -906,3 +906,83 @@ The AI Insight tab is therefore **hybrid**: every number it shows is computed by
 2. Two MiniMax endpoints are in use — `/v1/chat/completions` in `app/ai/minimax.py` and `app/routes/ai/__init__.py`, and the legacy `/v1/text/chatcompletion_v2` in `app/routes/competitors.py`, which also repeats the API key inline. Both still work, but they should be consolidated onto one endpoint with the key in the environment only.
 
 **Hardening applied:** `app/ai/minimax.py` `generate_text()` now strips `<think>` reasoning tags centrally, so no caller can leak raw model reasoning into the UI.
+
+---
+
+## Phase 4 — Translating AI-generated content (28 October 2026)
+
+The language switch previously covered only **hand-written UI copy**. Everything the
+backend *generates* stayed in English, so the dashboard read as a Chinese app with an
+English AI layer bolted on:
+
+- Order Insights sentences ("Quiet day with 1 orders.")
+- AI Security Alert titles and messages ("Order outside operating hours")
+- Demand Forecast recommendations ("📦 Stock up on popular ingredients…")
+- The weather description ("light rain") and the holiday name ("King's Coronation Day")
+- The AI Tools → AI Insight narrative summary
+
+### How it works
+
+The same approach the **Site App** already uses for plan and feature copy
+(`website_api/app/services/translation.py`): the text is machine-translated by
+**MiniMax**, cached, and falls back to the English source if the provider is
+unavailable.
+
+**Translatable text travels as a template plus values.** The dynamic values never
+reach the model as prose - they are referenced by `{{placeholder}}` tokens that the
+prompt pins down:
+
+```
+"High cancel rate by {{user_name}}"  +  {"user_name": "Ahmad"}
+```
+
+The model only ever sees the sentence, so staff names, menu item names, prices,
+times and counts come back byte-identical. The translated template is cached in
+`ai_content_translations` and the values are substituted back in per alert.
+
+| Column | Purpose |
+|--------|---------|
+| `kind` | `alert` \| `insight` \| `forecast` |
+| `source_hash` | sha256 of the English template |
+| `locale` | `zh` \| `km` |
+| `source_text` / `translated_text` | the template and its translation |
+| `provider` | `MiniMax-M3` |
+
+Because the hash is of the *template*, one sentence is translated once and reused for
+every alert of that type in every outlet, and editing the template automatically
+invalidates the stale translation.
+
+### Safety rules
+
+1. **Placeholder validation** - a translation is rejected and the English source used
+   if any `{{placeholder}}` was dropped, renamed or reordered.
+2. **Deduplication before the call** - 22 alerts usually share a handful of
+   templates, so only the unique templates are sent to the model.
+3. **English is always a valid answer** - if MiniMax is unreachable, over quota, or
+   the key is invalid, the English source is returned and `translation_source` is
+   reported as `fallback`, so the UI can tell a real translation from the fallback.
+4. **Batch, one call** - the whole request is translated in a single provider call.
+
+### Endpoints
+
+| Endpoint | Parameter | Behaviour |
+|----------|-----------|-----------|
+| `GET /api/ai/orders/insights` | `lang=en\|zh\|km` | translates `ai_insight` |
+| `GET /api/ai/security/alerts` | `lang=en\|zh\|km` | translates every alert `title` and `message` |
+| `GET /api/ai/forecast/daily` | `lang=en\|zh\|km` | translates the recommendations, the weather description and the holiday name |
+| `POST /api/ai/insights` | `language` in the body | MiniMax writes the summary **in that language**; the response now carries `summary_source` (`llm` or `fallback`) |
+
+The POS authenticates with an API key, so the backend cannot tell which staff member
+is browsing - the language is always passed explicitly by the client.
+
+### Frontend
+
+- The AI components re-fetch when `i18n.language` changes, so the content follows the
+  switch immediately without a page reload.
+- A request-sequence guard drops superseded responses, so a slow response from the
+  previous language can no longer overwrite the new one.
+- `src/utils/dateLocale.js` formats dates per locale. Khmer is handled explicitly
+  because it is not present in every Chromium ICU build and silently falls back to
+  English; Khmer month and weekday names are written out directly.
+- The forecast confidence level ("low" / "medium" / "high") is localised through
+  `forecast.confidence_<level>`.
