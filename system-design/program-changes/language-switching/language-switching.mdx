@@ -56,20 +56,27 @@ The earlier draft stated that "Khmer may need RTL support". That was incorrect.
 
 ## Implementation Status
 
-### ⚠️ Phase 1: Frontend POS — **NOT IMPLEMENTED (previous implementation reverted)**
+### 🟡 Phase 1: Frontend POS — **FOUNDATION COMPLETE** ✅ (started October 28, 2026)
 
-An earlier implementation of Phase 1 was completed on October 13, 2026 (LanguageContext, translation hook, ~330 keys × 4 languages, backend `language` columns, 17 pages wired). **That implementation was reverted when the application program was rolled back to its previous state.**
+An earlier implementation of Phase 1 was completed on October 13, 2026 and later **reverted** when the application program was rolled back. Phase 1 has now been rebuilt from scratch against the current codebase.
 
-Verified state of the current codebase (October 28, 2026):
+**What is live today (the foundation — everything a user can see and use):**
 
-| Item | Expected (old doc) | Actual now |
-|------|--------------------|-----------|
-| `frontend/src/i18n/` directory | present | **absent** |
-| `LanguageContext.jsx` / `useTranslation.js` | present | **absent** |
-| `users.language` column in `pos_ai.db` | present | **absent** |
-| `outlet_settings.language` column in `pos_ai.db` | present | **absent** |
-| `PATCH /api/users/{id}/language` route | present | **absent** |
-| `LanguageProvider` in `frontend/src/App.jsx` | present | **absent** |
+| Piece | State |
+|---|---|
+| `frontend/src/i18n/` (bootstrap, provider, hook, locales) | ✅ new |
+| `users.language` column in `pos_ai.db` | ✅ added (`ALTER TABLE`, 39 tables intact) |
+| `outlet_settings.language` column in `pos_ai.db` | ✅ added |
+| `PATCH /api/users/{id}/language` route | ✅ added, rejects unsupported codes with 400 |
+| `language` in the login response | ✅ added |
+| `language` on `GET/PUT /api/settings/{outlet_id}` | ✅ added |
+| Language switcher in the POS top bar | ✅ live |
+| Per-staff language (Staff → add/edit staff) | ✅ live |
+| Per-outlet default language (Settings → Business) | ✅ live |
+| Login page, sidebar, top bar, mobile nav | ✅ localized |
+| `scripts/check-i18n-parity.mjs` (wired to `prebuild`) | ✅ live |
+
+**What is still open (the page bodies):** the remaining pages — Dashboard, Menu, Orders, Kitchen, Tables, Reports, Inventory, AI tools, Promotions, Loyalty, Vouchers, Chatbot, Staff Order, Outlets — are still hard-coded English. They are migrated namespace by namespace in the next step; every namespace is added to `en`, `zh` and `km` together and the parity check fails the build if one of them drifts.
 
 **Treat this document as a design and implementation plan, not a status report.**
 
@@ -594,23 +601,31 @@ Recommendation: treat it as a **default for the AI chatbot only**, and when the 
 
 ## Per-Phase Implementation Plan
 
-### Phase 1 — Frontend POS (Vite + React 18)
+### Phase 1 — Frontend POS (Vite 5 + React 18.2 + i18next 26)
 
-**Infrastructure**
+**Stack** — `i18next@26.5.11` + `react-i18next@17.1.9` (current latest), `i18next-parser@9` for extraction.
+
+**Infrastructure (as built)**
 
 ```
 frontend/src/i18n/
-├── index.js                    # i18next init, namespaces, fallback
-├── I18nProvider.jsx            # wraps app, syncs DB user language
+├── index.js                    # i18next init, locale list, normalization
+├── LanguageProvider.jsx        # context + language switching + backend sync
 ├── useTranslation.js           # thin wrapper over react-i18next
-├── LocaleSync.jsx              # DB → i18next language sync
+├── i18next.d.ts                # CustomTypeOptions — typed keys (see note)
 └── locales/
-    ├── en/*.json
-    ├── zh/*.json
-    └── km/*.json
+    ├── en/{common,layout,login}.json
+    ├── zh/{common,layout,login}.json
+    └── km/{common,layout,login}.json
 
-frontend/src/i18n/i18next.d.ts   # CustomTypeOptions — typed keys
+frontend/scripts/check-i18n-parity.mjs   # CI guard, wired to `prebuild`
 ```
+
+**Namespace discovery** — the namespaces are derived from the JSON filenames with Vite's `import.meta.glob('./locales/<locale>/*.json', { eager: true })`, one literal per locale (Vite cannot resolve a template literal at build time). Adding a namespace therefore needs **no registry edit** — this is the class of bug that caused `MISSING_MESSAGE` in the Site App.
+
+**Key-safety strategy** — the POS Frontend is plain JavaScript, so `CustomTypeOptions` gives no compile-time protection yet. The working guard is the parity check: it compares the flattened key set of every locale against `en`, rejects empty values, and rejects ICU placeholder drift. `i18next.d.ts` is in place so the protection switches on automatically when the app moves to TypeScript.
+
+> ⚠️ **react-i18next v17 landmine** — `useTranslation()` returns a *wrapper* object, not the instance. Calling `changeLanguage()` on that wrapper mutates only the wrapper's private copy of `language`; the shared instance never sees the change and the UI silently stays in the old language. Always drive language changes through the imported instance (`import i18n from './i18n'`). This is documented in `LanguageProvider.jsx`.
 
 **Backend**
 
@@ -669,7 +684,7 @@ The original 43-hour estimate assumed a hand-rolled system with 4 languages and 
 
 | Phase | Scope | Status | Hours |
 |-------|-------|--------|-------|
-| **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | Not started | 8 |
+| **Phase 1** | i18next setup, typed resources, namespaces, 3 locales | Foundation done (Oct 28) | 8 |
 | | Backend models, routes, migration | Not started | 4 |
 | | Frontend POS integration (18 pages + sidebar + settings) | Not started | 20 |
 | | Currency/date formatting via `Intl` + outlet settings | Not started | 6 |
