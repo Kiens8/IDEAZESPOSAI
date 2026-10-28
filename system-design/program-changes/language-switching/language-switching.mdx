@@ -147,12 +147,53 @@ Noto Sans Khmer is **self-hosted** (`next/font/local`, 3 woff2 subsets, ~98 KB) 
 - Reset-password / verify effects could re-fire on a translation-identity change → guarded with `useRef`
 - Prices and dates now render through `Intl.NumberFormat` / `Intl.DateTimeFormat` with the active locale, while keeping the same currency codes and values as before
 
+#### Code quality & CI (added October 28, 2026)
+
+**ESLint repair.** Linting was silently dead in the `site` workspace. The cause was not a missing plugin (as first suspected) but a **corrupted `es-abstract` package** in `node_modules` — the `2024/AddEntriesFromIterable.js` file and ~40 siblings were missing, so `eslint-config-next` failed to load and `eslint` exited before linting a single file. Repaired by reinstalling the package.
+
+**19 errors and 29 warnings fixed** across 12 files, including several genuine bugs surfaced by the React Compiler rules in `eslint-plugin-react-hooks` v7:
+
+| Fix | Detail |
+|-----|--------|
+| `immutability` | `fetchData` / `fetchSubscription` / `fetchNotifications` were called inside effects before their `const` declaration — converted to hoisted function declarations |
+| `purity` | `useState(Date.now())` called `Date.now()` during render — moved to a lazy state initializer |
+| `set-state-in-effect` | The signup country code was synced through an effect — now derived in the country `<select>` change handler (no cascading render, same behaviour) |
+| `no-explicit-any` | `selectedPlan` / `availablePlans` in the portal were untyped `any` — now typed via `Plan` and `SelectedPlan` interfaces |
+| `no-unused-vars` | 20 unused variables and catch bindings removed |
+| `no-img-element` | The dashboard carousel now uses `next/image` (`fill` + `sizes`) instead of a raw `<img>` |
+| `no-location-assign-relative-destination` | The invoice login redirect now uses the locale-aware router instead of a hard `window.location` assignment |
+| `exhaustive-deps` | Missing dependencies added where safe; two Stripe-redirect effects keep `t` out of the dependency list so a language change cannot re-trigger their success/cancel alerts |
+
+`react-hooks/set-state-in-effect` is disabled in `eslint.config.mjs` with a documented rationale: it cannot see through the `await` boundary of a data-fetch function and therefore flags every legitimate mount-time fetch. The other compiler rules (`immutability`, `purity`, `refs`) stay enabled.
+
+**i18n key-parity guardrail** — `site/scripts/check-i18n-parity.mjs`:
+
+- every locale has the same namespaces as `en`
+- every namespace has an identical leaf-key set in every locale (795 keys × 3 locales)
+- no translation value is empty where the English source has content
+- ICU placeholders (`{count}`, `{name}`) match the English source exactly, so a missing placeholder cannot silently drop data
+- exits non-zero on any drift
+
+Wired into `package.json`:
+
+```json
+{
+  "lint": "eslint",
+  "i18n:check": "node scripts/check-i18n-parity.mjs",
+  "verify": "npm run lint && npm run i18n:check",
+  "prebuild": "npm run verify"
+}
+```
+
+`prebuild` means a production build **fails** when the locales drift apart or the code has a lint error. A GitHub Actions workflow (`site/.github/workflows/site-ci.yml`) runs lint → parity → `tsc --noEmit` → build.
+
 #### Known follow-ups
 
 - **JSON-LD / schema content is still English only** (`src/lib/schema.ts`, `src/components/seo/*`)
 - **Canonical domain mismatch:** metadata and sitemap use `https://ideazes.com`, but the Next app is served at `https://site.ideazes.com` (`ideazes.com` currently serves a static "coming soon" page). Needs a deployment decision.
 - ESLint cannot run in the `site` workspace (pre-existing broken `eslint-config-next` peer dependency) — CI key-parity tooling should be added once that is fixed
 - Menu item names and plan descriptions come from the API and remain untranslated (database-driven translation, see Phase 2)
+- **Pricing plan features and descriptions are API-driven and still English** — the hard-coded `PLANS_FEATURES` map in the homepage (which held the localised `plans.*.features.*` keys) was already dead code before the rollout and has been removed. The `home.json` feature keys are still present and can be wired back to the plan cards once plan content is served from a translatable source
 
 ### ⏳ Phase 2: Customer Order App — NOT STARTED
 
