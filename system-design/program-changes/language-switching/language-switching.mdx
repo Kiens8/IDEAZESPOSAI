@@ -187,12 +187,91 @@ Wired into `package.json`:
 
 `prebuild` means a production build **fails** when the locales drift apart or the code has a lint error. A GitHub Actions workflow (`site/.github/workflows/site-ci.yml`) runs lint → parity → `tsc --noEmit` → build.
 
+#### Auto-translated database content (added October 28, 2026)
+
+The admin app stays English and stays the single source of truth for database
+content. The site app auto-translates that content into the visitor's language
+when they switch.
+
+```
+Admin app (English)          website_api                     Site app
+─────────────────────   ─────────────────────────   ─────────────────────
+PUT /api/admin/plans/3  →  save → background job   →  GET /api/plans/published
+  description = "…"            translate → zh, km         ?locale=zh
+  feature_tags = "…"                 │                       │
+                                     ▼                       ▼
+                             content_translations      renders zh/km copy
+                             (cached + hashed)         (English fallback)
+```
+
+**Storage** — one generic table, so the same machinery later serves the
+feature catalogue, menu items, categories and modifiers:
+
+```sql
+content_translations(
+  content_type TEXT,      -- plan | feature | menu_item
+  content_id   INTEGER,
+  field        TEXT,      -- tagline | bullets | description
+  locale       TEXT,      -- zh | km
+  source_hash  TEXT,      -- hash of the English source
+  source_text  TEXT,
+  translated_text TEXT,
+  provider     TEXT,
+  status       TEXT,      -- done | failed
+  created_at / updated_at
+)
+```
+
+The `source_hash` is the key: editing a plan in the admin app changes the hash,
+the cached translation is invalidated automatically and re-translated in the
+background. No manual re-translate step, no forgotten translations.
+
+**Two triggers**
+1. *Write time* — `POST/PUT /api/admin/plans/...` schedules a background
+   translation, so the content is already translated before anyone switches.
+2. *Read time* — `GET /api/plans/published?locale=xx` translates anything
+   missing or stale on the spot and caches it.
+
+**Provider** — MiniMax (`MiniMax-M2.7`, Anthropic-compatible
+`https://api.minimax.io/anthropic/v1/messages`), configured in
+`website_api/.env` as `MINIMAX_API_KEY`. A prompt pins down brand names,
+plan names, product acronyms, numbers, currency and placeholders so they are
+never translated; the result is validated (empty or identical-to-source
+output is rejected and falls back to English).
+
+**Never translated** — plan names and slugs, prices, currency codes, outlet
+and staff limits, feature keys, API values, HTML structure.
+
+**Site-side** — the pricing card renders, in order of precedence:
+1. the API's localized copy (admin-owned),
+2. the curated static copy in `home.json` (fallback if the API is down),
+3. the raw English source.
+
+Limits are rendered from the API numbers with localized labels and proper ICU
+plurals (`1 outlet` / `3 staff members` / `1 个门店` / `1 សាខា`).
+
+**Pre-warming** — `website_api/scripts/prewarm_translations.py` fills the
+cache for every plan, so a first-time visitor never waits on the model
+(Khmer is the slow one, ~10s per plan when cold).
+
+**Limitations**
+- Machine translation is good, not perfect. Khmer quality is noticeably weaker
+  than Chinese (e.g. "Online Ordering" was rendered as "voice ordering" in one
+  pass). Because every translation is stored in `content_translations`, the
+  copy can be hand-corrected later from the database, and an admin-side
+  translation editor can be added later.
+- `subscription_plans.description` and `feature_tags` are denormalized copies
+  of what the `features` / `plan_features` tables already model, and they had
+  drifted (a stray "Staff Managementaaa" typo, missing bullets). They are now
+  translated as-is; the source-of-truth cleanup is a separate task.
+- The Admin App itself is still English-only and stays out of scope.
+
 #### Known follow-ups
 
 - **JSON-LD / schema content is still English only** (`src/lib/schema.ts`, `src/components/seo/*`)
 - **Canonical domain mismatch:** metadata and sitemap use `https://ideazes.com`, but the Next app is served at `https://site.ideazes.com` (`ideazes.com` currently serves a static "coming soon" page). Needs a deployment decision.
 - ESLint cannot run in the `site` workspace (pre-existing broken `eslint-config-next` peer dependency) — CI key-parity tooling should be added once that is fixed
-- Menu item names and plan descriptions come from the API and remain untranslated (database-driven translation, see Phase 2)
+- Menu item names still come from the API and remain untranslated — the auto-translation service is ready for them (`content_type='menu_item'`), see Phase 2
 - **Pricing plan features and descriptions are API-driven and still English** — the hard-coded `PLANS_FEATURES` map in the homepage (which held the localised `plans.*.features.*` keys) was already dead code before the rollout and has been removed. The `home.json` feature keys are still present and can be wired back to the plan cards once plan content is served from a translatable source
 
 ### ⏳ Phase 2: Customer Order App — NOT STARTED
