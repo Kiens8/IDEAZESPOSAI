@@ -6,7 +6,7 @@ description: Multi-language support for Site Apps, Frontend POS, and Customer Or
 # Language Switching System
 
 **Date:** October 13, 2026  
-**Last Updated:** October 28, 2026 (design review — status corrected, stack updated to 2026 standards)
+**Last Updated:** October 28, 2026 (design review — status corrected, stack updated to 2026 standards; Phase 3 Site App implemented and live)
 
 ---
 
@@ -75,9 +75,86 @@ Verified state of the current codebase (October 28, 2026):
 
 > Note: `bot_language` on the bot model (and its dropdown in Settings → Business) **does** still exist in the backend. That field controls the AI chatbot's reply language and is independent of the UI locale — see [Bot Language Unification](#bot-language-unification).
 
-### ⏳ Phase 2: Customer Order App — NOT STARTED
+### ✅ Phase 3: Site App — **COMPLETE** ✅ (implemented October 28, 2026)
 
-### ⏳ Phase 3: Site App — NOT STARTED
+**Stack:** `next-intl` 4.14.9 on Next.js 16.3.5 (App Router, Turbopack).
+
+#### Routes
+
+All Site App routes now live under a `[locale]` segment with **explicit locale prefixes**:
+
+| Route | Locales |
+|-------|---------|
+| `/en`, `/zh`, `/km` | Homepage |
+| `/[locale]/about`, `/contact`, `/signup`, `/login` | Public pages |
+| `/[locale]/forgot-password`, `/reset-password`, `/verify` | Auth flows |
+| `/[locale]/privacy-policy`, `/terms-of-service`, `/security` | Legal |
+| `/[locale]/portal`, `/[locale]/portal/billing` | Customer portal |
+| `/[locale]/invoice/[id]` | Invoice viewer |
+
+Unprefixed URLs (`/about`) **307-redirect** to `/en/about`, so existing links keep working.
+
+> Implementation note: `localePrefix: 'as-needed'` was tried first to keep English URLs unprefixed, but it produced a **self-redirect loop** on the default locale (307 → same URL). `localePrefix: 'always'` is the configuration now in use.
+
+#### Files
+
+```
+site/src/i18n/
+├── routing.ts          # locales, defaultLocale, localePrefix
+├── navigation.ts       # locale-aware Link / redirect / useRouter / usePathname
+├── request.ts          # getRequestConfig - loads messages per locale
+└── messages/
+    ├── en/ common.json home.json pages.json auth.json portal.json legal.json components.json meta.json
+    ├── zh/ (same 8 files)
+    └── km/ (same 8 files)
+
+site/src/proxy.ts                       # Next.js 16 proxy (was middleware.ts)
+site/src/app/[locale]/layout.tsx        # root layout: <html lang>, fonts, provider, metadata
+site/src/components/LanguageSelector.tsx
+site/src/app/fonts/NotoSansKhmer-*.woff2
+```
+
+#### Key counts (verified identical across en/zh/km)
+
+| Namespace | Keys | Scope |
+|-----------|------|-------|
+| `common` | 48 | Nav, footer, shared labels |
+| `home` | 136 | Hero, features, pricing, AI, FAQ, CTA, footer |
+| `pages` | 77 | About, Contact, Invoice |
+| `auth` | 114 | Login, Signup, Forgot/Reset password, Verify |
+| `portal` | 188 | Portal dashboard, billing, notifications |
+| `legal` | 199 | Privacy, Terms, Security |
+| `components` | 30 | Dashboard carousel |
+| `meta` | 3 | Title, brand, description |
+| **Total** | **795 per locale** (2,385 strings) | |
+
+#### Fonts
+
+Noto Sans Khmer is **self-hosted** (`next/font/local`, 3 woff2 subsets, ~98 KB) and added to the global font stack. Chinese renders through the system CJK stack (PingFang SC / Microsoft YaHei / Noto Sans CJK SC) — a full self-hosted SC font is several MB and is not worth the bandwidth.
+
+#### SEO
+
+- `<html lang="{locale}">` and `<html dir="ltr">` on every page
+- Per-locale `canonical`, `hreflang` alternates (`en`, `zh`, `km`, `x-default`) in metadata
+- `sitemap.xml` now lists every page × 3 locales with `xhtml:link` alternates
+
+#### Behaviour changes and bugs fixed during the rollout
+
+- `window.location.href = '/portal/billing'` → locale-aware router push (hard reload was dropping non-English users back to English)
+- Invoice page login redirect was hardcoded to `/login` → now locale-aware
+- Invoice `returnUrl` was double-prefixing the locale (`/zh/zh/invoice/123`) → locale segment stripped before push
+- Signup linked to non-existent `/terms` and `/privacy` → corrected to `/terms-of-service` and `/privacy-policy`
+- Reset-password / verify effects could re-fire on a translation-identity change → guarded with `useRef`
+- Prices and dates now render through `Intl.NumberFormat` / `Intl.DateTimeFormat` with the active locale, while keeping the same currency codes and values as before
+
+#### Known follow-ups
+
+- **JSON-LD / schema content is still English only** (`src/lib/schema.ts`, `src/components/seo/*`)
+- **Canonical domain mismatch:** metadata and sitemap use `https://ideazes.com`, but the Next app is served at `https://site.ideazes.com` (`ideazes.com` currently serves a static "coming soon" page). Needs a deployment decision.
+- ESLint cannot run in the `site` workspace (pre-existing broken `eslint-config-next` peer dependency) — CI key-parity tooling should be added once that is fixed
+- Menu item names and plan descriptions come from the API and remain untranslated (database-driven translation, see Phase 2)
+
+### ⏳ Phase 2: Customer Order App — NOT STARTED
 
 ---
 
@@ -284,7 +361,7 @@ The original 43-hour estimate assumed a hand-rolled system with 4 languages and 
 | | Font stacks (Noto Sans Khmer, CJK) | Not started | 2 |
 | **Phase 1 Total** | | | **~40 hours** |
 | **Phase 2** | Customer Order App (vanilla JS) | Not started | 12–16 |
-| **Phase 3** | Site App (routing, RSC, hreflang, sitemap) | Not started | 14–18 |
+| **Phase 3** | Site App (routing, RSC, hreflang, sitemap) | ✅ Done (Oct 28) | 14–18 |
 | **Phase 4** | Admin App (optional, out of scope) | Not started | 8–10 |
 | **Grand Total** | | | **~74–84 hours** |
 
