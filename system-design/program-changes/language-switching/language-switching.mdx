@@ -291,6 +291,23 @@ that is translated but not registered fails the build instead of throwing
 `MISSING_MESSAGE` at runtime (this exact bug appeared when the `schema`
 namespace was first added).
 
+#### Mobile UI fixes caused by the added language button (October 28, 2026)
+
+Adding the language selector widened the portal header, which pushed the
+notification bell and the sign-out button off the screen on small viewports.
+Found by a Playwright sweep of every route at 375 px and 640 px.
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Clicking the bell showed only part of the notification list | The panel was `absolute right-0 w-80` anchored to the bell. On a 375 px screen the bell sat far enough right that the 320 px panel started at **x = -108** — a third of it was off-screen | The panel is now `fixed` and centred on small screens (`left-1/2 -translate-x-1/2 w-[min(20rem,calc(100vw-1.5rem))]`), and reverts to `absolute right-0` anchored to the bell from `sm` up |
+| The whole page scrolled sideways | The portal header (logo + bell + language selector + sign-out) was wider than a 375 px viewport | Tighter gaps on mobile (`gap-2 sm:gap-4`), smaller logo tile, and the sign-out button collapses to a 34 px icon button below `sm` |
+| The signup phone field overflowed the page | The `flex-1` input could not shrink below its intrinsic width | Added `min-w-0` to the phone input |
+
+Verification: every route (`/en`, `/about`, `/contact`, `/login`, `/signup`,
+`/portal`, `/portal/billing`, `/privacy-policy` in en/zh/km) now reports
+`scrollWidth === innerWidth` at both 375 px and 640 px, and the notification
+panel is fully inside the viewport in all three languages.
+
 #### Known follow-ups
 
 - ~~**JSON-LD / schema content is still English only**~~ — fixed, see "Localized structured data" above
@@ -362,10 +379,11 @@ pass, and the auto-translation work. Nothing else in POS_AI was modified.
 | `site/src/app/[locale]/privacy-policy/page.tsx` | Localized (210 → 199 legal strings per locale) |
 | `site/src/app/[locale]/terms-of-service/page.tsx` | Localized |
 | `site/src/app/[locale]/security/page.tsx` | Localized |
-| `site/src/app/[locale]/portal/page.tsx` | Localized; `Plan` / `SelectedPlan` types added in place of `any`; `fetchSubscription` hoisted; Stripe-redirect effects keep `t` out of their dependency list |
+| `site/src/app/[locale]/portal/page.tsx` | Localized; `Plan` / `SelectedPlan` types added in place of `any`; `fetchSubscription` hoisted; Stripe-redirect effects keep `t` out of their dependency list; header made mobile-safe (tighter gaps, icon-only sign-out) |
 | `site/src/app/[locale]/portal/billing/page.tsx` | Localized; hard `window.location.href` navigation replaced with a locale-aware router push |
 | `site/src/components/DashboardCarousel.tsx` | Localized; raw `<img>` replaced with `next/image` (`fill` + `sizes`) |
-| `site/src/components/Notifications.tsx` | `fetchNotifications` hoisted into a `useCallback`, polling effect given the right dependencies |
+| `site/src/components/Notifications.tsx` | `fetchNotifications` hoisted into a `useCallback`, polling effect given the right dependencies; the dropdown panel was made viewport-safe on small screens |
+| `site/src/app/[locale]/signup/page.tsx` | Phone input given `min-w-0` so it can shrink on mobile |
 
 #### 5. Site app — translation message files (27 files, 804 keys per locale)
 
