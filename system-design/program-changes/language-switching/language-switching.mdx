@@ -367,7 +367,7 @@ pass, and the auto-translation work. Nothing else in POS_AI was modified.
 | `site/src/components/DashboardCarousel.tsx` | Localized; raw `<img>` replaced with `next/image` (`fill` + `sizes`) |
 | `site/src/components/Notifications.tsx` | `fetchNotifications` hoisted into a `useCallback`, polling effect given the right dependencies |
 
-#### 5. Site app — translation message files (24 files, 797 keys per locale)
+#### 5. Site app — translation message files (24 files, 804 keys per locale)
 
 ```
 site/src/i18n/messages/
@@ -433,7 +433,7 @@ site/src/i18n/messages/
 
 - `npx tsc --noEmit` — clean
 - `npx eslint` — 0 errors, 0 warnings
-- `node scripts/check-i18n-parity.mjs` — 797 keys × 3 locales, identical key sets, no empty values, ICU placeholder parity
+- `node scripts/check-i18n-parity.mjs` — 804 keys × 3 locales, identical key sets, no empty values, ICU placeholder parity
 - `npm run build` — 46 routes prerendered for `en`, `zh`, `km`
 - Runtime: all 11 route groups × 3 locales return 200 with the correct `<html lang>`; no `MISSING_MESSAGE` / ICU errors
 - Noto Sans Khmer loads (all 3 subsets, 200) and `document.fonts.check` returns true; 14 images per locale, 0 broken
@@ -720,7 +720,7 @@ For the initial 3-locale rollout, machine translation with human review is accep
 
 | Content type | Treatment | Where |
 |---|---|---|
-| **UI strings** (buttons, labels, marketing copy written into the components) | Hand-translated, 797 keys per locale, parity enforced by `scripts/check-i18n-parity.mjs` | `site/src/i18n/messages/{en,zh,km}/` |
+| **UI strings** (buttons, labels, marketing copy written into the components) | Hand-translated, 804 keys per locale, parity enforced by `scripts/check-i18n-parity.mjs` | `site/src/i18n/messages/{en,zh,km}/` |
 | **Database content** (plan names, prices, plan descriptions, feature lists, and later menu items) | Machine-translated on the fly by MiniMax, cached in `content_translations`, invalidated automatically when the admin app changes the English source | `website_api/app/services/translation.py` |
 
 The split keeps the visible, high-traffic UI copy human-quality while letting
