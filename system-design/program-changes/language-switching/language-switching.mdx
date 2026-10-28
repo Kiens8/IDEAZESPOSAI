@@ -274,6 +274,157 @@ cache for every plan, so a first-time visitor never waits on the model
 - Menu item names still come from the API and remain untranslated — the auto-translation service is ready for them (`content_type='menu_item'`), see Phase 2
 - **Pricing plan features and descriptions are API-driven and still English** — the hard-coded `PLANS_FEATURES` map in the homepage (which held the localised `plans.*.features.*` keys) was already dead code before the rollout and has been removed. The `home.json` feature keys are still present and can be wired back to the plan cards once plan content is served from a translatable source
 
+
+### 📋 Phase 3 — Complete Change Inventory
+
+Every file touched during Phase 3 (site app localization), the code-quality
+pass, and the auto-translation work. Nothing else in POS_AI was modified.
+
+#### 1. Dependencies
+
+| Workspace | Package | Version | Why |
+|---|---|---|---|
+| `site` | `next-intl` | 4.14.9 | Locale routing, message loading, `Link`/`useRouter` wrappers, `getRequestConfig` |
+| `website_api` | *(none added)* | — | The translation service uses `httpx`, which was already installed |
+
+#### 2. Site app — files created
+
+| File | Purpose |
+|---|---|
+| `site/src/i18n/routing.ts` | Locale list `['en','zh','km']`, `defaultLocale: 'en'`, `localePrefix: 'always'` |
+| `site/src/i18n/navigation.ts` | Locale-aware `Link`, `redirect`, `useRouter`, `usePathname`, `getPathname` |
+| `site/src/i18n/request.ts` | `getRequestConfig` — loads the 8 namespaces for the active locale |
+| `site/src/proxy.ts` | Next.js 16 proxy (replaces `src/middleware.ts`) running next-intl's middleware |
+| `site/src/components/LanguageSelector.tsx` | Locale dropdown; switches the route and persists the choice in the `NEXT_LOCALE` cookie |
+| `site/src/app/fonts/NotoSansKhmer-khmer.woff2` | Khmer glyphs (self-hosted, ~98 KB for all 3 subsets) |
+| `site/src/app/fonts/NotoSansKhmer-latin-ext.woff2` | Latin-ext subset for the Khmer page |
+| `site/src/app/fonts/NotoSansKhmer-latin.woff2` | Latin subset for the Khmer page |
+| `site/scripts/check-i18n-parity.mjs` | i18n key-parity guardrail (namespaces, key sets, empty values, ICU placeholders) |
+| `site/.github/workflows/site-ci.yml` | CI: lint → parity → `tsc --noEmit` → build |
+| `website_api/app/services/translation.py` | MiniMax-backed content translation service with a DB cache |
+| `website_api/app/services/__init__.py` | Package marker for `app.services` |
+| `website_api/scripts/prewarm_translations.py` | Fills the translation cache for every plan (no visitor waits on the model) |
+
+#### 3. Site app — files moved / restructured
+
+| From | To | Note |
+|---|---|---|
+| `site/src/app/layout.tsx` | `site/src/app/[locale]/layout.tsx` | Root layout now sets `<html lang dir>`, the `NextIntlClientProvider`, locale-aware metadata + hreflang, and `generateStaticParams` |
+| `site/src/middleware.ts` | `site/src/proxy.ts` | Next.js 16 renamed middleware → proxy |
+| `site/src/app/page.tsx` | `site/src/app/[locale]/page.tsx` | Homepage |
+| `site/src/app/{about,contact,forgot-password,invoice,login,portal,privacy-policy,reset-password,security,signup,terms-of-service,verify}/page.tsx` | `site/src/app/[locale]/<route>/page.tsx` | 12 route folders moved under the locale segment |
+
+#### 4. Site app — files modified
+
+| File | Change |
+|---|---|
+| `site/package.json` | `next-intl` dependency; scripts `lint`, `i18n:check`, `verify`, `prebuild` |
+| `site/package-lock.json` | Lockfile for the above |
+| `site/next.config.ts` | Wrapped with `createNextIntlPlugin('./src/i18n/request.ts')` |
+| `site/eslint.config.mjs` | `react-hooks/set-state-in-effect` disabled with a documented rationale; all other rules enforced |
+| `site/src/app/globals.css` | Font stacks extended with Noto Sans Khmer and the CJK system fonts |
+| `site/src/app/sitemap.ts` | Rewritten: every page × 3 locales with `xhtml:link` alternates |
+| `site/src/app/[locale]/layout.tsx` | Locale-aware metadata, canonical + hreflang (`en`, `zh`, `km`, `x-default`), `NextIntlClientProvider` |
+| `site/src/app/[locale]/page.tsx` | Homepage localization; pricing card now renders the API's auto-translated copy with curated-copy and English fallbacks; `useCallback` for the plan fetch so it refetches on locale change |
+| `site/src/app/[locale]/about/page.tsx` | Localized; `<LanguageSelector />` added |
+| `site/src/app/[locale]/contact/page.tsx` | Localized; `<LanguageSelector />` added; `useState(() => Date.now())` (purity fix) |
+| `site/src/app/[locale]/login/page.tsx` | Localized; locale-aware redirect to `/portal`; `returnUrl` locale stripping |
+| `site/src/app/[locale]/signup/page.tsx` | Localized; country code now derived in the `<select>` change handler instead of an effect; dead legal links fixed |
+| `site/src/app/[locale]/forgot-password/page.tsx` | Localized; unused response variable removed |
+| `site/src/app/[locale]/reset-password/page.tsx` | Localized; `useRef` guard so a translation-identity change cannot re-fire the reset effect |
+| `site/src/app/[locale]/verify/page.tsx` | Localized; `useRef` + `useCallback` guards so a token is verified exactly once |
+| `site/src/app/[locale]/invoice/[id]/page.tsx` | Localized; locale-aware login redirect via the router; `returnUrl` locale stripping and external-URL rejection |
+| `site/src/app/[locale]/privacy-policy/page.tsx` | Localized (210 → 199 legal strings per locale) |
+| `site/src/app/[locale]/terms-of-service/page.tsx` | Localized |
+| `site/src/app/[locale]/security/page.tsx` | Localized |
+| `site/src/app/[locale]/portal/page.tsx` | Localized; `Plan` / `SelectedPlan` types added in place of `any`; `fetchSubscription` hoisted; Stripe-redirect effects keep `t` out of their dependency list |
+| `site/src/app/[locale]/portal/billing/page.tsx` | Localized; hard `window.location.href` navigation replaced with a locale-aware router push |
+| `site/src/components/DashboardCarousel.tsx` | Localized; raw `<img>` replaced with `next/image` (`fill` + `sizes`) |
+| `site/src/components/Notifications.tsx` | `fetchNotifications` hoisted into a `useCallback`, polling effect given the right dependencies |
+
+#### 5. Site app — translation message files (24 files, 797 keys per locale)
+
+```
+site/src/i18n/messages/
+├── en/  common.json  home.json  pages.json  auth.json  portal.json  legal.json  components.json  meta.json
+├── zh/  (same 8 files)
+└── km/  (same 8 files)
+```
+
+| Namespace | Keys | Scope |
+|---|---|---|
+| `common` | 48 | Nav, footer, shared labels |
+| `home` | 136 | Hero, features, pricing, AI, FAQ, CTA, footer |
+| `pages` | 77 | About, Contact, Invoice |
+| `auth` | 114 | Login, Signup, Forgot/Reset password, Verify |
+| `portal` | 188 | Portal dashboard, billing, notifications |
+| `legal` | 199 | Privacy, Terms, Security |
+| `components` | 30 | Dashboard carousel |
+| `meta` | 3 | Title, brand, description |
+| **Total** | **797 per locale — 2,391 strings across en/zh/km** | |
+
+#### 6. website_api — files modified
+
+| File | Change |
+|---|---|
+| `website_api/app/models/models.py` | New `ContentTranslation` model + `content_translations` table |
+| `website_api/app/core/config.py` | `TRANSLATION_ENABLED`, `TRANSLATION_LOCALES`, `TRANSLATION_MODEL`, `MINIMAX_BASE_URL`, `MINIMAX_API_KEY`, `TRANSLATION_TIMEOUT`, `TRANSLATION_MAX_TOKENS` |
+| `website_api/.env` | `MINIMAX_API_KEY` and the translation settings |
+| `website_api/app/routes/plans.py` | New public `GET /api/plans/published?locale=`; `/api/plans/compare` moved above `/{plan_slug}` (it was shadowed and returned 404) |
+| `website_api/app/routes/admin.py` | `POST/PUT /api/admin/plans/...` schedule a background translation via `BackgroundTasks` |
+| `website_api/website_api.db` | New `content_translations` table (created by `init_db()` on startup) |
+
+#### 7. API surface added / changed
+
+| Endpoint | Change |
+|---|---|
+| `GET /api/plans/published?locale=zh|km` | **New.** Published plans with auto-translated `tagline` and `bullets`; `is_translated` flag; prices, limits, plan names untouched |
+| `GET /api/plans/compare` | **Fixed** — was shadowed by `/{plan_slug}` and always returned 404 |
+| `POST /api/admin/plans` | Background translation scheduled |
+| `PUT /api/admin/plans/{id}` | Background translation scheduled; the cache is keyed by a hash of the English source, so an edit invalidates the previous translation |
+| `GET /api/admin/plans/published` | Left in place for compatibility; the site no longer calls it |
+
+#### 8. Behaviour changes and bugs fixed
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | `localePrefix: 'as-needed'` produced a **307 self-redirect loop** on English URLs | Switched to `localePrefix: 'always'`; old URLs now 307 to `/en/...` |
+| 2 | Billing did `window.location.href = '/portal/billing'` — a hard reload that dropped non-English users back to English | Locale-aware router push |
+| 3 | Invoice login redirect hardcoded `/login` | Locale-aware router redirect |
+| 4 | Invoice `returnUrl` double-prefixed the locale (`/zh/zh/invoice/123`) | Locale segment stripped; external/protocol-relative URLs rejected |
+| 5 | Signup linked to non-existent `/terms` and `/privacy` (both 404) | Corrected to `/terms-of-service` and `/privacy-policy` |
+| 6 | Reset-password / verify effects could re-fire on a translation-identity change | `useRef` + `useCallback` guards |
+| 7 | ESLint was silently dead — a corrupted `es-abstract` package broke `eslint-config-next` | Package reinstalled; lint now runs (was 19 errors / 29 warnings → 0 / 0) |
+| 8 | `fetchData` / `fetchSubscription` / `fetchNotifications` used before declaration | Hoisted function declarations |
+| 9 | `useState(Date.now())` was an impure render-time call | Lazy state initializer |
+| 10 | Signup country code synced through an effect | Derived in the `<select>` change handler |
+| 11 | Portal `selectedPlan` / `availablePlans` were untyped `any` | `Plan` and `SelectedPlan` interfaces |
+| 12 | Dashboard carousel used a raw `<img>` | `next/image` |
+| 13 | `/api/plans/compare` always 404'd | Route order fixed |
+| 14 | Pricing plan copy came from the API in English only, and the source had a `"Staff Managementaaa"` typo | Auto-translation service + admin round-trip; typo fixed in the source data |
+
+#### 9. Verification performed
+
+- `npx tsc --noEmit` — clean
+- `npx eslint` — 0 errors, 0 warnings
+- `node scripts/check-i18n-parity.mjs` — 797 keys × 3 locales, identical key sets, no empty values, ICU placeholder parity
+- `npm run build` — 46 routes prerendered for `en`, `zh`, `km`
+- Runtime: all 11 route groups × 3 locales return 200 with the correct `<html lang>`; no `MISSING_MESSAGE` / ICU errors
+- Noto Sans Khmer loads (all 3 subsets, 200) and `document.fonts.check` returns true; 14 images per locale, 0 broken
+- Language switcher round-trip verified (`/km` → `/en`, `html lang` updates)
+- Public domain verified: `https://site.ideazes.com/en | /zh | /km`
+- Auto-translation verified end to end: admin `PUT /api/admin/plans/1` → background job → source hash changed → zh/km re-translated → all three languages updated on the live site
+- Khmer is the slow locale when cold (~10 s per plan) — solved with the pre-warm script
+
+#### 10. Deployment performed
+
+| Step | Command |
+|---|---|
+| Build | `npm run build` in `site` (runs lint + parity via `prebuild`) |
+| Site app | `pm2 restart site-app --update-env` |
+| Website API | `pm2 restart website-api --update-env` |
+| Pre-warm translations | `python3 scripts/prewarm_translations.py` in `website_api` |
+
 ### ⏳ Phase 2: Customer Order App — NOT STARTED
 
 ---
