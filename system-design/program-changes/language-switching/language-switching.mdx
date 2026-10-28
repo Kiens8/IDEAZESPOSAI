@@ -689,3 +689,17 @@ These can also feed the CI key-parity check directly instead of a manual one.
 ### Machine Translation
 
 For the initial 3-locale rollout, machine translation with human review is acceptable for long-form content (menu descriptions, help text). Short UI labels should be hand-translated — bad translations on buttons are highly visible.
+
+**Implemented as of October 28, 2026.** Two distinct categories of content, handled differently:
+
+| Content type | Treatment | Where |
+|---|---|---|
+| **UI strings** (buttons, labels, marketing copy written into the components) | Hand-translated, 797 keys per locale, parity enforced by `scripts/check-i18n-parity.mjs` | `site/src/i18n/messages/{en,zh,km}/` |
+| **Database content** (plan names, prices, plan descriptions, feature lists, and later menu items) | Machine-translated on the fly by MiniMax, cached in `content_translations`, invalidated automatically when the admin app changes the English source | `website_api/app/services/translation.py` |
+
+The split keeps the visible, high-traffic UI copy human-quality while letting
+the admin app own content without a redeploy. Because every machine
+translation is persisted, a human can correct it later directly in the
+database, and an admin-side translation editor can be added without changing
+the delivery mechanism. See the "Auto-translated database content" section for
+the full design, and "Phase 3 — Complete Change Inventory" for the file list.
