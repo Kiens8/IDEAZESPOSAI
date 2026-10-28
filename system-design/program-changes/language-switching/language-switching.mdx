@@ -126,7 +126,8 @@ site/src/app/fonts/NotoSansKhmer-*.woff2
 | `legal` | 199 | Privacy, Terms, Security |
 | `components` | 30 | Dashboard carousel |
 | `meta` | 3 | Title, brand, description |
-| **Total** | **797 per locale** (2,391 strings) | |
+| `schema` | 7 | JSON-LD / structured data |
+| **Total** | **804 per locale** (2,412 strings) | |
 
 #### Fonts
 
@@ -169,7 +170,7 @@ Noto Sans Khmer is **self-hosted** (`next/font/local`, 3 woff2 subsets, ~98 KB) 
 **i18n key-parity guardrail** — `site/scripts/check-i18n-parity.mjs`:
 
 - every locale has the same namespaces as `en`
-- every namespace has an identical leaf-key set in every locale (797 keys × 3 locales)
+- every namespace has an identical leaf-key set in every locale (804 keys × 3 locales)
 - no translation value is empty where the English source has content
 - ICU placeholders (`{count}`, `{name}`) match the English source exactly, so a missing placeholder cannot silently drop data
 - exits non-zero on any drift
@@ -266,9 +267,33 @@ cache for every plan, so a first-time visitor never waits on the model
   translated as-is; the source-of-truth cleanup is a separate task.
 - The Admin App itself is still English-only and stays out of scope.
 
+#### Localized structured data (JSON-LD) — added October 28, 2026
+
+Structured data is now generated in the visitor's language, so the schema a
+search engine or AI crawler reads matches the page it is crawling.
+
+| Change | Detail |
+|--------|--------|
+| New `schema` namespace | 7 keys per locale (organization, software, website) — 804 keys per locale in total |
+| `src/lib/schema.ts` | Converted from hard-coded English objects into locale-aware builder functions (`buildOrganizationSchema(t)`, `buildSoftwareAppSchema(t)`, `buildWebSiteSchema(t)`) |
+| `src/components/seo/AllSchemas.tsx` | Now a server component using `getTranslations('schema')`; renders Organization, SoftwareApplication and WebSite in the active locale |
+| `src/components/seo/SchemaMarkup.tsx` | **Deleted** — a dead, client-side, English-only duplicate of the same schema. One implementation, one source of truth |
+| `src/app/[locale]/page.tsx` | The FAQ structured data moved onto the homepage and is generated from the **same message keys the FAQ section renders** (`faq.items.*`), so the `FAQPage` schema can never drift from the visible copy |
+| `availableLanguage` | Was `["English", "Malay", "Chinese"]` — Malay was removed from the programme, so it now reads `["English", "中文", "ភាសាខ្មែរ"]` |
+| Scope | The `FAQPage` schema is now emitted **only on the homepage** (where the FAQ is actually visible). It used to be emitted site-wide |
+
+Prices, currency codes, ratings, plan names, URLs, logos and brand names stay
+in English — they are identifiers, not copy.
+
+**Guardrail added:** the key-parity script now also verifies that every
+namespace file on disk is registered in `src/i18n/request.ts`. A namespace
+that is translated but not registered fails the build instead of throwing
+`MISSING_MESSAGE` at runtime (this exact bug appeared when the `schema`
+namespace was first added).
+
 #### Known follow-ups
 
-- **JSON-LD / schema content is still English only** (`src/lib/schema.ts`, `src/components/seo/*`)
+- ~~**JSON-LD / schema content is still English only**~~ — fixed, see "Localized structured data" above
 - **Canonical domain mismatch:** metadata and sitemap use `https://ideazes.com`, but the Next app is served at `https://site.ideazes.com` (`ideazes.com` currently serves a static "coming soon" page). Needs a deployment decision.
 - ESLint cannot run in the `site` workspace (pre-existing broken `eslint-config-next` peer dependency) — CI key-parity tooling should be added once that is fixed
 - Menu item names still come from the API and remain untranslated — the auto-translation service is ready for them (`content_type='menu_item'`), see Phase 2
@@ -361,7 +386,8 @@ site/src/i18n/messages/
 | `legal` | 199 | Privacy, Terms, Security |
 | `components` | 30 | Dashboard carousel |
 | `meta` | 3 | Title, brand, description |
-| **Total** | **797 per locale — 2,391 strings across en/zh/km** | |
+| `schema` | 7 | JSON-LD / structured data |
+| **Total** | **804 per locale — 2,412 strings across en/zh/km** | |
 
 #### 6. website_api — files modified
 
