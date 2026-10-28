@@ -850,3 +850,37 @@ A concrete trap: `Intl.NumberFormat('zh-CN', { style: 'currency', currency: 'MYR
 **Lesson worth keeping:** an empty result is only reassuring if you can tell it apart from a failure. Both halves of this bug were "silence" — one from a filter that was too strict, one from a `return null`.
 
 Verified in the browser: the alert banner shows *11 items need ordering* with a working *View AI Suggestions* modal (11 rows), and the empty state renders correctly in English, Chinese and Khmer. Regression re-run: 23/23 routes clean, zero page errors.
+
+---
+
+## UI fix — the language switcher and notification bell covered the page's own buttons (28 October 2026)
+
+**Symptom (reported by Kens with a screenshot):** on the Purchase Orders page the blue language button sat directly on top of the page's own *订单* button, hiding it. The notification bell was hidden behind the language button.
+
+**Root cause:** both controls lived in a `fixed top-4 right-4 z-50` cluster that floated *over* the page content, while `<main>` reserved no space for it. It was not just the Purchase Orders page:
+
+| Route | Button that was covered |
+|---|---|
+| /orders | 餐桌 (table card action) |
+| /tables | 新增餐桌 (Add table) |
+| /menu | 新增菜品 (Add dish) |
+| /staff | 新增员工 (Add staff) |
+| /settings | 保存设置 (Save settings) |
+| /inventory/orders | 新建订单 (New order) |
+| /inventory/ingredients | 新增食材 (Add ingredient) |
+| /reports | 今天 / 近 7 天 / 近 30 天 / 全部时间 (date-range filters) |
+| /promotions | 新增促销 (Add promotion) |
+| /vouchers | 创建模板 (Create template) |
+
+**10 of 13 audited routes had a primary action button covered.**
+
+**Why the "just add some padding" fix is not enough:** the cluster was pinned to the *viewport*, so even with top padding on `<main>`, page content scrolled underneath it while scrolling. The controls had to stop floating.
+
+**The fix (`frontend/src/App.jsx`):** the language switcher and the notification bell now live in a real app top bar — `sticky top-0 h-16`, white with a bottom border, offset by `lg:ml-64` to align with the content area. It occupies layout space, so nothing can ever end up underneath it, at any scroll position. The mobile hamburger button moved into the bar as well (it was a second floating `fixed top-4 left-4` overlay) and gained a translated `aria-label` (`layout:header.menu`).
+
+**Verified:**
+- Header-overlap audit across 14 routes: **0 overlaps**, and every page's top-right action button is visible below the bar.
+- Language dropdown and notification dropdown open fully inside the viewport on both desktop (1440px) and mobile (390px); the bell dropdown stays viewport-pinned on mobile and bell-anchored on desktop.
+- Full functional regression: 23/23 routes clean, 55 mutations attempted and blocked, zero uncaught exceptions; every tab on all 7 tabbed pages renders a distinct panel.
+
+**One trap worth recording:** the first attempt used `t('header:menu')` inside `App()`, which had no `t` in scope. Plain JavaScript gives no compile-time error for this — the build passed and the app rendered a blank screen with `t is not defined` in the console. The header audit caught it immediately, but it would have been invisible in a build log.
