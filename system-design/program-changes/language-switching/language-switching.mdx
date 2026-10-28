@@ -119,14 +119,14 @@ site/src/app/fonts/NotoSansKhmer-*.woff2
 | Namespace | Keys | Scope |
 |-----------|------|-------|
 | `common` | 48 | Nav, footer, shared labels |
-| `home` | 136 | Hero, features, pricing, AI, FAQ, CTA, footer |
+| `home` | 138 | Hero, features, pricing (incl. localized plan limits), AI, FAQ, CTA, footer |
 | `pages` | 77 | About, Contact, Invoice |
 | `auth` | 114 | Login, Signup, Forgot/Reset password, Verify |
 | `portal` | 188 | Portal dashboard, billing, notifications |
 | `legal` | 199 | Privacy, Terms, Security |
 | `components` | 30 | Dashboard carousel |
 | `meta` | 3 | Title, brand, description |
-| **Total** | **795 per locale** (2,385 strings) | |
+| **Total** | **797 per locale** (2,391 strings) | |
 
 #### Fonts
 
@@ -169,7 +169,7 @@ Noto Sans Khmer is **self-hosted** (`next/font/local`, 3 woff2 subsets, ~98 KB) 
 **i18n key-parity guardrail** — `site/scripts/check-i18n-parity.mjs`:
 
 - every locale has the same namespaces as `en`
-- every namespace has an identical leaf-key set in every locale (795 keys × 3 locales)
+- every namespace has an identical leaf-key set in every locale (797 keys × 3 locales)
 - no translation value is empty where the English source has content
 - ICU placeholders (`{count}`, `{name}`) match the English source exactly, so a missing placeholder cannot silently drop data
 - exits non-zero on any drift
@@ -354,7 +354,7 @@ site/src/i18n/messages/
 | Namespace | Keys | Scope |
 |---|---|---|
 | `common` | 48 | Nav, footer, shared labels |
-| `home` | 136 | Hero, features, pricing, AI, FAQ, CTA, footer |
+| `home` | 138 | Hero, features, pricing (incl. localized plan limits), AI, FAQ, CTA, footer |
 | `pages` | 77 | About, Contact, Invoice |
 | `auth` | 114 | Login, Signup, Forgot/Reset password, Verify |
 | `portal` | 188 | Portal dashboard, billing, notifications |
