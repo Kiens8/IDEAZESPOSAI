@@ -6,7 +6,7 @@ description: Multi-language support for Site Apps, Frontend POS, and Customer Or
 # Language Switching System
 
 **Date:** October 13, 2026  
-**Last Updated:** October 28, 2026 (design review — status corrected, stack updated to 2026 standards; Phase 3 Site App implemented and live)
+**Last Updated:** October 29, 2026 (Phase 2 Customer Order App implemented and live — i18next runtime, 3 locales, DB-backed menu translations)
 
 ---
 
@@ -350,7 +350,7 @@ panel is fully inside the viewport in all three languages.
 - ~~**JSON-LD / schema content is still English only**~~ — fixed, see "Localized structured data" above
 - **Canonical domain mismatch:** metadata and sitemap use `https://ideazes.com`, but the Next app is served at `https://site.ideazes.com` (`ideazes.com` currently serves a static "coming soon" page). Needs a deployment decision.
 - ESLint cannot run in the `site` workspace (pre-existing broken `eslint-config-next` peer dependency) — CI key-parity tooling should be added once that is fixed
-- Menu item names still come from the API and remain untranslated — the auto-translation service is ready for them (`content_type='menu_item'`), see Phase 2
+- ~~Menu item names still come from the API and remain untranslated~~ — **done in Phase 2** (October 29): dish names and descriptions are stored in `menu_content_translations` and served per locale from `GET /api/menu/items?locale=xx`
 - **Pricing plan features and descriptions are API-driven and still English** — the hard-coded `PLANS_FEATURES` map in the homepage (which held the localised `plans.*.features.*` keys) was already dead code before the rollout and has been removed. The `home.json` feature keys are still present and can be wired back to the plan cards once plan content is served from a translatable source
 
 
@@ -506,7 +506,123 @@ site/src/i18n/messages/
 | Website API | `pm2 restart website-api --update-env` |
 | Pre-warm translations | `python3 scripts/prewarm_translations.py` in `website_api` |
 
-### ⏳ Phase 2: Customer Order App — NOT STARTED
+### ✅ Phase 2: Customer Order App — **COMPLETE** ✅ (implemented October 29, 2026)
+
+The customer-facing ordering PWA (`customer-app`, vanilla JS, served statically
+on port 8080) now speaks the guest's language end to end: chrome, modals,
+menu content, cart, orders, loyalty, AI chat and the promotional banners.
+
+#### 1. Runtime
+
+| File | Purpose |
+|------|---------|
+| `customer-app/vendor/i18next.min.js` | i18next core **26.5.11**, copied from the frontend workspace's `node_modules` (no CDN, no install) |
+| `customer-app/js/i18n.js` | The i18n layer: locale detection, lazy loading of the locale bundles, `t()` / `applyTranslations()` / `setLanguage()`, locale-aware date formatting |
+| `customer-app/js/language-selector.js` | The 🌐 switcher in the header (button + dropdown, persisted in `localStorage`) |
+| `customer-app/scripts/check-i18n-parity.mjs` | Parity checker — see "Verification" below |
+
+**Locale resolution order** (first hit wins):
+
+1. `?lang=xx` in the URL — lets a QR code force a language
+2. `localStorage.pos_lang` — the guest's own choice
+3. the outlet default from `GET /api/customer/settings/{outlet_id}` (`language`)
+4. `navigator.language`
+5. English
+
+**Why no `i18next-http-backend`:** the app is a static vanilla-JS PWA with no
+bundler and no build step, so the locale JSON is fetched with `fetch()` and
+handed to i18next directly. This build of i18next (26.5.11) does not expose
+`addResourceBundle()`, so `i18n.init()` is re-run with the accumulated
+resource store whenever a new language is loaded.
+
+#### 2. Locale bundles
+
+`customer-app/locales/{en,zh,km}/{common,menu,cart,orders,account,loyalty,promo,ai}.json`
+
+**217 keys per locale**, 8 namespaces, 3 locales. Placeholders use i18next
+interpolation (`{{name}}`, `{{qty}}`, `{{count}}`) and ICU plurals
+(`itemCount_one` / `itemCount_other` — Chinese and Khmer need only the
+generic form).
+
+Keys are addressed namespace-first (`menu.title`, `common.error.loadMenu`);
+keys that live in the default namespace can be used unqualified
+(`header.myOrders`, `hero.title`, `orderType.dine_in`).
+
+#### 3. Markup & application code
+
+- **Static markup** (`index.html`): `data-i18n`, `data-i18n-html`,
+  `data-i18n-placeholder`, `data-i18n-title`, `data-i18n-aria-label`.
+  `applyTranslations()` repaints the whole document after a language change.
+- **Dynamic strings** (`js/app.js`): a small `tr('ns.key', opts)` helper wraps
+  `t()` and falls back to the key if the bundles have not loaded yet — nothing
+  ever renders blank. Toasts, alerts, confirms, empty states, voucher
+  messages, bundle/BOGO promos, order statuses and the redemption flow are
+  all translated.
+- **Language change handler** (`window.onLanguageChanged`): re-fetches the
+  menu and categories in the new language, re-renders the cart, promotions,
+  order types, chatbot greeting and the account summary.
+- **Service worker** (`customer-app/sw.js`): caches the app shell; the locale
+  bundles are **network-first** (so a language pack update is picked up
+  immediately) with the cache as the offline fallback. `manifest.json` gained
+  `lang`, `dir` and a `description`.
+- **Fonts** (`css/style.css`): the font stack now includes Noto Sans Khmer /
+  Khmer OS / Leelawadee UI and Noto Sans SC / PingFang SC / Microsoft YaHei,
+  plus a slightly looser line height when `html[lang="km"]`.
+
+#### 4. Menu item names in the database
+
+Dish names and descriptions are restaurant content, so they live in the
+database and are **not** in the translation JSON files.
+
+| Item | Detail |
+|------|--------|
+| Table | `menu_content_translations` — `content_type` (`menu_item` / `menu_category`), `content_id`, `outlet_id`, `locale`, `name`, `description`, `source_hash`, `provider`, `status` |
+| Model | `app/models/models.py` → `MenuContentTranslation` (unique on type + id + outlet + locale) |
+| Service | `backend/app/services/menu_translation.py` — `get_translations()` (indexed read) and `backfill()` (translate + store) |
+| Backfill endpoint | `POST /api/menu/translations/backfill` — `{ outlet_id, locales: ["zh","km"], content_types: [...] }`, requires `menu:write`. Re-running is safe: already-translated entries are reused |
+| Read path | `GET /api/menu/items?outlet_id=1&locale=zh` and `GET /api/menu/categories?...&locale=km` apply the stored translations in memory (never written back to the menu tables) |
+| Fallback | No translation → the English name is shown. The menu always renders |
+
+**Current state:** outlet 1 — 14 menu items + 6 categories translated into
+Chinese and Khmer (40 stored translations), produced by the shared AI
+translation service (`app/services/ai_translation.py`).
+
+#### 5. AI content in the customer's language
+
+| Endpoint | Change |
+|----------|--------|
+| `GET /api/ai/search` | `lang` parameter — item names come from the menu translations, the "why this matched" reasons are translated (`ai_match_reason`) |
+| `GET /api/ai/chat/order` | `lang` parameter — the canned chatbot replies are translated (`chatbot`) |
+| `GET /api/ai/customer/{id}/greeting` | `lang` parameter — the personalised greeting is translated (`greeting`) |
+| `GET /api/ai/recommendations/time-based`, `GET /api/ai/customer/{id}/recommendations` | `lang` parameter — item names and the "why we recommend this" reasons are translated (`ai_reason`) |
+| `GET /api/customer/settings/{outlet_id}` | Now also returns the outlet's default `language` |
+
+#### 6. Verification
+
+- `node customer-app/scripts/check-i18n-parity.mjs` →
+  **✓ 3 locales (en, km, zh), 217 keys, no missing or extra keys.** The
+  checker also verifies that every key used in `index.html` / `app.js` exists
+  and flags values that are still English in a non-English bundle.
+- Playwright run against `http://127.0.0.1:8080/?outlet=1`: language switch
+  (globe → dropdown → option) updates the header, hero, order types, category
+  tabs, menu items, cart modal, account modal and the chatbot in the chosen
+  language; the choice survives a reload (`localStorage.pos_lang`); **no
+  console errors**.
+- API checks: `GET /api/menu/items?...&locale=zh` → 春卷, 鸡翅 …;
+  `&locale=km` → ស៊ីងរ៉ុល, ស្រែកម្ដងដើម …
+
+#### 7. Known follow-ups
+
+- The customer app has no way to **edit** the stored menu translations yet —
+  staff still rely on the backfill endpoint. Wiring the translations into the
+  admin Menu Management UI is the natural next step (Phase 4).
+- `ai_components.js` is the only remaining English-only surface in the
+  customer app (its own headings are translated, the strings it receives from
+  the API are handled server-side).
+- Adding a language means: drop a `locales/<code>/` folder, add the code to
+  `SUPPORTED_LOCALES` in `js/i18n.js`, to `LOCALE_LABELS` in
+  `js/language-selector.js` and to `app/services/ai_translation.py`, then
+  run the backfill endpoint.
 
 ---
 
@@ -678,13 +794,13 @@ frontend/scripts/check-i18n-parity.mjs   # CI guard, wired to `prebuild`
 
 **Currency/date work** (new) — replace hardcoded price/date formatting in Reports, OrderHistory, Dashboard and POS receipts with `Intl.NumberFormat` / `Intl.DateTimeFormat` driven by outlet settings.
 
-### Phase 2 — Customer Order App (Vanilla JS)
+### Phase 2 — Customer Order App (Vanilla JS) — ✅ done Oct 29, 2026
 
 | File | Change |
 |------|--------|
 | `customer-app/js/i18n.js` | i18next core init, lazy-loaded locale JSON |
 | `customer-app/js/app.js` | `data-i18n` attributes on static strings; `t()` for dynamic ones |
-| `customer-app/js/components/…` | Language selector component |
+| `customer-app/js/language-selector.js` | Language selector component |
 | `customer-app/manifest.json` | Locale-aware PWA caching of translation files |
 
 **Menu item names** — restaurant-specific content (dish names, descriptions) should live in the **database** with a translation column/table, not in the translation JSON files, so staff can add their own translations through the Menu Management UI.
@@ -720,7 +836,7 @@ The original 43-hour estimate assumed a hand-rolled system with 4 languages and 
 | | Currency/date formatting via `Intl` + outlet settings | **Complete (Oct 28)** — `src/utils/format.js` | 6 |
 | | Font stacks (Noto Sans Khmer, CJK) | **Complete (Oct 28)** — self-hosted Khmer subset + system CJK stack | 2 |
 | **Phase 1 Total** | | | **~40 hours** |
-| **Phase 2** | Customer Order App (vanilla JS) | **Not started — the recommended next phase** | 12–16 |
+| **Phase 2** | Customer Order App (vanilla JS) | ✅ Done (Oct 29) | 12–16 |
 | **Phase 3** | Site App (routing, RSC, hreflang, sitemap) | ✅ Done (Oct 28) | 14–18 |
 | **Phase 4** | Admin App (optional, out of scope) | Not started | 8–10 |
 | **Grand Total** | | | **~74–84 hours** |
