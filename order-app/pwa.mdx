@@ -450,6 +450,12 @@ to the venue the guest picked.
 table badge ("Table T2") is a button - it opens the venue sheet with the
 restaurant, the address, the table and the active orders of that table.
 
+**The address is the one the restaurant maintains.** The sheet and the picker
+show `outlet_settings.restaurant_address` - the address from the POS settings
+page, the same one the staff sees. The `outlets.address` record is only the
+fallback. (They drift: `outlets.address` is what the branch was created
+with, `restaurant_address` is what the restaurant actually maintains.)
+
 **Changing the table cancels the order first.** A pending order belongs to the
 table it was filed on - the guest cannot simply walk away from it:
 
