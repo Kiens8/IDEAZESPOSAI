@@ -6,7 +6,7 @@ description: Multi-language support for Site Apps, Frontend POS, and Customer Or
 # Language Switching System
 
 **Date:** October 13, 2026  
-**Last Updated:** October 29, 2026 (Phase 2 Customer Order App implemented and live — i18next runtime, 3 locales, DB-backed menu translations)
+**Last Updated:** October 29, 2026 (Phase 2 Customer Order App implemented and live — i18next runtime, 3 locales, DB-backed menu translations; follow-up fixes: localised favourites, header button layout on small screens)
 
 ---
 
@@ -595,6 +595,7 @@ translation service (`app/services/ai_translation.py`).
 | `GET /api/ai/chat/order` | `lang` parameter — the canned chatbot replies are translated (`chatbot`) |
 | `GET /api/ai/customer/{id}/greeting` | `lang` parameter — the personalised greeting is translated (`greeting`) |
 | `GET /api/ai/recommendations/time-based`, `GET /api/ai/customer/{id}/recommendations` | `lang` parameter — item names and the "why we recommend this" reasons are translated (`ai_reason`) |
+| `GET /api/ai/customer/{id}/favorites` | `lang` parameter — the "Your Favorites" chips use the translated dish names |
 | `GET /api/customer/settings/{outlet_id}` | Now also returns the outlet's default `language` |
 
 #### 6. Verification
@@ -611,7 +612,27 @@ translation service (`app/services/ai_translation.py`).
 - API checks: `GET /api/menu/items?...&locale=zh` → 春卷, 鸡翅 …;
   `&locale=km` → ស៊ីងរ៉ុល, ស្រែកម្ដងដើម …
 
-#### 7. Known follow-ups
+#### 7. Header layout on small screens
+
+The header carries five controls (language, points, My Orders, account, table).
+On a 430 px phone they used to fight for one line, which squeezed "我的订单"
+into a vertical column, and the language / account chips were white-on-white
+invisible.
+
+Fixed in `css/style.css`:
+
+- every control is `flex: 0 0 auto` with `white-space: nowrap` — labels never wrap
+- the action row drops below the logo under 560 px and scrolls sideways if the
+  phone is really narrow, instead of squashing
+- the language chip and the account chip use a light chip style
+  (`--gray-100` / `--gray-200`) instead of translucent white on the white header
+- long customer names are truncated with an ellipsis
+- the logo mark shrinks slightly so the row fits without scrolling
+
+Measured at 430 px: 🌐 ZH (63 px) · ⭐ 537 分 (68 px) · 📋 我的订单 · 👤 Cust 1
+(69 px) · 桌号 T1 (62 px) — all on one line, all readable.
+
+#### 8. Known follow-ups
 
 - The customer app has no way to **edit** the stored menu translations yet —
   staff still rely on the backfill endpoint. Wiring the translations into the
