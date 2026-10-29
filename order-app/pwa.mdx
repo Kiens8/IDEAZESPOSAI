@@ -31,12 +31,22 @@ add it to the home screen and it keeps working when the network hiccups.
 
 ```
 customer-app/
-├── manifest.json          # app name, icons, shortcuts, display mode
+├── server.py              # the app server - serves the files AND renders the
+│                          # shell with the branding of the branch (iOS reads
+│                          # the home screen name when the page loads)
+├── index.html             # the shell - the modal, the venue line, the inline
+│                          # head script that swaps the manifest
+├── manifest.json          # the fallback manifest (a plain visit)
 ├── VERSION                # the build version - bump this on every deploy
 ├── sw.js                  # service worker (network first, cache as fallback)
 ├── offline.html           # shown when the app opens with no network at all
 ├── icons/                 # generated from POS_AI/square_logo.png
+├── js/app.js              # the app - the venue context, the branding, the order
+├── js/venue.js            # the venue picker (group -> branch -> table)
 ├── js/pwa.js              # registration, update flow, install prompt, offline banner
+├── js/i18n.js             # the translations
+├── css/style.css          # the styles - the picker and the venue sheet
+├── locales/{en,km,zh}/    # the strings, one file per language
 ├── scripts/build_pwa.py   # builds the icons + manifest, stamps the version
 └── scripts/check-i18n-parity.mjs
 ```
@@ -46,8 +56,10 @@ customer-app/
 <Steps>
   <Step title="Bump the version">
     ```bash
-    echo 2.5.4 > customer-app/VERSION
+    echo 2.6.6 > customer-app/VERSION
     ```
+    Every change to a cached asset needs a new version - see the warning
+    below.
   </Step>
   <Step title="Rebuild the PWA assets">
     ```bash
@@ -57,12 +69,29 @@ customer-app/
     (including the table shortcuts from the database) and stamps the new
     version on every asset URL in `index.html`, `sw.js` and `js/pwa.js`.
   </Step>
+  <Step title="Restart the app server">
+    ```bash
+    pm2 restart customer-app
+    ```
+    The guest app is not a plain file server any more - `server.py` renders
+    the shell, so a change to it needs a restart.
+  </Step>
+  <Step title="Reload Caddy (only when the Caddyfile changed)">
+    ```bash
+    caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+    ```
+  </Step>
   <Step title="Verify">
     ```bash
     python3 customer-app/scripts/build_pwa.py --check
     node customer-app/scripts/check-i18n-parity.mjs
     cd scripts && node pwa_check.js
+
+    # the shell is rendered with the branding of the branch
+    curl -s "https://order.ideazes.com/?outlet=1" | grep apple-mobile-web-app-title
     ```
+    The last line has to print the **group** name (e.g.
+    `content="Demo"`), not "Ideazes Order".
   </Step>
 </Steps>
 
@@ -75,18 +104,37 @@ customer-app/
 
 ## Serving
 
-`order.ideazes.com` is served by Caddy straight from disk:
+`order.ideazes.com` is served by Caddy. The assets come straight from disk,
+the **shell is rendered by the app server** - because iOS reads the name for
+the home screen when the page loads, and a shell that only gets its branding
+from JavaScript is too late:
 
 ```caddyfile
 order.ideazes.com {
     root * /var/www/html/posai-customer
     encode gzip zstd
+
+    # the shell is rendered - it carries the branding of the branch
+    @shell path / /index.html
+    reverse_proxy @shell 127.0.0.1:8080
+
     header /sw.js Cache-Control "no-cache, must-revalidate"
     header /sw.js Service-Worker-Allowed "/"
     header /manifest.json Content-Type "application/manifest+json"
     file_server
 }
 ```
+
+The app server is `customer-app/server.py` (FastAPI + uvicorn), run by pm2:
+
+```bash
+pm2 start uvicorn --name customer-app \
+  --cwd /root/.openclaw/workspace/mydoc/Projects/POS_AI/customer-app \
+  --interpreter python3 -- server:app --host 127.0.0.1 --port 8080
+```
+
+It serves the static files itself, so the file server in Caddy is only the
+fallback for the assets.
 
 The app directory lives in the workspace under `/root/.openclaw/...`, which the
 `caddy` user cannot read, so it is published with a bind mount:
@@ -549,18 +597,18 @@ screen. The manifest is generated per branch:
 
 ```
 GET /api/pwa/manifest?outlet_id=1
-  -> { "name": "Demo Cafe 1 Order", "short_name": "Demo Cafe 1",
+  -> { "name": "Demo Restaurant Group Order", "short_name": "Demo",
        "theme_color": "#0F766E", "icons": [...], "shortcuts": [...] }
 ```
 
-**Where the branding comes from** - the branch settings (the POS settings
-page, the restaurant profile):
+**Where the branding comes from** - the **group** owns the name, the
+**branch** owns the look:
 
 | Setting | Used for |
 |---|---|
-| `restaurant_name` | the brand - the name of the app ("Demo Cafe 1 Order") |
-| `restaurant_logo` | the icon of the app - drawn on the brand colour |
-| `brand_color` (new) | the theme colour - the browser chrome and the installed app |
+| the group name (restaurant_group.name) | the name of the app ("Demo Restaurant Group Order") |
+| `restaurant_logo` (the branch settings) | the icon of the app - drawn on the brand colour |
+| `brand_color` (the branch settings, new) | the theme colour - the browser chrome and the installed app |
 
 **The icons are generated, not uploaded.** `GET /api/pwa/icon?outlet_id=N`
 paints the logo on the brand colour (or the initials of the restaurant when
@@ -607,6 +655,46 @@ manifest fetch needs.
 **The limitation worth knowing:** Android takes the **icon** from the manifest
 at install time - an installed app keeps its icon until the guest reinstalls
 it. The **name** and the **theme colour** do follow the swap.
+
+### P3 - what changed in the code
+
+**Backend** - `backend/`
+
+| File | Change |
+|---|---|
+| `app/routes/pwa.py` | `GET /api/pwa/manifest?outlet_id=` - the manifest of the branch; `GET /api/pwa/icon?outlet_id=&size=&maskable=` - the generated icon (PIL, the logo on the brand colour or the initials); the venues list uses the address from `outlet_settings`; `GET /api/pwa/table-orders?table_uuid=` - the active orders of a table |
+| `app/routes/order.py` | a **dine-in order needs a table** - the server resolves the uuid from the uuid or from the table id (the staff POS sends only the table id), a mismatch is refused with 400 |
+| `app/routes/outlet_settings.py` | `brand_color` in the settings payload (read + write) |
+| `app/routes/customer_bff.py` | `restaurant_address` in the customer settings |
+| `app/models/models.py` | `brand_color` on `outlet_settings` (new column) |
+
+**POS frontend** - `frontend/`
+
+| File | Change |
+|---|---|
+| `src/pages/Settings.jsx` | the brand colour picker in the restaurant profile |
+| `src/i18n/locales/{en,km,zh}/settings.json` | the labels |
+
+**Customer app** - `customer-app/`
+
+| File | Change |
+|---|---|
+| `server.py` (new) | the app server - serves the files and renders the shell with the branding of the branch |
+| `index.html` | the inline head script (the manifest link + the apple title, from the venue the device used last); the venue modal; the venue line; the badge becomes a `<button>` |
+| `js/app.js` | `applyBranding()` (the manifest, the theme colour, the apple-touch-icon, the title); the venue context helpers; the launch hook; the checkout guard (no venue, no order); the deep link resolves the table uuid; `rememberContext()` stores the names |
+| `js/venue.js` (new) | the venue picker (group -> branch -> table) and the venue sheet |
+| `css/style.css` | the picker and the venue sheet styles |
+| `locales/{en,km,zh}/venue.json` (new) | 23 strings per language |
+| `sw.js` | `venue.js` + the `venue` namespace in the precache - the picker works offline |
+| `VERSION` | 2.5.13 -> **2.6.5** |
+
+**Infrastructure**
+
+| Where | Change |
+|---|---|
+| `/etc/caddy/Caddyfile` | the shell is proxied to the app server, the assets stay on disk |
+| pm2 (`customer-app`) | `uvicorn server:app --host 127.0.0.1 --port 8080` (was `python3 -m http.server`) |
+| the database | `ALTER TABLE outlet_settings ADD COLUMN brand_color` (the file was backed up to /tmp first) |
 
 **On iOS the name comes from the page, and iOS reads it when the page
 loads.** Safari uses `apple-mobile-web-app-title` for the name on the home
