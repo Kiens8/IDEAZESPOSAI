@@ -629,6 +629,12 @@ Fixed in `css/style.css`:
 - long customer names are truncated with an ellipsis
 - the logo mark shrinks slightly so the row fits without scrolling
 
+> **Trap:** the action row must not use `overflow: auto` / `overflow-x: auto`.
+> An overflow container clips the language dropdown (it is absolutely
+> positioned inside it), so the list silently disappears. The row wraps
+> instead, and on phones the dropdown opens to the right of the button
+> (`left: 0; right: auto`) so it never hangs off the side of the screen.
+
 Measured at 430 px: 🌐 ZH (63 px) · ⭐ 537 分 (68 px) · 📋 我的订单 · 👤 Cust 1
 (69 px) · 桌号 T1 (62 px) — all on one line, all readable.
 
