@@ -340,7 +340,7 @@ Blocking that would stop the guest from ordering, so the app instead:
 |-------|-------|-------|--------|
 | **P1 - correctness** | Server trust boundary (login scoping, outlet from uuid, validation) + scoped storage + context resolution | **3-4** | **Shipped** |
 | **P2 - the manual flow** | Outlet picker, table picker, "Change" action, venue banner | **3-4** | **Shipped** |
-| **P3 - branded app** | Dynamic per-group manifest, generated initial, manifest swap in the page | **4-6** | Proposed |
+| **P3 - branded app** | Dynamic per-group manifest, generated initial, manifest swap in the page | **4-6** | **Shipped** |
 
 ### P1 - what shipped
 
@@ -536,9 +536,44 @@ picker would break the moment the guest's connection drops.
 - Test tables left in the dev database (T99, TNEW, Tnewtable) show up in the
   picker.
 
-### P3 - the branded app (proposed)
+### P3 - what shipped
 
-Every restaurant group gets its own icon, name and colour on the guest's home
-screen: a manifest per group, generated on the fly, and a manifest swap in the
-page after the venue is known. The manifest is built by
-`customer-app/scripts/build_pwa.py` today - it becomes a per-group endpoint.
+Every restaurant gets its own **name, icon and colour** on the guest's home
+screen. The manifest is generated per branch:
+
+```
+GET /api/pwa/manifest?outlet_id=1
+  -> { "name": "Demo Cafe 1 Order", "short_name": "Demo Cafe 1",
+       "theme_color": "#0F766E", "icons": [...], "shortcuts": [...] }
+```
+
+**Where the branding comes from** - the branch settings (the POS settings
+page, the restaurant profile):
+
+| Setting | Used for |
+|---|---|
+| `restaurant_name` | the name of the app ("Demo Cafe 1 Order") |
+| `restaurant_logo` | the icon of the app (the first icon of the manifest) |
+| `brand_color` (new) | the theme colour - the browser chrome and the installed app |
+
+`brand_color` is a new column on `outlet_settings` with a colour picker in the
+POS settings page (en / km / zh).
+
+**The manifest is swapped twice:**
+
+1. **Before the app loads** - a small inline script in the head reads the
+   venue the device used last (`pos_context`) and points the manifest link at
+   that branch. The browser fetches the manifest when the guest installs the
+   app, so the install prompt already shows the restaurant's name.
+2. **When the venue is known** - `applyBranding()` sets the manifest link, the
+   theme colour, the apple-touch-icon and the title. It only runs when the
+   venue is **resolved** (a QR, a deep link or the remembered venue) - a guest
+   who has not chosen yet gets the neutral "Ideazes Order".
+
+The manifest lives on the API origin, so every url in it is absolute
+(`start_url`, `scope`, the icons). The API sends CORS headers, which the
+manifest fetch needs.
+
+**The limitation worth knowing:** Android takes the **icon** from the manifest
+at install time - an installed app keeps its icon until the guest reinstalls
+it. The **name** and the **theme colour** do follow the swap.
