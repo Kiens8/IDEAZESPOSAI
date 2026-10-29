@@ -403,6 +403,21 @@ The old global keys (`pos_cart`, `pos_customer`) are migrated once and removed.
 produced the order) and `customer_id` (the restaurant group). The `orders`
 table has a new nullable `table_uuid` column.
 
+**The table uuid is mandatory for a dine-in order.** `POST /api/orders/`
+resolves the table first and stores its uuid - whatever the client claims is
+ignored:
+
+| The client sends | The server does |
+|---|---|
+| `table_uuid` (the guest app - the QR) | resolves the table, derives outlet / table / group |
+| `table_id` (the staff POS) | resolves the table, derives outlet / table / group, stores the uuid |
+| `table_uuid` **and** a `table_id` that disagree | **400** - the client was tampered with |
+| neither, `order_type = dine_in` | **400** - "A table is required for a dine-in order" |
+| neither, `order_type = takeaway` / `delivery` | allowed - no table, no uuid |
+
+So every dine-in order in the database has the uuid of the table it was filed
+on, no matter which client created it.
+
 P1 removes the two real risks (an order filed against the wrong restaurant,
 another group's loyalty on screen). P2 makes the app usable without a QR. P3
 is the commercial polish - every restaurant gets its own branded icon on the
@@ -485,6 +500,10 @@ change to a cached asset needs a new version to reach the phone. The
 intermediate versions (2.5.7 - 2.5.13) were the forced bumps while the
 picker was wired up and tested; the code that shipped is 2.5.13.
 
+**The picker works offline too.** `js/venue.js` and the `venue` locale
+namespace were added to the service worker's precache - without them the
+picker would break the moment the guest's connection drops.
+
 **Two bugs the browser test caught** (reading the code did not):
 
 1. **A stale `?t=` won over the new venue.** The guest picked table T3, the
@@ -507,10 +526,9 @@ picker was wired up and tested; the code that shipped is 2.5.13.
 
 **Left from P2**
 
-- The table uuid is optional in `POST /api/orders/`. A tampered client can
-  still post an order without one, so the server cannot tell "the guest
-  picked the default outlet" from "the guest never picked". Making the uuid
-  mandatory for dine-in orders would close it properly.
+- ~~The table uuid is optional in `POST /api/orders/`.~~ **[closed]** The uuid
+  is now mandatory for a dine-in order - the server resolves it from the uuid
+  or from the table id and refuses a dine-in order without a table.
 - The occupied tables are greyed out in the picker but still clickable (a
   guest may sit down where an order is still open).
 - The deep link (`?outlet=&table=`) carries no table uuid, so the server
