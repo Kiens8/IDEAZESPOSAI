@@ -140,7 +140,8 @@ mount --bind /root/.openclaw/workspace/mydoc/Projects/POS_AI/customer-app \
 
 ## Multi-tenant venue resolution (proposed)
 
-**Status: proposal — not yet implemented.** Written 29 October 2026.
+**Status: P1 shipped (29 October 2026). P2 (the pickers) and P3 (the branded
+per-tenant app) are still proposals.**
 
 ### The problem
 
@@ -335,11 +336,72 @@ Blocking that would stop the guest from ordering, so the app instead:
 
 ### Rollout
 
-| Phase | Scope | Hours |
-|-------|-------|-------|
-| **P1 - correctness** | Server trust boundary (login scoping, outlet from uuid, validation) + scoped storage + context resolution | **3-4** |
-| **P2 - the manual flow** | Outlet picker, table picker, "Change" action, venue banner | **3-4** |
-| **P3 - branded app** | Dynamic per-group manifest, generated initial, manifest swap in the page | **4-6** |
+| Phase | Scope | Hours | Status |
+|-------|-------|-------|--------|
+| **P1 - correctness** | Server trust boundary (login scoping, outlet from uuid, validation) + scoped storage + context resolution | **3-4** | **Shipped** |
+| **P2 - the manual flow** | Outlet picker, table picker, "Change" action, venue banner | **3-4** | Proposed |
+| **P3 - branded app** | Dynamic per-group manifest, generated initial, manifest swap in the page | **4-6** | Proposed |
+
+### P1 - what shipped
+
+**The loyalty leak is closed.** `POST /api/loyalty/login` now takes the web
+customer id and scopes the lookup with it - the phone number is unique per
+restaurant group:
+
+```python
+class CustomerLogin(BaseModel):
+    phone: str
+    customer_id: int      # the web customer - required
+    device_id: Optional[str] = None
+
+customer = db.query(DiningCustomer).filter(
+    DiningCustomer.customer_id == data.customer_id,
+    DiningCustomer.phone == data.phone,
+    DiningCustomer.is_active == True
+).first()
+```
+
+The customer app sends `customer_id` with the login, and the app resolves the
+group from the outlet (`GET /api/outlets/{id}` now returns `customer_id`) when
+it only knows the branch.
+
+**The venue is derived from the table uuid.** `POST /api/orders/` accepts
+`table_uuid`; when it is present the server resolves the table and uses
+**its** outlet, table and restaurant group - whatever the client sent is
+ignored:
+
+```
+POST /api/orders/  { "outlet_id": 5, "table_number": "BOGUS", "table_uuid": "<T2 of outlet 1>" }
+  -> stored: outlet_id=1, table_id=2, table_number=T2, customer_id=1, table_uuid=<uuid>
+```
+
+Without a uuid the outlet still has to be a real outlet **of the claimed
+restaurant group**, and a member of another group is rejected.
+
+**Storage is scoped per venue:**
+
+```
+pos_cart_<outletId>       the basket never crosses outlets
+pos_customer_<groupId>    the member session never crosses restaurant groups
+pos_context               the last venue (the fallback when the app is opened
+                          from the home screen without a QR)
+pos_lang, pos_pwa_dismissed   global - personal preferences
+```
+
+The old global keys (`pos_cart`, `pos_customer`) are migrated once and removed.
+
+**Context resolution on launch** (the url always wins):
+
+| # | Source | Result |
+|---|--------|--------|
+| 1 | `?t=<table-uuid>` | The QR - group, outlet and table resolved by the server |
+| 2 | `?outlet=&table=` | A deep link; the group is resolved from the outlet |
+| 3 | `pos_context` | The venue this device used last - the installed app opened from the home screen |
+| 4 | fallback | The default outlet (the outlet picker arrives with P2) |
+
+**The order now carries the venue:** `table_uuid` (the audit trail - which QR
+produced the order) and `customer_id` (the restaurant group). The `orders`
+table has a new nullable `table_uuid` column.
 
 P1 removes the two real risks (an order filed against the wrong restaurant,
 another group's loyalty on screen). P2 makes the app usable without a QR. P3
