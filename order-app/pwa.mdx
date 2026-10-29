@@ -186,7 +186,7 @@ mount --bind /root/.openclaw/workspace/mydoc/Projects/POS_AI/customer-app \
 
 ---
 
-## Multi-tenant venue resolution (proposed)
+## Multi-tenant venue resolution (shipped in P1 - P3)
 
 **Status: P1 shipped (29 October 2026). P2 (the pickers) and P3 (the branded
 per-tenant app) are still proposals.**
@@ -679,7 +679,7 @@ it. The **name** and the **theme colour** do follow the swap.
 
 | File | Change |
 |---|---|
-| `server.py` (new) | the app server - serves the files and renders the shell with the branding of the branch |
+| `server.py` (new) | the app server - serves the files and renders the shell with the branding of the branch (the name, the theme colour, the icons and the manifest) |
 | `index.html` | the inline head script (the manifest link + the apple title, from the venue the device used last); the venue modal; the venue line; the badge becomes a `<button>` |
 | `js/app.js` | `applyBranding()` (the manifest, the theme colour, the apple-touch-icon, the title); the venue context helpers; the launch hook; the checkout guard (no venue, no order); the deep link resolves the table uuid; `rememberContext()` stores the names |
 | `js/venue.js` (new) | the venue picker (group -> branch -> table) and the venue sheet |
@@ -708,9 +708,13 @@ FastAPI app instead of a plain file server):
 
 | The guest opens | The server renders |
 |---|---|
-| `?t=<table uuid>` (the QR) | the name, the theme colour and the manifest of that branch |
+| `?t=<table uuid>` (the QR) | the name, the theme colour, the icons and the manifest of that branch |
 | `?outlet=<id>` (a deep link) | the same |
 | a plain visit | the neutral shell - the guest picks the branch in the app |
+
+The **apple touch icon** matters most: it is what iOS puts on the home
+screen, and it has to be in the page before the page loads - a branded icon
+that arrives with JavaScript is the generic one.
 
 The client keeps the branding up to date afterwards (`applyBranding()` and the
 inline script), so a branch that is picked later is branded too.
