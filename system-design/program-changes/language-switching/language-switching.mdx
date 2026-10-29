@@ -6,7 +6,7 @@ description: Multi-language support for Site Apps, Frontend POS, and Customer Or
 # Language Switching System
 
 **Date:** October 13, 2026  
-**Last Updated:** October 29, 2026 (Phase 2 Customer Order App implemented and live — i18next runtime, 3 locales, DB-backed menu translations; follow-up fixes: localised favourites, header button layout on small screens)
+**Last Updated:** October 29, 2026 (Phase 2 Customer Order App implemented and live — i18next runtime, 3 locales, DB-backed menu translations; follow-up fixes: localised favourites and every AI panel, header button layout on small screens, language dropdown clipping, network-first service worker)
 
 ---
 
@@ -561,9 +561,11 @@ keys that live in the default namespace can be used unqualified
 - **Language change handler** (`window.onLanguageChanged`): re-fetches the
   menu and categories in the new language, re-renders the cart, promotions,
   order types, chatbot greeting and the account summary.
-- **Service worker** (`customer-app/sw.js`): caches the app shell; the locale
-  bundles are **network-first** (so a language pack update is picked up
-  immediately) with the cache as the offline fallback. `manifest.json` gained
+- **Service worker** (`customer-app/sw.js`): caches the app shell; **both the
+  shell and the locale bundles are network-first** with the cache as the
+  offline fallback. Cache-first was serving a stale `app.js` for one extra
+  load after every deploy — the new code only appeared on the second
+  refresh. `manifest.json` gained
   `lang`, `dir` and a `description`.
 - **Fonts** (`css/style.css`): the font stack now includes Noto Sans Khmer /
   Khmer OS / Leelawadee UI and Noto Sans SC / PingFang SC / Microsoft YaHei,
@@ -596,6 +598,18 @@ translation service (`app/services/ai_translation.py`).
 | `GET /api/ai/customer/{id}/greeting` | `lang` parameter — the personalised greeting is translated (`greeting`) |
 | `GET /api/ai/recommendations/time-based`, `GET /api/ai/customer/{id}/recommendations` | `lang` parameter — item names and the "why we recommend this" reasons are translated (`ai_reason`) |
 | `GET /api/ai/customer/{id}/favorites` | `lang` parameter — the "Your Favorites" chips use the translated dish names |
+| `GET /api/ai/recommendations/frequently-bought` | `lang` parameter — the cart's "You might also like" list (name + reason) |
+| `POST /api/ai/recommendations/cart` | `lang` parameter — the "AI Suggests For You" rail on the menu page |
+
+The AI greeting is translated too, and the dish names inside it are swapped
+for their stored translations afterwards (a machine translator treats
+"Spring Rolls" as a proper noun and keeps it in English):
+
+> 欢迎回来，Cust 1！感谢您成为我们最优秀的客户之一！只需轻点一下，即可再次享用您常点的 **春卷**。
+
+Every AI panel that carries dish names is **re-fetched** when the guest
+switches language — a re-render alone is not enough, because the names come
+from the API.
 | `GET /api/customer/settings/{outlet_id}` | Now also returns the outlet's default `language` |
 
 #### 6. Verification
