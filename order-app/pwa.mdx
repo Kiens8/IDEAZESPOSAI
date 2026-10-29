@@ -590,3 +590,18 @@ manifest fetch needs.
 **The limitation worth knowing:** Android takes the **icon** from the manifest
 at install time - an installed app keeps its icon until the guest reinstalls
 it. The **name** and the **theme colour** do follow the swap.
+
+**On iOS the name comes from a meta tag, not from the manifest.** Safari uses
+`apple-mobile-web-app-title` for the name on the home screen and ignores the
+manifest for it - a hardcoded tag there means every restaurant ends up called
+"Ideazes" on the home screen even though the icon is branded. So the tag
+follows the branch as well:
+
+| When | What sets it |
+|---|---|
+| the page loads | the inline script - from the branch the device used last |
+| the venue is known | `applyBranding()` - the restaurant name from the manifest |
+
+The inline script also points the manifest link at the branch, so the very
+first thing iOS reads is already the branded one. A guest who has not chosen
+a branch yet gets the neutral "Ideazes Order".
