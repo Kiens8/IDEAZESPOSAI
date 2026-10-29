@@ -558,7 +558,7 @@ page, the restaurant profile):
 
 | Setting | Used for |
 |---|---|
-| `restaurant_name` | the name of the app ("Demo Cafe 1 Order") |
+| `restaurant_name` | the brand - the name of the app ("Demo Cafe 1 Order") |
 | `restaurant_logo` | the icon of the app - drawn on the brand colour |
 | `brand_color` (new) | the theme colour - the browser chrome and the installed app |
 
@@ -571,6 +571,19 @@ the cache.
 
 `brand_color` is a new column on `outlet_settings` with a colour picker in the
 POS settings page (en / km / zh).
+
+**Whose name is it?** The app belongs to the **brand** the guest is in - the
+same name as its logo and its colour:
+
+| | outlet 1 | outlet 5 |
+|---|---|---|
+| the group (the tenant) | Demo Restaurant Group | VARMAN |
+| the branch | Demo Cafe 1 | VARMAN - Main Branch |
+| **the app name** | **Demo Cafe 1 Order** | **VARMAN Order** |
+
+A branch without a name of its own takes the name of the restaurant (the
+group). The home screen label is shortened to 12 characters - the generic
+words go first ("AES Restaurant" -> "AES").
 
 **The manifest is swapped twice:**
 
