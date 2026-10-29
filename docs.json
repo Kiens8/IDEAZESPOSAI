@@ -1,96 +1,97 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "IDEAZES POS AI - Documentation",
-  "colors": {
-    "primary": "#059669",
-    "light": "#10B981",
-    "dark": "#047857"
-  },
-  "favicon": {
-    "light": "/images/ideazes-pos-ai-favicon-light.svg",
-    "dark": "/images/ideazes-pos-ai-favicon-dark.svg"
-  },
-  "logo": {
-    "light": "/images/ideazes-pos-ai-horizontal-logo-246-64.svg",
-    "dark": "/images/ideazes-pos-ai-horizontal-logo-246-64.svg",
-    "href": "https://site.ideazes.com"
-  },
-  "navigation": {
+ "$schema": "https://mintlify.com/docs.json",
+ "theme": "mint",
+ "name": "IDEAZES POS AI - Documentation",
+ "colors": {
+  "primary": "#059669",
+  "light": "#10B981",
+  "dark": "#047857"
+ },
+ "favicon": {
+  "light": "/images/ideazes-pos-ai-favicon-light.svg",
+  "dark": "/images/ideazes-pos-ai-favicon-dark.svg"
+ },
+ "logo": {
+  "light": "/images/ideazes-pos-ai-horizontal-logo-246-64.svg",
+  "dark": "/images/ideazes-pos-ai-horizontal-logo-246-64.svg",
+  "href": "https://site.ideazes.com"
+ },
+ "navigation": {
+  "pages": [
+   {
+    "group": "Getting Started",
     "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "site-app/getting-started/overview",
-          "site-app/getting-started/quickstart",
-          "site-app/getting-started/setup-outlet"
-        ]
-      },
-      {
-        "group": "Site (Landing Page)",
-        "pages": [
-          "site-app/overview"
-        ]
-      },
-      {
-        "group": "POS Frontend",
-        "pages": [
-          "pos-app/receipt-printing",
-          "pos-app/order-management",
-          "pos-app/kitchen-kds",
-          "billing/payment-methods"
-        ]
-      },
-      {
-        "group": "Customer App",
-        "pages": [
-          "order-app/overview"
-        ]
-      },
-      {
-        "group": "Billing & Subscription",
-        "pages": [
-          "billing/plans",
-          "billing/subscription"
-        ]
-      },
-      {
-        "group": "API",
-        "pages": [
-          "billing/api-reference"
-        ]
-      },
-      {
-        "group": "Troubleshooting",
-        "pages": [
-          "troubleshooting/common-issues",
-          "troubleshooting/faqs",
-          "access-control/overview"
-        ]
-      },
-      {
-        "group": "Admin App",
-        "pages": [
-          "admin-app/settings"
-        ]
-      }
+     "site-app/getting-started/overview",
+     "site-app/getting-started/quickstart",
+     "site-app/getting-started/setup-outlet"
     ]
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Dashboard",
-        "href": "https://app.ideazes.com"
-      },
-      {
-        "label": "Support",
-        "href": "mailto:support@ideazes.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Try Free",
-      "href": "https://site.ideazes.com"
-    }
+   },
+   {
+    "group": "Site (Landing Page)",
+    "pages": [
+     "site-app/overview"
+    ]
+   },
+   {
+    "group": "POS Frontend",
+    "pages": [
+     "pos-app/receipt-printing",
+     "pos-app/order-management",
+     "pos-app/kitchen-kds",
+     "billing/payment-methods"
+    ]
+   },
+   {
+    "group": "Customer App",
+    "pages": [
+     "order-app/overview",
+     "order-app/pwa"
+    ]
+   },
+   {
+    "group": "Billing & Subscription",
+    "pages": [
+     "billing/plans",
+     "billing/subscription"
+    ]
+   },
+   {
+    "group": "API",
+    "pages": [
+     "billing/api-reference"
+    ]
+   },
+   {
+    "group": "Troubleshooting",
+    "pages": [
+     "troubleshooting/common-issues",
+     "troubleshooting/faqs",
+     "access-control/overview"
+    ]
+   },
+   {
+    "group": "Admin App",
+    "pages": [
+     "admin-app/settings"
+    ]
+   }
+  ]
+ },
+ "navbar": {
+  "links": [
+   {
+    "label": "Dashboard",
+    "href": "https://app.ideazes.com"
+   },
+   {
+    "label": "Support",
+    "href": "mailto:support@ideazes.com"
+   }
+  ],
+  "primary": {
+   "type": "button",
+   "label": "Try Free",
+   "href": "https://site.ideazes.com"
   }
+ }
 }

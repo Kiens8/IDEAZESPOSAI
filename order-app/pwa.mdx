@@ -1,0 +1,135 @@
+---
+title: PWA Setup
+description: Installable Ideazes Order app - offline support, icons and the deploy runbook
+---
+
+# PWA - "Ideazes Order"
+
+The customer app at **order.ideazes.com** is an installable PWA. A guest can
+add it to the home screen and it keeps working when the network hiccups.
+
+<Info>
+  App name: **Ideazes Order** · Short name (home screen): **Ideazes** ·
+  Build version: see `customer-app/VERSION`
+</Info>
+
+## What it does
+
+| Feature | Behaviour |
+|---------|-----------|
+| Install | Chrome/Edge show the install button, iOS shows the Share → Add to Home Screen hint |
+| Offline | The shell, the locale bundles and the last menu response are cached - the app still opens |
+| Offline banner | A banner appears when the connection drops, the API keeps the last known prices |
+| Cart | The cart is kept in `localStorage`, so a refresh or a killed background tab does not lose the order |
+| Updates | A new build is announced with a banner, the guest taps **Refresh** (never reloaded mid-order) |
+| Table shortcuts | The home-screen icon can be long-pressed for Table T1 - T4 |
+| Safe areas | The header and the cart bar respect the notch / home indicator |
+
+## File layout
+
+```
+customer-app/
+├── manifest.json          # app name, icons, shortcuts, display mode
+├── VERSION                # the build version - bump this on every deploy
+├── sw.js                  # service worker (network first, cache as fallback)
+├── offline.html           # shown when the app opens with no network at all
+├── icons/                 # generated from POS_AI/square_logo.png
+├── js/pwa.js              # registration, update flow, install prompt, offline banner
+├── scripts/build_pwa.py   # builds the icons + manifest, stamps the version
+└── scripts/check-i18n-parity.mjs
+```
+
+## Deploy runbook
+
+<Steps>
+  <Step title="Bump the version">
+    ```bash
+    echo 2.5.4 > customer-app/VERSION
+    ```
+  </Step>
+  <Step title="Rebuild the PWA assets">
+    ```bash
+    python3 customer-app/scripts/build_pwa.py
+    ```
+    This regenerates the icons from `square_logo.png`, rewrites `manifest.json`
+    (including the table shortcuts from the database) and stamps the new
+    version on every asset URL in `index.html`, `sw.js` and `js/pwa.js`.
+  </Step>
+  <Step title="Verify">
+    ```bash
+    python3 customer-app/scripts/build_pwa.py --check
+    node customer-app/scripts/check-i18n-parity.mjs
+    cd scripts && node pwa_check.js
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  **Why the version query matters.** Cloudflare caches static files by URL.
+  Without a new `?v=` query the CDN keeps serving the previous `app.js` and
+  `sw.js` - the app then runs old code and the service worker never updates.
+  Always bump `VERSION` and run `build_pwa.py`.
+</Warning>
+
+## Serving
+
+`order.ideazes.com` is served by Caddy straight from disk:
+
+```caddyfile
+order.ideazes.com {
+    root * /var/www/html/posai-customer
+    encode gzip zstd
+    header /sw.js Cache-Control "no-cache, must-revalidate"
+    header /sw.js Service-Worker-Allowed "/"
+    header /manifest.json Content-Type "application/manifest+json"
+    file_server
+}
+```
+
+The app directory lives in the workspace under `/root/.openclaw/...`, which the
+`caddy` user cannot read, so it is published with a bind mount:
+
+```bash
+mount --bind /root/.openclaw/workspace/mydoc/Projects/POS_AI/customer-app \
+           /var/www/html/posai-customer
+# /etc/fstab keeps it across reboots
+```
+
+<Note>
+  Caddy runs as the `caddy` user and the workspace sits under `/root` (mode
+  0700), which is why the bind mount exists. Edits in the workspace appear on
+  the site immediately - there is no deploy step.
+</Note>
+
+## Service worker
+
+- **Network first everywhere**, the cache is only the offline fallback.
+  Cache-first used to serve a stale `app.js` for one extra load after every
+  deploy.
+- `updateViaCache: 'none'` + `registration.update()` on every load, so the
+  worker is always checked against the network.
+- The offline fallback matches the cached shell **ignoring the query string**,
+  because the page requests `app.js?v=2.5.3` while the cache stores the
+  unversioned path.
+- `SKIP_WAITING` is supported - the page can ask the waiting worker to take
+  over immediately.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The app still runs the old code">
+    Bump `VERSION`, run `build_pwa.py`, then check
+    `curl -sI https://order.ideazes.com/js/app.js?v=<new>` - the response must
+    be a fresh `HIT`/`DYNAMIC` from the new URL. Old URLs keep their cached
+    copy at the CDN until the TTL expires.
+  </Accordion>
+  <Accordion title="No install prompt in Chrome">
+    The manifest needs a 192x192 and a 512x512 PNG icon. Check
+    `chrome://apps` or DevTools → Application → Manifest for the install
+    criteria.
+  </Accordion>
+  <Accordion title="The language dropdown does not open">
+    An `overflow: auto` parent clips the absolutely positioned dropdown. The
+    header uses `overflow: visible` + `flex-wrap` on small screens.
+  </Accordion>
+</AccordionGroup>
