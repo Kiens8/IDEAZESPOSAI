@@ -608,17 +608,30 @@ manifest fetch needs.
 at install time - an installed app keeps its icon until the guest reinstalls
 it. The **name** and the **theme colour** do follow the swap.
 
-**On iOS the name comes from a meta tag, not from the manifest.** Safari uses
-`apple-mobile-web-app-title` for the name on the home screen and ignores the
-manifest for it - a hardcoded tag there means every restaurant ends up called
-"Ideazes" on the home screen even though the icon is branded. So the tag
-follows the branch as well:
+**On iOS the name comes from the page, and iOS reads it when the page
+loads.** Safari uses `apple-mobile-web-app-title` for the name on the home
+screen and ignores the manifest for it - and it reads the page when it loads,
+not when the guest taps "Add to Home Screen". A page that only gets its
+branding from JavaScript therefore shows "Ideazes" on the home screen, even
+though the app inside is branded.
 
-| When | What sets it |
+So the shell is **rendered on the server** (`customer-app/server.py` - a small
+FastAPI app instead of a plain file server):
+
+| The guest opens | The server renders |
 |---|---|
-| the page loads | the inline script - from the branch the device used last |
-| the venue is known | `applyBranding()` - the restaurant name from the manifest |
+| `?t=<table uuid>` (the QR) | the name, the theme colour and the manifest of that branch |
+| `?outlet=<id>` (a deep link) | the same |
+| a plain visit | the neutral shell - the guest picks the branch in the app |
 
-The inline script also points the manifest link at the branch, so the very
-first thing iOS reads is already the branded one. A guest who has not chosen
-a branch yet gets the neutral "Ideazes Order".
+The client keeps the branding up to date afterwards (`applyBranding()` and the
+inline script), so a branch that is picked later is branded too.
+
+**Two iOS details worth knowing**
+
+- **The home screen entry keeps its name.** Changing the page does not rename
+  an installed app - the guest has to delete the entry and add it again.
+- **A home screen web app has its own storage** (iOS 16.4+). The venue the
+  guest saved in Safari is not visible in the installed app, so the installed
+  app asks for the branch the first time it starts - and remembers it in its
+  own storage from then on.
