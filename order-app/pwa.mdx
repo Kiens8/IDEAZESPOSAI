@@ -8,6 +8,8 @@ description: Installable Ideazes Order app - offline support, icons and the depl
 The customer app at **order.ideazes.com** is an installable PWA. A guest can
 add it to the home screen and it keeps working when the network hiccups.
 
+**Status:** shipped (Oct 29, 2026) · multi-tenant venue resolution **proposed** - see [Multi-tenant venue resolution](#multi-tenant-venue-resolution-proposed)
+
 <Info>
   App name: **Ideazes Order** · Short name (home screen): **Ideazes** ·
   Build version: see `customer-app/VERSION`
@@ -133,3 +135,222 @@ mount --bind /root/.openclaw/workspace/mydoc/Projects/POS_AI/customer-app \
     header uses `overflow: visible` + `flex-wrap` on small screens.
   </Accordion>
 </AccordionGroup>
+
+---
+
+## Multi-tenant venue resolution (proposed)
+
+**Status: proposal — not yet implemented.** Written 29 October 2026.
+
+### The problem
+
+A guest installs the app at Restaurant A, table T3. Later they visit
+Restaurant B (a different web customer) or a different table of the same
+restaurant. The installed app has to know **which venue** the guest is
+ordering from - today it does not:
+
+```js
+// js/app.js - DOMContentLoaded
+customerId  = params.get('customer') || '1';
+outletId    = params.get('outlet')   || '1';   // always outlet 1
+tableNumber = params.get('table')     || 'T1';   // always table T1
+```
+
+The installed app opens with `start_url = /?src=pwa` - no table uuid - so it
+falls through to those hardcoded defaults and **silently orders against outlet
+1**. Two storage leaks make it worse:
+
+| Key | Scope today | Consequence |
+|-----|-------------|-------------|
+| `pos_cart` | global | Restaurant A's basket can appear at Restaurant B |
+| `pos_customer` | global | A member of group A sees **group A's points** inside group B's app |
+
+### The decisions
+
+| Decision | Choice |
+|----------|--------|
+| Identity of the installed app | **One PWA per web customer (restaurant group)** - it serves all that group's outlets |
+| Group identity of the app | The **web customer id** is carried in the manifest and the `start_url` |
+| Which outlet/table | **The guest picks** - outlet picker, then table picker. No GPS |
+| Home-screen icon | **Generated branded initial** (the group's initial + brand colour), not the uploaded logo |
+| App name | **The web customer's restaurant group name** (e.g. "Sushi Bar Order") |
+| Domains | **No subdomains** - every web customer uses `order.ideazes.com` |
+
+### How the web customer id reaches the installed app
+
+**The browser never remembers anything for us - the id is baked into the
+manifest at install time.** Chrome reads the `<link rel="manifest">` of the
+page at the moment the guest installs, and takes `id`, `start_url`, `name` and
+`icons` from it.
+
+So the flow is:
+
+1. The guest scans the table QR -> `https://order.ideazes.com/?t=<table-uuid>`
+2. The app resolves it: `GET /api/tables/uuid/<uuid>` returns
+   `{ uuid, table_number, outlet_id, customer_id }` - `customer_id` **is** the
+   web customer id
+3. The app rewrites the manifest link:
+   ```js
+   document.querySelector('link[rel=manifest]').href = `/pwa/manifest?wc=${customer_id}`;
+   ```
+4. Chrome fetches that manifest and installs it:
+   ```json
+   {
+     "id": "/?wc=3",
+     "name": "Sushi Bar Order",
+     "short_name": "Sushi Bar",
+     "start_url": "/?wc=3&src=pwa",
+     "scope": "/",
+     "icons": [{ "src": "https://api.ideazes.com/api/pwa/icon?wc=3&size=512", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+   }
+   ```
+5. Every launch of the installed app therefore starts at `/?wc=3` - **the web
+   customer is known before the first API call.**
+
+Three install paths, three outcomes:
+
+| How the guest installs | The app knows | Result |
+|------------------------|---------------|--------|
+| From a table QR (the normal case) | the group (from the uuid) | Branded, group-scoped app. The guest picks the outlet + table inside it |
+| From a direct visit with no QR | nothing yet | The generic manifest installs. The guest picks group -> outlet -> table, and the app then swaps the manifest and offers the branded install (a second, branded icon) |
+| From a QR of a **different** group | the new group (the url wins) | The app re-targets to the new venue and shows a clear venue banner - see [Cross-brand switch](#cross-brand-switch) |
+
+### The manifest has to be same-origin
+
+A manifest served from another origin (`api.ideazes.com`) would put the app's
+**scope** on that origin and break the whole thing. The dynamic manifest is
+therefore served from `order.ideazes.com` and proxied to the backend:
+
+```caddyfile
+order.ideazes.com {
+    root * /var/www/html/posai-customer
+
+    handle /pwa/manifest* {
+        reverse_proxy 127.0.0.1:8000      # the backend generates the JSON
+    }
+    handle {
+        file_server
+    }
+}
+```
+
+The **icons** may stay cross-origin (the API already sends
+`Access-Control-Allow-Origin: *`).
+
+### The branded initial
+
+The uploaded logo is rarely square and is often a wordmark, which turns to
+mush at 48x48 on an Android home screen. The manifest therefore points at a
+**generated** icon: the group's initial on the brand colour, rendered
+server-side at 96/192/512 plus a maskable variant.
+
+```
+GET /api/pwa/icon?wc=<web customer id>&size=512   ->  image/png
+```
+
+### Context resolution on launch
+
+| # | Source | Result |
+|---|--------|--------|
+| 1 | `?t=<table-uuid>` | QR scan - group + outlet + table resolved server-side. **Always wins** |
+| 2 | `?wc=<group>&outlet=<id>&table=<id>` | Deep link |
+| 3 | `?wc=<group>` | Group known, venue unknown -> **outlet picker** |
+| 4 | Remembered context | The last group/outlet/table this device used |
+| 5 | Fallback | Ask the group - never the hardcoded outlet 1 / T1 |
+
+### Storage scoped per venue
+
+```
+pos_cart:<outletId>          the basket never crosses outlets
+pos_customer:<groupId>       login + loyalty never crosses web customers
+pos_context                  the last group/outlet/table (fallback #4)
+pos_lang                     global - a personal preference
+pos_pwa_dismissed            global
+```
+
+### The pickers
+
+```
+Installed app opens (no QR)
+  -> group known from ?wc=3
+  -> OUTLET PICKER   (GET /api/outlets/?customer_id=3  - exists today)
+  -> TABLE PICKER    (GET /api/tables/?outlet_id=...  - exists today)
+  -> normal order flow
+```
+
+Both endpoints already exist; the tables list may need to be public like the
+outlets list. A **"Change"** action next to the table badge lets the guest
+switch outlet/table at any time, with a camera QR scan where
+`BarcodeDetector` is available (Chrome Android) and the manual picker as the
+universal fallback.
+
+### Server-side trust boundary
+
+The web customer id in the URL is **client supplied - it is not a secret**, so
+the server must verify it.
+
+<Warning>
+**Live bug found while designing this (29 October 2026):** `POST
+/api/loyalty/login` looks the customer up by phone **without scoping to the
+web customer**:
+```python
+customer = db.query(DiningCustomer).filter(
+    DiningCustomer.phone == data.phone, DiningCustomer.is_active == True
+).first()   # no customer_id filter
+```
+A member of group A who signs in at group B receives **group A's member
+record** - points, name, vouchers and birthday. The model comment already
+says *"unique removed - now unique per customer_id"*, so the intent was
+per-group uniqueness; the query never applied it.
+</Warning>
+
+The full boundary:
+
+1. Scope the login by the web customer.
+2. Derive `outlet_id` **from the table uuid** when an order is created -
+   `OrderCreate.outlet_id` is currently taken straight from the request.
+3. Validate that group -> outlet -> table are consistent on every request
+   that carries ids.
+4. Store the table uuid on the order, so it is auditable which QR produced it.
+
+### Cross-brand switch
+
+A guest who installed "Sushi Bar Order" and then scans a **Noodle House** QR
+lands inside the installed app (the scope is `/`, and a query string cannot
+narrow a scope). The url wins, so the app re-targets to Noodle House - and the
+home-screen icon still says "Sushi Bar Order".
+
+Blocking that would stop the guest from ordering, so the app instead:
+
+1. Shows an unmissable venue banner (*"You are now ordering at Noodle House"*)
+2. Offers the branded install for the new group
+3. Keeps the basket separated per outlet
+
+### Platform behaviour
+
+| | Scan a QR | Open the installed app |
+|---|---|---|
+| Android / Chrome | Opens **inside the installed app**, the url carries the uuid, the venue resolves instantly | Group known -> outlet picker -> table picker |
+| iOS / Safari | A scanned QR opens in **Safari** - the guest orders in the browser with the full context from the QR | Same as Android |
+
+### Rollout
+
+| Phase | Scope | Hours |
+|-------|-------|-------|
+| **P1 - correctness** | Server trust boundary (login scoping, outlet from uuid, validation) + scoped storage + context resolution | **3-4** |
+| **P2 - the manual flow** | Outlet picker, table picker, "Change" action, venue banner | **3-4** |
+| **P3 - branded app** | Dynamic per-group manifest, generated initial, manifest swap in the page | **4-6** |
+
+P1 removes the two real risks (an order filed against the wrong restaurant,
+another group's loyalty on screen). P2 makes the app usable without a QR. P3
+is the commercial polish - every restaurant gets its own branded icon on the
+guest's home screen.
+
+### Open items
+
+- The login scoping bug should be fixed **regardless** of the PWA work - it is
+  a live cross-tenant data leak.
+- Which web customer does a guest belong to when they install with no QR and
+  have never ordered? The app has to ask.
+- Should a guest be able to order at an outlet of a group they have never
+  ordered from before? (Currently yes - no account is required to order.)
