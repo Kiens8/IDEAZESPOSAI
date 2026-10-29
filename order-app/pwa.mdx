@@ -448,6 +448,11 @@ table (or is already paid / already in the kitchen), so the guest can only
 cancel their own. The picker is only reached once the orders of the old table
 are gone.
 
+**No venue, no order.** The guest cannot check out before a venue is picked -
+`confirmOrder()` opens the picker instead of filing the order. Without this a
+guest who closed the picker would order at the default outlet without ever
+having chosen it.
+
 **The url is cleaned up.** When the guest changes the table, the stale `?t=`
 parameter is removed (`history.replaceState`) - otherwise the old QR would win
 over the new venue when the app starts again.
@@ -493,8 +498,29 @@ picker was wired up and tested; the code that shipped is 2.5.13.
 ### Open items
 
 - The login scoping bug should be fixed **regardless** of the PWA work - it is
-  a live cross-tenant data leak.
+  a live cross-tenant data leak. **[fixed in P1]**
 - Which web customer does a guest belong to when they install with no QR and
-  have never ordered? The app has to ask.
+  have never ordered? The app has to ask. **The group is now known (the picker
+  resolves it) - the member record is still created on the fly.**
 - Should a guest be able to order at an outlet of a group they have never
   ordered from before? (Currently yes - no account is required to order.)
+
+**Left from P2**
+
+- The table uuid is optional in `POST /api/orders/`. A tampered client can
+  still post an order without one, so the server cannot tell "the guest
+  picked the default outlet" from "the guest never picked". Making the uuid
+  mandatory for dine-in orders would close it properly.
+- The occupied tables are greyed out in the picker but still clickable (a
+  guest may sit down where an order is still open).
+- The deep link (`?outlet=&table=`) carries no table uuid, so the server
+  cannot verify the table behind it - the QR is the only verified path.
+- Test tables left in the dev database (T99, TNEW, Tnewtable) show up in the
+  picker.
+
+### P3 - the branded app (proposed)
+
+Every restaurant group gets its own icon, name and colour on the guest's home
+screen: a manifest per group, generated on the fly, and a manifest swap in the
+page after the venue is known. The manifest is built by
+`customer-app/scripts/build_pwa.py` today - it becomes a per-group endpoint.
