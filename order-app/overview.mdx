@@ -11,13 +11,15 @@ The customer ordering app at **order.ideazes.com** allows customers to browse me
 
 ### For Customers
 - **QR Code Ordering** - Scan table QR code to view menu and order
+- **Venue Picker** - Choose the restaurant and the table (group -> branch -> table); the picker works offline and the choice is remembered
+- **Branded App** - The app on the home screen carries the name of the group, the icon and the colour of the branch
 - **Menu Browsing** - View categories, items, and modifications
 - **Cart Management** - Add/remove items, modify orders
 - **Order Tracking** - Real-time order status updates
 - **Payment** - Online payment for orders
 
 ### Order Flow
-1. Customer scans QR code or visits order.ideazes.com
+1. Customer scans QR code or visits order.ideazes.com (the picker asks for the restaurant and the table when the venue is unknown)
 2. Selects items and customizations
 3. Submits order
 4. Payment processed
@@ -38,6 +40,7 @@ The customer ordering app at **order.ideazes.com** allows customers to browse me
 
 ## Related Documentation
 
+- [PWA](../order-app/pwa) - the branding, the venue picker, the service worker and the deploy runbook
 - [Order Management](../pos-app/order-management)
 - [Kitchen Display System](../pos-app/kitchen-kds)
 - [Receipt Printing](../pos-app/receipt-printing)
