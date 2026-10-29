@@ -454,6 +454,42 @@ over the new venue when the app starts again.
 
 The three languages (en, km, zh) got their own strings for the picker.
 
+### P2 - what changed in the code
+
+**Backend** - `backend/app/routes/pwa.py`
+
+| Change | What it does |
+|---|---|
+| `GET /api/pwa/table-orders?table_uuid=` | The active orders of one table (scoped by the uuid) - the sheet lists them and the table change cancels them |
+
+**Customer app** - `customer-app/`
+
+| File | Change |
+|---|---|
+| `index.html` | The table badge becomes a `<button>` (it opens the venue sheet); the venue line in the hero (`#venue-line` / `#venue-name`); the venue modal (`#venue-modal` with title, hint, body, close button); the `js/venue.js` script tag |
+| `js/app.js` | `getVenueContext()`, `applyVenue()`, `getVenueInfo()`, `getTableOrders()`, `cancelOwnOrder()`, `updateVenueLine()`; `venueResolved` (module level, set by the three resolution branches); the launch hook shows the venue line and opens the picker when the venue is unknown; the badge opens the sheet; `applyVenue()` cleans the url (`history.replaceState`) |
+| `js/venue.js` | The picker (group -> branch -> table), the venue sheet (restaurant / address / table / your orders), the cancellation of the table's orders before the table changes, the close button |
+| `css/style.css` | The venue picker styles (~230 lines): the venue line, the picker cards, the table grid, the sheet rows |
+| `locales/en/venue.json`, `locales/km/venue.json`, `locales/zh/venue.json` | 23 new strings per language |
+| `js/i18n.js` | The `venue` namespace |
+| `scripts/check-i18n-parity.mjs` | The `venue` and `pwa` namespaces, and the picker scripts are scanned for missing keys |
+
+**The version jumped 2.5.6 -> 2.5.13** - that is one feature set, not
+eight. The service worker serves the assets by their `?v=` url, so every
+change to a cached asset needs a new version to reach the phone. The
+intermediate versions (2.5.7 - 2.5.13) were the forced bumps while the
+picker was wired up and tested; the code that shipped is 2.5.13.
+
+**Two bugs the browser test caught** (reading the code did not):
+
+1. **A stale `?t=` won over the new venue.** The guest picked table T3, the
+   app reloaded and the old QR in the url put them back on T2. Fixed with
+   `history.replaceState` in `applyVenue()`.
+2. **The service worker served the old `app.js`.** The picker was wired up,
+   the version was not bumped, and the phone kept running the previous code.
+   The version is now bumped on every build - and the build stamps every
+   asset url with it.
+
 ### Open items
 
 - The login scoping bug should be fixed **regardless** of the PWA work - it is
