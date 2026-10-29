@@ -654,12 +654,19 @@ Measured at 430 px: 🌐 ZH (63 px) · ⭐ 537 分 (68 px) · 📋 我的订单 
 
 #### 8. Known follow-ups
 
+- ~~The AI search box was hardcoded in English~~ — **fixed 29 October 2026**
+  (placeholder + empty state now localised, and they follow a language switch).
 - The customer app has no way to **edit** the stored menu translations yet —
   staff still rely on the backfill endpoint. Wiring the translations into the
   admin Menu Management UI is the natural next step (Phase 4).
-- `ai_components.js` is the only remaining English-only surface in the
-  customer app (its own headings are translated, the strings it receives from
-  the API are handled server-side).
+- ~~`ai_components.js` is the only remaining English-only surface in the
+  customer app~~ — **fixed 29 October 2026**: the AI search placeholder and
+  its "no results" state now come from the locale bundle
+  (`ai.search.placeholder`, `ai.search.noResults`) and the component
+  re-renders on a language switch (`refreshLocale()`).
+  The placeholder is set through the DOM property, not through the HTML
+  template - the Khmer string contains double quotes, which broke the
+  attribute and truncated the text.
 - Adding a language means: drop a `locales/<code>/` folder, add the code to
   `SUPPORTED_LOCALES` in `js/i18n.js`, to `LOCALE_LABELS` in
   `js/language-selector.js` and to `app/services/ai_translation.py`, then
