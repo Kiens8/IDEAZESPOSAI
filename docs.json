@@ -72,8 +72,7 @@
     "group": "Admin App",
     "pages": [
      "admin-app/settings"
-    ],
-    "hidden": true
+    ]
    }
   ]
  },
