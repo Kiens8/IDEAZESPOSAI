@@ -8,42 +8,18 @@ description: Proposal for a kiosk-style full-screen ordering screen with order s
 **Date:** October 31, 2026
 **Status:** **Implemented — Phase 1 is live (November 1, 2026).**
 **Reviewed by Kens:** October 31, 2026 — every open question was answered and is baked into
-this document. **Ready to build** (nothing has been implemented yet).
+this document.
 **Scope:** Frontend POS (`app.ideazes.com`) · backend `pos_ai.db` / `pos_backend`
+**Implementation record:** see [What was actually built](#what-was-actually-built) at the end
+of this document — the file map, the shared hooks, the backend fix and the verification
+steps are written down there for whoever touches this code next.
 
 ---
 
 <Info>
-  **Implementation status — November 1, 2026**
-
-  Phase 1 is **built and running** on `app.ideazes.com`:
-
-  - `/staff-order/full` is the kiosk route; `/staff-order` is unchanged and now carries
-    the **Full screen** button.
-  - The kiosk renders **outside the app shell** — no sidebar, no app bar, no page scroll.
-    Desktop: menu left, cart right. Phone: the cart is a bottom sheet.
-  - The header always shows the **table** (a chip that opens the table picker) and the
-    **order type** (Dine In / Takeaway / Delivery).
-  - **Search + payment** are built in, including **settle table** (one action pays every
-    unpaid order of the table).
-
-  **The code is shared, not copied.** The payment flow and the receipt printing moved
-  into two hooks that the Orders screen and the kiosk both use:
-
-  | Hook | What it owns |
-  |---|---|
-  | `frontend/src/hooks/usePaymentFlow.js` | the payment dialog, the split bill, the tips, the cash change, recording a payment |
-  | `frontend/src/hooks/useReceiptPrinter.js` | printing the receipt (browser print / ESC-POS / kitchen copy) |
-
-  One backend change was needed to make it work: **the browser could not create an
-  order at all.** Production serves the built app through Caddy, which attaches **no
-  API key** to the browser requests — the only credential is the session cookie, and the
-  create route did not accept a session. `require_shared_permission("orders:write", ...)`
-  now allows `"user"` next to `"frontend"` and `"customer"`; the role permissions still
-  decide who may ring up an order.
-
-  The regression suite passes unchanged: **45/45**.
-
+  **Implemented.** The full-screen mode is live on `app.ideazes.com` at
+  **`/staff-order/full`**. The exact file map, the shared hooks, the one backend fix and
+  the verification steps are in [What was actually built](#what-was-actually-built).
 </Info>
 
 ---
@@ -525,3 +501,135 @@ Answered by Kens on October 31, 2026 and baked into this document.
 - [Order management](/pos-app/order-management) — the Orders screen and the payment flow it reuses
 - [Receipt printing](/pos-app/receipt-printing) — the print block reused by the kiosk
 - [Language switching](/system-design/program-changes/language-switching/language-switching) — the `en / zh / km` key parity the new UI must satisfy
+
+---
+
+## What was actually built
+
+*Implementation record — November 1, 2026. This is the reference for anyone who has to
+change this code later.*
+
+### The route
+
+| Route | Screen |
+|---|---|
+| `/staff-order` | the **embedded** staff order screen — unchanged, inside the app shell, plus one new **Full screen** button |
+| `/staff-order/full` | the **kiosk** — full screen, outside the app shell |
+
+### File map
+
+**Created**
+
+| File | What it is |
+|---|---|
+| `frontend/src/hooks/usePaymentFlow.js` | the whole payment flow as a hook: the payment dialog, the payment method, the tips, the split bill, the cash change, recording a payment, settling a table |
+| `frontend/src/hooks/useReceiptPrinter.js` | printing the receipt (browser print / ESC-POS / kitchen copy) |
+| `frontend/src/components/pos/OrderSearchPanel.jsx` | the kiosk order search + **settle table** |
+| `frontend/src/components/pos/PaymentPanel.jsx` | the payment panel (methods, tip, split bill, exact cash) |
+
+**Changed**
+
+| File | What changed |
+|---|---|
+| `frontend/src/pages/StaffOrder.jsx` | one component, two modes: `mode="embedded"` (today's screen) and `mode="kiosk"`. Added the kiosk branch, the table picker modal and the `selectTable()` helper. |
+| `frontend/src/App.jsx` | the routes moved into `AppRoutes`. The kiosk renders **outside** the app shell; every other route still renders inside it. |
+| `frontend/src/pages/OrderQueue.jsx` | the payment state and the receipt printing moved into the two hooks. The cancel modal's own id was renamed `selectedOrderId` → `cancelOrderId` (it used to share the payment dialog's variable). **No behaviour change.** |
+| `backend/app/routes/order.py` | `POST /api/orders/` now accepts a browser session — see the backend fix below. |
+| `frontend/src/i18n/locales/{en,zh,km}/staffOrder.json` | new keys: `kiosk.*`, `search.*`, `payment.*` (incl. `payment.method.*`), `status.*` |
+
+### The shared hooks
+
+The kiosk and the Orders screen run **the same code**, not two copies:
+
+```jsx
+// the kiosk
+const paymentFlow = usePaymentFlow({ settings, customerId, orders, onRefresh: fetchOrders, t })
+const { handlePrintReceipt } = useReceiptPrinter({ settings, t, orders })
+
+// the Orders screen
+const paymentFlow = usePaymentFlow({ settings, customerId, orders, onRefresh: () => fetchOrders(), t })
+const { handlePrintReceipt } = useReceiptPrinter({ settings, t, orders })
+```
+
+`usePaymentFlow` returns the dialog state and the handlers the panels need:
+`showPaymentDialog`, `openPaymentDialog(id)`, `openBulkPaymentDialog(ids)`, `closePaymentDialog()`,
+`confirmPayment()`, `payEqualSplitPerson()`, `payCustomSplitPerson()`, `toggleCustomSplitItem()`,
+`calculateCustomPersonTotal()`, `updatePaymentStatus()`, plus the split-bill and tip state.
+
+### The layout rules
+
+- The kiosk is `h-[100dvh] overflow-hidden` — **the page never scrolls**; only the menu list
+  and the cart scroll inside their own column.
+- **Desktop (≥1024px):** the menu on the left, the cart on the right (`w-[380px] xl:w-[420px]`).
+- **Phone (<1024px):** the cart is a bottom sheet behind a persistent bar
+  (`{count} items` + the running total).
+- The header always carries the **table chip** (opens the table picker) and the **order
+  type** (Dine In / Takeaway / Delivery) — smaller buttons on a phone, but never hidden.
+- The table picker is a modal on desktop (the inline row is `lg:hidden` only). A table that
+  already holds `max_orders_per_table` orders is disabled.
+
+### The order search rule
+
+The kiosk search shows **only the orders that can be paid at the counter**: `status = served`
+**and** `payment_status != paid`. Anything else (pending, preparing, cancelled, paid) is not
+a bill that can be closed — showing it would only let the staff open a payment the POS
+itself refuses. The filter lives in `OrderSearchPanel` (`payable`), so the rule holds no
+matter what the caller passes.
+
+Search by **order number**, **order id** or **table**. When the search matches a table with
+more than one payable order, the panel offers **Settle table N** — one action pays all of
+them (one payment row per order, one receipt).
+
+### The access gate
+
+The **Full screen** button renders only when the session is authorised for **both**
+`/orders` and `/staff-order` (`visibleNavItems(session, { hasFeature, loading })` in
+`frontend/src/config/navItems.js`) — the same role and plan-feature gate as the two nav
+entries. The kiosk route itself is protected by the same `ProtectedRoute`.
+
+### The backend fix — the browser could not create an order
+
+**Symptom:** `POST /api/orders/` from the browser → `403 Permission denied. Required: orders:write`.
+The embedded Staff Order screen had the same bug — it was never caused by the kiosk.
+
+**Cause:** production serves the built app through Caddy and proxies `/api/*` straight to the
+backend on `:8000` — **no API key is attached**. The Vite dev proxy injects
+`frontend_pos_key`, but that proxy is only in the dev path. In the browser the only
+credential is the **session cookie**, which `get_auth_context()` resolves as
+`key_type: "user"` — and the create route only allowed `("frontend", "customer")`.
+
+**Fix:**
+
+```python
+# backend/app/routes/order.py
+key_info: dict = Depends(
+    require_shared_permission("orders:write", allowed_key_types=("frontend", "customer", "user"))
+),
+```
+
+The role permissions still decide who may ring up an order (`ROLE_PERMISSIONS["staff"]`
+contains `orders:write`) and the tenant is still derived from the resource.
+
+> **Never** fix this by injecting a staff API key in Caddy: `get_auth_context()` checks the
+> session **first**, so the key would be ignored and `key_type` would still be `"user"`.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Tenant isolation suite (`/tmp/isolation_tests.sh`, with the real key from `backend/.env`) | **45/45 PASS** |
+| Every POS screen in a real browser (24 routes) | **0** console errors, **0** page errors, **0** failed requests, **0** 5xx |
+| Kiosk: pick a table → cart → place order → search → cash → payment recorded → receipt banner | pass |
+| Orders screen: cancel-order modal, remove-item modal, payment modal, settle | pass |
+| Settle table: 4 payable orders on T10 → "Settle 4 orders" → cash → all 4 paid | pass |
+| Desktop + phone layout (no page scroll, cart on the right / bottom sheet) | pass |
+
+> The isolation script still sends the old literal `frontend_pos_key`; that stopped working
+> when the staff key became a secret. With the real key it is 45/45.
+
+### Known follow-ups
+
+- The **AI upsell popup** (embedded screen only) opens after an item is added and dims the
+  page until it is closed. Pre-existing, but it blocks the cart button — worth making it
+  non-blocking.
+- The kiosk has no **customer name / phone** field and no **park the table** action yet.
