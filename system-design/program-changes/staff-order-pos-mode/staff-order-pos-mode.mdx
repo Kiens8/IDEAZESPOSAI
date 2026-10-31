@@ -568,6 +568,29 @@ const { handlePrintReceipt } = useReceiptPrinter({ settings, t, orders })
 - The table picker is a modal on desktop (the inline row is `lg:hidden` only). A table that
   already holds `max_orders_per_table` orders is disabled.
 
+### The visual design — "Midnight POS"
+
+The kiosk is a **different mode**, not the app with the chrome removed, so it gets its own
+look: a dark chrome zone framing a bright work canvas, with **one** accent colour.
+
+| Zone | Treatment |
+|---|---|
+| Header | `bg-slate-800`, `shadow-[inset_0_-1px_0_rgba(255,255,255,0.08)]`, white title, the logo tile keeps the brand gradient with a `ring-1 ring-white/10` |
+| Table chip | selected → solid `bg-primary-600 text-white`; empty → `bg-white/10 text-slate-300 border border-white/15` |
+| Order type | track `bg-white/10`, the active thumb `bg-white text-slate-900`, the inactive ones `text-slate-300` |
+| Search / Exit | search `bg-white/10 border border-white/10`; **Exit is a light button** (`bg-white text-slate-900`) — leaving the kiosk must be obvious |
+| Category rail | `bg-slate-700`, the active tab solid `bg-primary-600 text-white`, the others `text-slate-300` |
+| Canvas | `bg-slate-100` so the white tiles float |
+| Menu tiles | `bg-white rounded-2xl shadow-sm`, `hover:shadow-lg hover:-translate-y-0.5 hover:ring-2 hover:ring-primary-500/40`, name `text-[15px] font-semibold`, price `text-base font-bold text-primary-600` |
+| Cart panel | white with `shadow-[-8px_0_24px_rgba(15,23,42,0.10)]` (no border), the total on a `bg-slate-50` strip, the CTA `py-5` solid primary with `shadow-lg shadow-primary-600/25` |
+| Search / payment panels | `bg-slate-800` headers, white input, rounded-xl |
+
+**The menu tiles stay text-only** — no dish photos. A photo pipeline (upload, storage,
+CDN, per-outlet fallbacks) is a separate project.
+
+Only the kiosk is affected: the embedded Staff Order screen and the `CartPanel` variant
+`embedded` were **not** touched.
+
 ### The order search rule
 
 The kiosk search shows **only the orders that can be paid at the counter**: `status = served`
