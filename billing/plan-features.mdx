@@ -25,9 +25,25 @@ The POS talks to the website API with the **tenant id** - the frontend asks for
 `/api/admin/customer/{tenant_id}/features` and the login check asks for
 `/api/admin/customer/{tenant_id}/subscription`.
 
-The link between the two is the column `website_customers.customer_id` ("Link to POS
-database customer (same ID)"). When it is empty, the website API cannot find the
-customer.
+### The link
+
+The POS database carries the link on **both** sides:
+
+| Table | Column | Demo | VARMAN | AES |
+|---|---|---|---|---|
+| `pos_ai.db` `customers` | `website_customer_id` | 1 | 12 | 23 |
+| `pos_ai.db` `users` | `website_customer_id` | 1 | 12 | 23 |
+| `website_api.db` `website_customers` | `customer_id` | 1 | 2 | 3 |
+
+So the POS **knows** the website customer id - it just has to use it:
+
+- the **login response** carries `website_customer_id` (the tenant's link first, the
+  user's as a fallback),
+- the **frontend** sends that id to `/api/admin/customer/{website_customer_id}/features`,
+- the **backend** sends that id to `/api/admin/customer/{website_customer_id}/subscription`.
+
+The website API keeps the resolver as a safety net, so a stale or missing link still
+finds the customer.
 
 ### The rule
 
@@ -71,14 +87,25 @@ customer that cannot be resolved.
 
 ## The subscription check at login
 
-The POS backend checks the subscription on every login and blocks a restaurant whose plan
-was **cancelled**, **expired** or **overdue**. A restaurant that never picked a plan is
-warned, not locked out.
+The POS backend checks the subscription on every login and **blocks** a restaurant whose
+plan is **cancelled**, **expired**, **overdue** or **missing**. A restaurant with no plan
+at all gets:
+
+> No active subscription found. Please subscribe to access the POS system.
+
+That is the rule: no plan, no POS.
 
 The check used to be skipped for everybody: the backend logged into the admin API with a
 hardcoded password that no longer works, so the call failed and the login carried on.
 It uses an API key now (`WEBSITE_API_INTERNAL_KEY` in `backend/.env`, mode 600) - a server
 key with `read:subscriptions` and `read:settings`.
+
+## The database and the locks
+
+SQLite locks the whole file for a writer, and the website API writes on every request
+that carries an API key (it stamps `last_used`). Two requests at the same time were
+enough to make the other fail with *database is locked* - a 500 for the POS. Both
+services now run the database in **WAL** mode with a 30 second busy timeout.
 
 ## API keys
 
