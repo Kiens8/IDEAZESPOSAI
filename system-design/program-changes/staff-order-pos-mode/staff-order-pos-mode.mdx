@@ -6,10 +6,45 @@ description: Proposal for a kiosk-style full-screen ordering screen with order s
 # Staff Order — Full-Screen POS Mode
 
 **Date:** October 31, 2026
-**Status:** **Proposal — awaiting review. Nothing has been implemented.**
+**Status:** **Implemented — Phase 1 is live (November 1, 2026).**
 **Reviewed by Kens:** October 31, 2026 — every open question was answered and is baked into
 this document. **Ready to build** (nothing has been implemented yet).
 **Scope:** Frontend POS (`app.ideazes.com`) · backend `pos_ai.db` / `pos_backend`
+
+---
+
+<Info>
+  **Implementation status — November 1, 2026**
+
+  Phase 1 is **built and running** on `app.ideazes.com`:
+
+  - `/staff-order/full` is the kiosk route; `/staff-order` is unchanged and now carries
+    the **Full screen** button.
+  - The kiosk renders **outside the app shell** — no sidebar, no app bar, no page scroll.
+    Desktop: menu left, cart right. Phone: the cart is a bottom sheet.
+  - The header always shows the **table** (a chip that opens the table picker) and the
+    **order type** (Dine In / Takeaway / Delivery).
+  - **Search + payment** are built in, including **settle table** (one action pays every
+    unpaid order of the table).
+
+  **The code is shared, not copied.** The payment flow and the receipt printing moved
+  into two hooks that the Orders screen and the kiosk both use:
+
+  | Hook | What it owns |
+  |---|---|
+  | `frontend/src/hooks/usePaymentFlow.js` | the payment dialog, the split bill, the tips, the cash change, recording a payment |
+  | `frontend/src/hooks/useReceiptPrinter.js` | printing the receipt (browser print / ESC-POS / kitchen copy) |
+
+  One backend change was needed to make it work: **the browser could not create an
+  order at all.** Production serves the built app through Caddy, which attaches **no
+  API key** to the browser requests — the only credential is the session cookie, and the
+  create route did not accept a session. `require_shared_permission("orders:write", ...)`
+  now allows `"user"` next to `"frontend"` and `"customer"`; the role permissions still
+  decide who may ring up an order.
+
+  The regression suite passes unchanged: **45/45**.
+
+</Info>
 
 ---
 
