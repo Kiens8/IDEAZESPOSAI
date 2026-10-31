@@ -601,6 +601,29 @@ const notifyPaid = (orderIds, paymentMethod) => {
 **The receipt of a table settlement is one receipt**, not one per order: `handlePrintReceipt()`
 merges the items of every paid order, sums the totals and prints a single bill for the table.
 
+### Two regressions from the payment-flow refactor (November 1, 2026)
+
+Moving the payment flow into `usePaymentFlow` also moved the *state* the Orders screen
+used to own. Two things broke - both on the **existing Orders screen**, which was never
+meant to change visually.
+
+1. **The receipt banner never appeared** (see above) - the hook never told the screen.
+2. **The "Remove Item" modal listed no items.** The modal is opened with
+   `openRemoveItemModal(orderId)`, which sets **`cancelOrderId`** - but the list of items
+   was rendered from `orders.find(o => o.id === selectedOrderId)`, and `selectedOrderId`
+   is the *payment* flow's order (null here). The modal therefore looked up `null` and
+   rendered an empty list.
+   ```jsx
+   // before - selectedOrderId is the payment order, never set in this flow
+   const order = orders.find(o => o.id === selectedOrderId)
+   // after - the order the modal was actually opened for
+   const order = orders.find(o => o.id === cancelOrderId)
+   ```
+
+**The lesson:** when a piece of state moves into a hook, every reader of that state has to
+be checked. `selectedOrderId` had two readers - the payment modal (correct) and the
+remove-item modal (wrong).
+
 ### The visual design — "Midnight POS"
 
 The kiosk is a **different mode**, not the app with the chrome removed, so it gets its own
