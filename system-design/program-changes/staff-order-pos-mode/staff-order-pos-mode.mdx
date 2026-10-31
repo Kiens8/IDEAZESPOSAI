@@ -561,7 +561,7 @@ const { handlePrintReceipt } = useReceiptPrinter({ settings, t, orders })
 - The kiosk is `h-[100dvh] overflow-hidden` — **the page never scrolls**; only the menu list
   and the cart scroll inside their own column.
 - **Desktop (≥1024px):** the menu on the left, the cart on the right (`w-[380px] xl:w-[420px]`).
-- **Phone (<1024px):** the cart is a bottom sheet behind a persistent bar
+- **Phone (under 1024px):** the cart is a bottom sheet behind a persistent bar
   (`{count} items` + the running total).
 - The header always carries the **table chip** (opens the table picker) and the **order
   type** (Dine In / Takeaway / Delivery) — smaller buttons on a phone, but never hidden.
