@@ -568,6 +568,39 @@ const { handlePrintReceipt } = useReceiptPrinter({ settings, t, orders })
 - The table picker is a modal on desktop (the inline row is `lg:hidden` only). A table that
   already holds `max_orders_per_table` orders is disabled.
 
+### The receipt banner — and the rule that was broken
+
+Recording a payment must leave the staff with a receipt they can print (or send to the
+kitchen printer). The green banner in the header is that receipt.
+
+**The bug that was fixed (November 1, 2026).** When the payment flow moved into
+`usePaymentFlow`, the confirmation moved with it — and the hook never told the screen that
+a payment went through. The Orders screen therefore **never** raised the banner
+(`setLastPaidOrder` was only ever used to *dismiss* it). The kiosk raised it for a single
+order but **not** for a table settlement, because the panel only notified when a single
+order was selected.
+
+**The rule now:** the hook owns the notification.
+
+```js
+// hooks/usePaymentFlow.js
+const notifyPaid = (orderIds, paymentMethod) => {
+  const list = orderIds.map(id => orders.find(o => o.id === id)).filter(Boolean)
+  if (!list.length) return
+  onPaid({ orders: list, order: list[0], isBulk: list.length > 1, paidCount: list.length, paymentMethod })
+}
+```
+
+- `usePaymentFlow({ ..., onPaid })` — every screen that wants the banner passes `onPaid`.
+- `confirmPayment()` calls it for the **single** order, the **split bill** and the
+  **whole table** (`bulkOrderIds`).
+- The screen stores it and the banner shows:
+  - one order → `Payment recorded · #ORD-… · cash`
+  - a whole table → `Payment recorded · 3 orders · cash`
+
+**The receipt of a table settlement is one receipt**, not one per order: `handlePrintReceipt()`
+merges the items of every paid order, sums the totals and prints a single bill for the table.
+
 ### The visual design — "Midnight POS"
 
 The kiosk is a **different mode**, not the app with the chrome removed, so it gets its own
