@@ -631,6 +631,42 @@ remove-item modal (wrong).
 3. A green build and a clean route sweep do **not** prove behaviour. Both bugs passed
    "24/24 routes, 0 console errors". The flow has to be exercised and asserted in the browser.
 
+### A cancelled order is final (November 1, 2026)
+
+**The symptom:** two order records sat in the Orders screen at **$0.00** with a green
+*Record Payment* button, although every one of their items was cancelled.
+
+**The truth:** both orders (206, 208) *were* cancelled - `cancelled_at` and
+`cancellation_reason` ("Wrong order received") were still on them from 8 October. They had
+been **resurrected**: a status update set them back to `served` while `cancelled_at` stayed
+behind, so the screen showed a void order as a live one.
+
+**The hole:** `OrderService.update_order_status()` set `order.status = status` with no
+check at all, and `update_payment_status()` was just as open. Nothing in the system said
+"this order is cancelled, leave it alone".
+
+**The rule now, on the server:**
+
+```python
+# app/services/order_service.py
+if order.status == 'cancelled' and status != 'cancelled':
+    raise ValueError(f"Cannot change the status of a cancelled order (order {order.order_number}).")
+
+if order.status == 'cancelled' and payment_status == 'paid':
+    raise ValueError(f"Cannot record a payment for a cancelled order (order {order.order_number}).")
+```
+
+Both routes turn that into a **400** with a readable message.
+
+**And the void is decided on the server too.** `PATCH /orders/{id}/items/{item_id}/cancel`
+now checks whether any live item is left; if not, the order is voided in the same
+transaction (`status='cancelled'`, `cancelled_at`, reason "All items removed"). Before,
+that decision lived in the browser - so a cancelled item made by any other client (the
+kiosk, a script, an integration) left a $0.00 order behind in the queue.
+
+The response carries `order_voided` and `order_status`, and the Orders screen hides
+*Record Payment* on an order with no live item as a safety net.
+
 ### The visual design — "Midnight POS"
 
 The kiosk is a **different mode**, not the app with the chrome removed, so it gets its own
