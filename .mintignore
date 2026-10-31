@@ -5,3 +5,11 @@
 # Draft content
 drafts/
 *.draft.mdx
+
+# Internal design documents - kept in the repository, NOT published on
+# docs.ideazes.com. The auth strategy, the renewal plans, the program
+# changes (language switching, inventory, AI, customer portal), the PWA
+# runbook and the staff-order kiosk proposal are internal working
+# documents. They stay in GitHub for the record; they are not for the
+# public documentation site.
+system-design/

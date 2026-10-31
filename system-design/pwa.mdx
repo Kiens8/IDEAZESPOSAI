@@ -1,0 +1,729 @@
+---
+title: PWA Setup
+description: Installable Ideazes Order app - offline support, icons and the deploy runbook
+---
+
+# PWA - "Ideazes Order"
+
+The customer app at **order.ideazes.com** is an installable PWA. A guest can
+add it to the home screen and it keeps working when the network hiccups.
+
+**Status:** shipped (Oct 29, 2026) · multi-tenant venue resolution **proposed** - see [Multi-tenant venue resolution](#multi-tenant-venue-resolution-proposed)
+
+<Info>
+  App name: **Ideazes Order** · Short name (home screen): **Ideazes** ·
+  Build version: see `customer-app/VERSION`
+</Info>
+
+## What it does
+
+| Feature | Behaviour |
+|---------|-----------|
+| Install | Chrome/Edge show the install button, iOS shows the Share → Add to Home Screen hint |
+| Offline | The shell, the locale bundles and the last menu response are cached - the app still opens |
+| Offline banner | A banner appears when the connection drops, the API keeps the last known prices |
+| Cart | The cart is kept in `localStorage`, so a refresh or a killed background tab does not lose the order |
+| Updates | A new build is announced with a banner, the guest taps **Refresh** (never reloaded mid-order) |
+| Table shortcuts | The home-screen icon can be long-pressed for Table T1 - T4 |
+| Safe areas | The header and the cart bar respect the notch / home indicator |
+
+## File layout
+
+```
+customer-app/
+├── server.py              # the app server - serves the files AND renders the
+│                          # shell with the branding of the branch (iOS reads
+│                          # the home screen name when the page loads)
+├── index.html             # the shell - the modal, the venue line, the inline
+│                          # head script that swaps the manifest
+├── manifest.json          # the fallback manifest (a plain visit)
+├── VERSION                # the build version - bump this on every deploy
+├── sw.js                  # service worker (network first, cache as fallback)
+├── offline.html           # shown when the app opens with no network at all
+├── icons/                 # generated from POS_AI/square_logo.png
+├── js/app.js              # the app - the venue context, the branding, the order
+├── js/venue.js            # the venue picker (group -> branch -> table)
+├── js/pwa.js              # registration, update flow, install prompt, offline banner
+├── js/i18n.js             # the translations
+├── css/style.css          # the styles - the picker and the venue sheet
+├── locales/{en,km,zh}/    # the strings, one file per language
+├── scripts/build_pwa.py   # builds the icons + manifest, stamps the version
+└── scripts/check-i18n-parity.mjs
+```
+
+## Deploy runbook
+
+<Steps>
+  <Step title="Bump the version">
+    ```bash
+    echo 2.6.6 > customer-app/VERSION
+    ```
+    Every change to a cached asset needs a new version - see the warning
+    below.
+  </Step>
+  <Step title="Rebuild the PWA assets">
+    ```bash
+    python3 customer-app/scripts/build_pwa.py
+    ```
+    This regenerates the icons from `square_logo.png`, rewrites `manifest.json`
+    (including the table shortcuts from the database) and stamps the new
+    version on every asset URL in `index.html`, `sw.js` and `js/pwa.js`.
+  </Step>
+  <Step title="Restart the app server">
+    ```bash
+    pm2 restart customer-app
+    ```
+    The guest app is not a plain file server any more - `server.py` renders
+    the shell, so a change to it needs a restart.
+  </Step>
+  <Step title="Reload Caddy (only when the Caddyfile changed)">
+    ```bash
+    caddy validate --config /etc/caddy/Caddyfile && systemctl reload caddy
+    ```
+  </Step>
+  <Step title="Verify">
+    ```bash
+    python3 customer-app/scripts/build_pwa.py --check
+    node customer-app/scripts/check-i18n-parity.mjs
+    cd scripts && node pwa_check.js
+
+    # the shell is rendered with the branding of the branch
+    curl -s "https://order.ideazes.com/?outlet=1" | grep apple-mobile-web-app-title
+    ```
+    The last line has to print the **group** name (e.g.
+    `content="Demo"`), not "Ideazes Order".
+  </Step>
+</Steps>
+
+<Warning>
+  **Why the version query matters.** Cloudflare caches static files by URL.
+  Without a new `?v=` query the CDN keeps serving the previous `app.js` and
+  `sw.js` - the app then runs old code and the service worker never updates.
+  Always bump `VERSION` and run `build_pwa.py`.
+</Warning>
+
+## Serving
+
+`order.ideazes.com` is served by Caddy. The assets come straight from disk,
+the **shell is rendered by the app server** - because iOS reads the name for
+the home screen when the page loads, and a shell that only gets its branding
+from JavaScript is too late:
+
+```caddyfile
+order.ideazes.com {
+    root * /var/www/html/posai-customer
+    encode gzip zstd
+
+    # the shell is rendered - it carries the branding of the branch
+    @shell path / /index.html
+    reverse_proxy @shell 127.0.0.1:8080
+
+    header /sw.js Cache-Control "no-cache, must-revalidate"
+    header /sw.js Service-Worker-Allowed "/"
+    header /manifest.json Content-Type "application/manifest+json"
+    file_server
+}
+```
+
+The app server is `customer-app/server.py` (FastAPI + uvicorn), run by pm2:
+
+```bash
+pm2 start uvicorn --name customer-app \
+  --cwd /root/.openclaw/workspace/mydoc/Projects/POS_AI/customer-app \
+  --interpreter python3 -- server:app --host 127.0.0.1 --port 8080
+```
+
+It serves the static files itself, so the file server in Caddy is only the
+fallback for the assets.
+
+The app directory lives in the workspace under `/root/.openclaw/...`, which the
+`caddy` user cannot read, so it is published with a bind mount:
+
+```bash
+mount --bind /root/.openclaw/workspace/mydoc/Projects/POS_AI/customer-app \
+           /var/www/html/posai-customer
+# /etc/fstab keeps it across reboots
+```
+
+<Note>
+  Caddy runs as the `caddy` user and the workspace sits under `/root` (mode
+  0700), which is why the bind mount exists. Edits in the workspace appear on
+  the site immediately - there is no deploy step.
+</Note>
+
+## Service worker
+
+- **Network first everywhere**, the cache is only the offline fallback.
+  Cache-first used to serve a stale `app.js` for one extra load after every
+  deploy.
+- `updateViaCache: 'none'` + `registration.update()` on every load, so the
+  worker is always checked against the network.
+- The offline fallback matches the cached shell **ignoring the query string**,
+  because the page requests `app.js?v=2.5.3` while the cache stores the
+  unversioned path.
+- `SKIP_WAITING` is supported - the page can ask the waiting worker to take
+  over immediately.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="The app still runs the old code">
+    Bump `VERSION`, run `build_pwa.py`, then check
+    `curl -sI https://order.ideazes.com/js/app.js?v=<new>` - the response must
+    be a fresh `HIT`/`DYNAMIC` from the new URL. Old URLs keep their cached
+    copy at the CDN until the TTL expires.
+  </Accordion>
+  <Accordion title="No install prompt in Chrome">
+    The manifest needs a 192x192 and a 512x512 PNG icon. Check
+    `chrome://apps` or DevTools → Application → Manifest for the install
+    criteria.
+  </Accordion>
+  <Accordion title="The language dropdown does not open">
+    An `overflow: auto` parent clips the absolutely positioned dropdown. The
+    header uses `overflow: visible` + `flex-wrap` on small screens.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Multi-tenant venue resolution (shipped in P1 - P3)
+
+**Status: P1 shipped (29 October 2026). P2 (the pickers) and P3 (the branded
+per-tenant app) are still proposals.**
+
+### The problem
+
+A guest installs the app at Restaurant A, table T3. Later they visit
+Restaurant B (a different web customer) or a different table of the same
+restaurant. The installed app has to know **which venue** the guest is
+ordering from - today it does not:
+
+```js
+// js/app.js - DOMContentLoaded
+customerId  = params.get('customer') || '1';
+outletId    = params.get('outlet')   || '1';   // always outlet 1
+tableNumber = params.get('table')     || 'T1';   // always table T1
+```
+
+The installed app opens with `start_url = /?src=pwa` - no table uuid - so it
+falls through to those hardcoded defaults and **silently orders against outlet
+1**. Two storage leaks make it worse:
+
+| Key | Scope today | Consequence |
+|-----|-------------|-------------|
+| `pos_cart` | global | Restaurant A's basket can appear at Restaurant B |
+| `pos_customer` | global | A member of group A sees **group A's points** inside group B's app |
+
+### The decisions
+
+| Decision | Choice |
+|----------|--------|
+| Identity of the installed app | **One PWA per web customer (restaurant group)** - it serves all that group's outlets |
+| Group identity of the app | The **web customer id** is carried in the manifest and the `start_url` |
+| Which outlet/table | **The guest picks** - outlet picker, then table picker. No GPS |
+| Home-screen icon | **Generated branded initial** (the group's initial + brand colour), not the uploaded logo |
+| App name | **The web customer's restaurant group name** (e.g. "Sushi Bar Order") |
+| Domains | **No subdomains** - every web customer uses `order.ideazes.com` |
+
+### How the web customer id reaches the installed app
+
+**The browser never remembers anything for us - the id is baked into the
+manifest at install time.** Chrome reads the `<link rel="manifest">` of the
+page at the moment the guest installs, and takes `id`, `start_url`, `name` and
+`icons` from it.
+
+So the flow is:
+
+1. The guest scans the table QR -> `https://order.ideazes.com/?t=<table-uuid>`
+2. The app resolves it: `GET /api/tables/uuid/<uuid>` returns
+   `{ uuid, table_number, outlet_id, customer_id }` - `customer_id` **is** the
+   web customer id
+3. The app rewrites the manifest link:
+   ```js
+   document.querySelector('link[rel=manifest]').href = `/pwa/manifest?wc=${customer_id}`;
+   ```
+4. Chrome fetches that manifest and installs it:
+   ```json
+   {
+     "id": "/?wc=3",
+     "name": "Sushi Bar Order",
+     "short_name": "Sushi Bar",
+     "start_url": "/?wc=3&src=pwa",
+     "scope": "/",
+     "icons": [{ "src": "https://api.ideazes.com/api/pwa/icon?wc=3&size=512", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+   }
+   ```
+5. Every launch of the installed app therefore starts at `/?wc=3` - **the web
+   customer is known before the first API call.**
+
+Three install paths, three outcomes:
+
+| How the guest installs | The app knows | Result |
+|------------------------|---------------|--------|
+| From a table QR (the normal case) | the group (from the uuid) | Branded, group-scoped app. The guest picks the outlet + table inside it |
+| From a direct visit with no QR | nothing yet | The generic manifest installs. The guest picks group -> outlet -> table, and the app then swaps the manifest and offers the branded install (a second, branded icon) |
+| From a QR of a **different** group | the new group (the url wins) | The app re-targets to the new venue and shows a clear venue banner - see [Cross-brand switch](#cross-brand-switch) |
+
+### The manifest has to be same-origin
+
+A manifest served from another origin (`api.ideazes.com`) would put the app's
+**scope** on that origin and break the whole thing. The dynamic manifest is
+therefore served from `order.ideazes.com` and proxied to the backend:
+
+```caddyfile
+order.ideazes.com {
+    root * /var/www/html/posai-customer
+
+    handle /pwa/manifest* {
+        reverse_proxy 127.0.0.1:8000      # the backend generates the JSON
+    }
+    handle {
+        file_server
+    }
+}
+```
+
+The **icons** may stay cross-origin (the API already sends
+`Access-Control-Allow-Origin: *`).
+
+### The branded initial
+
+The uploaded logo is rarely square and is often a wordmark, which turns to
+mush at 48x48 on an Android home screen. The manifest therefore points at a
+**generated** icon: the group's initial on the brand colour, rendered
+server-side at 96/192/512 plus a maskable variant.
+
+```
+GET /api/pwa/icon?wc=<web customer id>&size=512   ->  image/png
+```
+
+### Context resolution on launch
+
+| # | Source | Result |
+|---|--------|--------|
+| 1 | `?t=<table-uuid>` | QR scan - group + outlet + table resolved server-side. **Always wins** |
+| 2 | `?wc=<group>&outlet=<id>&table=<id>` | Deep link |
+| 3 | `?wc=<group>` | Group known, venue unknown -> **outlet picker** |
+| 4 | Remembered context | The last group/outlet/table this device used |
+| 5 | Fallback | Ask the group - never the hardcoded outlet 1 / T1 |
+
+### Storage scoped per venue
+
+```
+pos_cart:<outletId>          the basket never crosses outlets
+pos_customer:<groupId>       login + loyalty never crosses web customers
+pos_context                  the last group/outlet/table (fallback #4)
+pos_lang                     global - a personal preference
+pos_pwa_dismissed            global
+```
+
+### The pickers
+
+```
+Installed app opens (no QR)
+  -> group known from ?wc=3
+  -> OUTLET PICKER   (GET /api/outlets/?customer_id=3  - exists today)
+  -> TABLE PICKER    (GET /api/tables/?outlet_id=...  - exists today)
+  -> normal order flow
+```
+
+Both endpoints already exist; the tables list may need to be public like the
+outlets list. A **"Change"** action next to the table badge lets the guest
+switch outlet/table at any time, with a camera QR scan where
+`BarcodeDetector` is available (Chrome Android) and the manual picker as the
+universal fallback.
+
+### Server-side trust boundary
+
+The web customer id in the URL is **client supplied - it is not a secret**, so
+the server must verify it.
+
+<Warning>
+**Live bug found while designing this (29 October 2026):** `POST
+/api/loyalty/login` looks the customer up by phone **without scoping to the
+web customer**:
+```python
+customer = db.query(DiningCustomer).filter(
+    DiningCustomer.phone == data.phone, DiningCustomer.is_active == True
+).first()   # no customer_id filter
+```
+A member of group A who signs in at group B receives **group A's member
+record** - points, name, vouchers and birthday. The model comment already
+says *"unique removed - now unique per customer_id"*, so the intent was
+per-group uniqueness; the query never applied it.
+</Warning>
+
+The full boundary:
+
+1. Scope the login by the web customer.
+2. Derive `outlet_id` **from the table uuid** when an order is created -
+   `OrderCreate.outlet_id` is currently taken straight from the request.
+3. Validate that group -> outlet -> table are consistent on every request
+   that carries ids.
+4. Store the table uuid on the order, so it is auditable which QR produced it.
+
+### Cross-brand switch
+
+A guest who installed "Sushi Bar Order" and then scans a **Noodle House** QR
+lands inside the installed app (the scope is `/`, and a query string cannot
+narrow a scope). The url wins, so the app re-targets to Noodle House - and the
+home-screen icon still says "Sushi Bar Order".
+
+Blocking that would stop the guest from ordering, so the app instead:
+
+1. Shows an unmissable venue banner (*"You are now ordering at Noodle House"*)
+2. Offers the branded install for the new group
+3. Keeps the basket separated per outlet
+
+### Platform behaviour
+
+| | Scan a QR | Open the installed app |
+|---|---|---|
+| Android / Chrome | Opens **inside the installed app**, the url carries the uuid, the venue resolves instantly | Group known -> outlet picker -> table picker |
+| iOS / Safari | A scanned QR opens in **Safari** - the guest orders in the browser with the full context from the QR | Same as Android |
+
+### Rollout
+
+| Phase | Scope | Hours | Status |
+|-------|-------|-------|--------|
+| **P1 - correctness** | Server trust boundary (login scoping, outlet from uuid, validation) + scoped storage + context resolution | **3-4** | **Shipped** |
+| **P2 - the manual flow** | Outlet picker, table picker, "Change" action, venue banner | **3-4** | **Shipped** |
+| **P3 - branded app** | Dynamic per-group manifest, generated initial, manifest swap in the page | **4-6** | **Shipped** |
+
+### P1 - what shipped
+
+**The loyalty leak is closed.** `POST /api/loyalty/login` now takes the web
+customer id and scopes the lookup with it - the phone number is unique per
+restaurant group:
+
+```python
+class CustomerLogin(BaseModel):
+    phone: str
+    customer_id: int      # the web customer - required
+    device_id: Optional[str] = None
+
+customer = db.query(DiningCustomer).filter(
+    DiningCustomer.customer_id == data.customer_id,
+    DiningCustomer.phone == data.phone,
+    DiningCustomer.is_active == True
+).first()
+```
+
+The customer app sends `customer_id` with the login, and the app resolves the
+group from the outlet (`GET /api/outlets/{id}` now returns `customer_id`) when
+it only knows the branch.
+
+**The venue is derived from the table uuid.** `POST /api/orders/` accepts
+`table_uuid`; when it is present the server resolves the table and uses
+**its** outlet, table and restaurant group - whatever the client sent is
+ignored:
+
+```
+POST /api/orders/  { "outlet_id": 5, "table_number": "BOGUS", "table_uuid": "<T2 of outlet 1>" }
+  -> stored: outlet_id=1, table_id=2, table_number=T2, customer_id=1, table_uuid=<uuid>
+```
+
+Without a uuid the outlet still has to be a real outlet **of the claimed
+restaurant group**, and a member of another group is rejected.
+
+**Storage is scoped per venue:**
+
+```
+pos_cart_<outletId>       the basket never crosses outlets
+pos_customer_<groupId>    the member session never crosses restaurant groups
+pos_context               the last venue (the fallback when the app is opened
+                          from the home screen without a QR)
+pos_lang, pos_pwa_dismissed   global - personal preferences
+```
+
+The old global keys (`pos_cart`, `pos_customer`) are migrated once and removed.
+
+**Context resolution on launch** (the url always wins):
+
+| # | Source | Result |
+|---|--------|--------|
+| 1 | `?t=<table-uuid>` | The QR - group, outlet and table resolved by the server |
+| 2 | `?outlet=&table=` | A deep link; the group is resolved from the outlet |
+| 3 | `pos_context` | The venue this device used last - the installed app opened from the home screen |
+| 4 | fallback | The venue picker - the guest says where they are sitting |
+
+**The order now carries the venue:** `table_uuid` (the audit trail - which QR
+produced the order) and `customer_id` (the restaurant group). The `orders`
+table has a new nullable `table_uuid` column.
+
+**The table uuid is mandatory for a dine-in order.** `POST /api/orders/`
+resolves the table first and stores its uuid - whatever the client claims is
+ignored:
+
+| The client sends | The server does |
+|---|---|
+| `table_uuid` (the guest app - the QR) | resolves the table, derives outlet / table / group |
+| `table_id` (the staff POS) | resolves the table, derives outlet / table / group, stores the uuid |
+| `table_uuid` **and** a `table_id` that disagree | **400** - the client was tampered with |
+| neither, `order_type = dine_in` | **400** - "A table is required for a dine-in order" |
+| neither, `order_type = takeaway` / `delivery` | allowed - no table, no uuid |
+
+So every dine-in order in the database has the uuid of the table it was filed
+on, no matter which client created it.
+
+P1 removes the two real risks (an order filed against the wrong restaurant,
+another group's loyalty on screen). P2 makes the app usable without a QR. P3
+is the commercial polish - every restaurant gets its own branded icon on the
+guest's home screen.
+
+### P2 - what shipped
+
+**The app never guesses the venue.** Three ways in, one rule:
+
+| The guest... | The venue comes from |
+|---|---|
+| scans the table QR | the table uuid - the server resolves group, branch and table |
+| opens the installed app | the venue this device used last, or the picker when there is none |
+| is sitting at the wrong table | the picker - the branch is locked, only the table changes |
+
+The **venue picker** opens automatically when there is no QR and no remembered
+venue (the installed app from the home screen). Three steps - the restaurant
+group, the branch, the table:
+
+```
+GET /api/pwa/venues                 the groups and their branches
+GET /api/pwa/tables?outlet_id=1     the tables of a branch (uuid, number, capacity)
+```
+
+The picker stores the choice in `pos_context` and restarts the app with it, so
+everything downstream (the basket, the member session, the loyalty) is scoped
+to the venue the guest picked.
+
+**The venue is visible.** The hero shows the branch ("Demo Cafe 1") and the
+table badge ("Table T2") is a button - it opens the venue sheet with the
+restaurant, the address, the table and the active orders of that table.
+
+**The address is the one the restaurant maintains.** The sheet and the picker
+show `outlet_settings.restaurant_address` - the address from the POS settings
+page, the same one the staff sees. `outlets.address` is **not** used: it is
+what the branch was created with, and it drifts from what the restaurant
+actually maintains. The customer app follows the `outlet_settings` table.
+
+**Changing the table cancels the order first.** A pending order belongs to the
+table it was filed on - the guest cannot simply walk away from it:
+
+```
+PATCH /api/pwa/orders/{id}/cancel   { "table_uuid": "<uuid>", "reason": "Cancelled by the guest" }
+GET  /api/pwa/table-orders?table_uuid=<uuid>   the active orders of that table
+```
+
+The server refuses the cancellation when the order does not belong to that
+table (or is already paid / already in the kitchen), so the guest can only
+cancel their own. The picker is only reached once the orders of the old table
+are gone.
+
+**No venue, no order.** The guest cannot check out before a venue is picked -
+`confirmOrder()` opens the picker instead of filing the order. Without this a
+guest who closed the picker would order at the default outlet without ever
+having chosen it.
+
+**The url is cleaned up.** When the guest changes the table, the stale `?t=`
+parameter is removed (`history.replaceState`) - otherwise the old QR would win
+over the new venue when the app starts again.
+
+The three languages (en, km, zh) got their own strings for the picker.
+
+### P2 - what changed in the code
+
+**Backend** - `backend/app/routes/pwa.py`
+
+| Change | What it does |
+|---|---|
+| `GET /api/pwa/table-orders?table_uuid=` | The active orders of one table (scoped by the uuid) - the sheet lists them and the table change cancels them |
+
+**Customer app** - `customer-app/`
+
+| File | Change |
+|---|---|
+| `index.html` | The table badge becomes a `<button>` (it opens the venue sheet); the venue line in the hero (`#venue-line` / `#venue-name`); the venue modal (`#venue-modal` with title, hint, body, close button); the `js/venue.js` script tag |
+| `js/app.js` | `getVenueContext()`, `applyVenue()`, `getVenueInfo()`, `getTableOrders()`, `cancelOwnOrder()`, `updateVenueLine()`; `venueResolved` (module level, set by the three resolution branches); the launch hook shows the venue line and opens the picker when the venue is unknown; the badge opens the sheet; `applyVenue()` cleans the url (`history.replaceState`) |
+| `js/venue.js` | The picker (group -> branch -> table), the venue sheet (restaurant / address / table / your orders), the cancellation of the table's orders before the table changes, the close button |
+| `css/style.css` | The venue picker styles (~230 lines): the venue line, the picker cards, the table grid, the sheet rows |
+| `locales/en/venue.json`, `locales/km/venue.json`, `locales/zh/venue.json` | 23 new strings per language |
+| `js/i18n.js` | The `venue` namespace |
+| `scripts/check-i18n-parity.mjs` | The `venue` and `pwa` namespaces, and the picker scripts are scanned for missing keys |
+
+**The version jumped 2.5.6 -> 2.5.13** - that is one feature set, not
+eight. The service worker serves the assets by their `?v=` url, so every
+change to a cached asset needs a new version to reach the phone. The
+intermediate versions (2.5.7 - 2.5.13) were the forced bumps while the
+picker was wired up and tested; the code that shipped is 2.5.13.
+
+**The picker works offline too.** `js/venue.js` and the `venue` locale
+namespace were added to the service worker's precache - without them the
+picker would break the moment the guest's connection drops.
+
+**Two bugs the browser test caught** (reading the code did not):
+
+1. **A stale `?t=` won over the new venue.** The guest picked table T3, the
+   app reloaded and the old QR in the url put them back on T2. Fixed with
+   `history.replaceState` in `applyVenue()`.
+2. **The service worker served the old `app.js`.** The picker was wired up,
+   the version was not bumped, and the phone kept running the previous code.
+   The version is now bumped on every build - and the build stamps every
+   asset url with it.
+
+### Open items
+
+- The login scoping bug should be fixed **regardless** of the PWA work - it is
+  a live cross-tenant data leak. **[fixed in P1]**
+- Which web customer does a guest belong to when they install with no QR and
+  have never ordered? The app has to ask. **The group is now known (the picker
+  resolves it) - the member record is still created on the fly.**
+- Should a guest be able to order at an outlet of a group they have never
+  ordered from before? (Currently yes - no account is required to order.)
+
+**Left from P2**
+
+- ~~The table uuid is optional in `POST /api/orders/`.~~ **[closed]** The uuid
+  is now mandatory for a dine-in order - the server resolves it from the uuid
+  or from the table id and refuses a dine-in order without a table.
+- The occupied tables are greyed out in the picker but still clickable (a
+  guest may sit down where an order is still open).
+- The deep link (`?outlet=&table=`) carries no table uuid, so the server
+  cannot verify the table behind it - the QR is the only verified path.
+- Test tables left in the dev database (T99, TNEW, Tnewtable) show up in the
+  picker.
+
+### P3 - what shipped
+
+Every restaurant gets its own **name, icon and colour** on the guest's home
+screen. The manifest is generated per branch:
+
+```
+GET /api/pwa/manifest?outlet_id=1
+  -> { "name": "Demo Restaurant Group Order", "short_name": "Demo",
+       "theme_color": "#0F766E", "icons": [...], "shortcuts": [...] }
+```
+
+**Where the branding comes from** - the **group** owns the name, the
+**branch** owns the look:
+
+| Setting | Used for |
+|---|---|
+| the group name (restaurant_group.name) | the name of the app ("Demo Restaurant Group Order") |
+| `restaurant_logo` (the branch settings) | the icon of the app - drawn on the brand colour |
+| `brand_color` (the branch settings, new) | the theme colour - the browser chrome and the installed app |
+
+**The icons are generated, not uploaded.** `GET /api/pwa/icon?outlet_id=N`
+paints the logo on the brand colour (or the initials of the restaurant when
+there is no logo) and serves it as a PNG. The `maskable` variant keeps the
+logo inside the safe circle - Android crops the corners of a maskable icon.
+The url carries a hash of the branding, so a new logo or a new colour busts
+the cache.
+
+`brand_color` is a new column on `outlet_settings` with a colour picker in the
+POS settings page (en / km / zh).
+
+**Whose name is it?** The **group (the tenant) always wins** - the group owns
+the app, the branches are the places inside it:
+
+| | outlet 1 | outlet 4 | outlet 5 |
+|---|---|---|---|
+| the group (the tenant) | Demo Restaurant Group | Demo Restaurant Group | VARMAN |
+| the branch | Demo Cafe 1 | Kens SS17 | VARMAN - Main Branch |
+| **the app name** | **Demo Restaurant Group Order** | **Demo Restaurant Group Order** | **VARMAN Order** |
+| the home screen label | Demo | Demo | VARMAN |
+
+The home screen label is 12 characters at most - the generic words go first
+("Demo Restaurant Group" -> "Demo", "AES Restaurant" -> "AES").
+
+The **logo and the colour stay per branch** - they live in the branch
+settings. Inside the app the branch is always visible (the venue line, the
+receipt, the venue sheet), so the guest always knows where they are.
+
+**The manifest is swapped twice:**
+
+1. **Before the app loads** - a small inline script in the head reads the
+   venue the device used last (`pos_context`) and points the manifest link at
+   that branch. The browser fetches the manifest when the guest installs the
+   app, so the install prompt already shows the restaurant's name.
+2. **When the venue is known** - `applyBranding()` sets the manifest link, the
+   theme colour, the apple-touch-icon and the title. It only runs when the
+   venue is **resolved** (a QR, a deep link or the remembered venue) - a guest
+   who has not chosen yet gets the neutral "Ideazes Order".
+
+The manifest lives on the API origin, so every url in it is absolute
+(`start_url`, `scope`, the icons). The API sends CORS headers, which the
+manifest fetch needs.
+
+**The limitation worth knowing:** Android takes the **icon** from the manifest
+at install time - an installed app keeps its icon until the guest reinstalls
+it. The **name** and the **theme colour** do follow the swap.
+
+### P3 - what changed in the code
+
+**Backend** - `backend/`
+
+| File | Change |
+|---|---|
+| `app/routes/pwa.py` | `GET /api/pwa/manifest?outlet_id=` - the manifest of the branch; `GET /api/pwa/icon?outlet_id=&size=&maskable=` - the generated icon (PIL, the logo on the brand colour or the initials); the venues list uses the address from `outlet_settings`; `GET /api/pwa/table-orders?table_uuid=` - the active orders of a table |
+| `app/routes/order.py` | a **dine-in order needs a table** - the server resolves the uuid from the uuid or from the table id (the staff POS sends only the table id), a mismatch is refused with 400 |
+| `app/routes/outlet_settings.py` | `brand_color` in the settings payload (read + write) |
+| `app/routes/customer_bff.py` | `restaurant_address` in the customer settings |
+| `app/models/models.py` | `brand_color` on `outlet_settings` (new column) |
+
+**POS frontend** - `frontend/`
+
+| File | Change |
+|---|---|
+| `src/pages/Settings.jsx` | the brand colour picker in the restaurant profile |
+| `src/i18n/locales/{en,km,zh}/settings.json` | the labels |
+
+**Customer app** - `customer-app/`
+
+| File | Change |
+|---|---|
+| `server.py` (new) | the app server - serves the files and renders the shell with the branding of the branch (the name, the theme colour, the icons and the manifest) |
+| `index.html` | the inline head script (the manifest link + the apple title, from the venue the device used last); the venue modal; the venue line; the badge becomes a `<button>` |
+| `js/app.js` | `applyBranding()` (the manifest, the theme colour, the apple-touch-icon, the title); the venue context helpers; the launch hook; the checkout guard (no venue, no order); the deep link resolves the table uuid; `rememberContext()` stores the names |
+| `js/venue.js` (new) | the venue picker (group -> branch -> table) and the venue sheet |
+| `css/style.css` | the picker and the venue sheet styles |
+| `locales/{en,km,zh}/venue.json` (new) | 23 strings per language |
+| `sw.js` | `venue.js` + the `venue` namespace in the precache - the picker works offline |
+| `VERSION` | 2.5.13 -> **2.6.5** |
+
+**Infrastructure**
+
+| Where | Change |
+|---|---|
+| `/etc/caddy/Caddyfile` | the shell is proxied to the app server, the assets stay on disk |
+| pm2 (`customer-app`) | `uvicorn server:app --host 127.0.0.1 --port 8080` (was `python3 -m http.server`) |
+| the database | `ALTER TABLE outlet_settings ADD COLUMN brand_color` (the file was backed up to /tmp first) |
+
+**On iOS the name comes from the page, and iOS reads it when the page
+loads.** Safari uses `apple-mobile-web-app-title` for the name on the home
+screen and ignores the manifest for it - and it reads the page when it loads,
+not when the guest taps "Add to Home Screen". A page that only gets its
+branding from JavaScript therefore shows "Ideazes" on the home screen, even
+though the app inside is branded.
+
+So the shell is **rendered on the server** (`customer-app/server.py` - a small
+FastAPI app instead of a plain file server):
+
+| The guest opens | The server renders |
+|---|---|
+| `?t=<table uuid>` (the QR) | the name, the theme colour, the icons and the manifest of that branch |
+| `?outlet=<id>` (a deep link) | the same |
+| a plain visit | the neutral shell - the guest picks the branch in the app |
+
+The **apple touch icon** matters most: it is what iOS puts on the home
+screen, and it has to be in the page before the page loads - a branded icon
+that arrives with JavaScript is the generic one.
+
+The client keeps the branding up to date afterwards (`applyBranding()` and the
+inline script), so a branch that is picked later is branded too.
+
+**Two iOS details worth knowing**
+
+- **The home screen entry keeps its name.** Changing the page does not rename
+  an installed app - the guest has to delete the entry and add it again.
+- **A home screen web app has its own storage** (iOS 16.4+). The venue the
+  guest saved in Safari is not visible in the installed app, so the installed
+  app asks for the branch the first time it starts - and remembers it in its
+  own storage from then on.

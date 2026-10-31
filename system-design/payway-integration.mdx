@@ -1,0 +1,515 @@
+# ABA Payway Integration Design
+
+**Document Version:** 1.0  
+**Created:** 2026-10-14  
+**Status:** Design Complete - Pending Implementation
+
+---
+
+## 1. Overview
+
+This document describes the integration of **ABA Payway** as an additional payment method for the IDEAZES POS AI subscription SaaS platform.
+
+### 1.1 Objectives
+
+- Add ABA Payway as a payment option for subscription billing
+- Support dynamic (variable) amount charges for subscription renewals and upgrades
+- Maintain existing Stripe payment flow without disruption
+- Support Cambodian market (KHR currency, ABA account payments)
+
+### 1.2 Key Benefits Over Fixed Schedule Payment
+
+| Approach | Token Flag | Amount | Upgrade Support | Proration |
+|----------|------------|--------|-----------------|-----------|
+| ~~Fixed Schedule~~ | `CITR_FIX` + `MITR_FIX` | Locked | ❌ Problem | ❌ Complex |
+| **Dynamic (Chosen)** | `CITU_FLEX` + `MITU_FLEX` | Variable | ✅ Works seamlessly | ✅ Simple |
+
+---
+
+## 2. ABA Payway Token System
+
+### 2.1 Token Types
+
+| Token Flag | Full Name | Direction | Amount Type | Purpose |
+|------------|-----------|-----------|-------------|---------|
+| `CITU_FLEX` | Customer-Initiated Unscheduled | Registration | **Dynamic** | Link customer's payment method |
+| `MITU_FLEX` | Merchant-Initiated Unscheduled | Auto-charge | **Dynamic** | Charge customer any amount |
+
+### 2.2 Why Dynamic Tokens
+
+- **No fixed amount restriction** — charge any amount per cycle
+- **Upgrades work naturally** — $20 → $50 without re-registration
+- **Proration simple** — just charge the calculated difference
+- **Same token for life** — no need to re-link payment method
+
+---
+
+## 3. Payment Flow
+
+### 3.1 Subscription Registration (One-time)
+
+```
+Customer selects plan + ABA Payway
+        ↓
+Backend calls ABA Purchase API with CITU_FLEX
+        ↓
+ABA returns checkout page (modal/redirect)
+        ↓
+Customer completes payment on ABA
+        ↓
+ABA sends token callback to our webhook
+        ↓
+We store ctid + pwt in database
+        ↓
+Subscription activated
+```
+
+### 3.2 Renewal (Recurring)
+
+```
+Cron job runs (daily)
+        ↓
+Find subscriptions due for renewal
+        ↓
+Call ABA Payment API with MITU_FLEX
+        ↓
+ABA processes charge from stored token
+        ↓
+ABA sends webhook confirmation
+        ↓
+Subscription period extended
+```
+
+### 3.3 Upgrade
+
+```
+Customer upgrades plan mid-cycle
+        ↓
+Calculate proration (same as Stripe)
+        ↓
+Charge prorated difference (MITU_FLEX)
+        ↓
+Update subscription to new plan
+        ↓
+Future renewals charge new plan price
+```
+
+### 3.4 Cancellation
+
+```
+Customer cancels subscription
+        ↓
+Mark subscription as cancelled
+        ↓
+Token remains active ( customer's choice to remove via ABA app)
+        ↓
+No future MITU_FLEX charges
+```
+
+---
+
+## 4. Database Schema
+
+### 4.1 New Table: `aba_payment_tokens`
+
+```python
+class ABAPaymentToken(Base):
+    __tablename__ = "aba_payment_tokens"
+    
+    id = Column(Integer, primary_key=True)
+    customer_id = Column(Integer, ForeignKey("website_customers.id"), nullable=False)
+    subscription_id = Column(Integer, ForeignKey("subscriptions.id"), nullable=True)
+    
+    # ABA Token Data
+    ctid = Column(String(100), nullable=False)       # ABA Customer Token ID
+    pwt = Column(String(500), nullable=False)       # PayWay Token (encrypted)
+    source_of_fund = Column(String(50))            # "ABA ACCOUNT", "VISA", "MC", etc.
+    
+    # Token Status
+    token_status = Column(String(20), default="active")  # active, frozen, expired
+    expired_at = Column(DateTime, nullable=True)
+    
+    # Metadata
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+```
+
+### 4.2 Modified: `Subscription` Table
+
+Add new field:
+```python
+aba_token_id = Column(Integer, ForeignKey("aba_payment_tokens.id"), nullable=True)
+```
+
+### 4.3 Modified: `Invoice` Table
+
+Add ABA-specific fields:
+```python
+aba_transaction_id = Column(String(100), nullable=True)
+aba_payment_type = Column(String(50), nullable=True)  # "ABA Pay", "Cards", etc.
+aba_bank_ref = Column(String(100), nullable=True)     # ABA bank reference
+```
+
+---
+
+## 5. API Integration
+
+### 5.1 Environment Variables (.env)
+
+```env
+# ABA Payway Configuration
+ABA_MERCHANT_ID=ec000002
+ABA_API_KEY=your_api_key_here
+ABA_RETURN_URL=https://site.ideazes.com/portal
+ABA_WEBHOOK_URL=https://apisite.ideazes.com/webhooks/aba
+ABA_API_BASE=https://checkout-sandbox.payway.com.kh
+```
+
+### 5.2 Registration API Call (CITU_FLEX)
+
+**Endpoint:** `POST /api/payment-gateway/v1/payments/purchase`
+
+**Key Parameters:**
+```python
+{
+    "req_time": "20261014200000",           # YYYYMMDDHHMMSS
+    "merchant_id": "ec000002",
+    "tran_id": "unique_transaction_id",    # Our generated
+    "firstname": "John",
+    "lastname": "Doe",
+    "email": "customer@email.com",
+    "phone": "012345678",
+    "amount": 20.00,                       # First payment amount
+    "currency": "USD",
+    "payment_option": "abapay",            # or "cards"
+    "token_flag": "CITU_FLEX",            # Dynamic token
+    "return_url": "https://site.ideazes.com/portal?aba=success",
+    "cancel_url": "https://site.ideazes.com/portal?aba=cancelled",
+    "hash": "base64_hmac_sha512_hash"
+}
+```
+
+### 5.3 Charge API Call (MITU_FLEX)
+
+**Endpoint:** `POST /api/payment-gateway/v3/purchase/payment-credential`
+
+**Key Parameters:**
+```python
+{
+    "request_time": "20261014200000",
+    "merchant_id": "ec000002",
+    "tran_id": "unique_transaction_id",
+    "ctid": "stored_ctid_from_token",
+    "pwt": "stored_pwt_from_token",
+    "amount": 20.00,                       # ANY amount (dynamic)
+    "currency": "USD",
+    "token_flag": "MITU_FLEX",            # Merchant-initiated dynamic
+    "callback_url": "https://apisite.ideazes.com/webhooks/aba",
+    "hash": "base64_hmac_sha512_hash"
+}
+```
+
+### 5.4 Hash Generation
+
+```python
+def generate_aba_hash(data: dict, api_key: str) -> str:
+    """
+    Generate HMAC-SHA512 hash for ABA Payway API
+    Hash fields vary by endpoint - see ABA documentation
+    """
+    # For Purchase API (registration):
+    b4hash = (
+        req_time + merchant_id + tran_id + amount +
+        items + shipping + firstname + lastname + email +
+        phone + type + payment_option + return_url + cancel_url +
+        continue_success_url + return_deeplink + currency +
+        custom_fields + return_params + payout + lifetime +
+        additional_params + skip_success_page + token_flag + frequency
+    )
+    
+    # For Payment API (MITU_FLEX):
+    b4hash = (
+        request_time + merchant_id + tran_id + amount +
+        currency + items + ctid + pwt + first_name +
+        last_name + email + phone + purchase_type +
+        callback_url + custom_fields + return_params +
+        payout + token_flag + shipping_fee
+    )
+    
+    hash_value = base64.b64encode(
+        hmac.new(
+            api_key.encode(),
+            b4hash.encode(),
+            hashlib.sha512
+        ).digest()
+    )
+    return hash_value.decode()
+```
+
+---
+
+## 6. Webhook Handling
+
+### 6.1 New Endpoint: `/webhooks/aba`
+
+**Route:** `POST /webhooks/aba`
+
+### 6.2 Webhook Types
+
+#### A. Payment Completion Callback
+
+```json
+{
+    "tran_id": "17425401324",
+    "apv": "619195",
+    "status": "0",
+    "return_params": "{\"subscription_id\":\"123\"}"
+}
+```
+
+- `status: "0"` = Success
+- Update invoice, activate subscription
+
+#### B. Token Callback
+
+```json
+{
+    "request_id": "175317626731593",
+    "payment_credential": {
+        "ctid": "64513556cc930062e8cb3ae59eee8fbf459c53e",
+        "pwt": "6451355C97035CDE21FB13..E0945C21007136F3D423A1B",
+        "source_of_fund": "*****5312",
+        "type": "ABA ACCOUNT",
+        "status": 1,
+        "expired_at": "2025-10-20T08:20:03",
+        "token_flag": "CITU_FLEX",
+        "subscribed_amount": 0.00,
+        "amount_limit_per_tran": 0.00,
+        "currency": "USD"
+    }
+}
+```
+
+- `status: 1` = Active token
+- Store ctid + pwt for future charges
+
+### 6.3 Signature Verification
+
+```python
+def verify_aba_signature(request_body: dict, api_key: str) -> bool:
+    received_signature = request.headers.get('X-PAYWAY-HMAC-SHA512')
+    
+    # Sort fields by key (ascending)
+    ksorted = sorted(request_body.items())
+    b4hash = ''.join(str(v) for _, v in ksorted if not isinstance(v, dict))
+    
+    expected_signature = base64.b64encode(
+        hmac.new(
+            api_key.encode(),
+            b4hash.encode(),
+            hashlib.sha512
+        ).digest()
+    )
+    
+    return hmac.compare_digest(expected_signature, received_signature)
+```
+
+---
+
+## 7. Cron Job: Renewal Processor
+
+### 7.1 Schedule
+
+Daily at 00:00 (midnight) or configurable
+
+### 7.2 Logic
+
+```python
+def process_aba_renewals():
+    """
+    Process due subscription renewals via ABA MITU_FLEX
+    """
+    due_subscriptions = db.query(Subscription).filter(
+        Subscription.payment_method == "aba_payway",
+        Subscription.status.in_(["active", "trial"]),
+        Subscription.current_period_end <= datetime.utcnow() + timedelta(days=1)
+    ).all()
+    
+    for sub in due_subscriptions:
+        # Get current plan price
+        plan = db.query(SubscriptionPlan).filter(
+            SubscriptionPlan.id == sub.plan_id
+        ).first()
+        
+        # Get ABA token
+        token = db.query(ABAPaymentToken).filter(
+            ABAPaymentToken.id == sub.aba_token_id,
+            ABAPaymentToken.token_status == "active"
+        ).first()
+        
+        if not token:
+            # Token expired/frozen - mark for manual review
+            send_admin_alert(sub, "ABA token inactive")
+            continue
+        
+        # Calculate amount
+        amount = plan.price_monthly if sub.billing_cycle == "monthly" else plan.price_annual
+        
+        # Call ABA MITU_FLEX
+        result = call_aba_payment(token, amount, sub.id)
+        
+        if result.success:
+            # Extend subscription
+            extend_subscription_period(sub)
+            # Create invoice
+            create_invoice(sub, amount, "paid", "aba_payway")
+        else:
+            # Handle failure - retry logic
+            handle_renewal_failure(sub, result)
+```
+
+---
+
+## 8. Integration with Existing Code
+
+### 8.1 No Changes Required
+
+| Component | Status | Reason |
+|-----------|--------|--------|
+| Proration logic | ✅ Unchanged | Same calculation |
+| Invoice generation | ✅ Unchanged | Works with any payment_method |
+| Subscription period tracking | ✅ Unchanged | Same logic |
+| Email notifications | ✅ Unchanged | No dependency |
+| Plan management | ✅ Unchanged | No dependency |
+
+### 8.2 New Components
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| ABA Token model | `models.py` | Database schema |
+| ABA service | `aba_service.py` | API calls, hash generation |
+| Webhook handler | `webhooks/aba.py` | Receive ABA callbacks |
+| Cron job | `cron/aba_renewals.py` | Auto-charge renewals |
+| Frontend integration | `subscription.js` | ABA payment option UI |
+
+### 8.3 Modified Components
+
+| Component | Changes |
+|-----------|---------|
+| `subscription.py` | Add `aba_payway` payment method handler |
+| `models.py` | Add `aba_token_id` to Subscription, new ABAPaymentToken table |
+| `webhooks.py` | Add new `/webhooks/aba` endpoint |
+| Frontend | Add ABA as payment option in checkout |
+
+---
+
+## 9. Supported Payment Methods
+
+When customer selects ABA Payway, they can pay with:
+
+| Method | Code | Notes |
+|--------|------|-------|
+| ABA Mobile | `abapay` | Primary for Cambodia |
+| Cards | `cards` | VISA, MC, JCB, CUP |
+| KHQR | `abapay_khqr` | Any bank app supporting KHQR |
+| WeChat Pay | `wechat` | Chinese tourists |
+| Alipay | `alipay` | Chinese tourists |
+| Google Pay | `google_pay` | Android users |
+
+---
+
+## 10. Currency Support
+
+| Currency | Code | Min Amount | Notes |
+|----------|------|------------|-------|
+| US Dollar | USD | 0.01 | Primary |
+| Cambodian Riel | KHR | 100 | Secondary |
+
+---
+
+## 11. Error Handling
+
+### 11.1 Token Statuses
+
+| ABA Status | Meaning | Action |
+|------------|---------|--------|
+| `1` (Active) | Token valid | Use for MITU_FLEX |
+| `0` (Removed) | Customer unlinked | Mark token inactive, prompt re-link |
+| `2` (Frozen) | Temporarily disabled | Retry later, notify customer |
+
+### 11.2 Payment Failures
+
+| Error Code | Meaning | Action |
+|------------|---------|--------|
+| `98` | Merchant not found | Check API key |
+| `29` | Invalid token | Mark token inactive |
+| `28` | Invalid PWT | Re-registration required |
+| `03` | Invalid amount | Check amount format |
+
+### 11.3 Retry Logic
+
+```python
+MAX_RETRIES = 3
+RETRY_DELAYS = [1, 3, 7]  # days
+
+def handle_renewal_failure(subscription, result):
+    subscription.payment_retry_count = getattr(subscription, 'payment_retry_count', 0) + 1
+    
+    if subscription.payment_retry_count < MAX_RETRIES:
+        # Schedule retry
+        delay = RETRY_DELAYS[subscription.payment_retry_count - 1]
+        schedule_retry(subscription, delay)
+    else:
+        # Mark subscription as past_due
+        subscription.status = "past_due"
+        send_payment_failed_notification(subscription)
+```
+
+---
+
+## 12. Testing Checklist
+
+### 12.1 Sandbox Testing
+
+- [ ] Token registration with ABA account
+- [ ] Token registration with card
+- [ ] MITU_FLEX charge (renewal)
+- [ ] MITU_FLEX charge with different amounts
+- [ ] Webhook signature verification
+- [ ] Token callback handling
+- [ ] Failed payment handling
+- [ ] Token frozen handling
+- [ ] Token expired handling
+
+### 12.2 Production Checklist
+
+- [ ] Whitelist domain in ABA merchant profile
+- [ ] Verify webhook URL is accessible
+- [ ] Test with real ABA account
+- [ ] Test with real card
+- [ ] Monitor webhook deliveries
+- [ ] Set up alerting for failures
+
+---
+
+## 13. Future Enhancements
+
+- [ ] Support for `CITI_FLEX` (customer-initiated one-click checkout)
+- [ ] Partial refunds via ABA
+- [ ] Payout to restaurant owners (marketplace model)
+- [ ] Split payments between IDEAZES and restaurants
+
+---
+
+## 14. References
+
+- [ABA Payway Developer Portal](https://developer.payway.com.kh)
+- [Purchase API](https://developer.payway.com.kh/purchase-14530820e0.md)
+- [Payment API (Token)](https://developer.payway.com.kh/payment-19336821e0.md)
+- [Subscription API](https://developer.payway.com.kh/subscription-21402227e0.md)
+- [Scheduled Payment](https://developer.payway.com.kh/schedule-payment-2038907m0.md)
+
+---
+
+**Document Author:** Lumi  
+**Last Updated:** 2026-10-14
