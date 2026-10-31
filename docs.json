@@ -50,7 +50,8 @@
    {
     "group": "System Design",
     "pages": [
-    "system-design/pwa"
+    "system-design/pwa",
+    "system-design/program-changes/staff-order-pos-mode/staff-order-pos-mode"
   ]
    },
    {

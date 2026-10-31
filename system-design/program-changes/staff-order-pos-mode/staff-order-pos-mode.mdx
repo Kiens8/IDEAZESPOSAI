@@ -1,0 +1,492 @@
+---
+title: Staff Order - Full-Screen POS Mode
+description: Proposal for a kiosk-style full-screen ordering screen with order search and payment, for the Frontend POS app
+---
+
+# Staff Order — Full-Screen POS Mode
+
+**Date:** October 31, 2026
+**Status:** **Proposal — awaiting review. Nothing has been implemented.**
+**Reviewed by Kens:** October 31, 2026 — every open question was answered and is baked into
+this document. **Ready to build** (nothing has been implemented yet).
+**Scope:** Frontend POS (`app.ideazes.com`) · backend `pos_ai.db` / `pos_backend`
+
+---
+
+## Overview
+
+The **Staff Order** screen (`/staff-order`) is the counter screen where a member of staff
+takes an order for a walk-in or table guest. Today it renders inside the normal POS shell
+(sidebar + sticky app bar + mobile bottom nav) and its own layout stacks everything in one
+column on a phone.
+
+The result works, but it does not **feel** like the POS systems the staff already know
+(Square, Lightspeed, Toast, Shopify). This document proposes a **dedicated full-screen
+ordering mode** — a separate route that fills the viewport, with the **cart on the right**,
+**order search** and **payment collection** built in.
+
+Nothing in the existing `/staff-order` screen changes. The new mode is an additional
+surface that the staff can enter with one tap and leave with one tap.
+
+<Info>
+  **Decision summary**
+
+  - New route `/staff-order/full` — **the existing `/staff-order` and `/orders` screens are
+    not changed** (the Orders screen keeps its own behaviour; the kiosk only reuses its
+    payment and receipt logic).
+  - The existing **Staff Order** screen gets a **Full screen** button → the full route gets
+    an **Exit** button.
+  - The kiosk is **always entered deliberately**. There is **no auto-enter on tablets** and
+    **no per-device setting** — the staff taps the button, every time.
+  - The **Full screen** button is **per login**: it only renders for a signed-in member of
+    staff who may create orders. The kiosk route is protected the same way.
+  - **Cart on the right**, menu on the left (standard POS muscle memory).
+  - **Text-only tiles** (no product photos) — performance first.
+  - The kiosk can **search an order (id / number) or a table** — including orders already
+    **served** — and **take payment** on them. **Settle table** (pay all the unpaid orders
+    of a table in one action) is part of Phase 1.
+  - **Payment recording and receipt printing are identical to the Orders screen**
+    (same endpoints, same split logic, same print behaviour).
+  - The **AI upsell popup is not used in the kiosk.**
+  - **Table and order type stay visible** in the kiosk header.
+</Info>
+
+---
+
+## 1. Current state
+
+### 1.1 The screen
+
+`frontend/src/pages/StaffOrder.jsx` (496 lines) · route `/staff-order` ·
+`App.jsx:381` → `ProtectedRoute` → `StaffOrder`.
+
+It renders inside the standard shell (`App.jsx`): sidebar (desktop), sticky 64px app bar,
+mobile bottom nav, and `<main className="lg:ml-64 px-4 pt-4 pb-20 lg:pb-4">`.
+
+Its own layout is `p-6` → page header → `grid grid-cols-1 lg:grid-cols-3 gap-6`:
+
+| Column | Content |
+|--------|---------|
+| `lg:col-span-1` | Table picker (3-col grid) → Order type (dine-in / takeaway / delivery) → **Cart** |
+| `lg:col-span-2` | Category pills → menu tile grid, `max-h-[500px] overflow-y-auto` |
+
+### 1.2 Why it feels wrong at the counter
+
+1. **Wrong column order.** The cart is on the **left**, the menu on the **right**. Every
+   mainstream POS puts items left, cart right. Staff coming from another system will reach
+   for the wrong side.
+2. **One long scroll on a phone.** Single column means: table picker → order type → cart →
+   *then* the entire menu grid. Every item costs a scroll down, a scroll back up, and a
+   scroll down again to press **Place Order**.
+3. **Two scrollbars fighting.** The menu grid is capped at `max-h-[500px]` inside a page that
+   also scrolls. A real POS has one scroll region per panel and a fixed viewport.
+4. **No payment at the point of order.** The order is created, but the cashier has to leave
+   the screen and find the order in **Orders** to settle it.
+
+### 1.3 What already exists in the backend (and gets reused)
+
+This is the important part: **the payment machinery is already built.** Phase 1 is a
+frontend job.
+
+| Endpoint | File | Reused for |
+|----------|------|-----------|
+| `GET /api/orders/` | `backend/app/routes/order.py:416` | Order list (filters: `status`, `order_type`, `outlet_id`, `table_number`) |
+| `GET /api/orders/active` | `order.py:485` | Live orders on the search panel |
+| `GET /api/orders/{id}` | `order.py:603` | Order detail for the payment panel |
+| `GET /api/orders/number/{order_number}` | `order.py:653` | Exact lookup by order number |
+| `PATCH /api/orders/{id}/payment` | `order.py:743` | Mark paid + method (cash / card / ewallet) |
+| `POST /api/orders/{id}/payments` | `order.py:798` | Record a payment row (amount, method, type) |
+| `GET /api/orders/{id}/payments` | `order.py:851` | Payment history / split state |
+| `PATCH /api/orders/{id}/status` | `order.py:702` | Status transitions (pending → confirmed → preparing → ready → served) |
+
+Database: `orders` (with `payment_status`, `payment_method`, `total`, `discount`, `tax`),
+`payments` and `order_payments` (both already exist), `tables` (`active_orders`,
+`uuid`, `capacity`), `menu_items` (`name`, `price`, `stock_status` is computed).
+
+Outlet settings already carry the POS configuration: `payment_methods`
+(`backend/app/models/models.py:331`), `table_required` (`:364`), `max_orders_per_table`
+(`:361`), `allow_dine_in` / `allow_takeaway` / `allow_delivery`.
+
+The **Orders** screen (`pages/OrderQueue.jsx`) already implements payment collection,
+split bills (equal + custom), receipt printing and the print banner. The full-screen mode
+reuses that behaviour rather than reinventing it.
+
+---
+
+## 2. Proposed architecture
+
+### 2.1 Two routes, one component family
+
+```
+/staff-order          → existing screen, UNCHANGED
+                        + a "Full screen" button in its header
+
+/staff-order/full     → NEW: kiosk mode, no app shell
+                        header: table / order type · search · Exit button
+                        body:   menu tiles (left)  |  cart (right)
+```
+
+Both routes render the same `StaffOrder` component in a different **mode**, so the cart
+logic, the table picker, the AI upsell and `submitOrder()` are shared:
+
+```jsx
+// pages/StaffOrder.jsx
+export default function StaffOrder({ mode = 'embedded' }) { ... }
+```
+
+- `mode="embedded"` → today's layout, inside the app shell (default, unchanged).
+- `mode="kiosk"` → the new full-screen layout.
+
+### 2.2 Splitting the app shell
+
+The sidebar, the sticky app bar, the mobile bottom nav and `<main>` are currently inline in
+the `App.jsx` render. They need to become a reusable `<AppShell>` so the kiosk route can
+render **without** them:
+
+```jsx
+// App.jsx
+<Routes>
+  {/* normal routes keep the shell */}
+  <Route element={<AppShell />}>
+    <Route path="/" element={<Dashboard />} />
+    ...
+  </Route>
+
+  {/* the kiosk route renders on its own, edge to edge */}
+  <Route path="/staff-order/full" element={
+    <ProtectedRoute session={session}>
+      <StaffOrder mode="kiosk" />
+    </ProtectedRoute>
+  } />
+</Routes>
+```
+
+The kiosk route renders its own `<main className="h-[100dvh] overflow-hidden">` — no sidebar,
+no app bar, no bottom nav, no page scroll.
+
+### 2.3 Entry, exit and access control
+
+- **Enter:** a **Full screen** button in the header of `/staff-order` (next to the page
+  title) → `navigate('/staff-order/full')`.
+- **Exit:** an **Exit** button in the kiosk header → `navigate('/staff-order')`.
+- The kiosk route is also reachable directly (`app.ideazes.com/staff-order/full`), so it
+  can be bookmarked — but it always requires a signed-in session.
+- **Browser back** must leave the kiosk, not blank the app → the kiosk pushes a history
+  entry on mount and the Exit button calls `navigate(-1)`.
+
+**Access control is per login.** The Full screen button is not a hidden shortcut — it is
+part of the authenticated UI, and it follows **exactly the same permission rules as the two
+screens it bridges**:
+
+| Rule | Behaviour |
+|------|-----------|
+| Not signed in | No **Full screen** button is rendered, and `/staff-order/full` redirects to the login screen (`ProtectedRoute`). |
+| Signed in, **authorised for both Orders and Staff Order** | The **Full screen** button is rendered on `/staff-order`, and the kiosk route is open. |
+| Signed in, but not authorised for one of them | The button is hidden and the kiosk is refused. |
+
+**"Authorised for Orders and Staff Order"** means exactly what it means for those two nav
+entries — the role gate **and** the plan feature gate:
+
+| Screen | Role gate | Plan feature |
+|--------|-----------|--------------|
+| `/orders` | `staff` and above | `FEATURES.ORDERS` |
+| `/staff-order` | `staff` and above | `FEATURES.STAFF_ORDER` |
+| **`/staff-order/full`** | **both of the above** | **both of the above** |
+
+Implementation: the button is rendered when `visibleNavItems(session, { hasFeature, loading })`
+contains **both** `/orders` and `/staff-order`. The kiosk route repeats the same check and
+navigates back if it fails — and the backend still enforces it independently
+(`staff:orders:read` / `staff:orders:write`).
+
+**No auto-enter.** The kiosk is never opened automatically — not on tablets, not by device
+type, not by outlet setting. The staff always tap **Full screen**. This keeps the
+behaviour identical on every device and avoids a surprise full-screen mode appearing
+mid-order.
+
+### 2.4 What stays exactly as it is
+
+- **`/staff-order`** (embedded Staff Order) — unchanged layout and behaviour, plus the
+  new **Full screen** button.
+- **`/orders`** (Orders / Order Queue) — unchanged. The kiosk does **not** replace it. The
+  kiosk reuses its *logic* (payment recording, split bills, receipt printing) through a
+  shared hook, but the Orders screen keeps its own UI and its own workflows.
+
+---
+
+## 3. Screen design
+
+### 3.1 Tablet / landscape (≥ 1024px) — the counter device
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ [🛒 Staff Order]   Table: T4 ▾   [Dine-in][Takeaway][Delivery]   🔍 Search │ ⤢ Exit │
+├───────────────────────────────────────────────┬──────────────────────────────┤
+│  All │ Coffee │ Food │ Dessert │ Drinks       │  CART            T4 · Dine-in │
+│                                               │                              │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐        │  2x Iced Latte      RM 14.00 │
+│  │ Latte   │  │ Flat White│ │ Croissant│       │     [-] 2 [+]        ✕     │
+│  │ RM 7.00 │  │ RM 8.00 │  │ RM 6.50 │        │                              │
+│  └─────────┘  └─────────┘  └─────────┘        │  1x Toast         RM 5.50  │
+│  ┌─────────┐  ┌─────────┐  ┌─────────┐        │     [-] 1 [+]        ✕     │
+│  │ ...     │  │ ...     │  │ ...     │        │                              │
+│  └─────────┘  └─────────┘  └─────────┘        │  ─────────────────────────  │
+│                                               │  Subtotal           RM 19.50 │
+│  (this panel scrolls on its own)              │  Tax                 RM 0.00 │
+│                                               │  TOTAL              RM 19.50 │
+│                                               │  ┌────────────────────────┐  │
+│                                               │  │      Place Order      │  │
+│                                               │  └────────────────────────┘  │
+└───────────────────────────────────────────────┴──────────────────────────────┘
+```
+
+Rules:
+- **Menu left, cart right.** Cart panel `w-[380px]` (tablet) / `w-[420px]` (desktop),
+  `shrink-0`, its own scroll, **sticky footer** with the total and the primary button.
+- The menu panel is `flex-1` and the **only** scrolling region for the tiles.
+- The page itself never scrolls. The viewport is fixed (`100dvh`).
+- Tiles are **text only**: name, price, and the stock badge. Minimum touch target 64px.
+- The **table** and the **order type** stay visible in the kiosk header at all times — the
+  header shows the table chip (tap to change) and the order type as a compact segmented
+  control (`Dine-in / Takeaway / Delivery`, only the types the outlet allows). A POS always
+  shows which table it is ringing up, so it never collapses into a hidden state.
+
+### 3.2 Phone portrait (< 1024px)
+
+```
+┌───────────────────────────┐
+│ T4 · Dine-in      🔍  ⤢ X  │
+├───────────────────────────┤
+│ All │ Coffee │ Food │ …    │
+│                           │
+│  Latte        RM 7.00     │
+│  Flat White   RM 8.00     │
+│  Croissant    RM 6.50     │
+│  (tiles scroll)           │
+│                           │
+├───────────────────────────┤
+│ 🛒 3 items        RM 19.50 │  ← persistent bar
+└───────────────────────────┘
+```
+
+- The tiles fill the screen and scroll.
+- A **persistent bottom bar** shows the item count and the running total; tapping it opens
+  the cart as a **bottom sheet** (drag to close) with the line items, the quantity steppers,
+  the notes field and the sticky **Place Order** button.
+- The sheet respects `env(safe-area-inset-bottom)` (iPhone home indicator).
+
+### 3.3 Order search + payment
+
+The **Search** button in the kiosk header opens a full-height panel (right side on tablet,
+full-screen sheet on phone).
+
+**What the staff can search:**
+
+| Input | Matches | Notes |
+|-------|---------|-------|
+| **Order id / order number** | `#1042`, `1042` | `order_number` (and the numeric `id`) |
+| **Table** | `T4`, `4`, `Table 4` | Lists **every** order of that table |
+
+**Which orders are listed:** all orders of the outlet that are **not cancelled** —
+**including the ones already `served`**. This is the point of the feature: a table that has
+finished eating is still an unpaid bill, and the cashier must be able to find it and settle
+it without leaving the kiosk.
+
+```
+┌───────────────────────────────────────────────────┐
+│ 🔍  search by order id or table…                  │
+│ ───────────────────────────────────────────────── │
+│ #1042   T4   Dine-in    RM 45.00   ● unpaid       │
+│ #1039   T4   Dine-in    RM 62.00   ● unpaid       │
+│ #1030   T4   Dine-in    RM 28.00   ● served       │  ← served, still unpaid
+│ #1028   T2   Takeaway   RM 18.50   ● paid         │
+│ ───────────────────────────────────────────────── │
+│ Table 4 · 2 open orders · RM 107.00  [Settle table] │
+└───────────────────────────────────────────────────┘
+```
+
+- A search for a **table** returns that table's orders plus a **Settle table** action —
+  paying every unpaid order of that table in one go (one payment row per order, one
+  receipt). **This is part of Phase 1.**
+- A search for an **order id** returns that single order.
+- The list is ordered newest first and the unpaid orders float to the top.
+
+**Payment panel** (opens when an order is tapped):
+
+```
+┌───────────────────────────────┐
+│ Order #1042 · Table 4         │
+│ Subtotal        RM 45.00      │
+│ Discount         -RM 5.00     │
+│ Tax               RM 0.00     │
+│ TOTAL            RM 40.00     │
+│                                │
+│  [Cash]  [Card]  [DuitNow]     │
+│                                │
+│  Cash tendered                 │
+│  [ 40.00 ]  RM  20.00          │
+│  [Exact] [RM 50] [RM 100]      │
+│                                │
+│  Change due        RM 0.00     │
+│  ┌───────────────────────────┐  │
+│  │      Complete Sale        │  │
+│  └───────────────────────────┘  │
+└───────────────────────────────┘
+```
+
+**Payment recording is the same as the Orders screen.** Not a lookalike — the same code
+path:
+
+| Behaviour | Implementation (shared with `OrderQueue.jsx`) |
+|-----------|-----------------------------------------------|
+| Methods | From `settings.payment_methods` (default `cash`, `card`, `duitnow`) |
+| Cash | Tendered amount, quick keys (exact / RM 20 / RM 50 / RM 100), **change calculated and shown** → `POST /orders/{id}/payments` |
+| Card / ewallet | No cash drawer, mark paid directly → `PATCH /orders/{id}/payment` |
+| Split bill | Equal split and custom split, exactly as the Orders screen does → `POST /orders/{id}/payments` with `payment_type: equal_split` / `custom_split` |
+| Receipt | **Identical to the Orders screen** — the same print block, the same behaviour (it prints automatically after a successful payment, exactly as Orders does today) |
+| Feedback | The same "payment recorded" banner after the sale |
+| After payment | The order leaves the search panel; the staff can start the next order |
+
+The only difference is **where** it happens: the Orders screen settles an order inside the
+order list; the kiosk settles it inside the kiosk search panel. The logic is extracted into
+a shared `usePaymentFlow` hook so the two can never drift apart.
+
+## 4. Performance decisions
+
+| Decision | Reason |
+|----------|--------|
+| **Text-only tiles — no product photos** | A photo per tile means one request per item on a phone that may be on 4G behind a counter. `menu_items.image_url` stays unused in this mode. |
+| One fetch of menu + categories + tables at mount | Already the case (`Promise.all` in `fetchData`). No extra round trips. |
+| Search runs **client side** first | The order list is already in memory (`GET /orders/`). Filtering it locally is instant and free. |
+| No new state library, no global store | The cart is local component state today and stays local. |
+| Memoised tile rows | `React.memo` on the tile component so a cart change does not re-render the whole grid. |
+| No animation libraries | CSS transitions only — the upsell popup already uses them. |
+| **No AI upsell popup in the kiosk** | It is not mounted in kiosk mode — one less component and one less request per item. |
+| Lazy-load the payment panel | The payment UI is only mounted when a search result is opened. |
+| Lazy-load the search panel | The order list is only fetched when the staff opens **Search**, not on kiosk entry. |
+
+**Phase 1 requires no new backend endpoints** and no schema change. The only optional
+backend addition is a `q` search parameter on `GET /orders/` for outlets with thousands of
+orders — deferred to Phase 2 (see [Deferred](#7-deferred-not-in-phase-1)).
+
+---
+
+## 5. File-by-file change list
+
+| File | Change |
+|------|--------|
+| `frontend/src/App.jsx` | Extract `<AppShell>`; add the `/staff-order/full` route (no shell); `StaffOrder mode="kiosk"`. |
+| `frontend/src/pages/StaffOrder.jsx` | Add the `mode` prop. Extract the cart into `<CartPanel>` and the menu into `<MenuTiles>` so both modes can share them. New: **Full screen** button (embedded mode, rendered only when the session is authorised for both `/orders` and `/staff-order`), **Exit** button (kiosk mode), the search panel and the payment panel. |
+| `frontend/src/components/pos/OrderSearchPanel.jsx` | **New** — search by order id / order number / table, listing unpaid **and served** orders, plus **Settle table**. |
+| `frontend/src/components/pos/PaymentPanel.jsx` | **New** — tender, change, split, receipt. Reuses the logic from `OrderQueue.jsx` (extracted into a shared hook `usePaymentFlow`). |
+| `frontend/src/components/pos/CartPanel.jsx` | **New** — shared cart (line items, steppers, notes, total, submit). |
+| `frontend/src/hooks/usePaymentFlow.js` | **New** — extracted from `OrderQueue.jsx` so both screens settle an order identically (same payment recording, same split, same receipt). |
+| `frontend/src/components/AIUpsellPopup.jsx` | **No change** — it simply is not rendered in kiosk mode. |
+| `frontend/src/i18n/locales/{en,zh,km}/staffOrder.json` | New keys — `kiosk.*`, `search.*`, `payment.*`. All three locales must stay in parity (`npm run i18n:check`). |
+| `frontend/src/config/navItems.js` | **No change** — the kiosk is not a nav entry, it is a mode of `/staff-order`. |
+
+No change to `backend/`. No change to the database.
+
+---
+
+## 6. Gotchas to build in from the start
+
+- **`100dvh`, not `100vh`.** Mobile browser toolbars change the viewport height; `100vh`
+  overflows and produces a hidden bottom bar.
+- **`overscroll-contain`** on the tile panel and the cart — otherwise pulling down
+  refreshes the page and loses the cart.
+- **`env(safe-area-inset-bottom)`** on the phone bottom bar and the cart sheet.
+- **Every `<input>` must have a font size ≥ 16px** or iOS zooms the viewport on focus. This
+  applies to the tender amount field and the line-item notes field.
+- **The keyboard covers the primary button.** Keep **Complete Sale** in a sticky footer and
+  check it against `window.visualViewport` if it is still clipped.
+- **The AI upsell popup is `fixed inset-0 z-50`** (`components/AIUpsellPopup.jsx:27`). The
+  kiosk wrapper must stay **below** z-50 (use `z-40`) or the popup will render behind it.
+- **The kiosk route still needs the session cookie.** It is the same origin, so the HttpOnly
+  cookie rides along — but the route must stay inside `ProtectedRoute` and keep sending
+  `customer_id` (the tenant claim) on every call.
+- **The kiosk must not be cached as a stale shell.** `index.html` is already `no-cache` and
+  the assets are hashed, so a new build is picked up on the next load.
+- **Print CSS.** The receipt block from `OrderQueue.jsx` relies on the print stylesheet —
+  the kiosk must not break `@media print` (hide the kiosk chrome when printing).
+
+---
+
+## 7. Deferred (not in Phase 1)
+
+| Item | Why |
+|------|-----|
+| **Park / hold an order** | Needs a new state on `orders` (a `status` of `parked` + a resume path). Worth it, but it is a backend change. |
+| **Customer name / phone on the order** | `orders.dining_customer_id` exists and the walk-in customer is already attached; a proper "who is this for" field is a UI + product decision. |
+| **Order editing from the kiosk** | Cancel/restore item endpoints exist (`order.py:1011`, `:1082`) but editing a live order in the kiosk needs a UX decision (it is a split-brain risk with the kitchen display). |
+| **Backend `q` search** | Only needed for outlets with thousands of orders. Client-side filtering over the loaded order list covers the normal case. |
+| **Product photos in the tiles** | Deliberately excluded for performance. Could be a per-outlet setting later. |
+| **Auto-enter the kiosk on tablets / per-device default** | **Decided: never.** The staff always taps **Full screen**. |
+
+---
+
+## 8. Verification plan
+
+Playwright (already installed at `scripts/`) at three viewports — **390×844** (phone),
+**768×1024** (tablet portrait), **1280×800** (desktop):
+
+1. **Kiosk route loads** without the sidebar / app bar / bottom nav, and the document does
+   not scroll (`document.scrollingElement.scrollHeight === clientHeight`).
+2. **Cart is on the right** at ≥1024px and is a bottom sheet at <1024px.
+3. **Header icon / title geometry** matches the rest of the app: icon `x=16, 40×40`,
+   title `x=68` (the "Suppliers screen" convention — see the mobile header convention in
+   MEMORY.md).
+4. **Order flow**: pick a table → add 3 items → the total updates → **Place Order** → the
+   order appears in the search panel → **Complete Sale** (cash, exact) → `payment_status`
+   becomes `paid` and the change is `RM 0.00`.
+5. **Search by table** returns every order of that table, **including a `served` order that
+   is still unpaid**, and **Settle table** pays all of them.
+6. **Search by order id / order number** returns that single order.
+7. **Split payment** produces one row per share in `payments`.
+8. **Receipt prints** (the print block renders with the payment method) and the print
+   behaviour matches the Orders screen.
+9. **The AI upsell popup does not appear** in the kiosk (it still appears in the embedded
+   Staff Order screen).
+10. **Access control**: with no session, `/staff-order/full` redirects to the login screen
+    and the **Full screen** button is not rendered.
+11. **i18n parity**: `node scripts/check-i18n-parity.mjs` passes (en / zh / km).
+12. **Regression**: the existing `/staff-order` screen and the `/orders` screen are unchanged
+    — same layout, same behaviour, plus the new **Full screen** button on Staff Order.
+
+---
+
+## 9. Risks
+
+| Risk | Likelihood | Mitigation |
+|------|-----------|------------|
+| The kiosk behaves differently from the old screen (staff confusion) | Medium | The existing screen stays untouched and reachable in one tap. The kiosk reuses the same cart and the same payment behaviour. |
+| Splitting `App.jsx` breaks the other 20+ routes | Low | The `<AppShell>` extraction is mechanical and every route is verified in the same pass. |
+| The keyboard covers **Complete Sale** on a phone | Medium | Sticky footer + `visualViewport` check, tested at 390px. |
+| The kiosk is served stale after a build | Low | `index.html` is `no-cache`, the assets are hashed. |
+| Payment double-recording | Low | The panel is disabled while a request is in flight, and the payment row is written by the backend, not the client. |
+
+---
+
+## 10. Decisions taken
+
+Answered by Kens on October 31, 2026 and baked into this document.
+
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Kiosk by default on tablets, or a separate route? | **Always a separate route.** The staff tap **Full screen**; it is never opened automatically. |
+| 2 | Table / order id search, incl. served orders | **Search by order id / order number or by table**, listing every non-cancelled order — **including `served`** ones, which are usually unpaid. A table search also offers **Settle table**. |
+| 3 | How is the payment recorded? | **Exactly like the Orders screen** — same endpoints, same cash change, same split bill, same code path through the shared `usePaymentFlow` hook. |
+| 4 | Receipt printing | **Exactly like the Orders screen** — same print block, same behaviour (prints automatically after a successful payment). |
+| 5 | AI upsell popup in the kiosk? | **Ignored in the kiosk.** It stays in the embedded Staff Order screen only. |
+| 6 | Who can open the kiosk? | **Per login.** Anyone authorised for **both** the **Orders** screen and the **Staff Order** screen (role gate *and* plan feature gate for both) can open the kiosk. Anyone else does not see the **Full screen** button. No auto-enter, no per-device setting. |
+| 7 | Table + order type in the kiosk header | **Always visible** — the table chip and the order type segmented control stay in the header, exactly like a POS shows the table on every screen. |
+| 8 | **Settle table** (pay all unpaid orders of a table in one action) | **In Phase 1.** |
+
+**All questions are answered — this document is ready to build.**
+
+---
+
+## Related
+
+- [Order management](/pos-app/order-management) — the Orders screen and the payment flow it reuses
+- [Receipt printing](/pos-app/receipt-printing) — the print block reused by the kiosk
+- [Language switching](/system-design/program-changes/language-switching/language-switching) — the `en / zh / km` key parity the new UI must satisfy
