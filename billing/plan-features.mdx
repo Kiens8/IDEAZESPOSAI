@@ -1,0 +1,90 @@
+---
+title: Plan Features & Tenant Linking
+description: How a restaurant's plan decides which features the POS shows, and the two customer ids behind it
+---
+
+# Plan Features & Tenant Linking
+
+Which buttons a restaurant sees in the POS is decided by **the plan**, not by the code.
+This page explains how the plan reaches the POS, and the two different customer ids that
+have to line up for it to work.
+
+## The two id spaces
+
+There are **two** customer ids in the system, and they are not the same numbers:
+
+| | `website_customers.id` | POS tenant id |
+|---|---|---|
+| Lives in | `website_api.db` | `pos_ai.db` |
+| Is used by | the website, the admin app, the billing | the POS (`users.customer_id`, `outlets.customer_id`) |
+| Demo Restaurant | 1 | 1 |
+| VARMAN | 12 | 2 |
+| AES Restaurant | 23 | 3 |
+
+The POS talks to the website API with the **tenant id** - the frontend asks for
+`/api/admin/customer/{tenant_id}/features` and the login check asks for
+`/api/admin/customer/{tenant_id}/subscription`.
+
+The link between the two is the column `website_customers.customer_id` ("Link to POS
+database customer (same ID)"). When it is empty, the website API cannot find the
+customer.
+
+### The rule
+
+`app/services/customer_lookup.py` resolves a customer by **either** id:
+
+```python
+def resolve_website_customer(db, customer_id):
+    customer = db.query(WebsiteCustomer).filter(WebsiteCustomer.id == customer_id).first()
+    if customer:
+        return customer          # the exact website id always wins
+    return db.query(WebsiteCustomer).filter(
+        WebsiteCustomer.customer_id == customer_id
+    ).first()                    # the POS tenant id
+```
+
+Everything after the lookup uses the **website** id (`customer.id`) - the subscription,
+the invoices and the feature overrides are all keyed on it.
+
+## How a plan becomes a menu
+
+1. The plan (`subscription_plans`) has `plan_features` rows.
+2. The restaurant's subscription says which plan it is on.
+3. `GET /api/admin/customer/{id}/features` returns the enabled features: the plan's
+   features, plus the customer's own overrides.
+4. The frontend stores them (`useFeatures`) and `navItems.js` filters the sidebar by
+   them (`visibleNavItems`).
+
+The feature **names** are the tab names of the screens - `Staff Order`, `Qr & Tables`,
+`Dashboard` - so a plan that does not include `staff_order` simply has no Staff Order in
+the sidebar.
+
+The **limits** (`max_outlets`, `max_staff`) come from `GET /api/admin/subscriptions` and
+`GET /api/admin/plans`, and are used by the Outlets and Staff pages.
+
+### If the features cannot be fetched
+
+`useFeatures` falls back to a hardcoded list. The POS still works, but the sidebar is
+**wrong** - the customer sees features their plan does not include and misses the ones it
+does. The browser console says `Failed to fetch features: 404`. That is the symptom of a
+customer that cannot be resolved.
+
+## The subscription check at login
+
+The POS backend checks the subscription on every login and blocks a restaurant whose plan
+was **cancelled**, **expired** or **overdue**. A restaurant that never picked a plan is
+warned, not locked out.
+
+The check used to be skipped for everybody: the backend logged into the admin API with a
+hardcoded password that no longer works, so the call failed and the login carried on.
+It uses an API key now (`WEBSITE_API_INTERNAL_KEY` in `backend/.env`, mode 600) - a server
+key with `read:subscriptions` and `read:settings`.
+
+## API keys
+
+| Key | Where | Permissions |
+|---|---|---|
+| `pk_...` | the frontend bundle (public) | `read:customer_features`, `read:subscriptions`, `read:plans` |
+| `sk_...` | `backend/.env` (secret) | the same + `read:settings` |
+
+The public key must never get `read:settings` - it ships to every browser.
