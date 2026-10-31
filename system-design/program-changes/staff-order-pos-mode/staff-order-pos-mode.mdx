@@ -667,6 +667,51 @@ kiosk, a script, an integration) left a $0.00 order behind in the queue.
 The response carries `order_voided` and `order_status`, and the Orders screen hides
 *Record Payment* on an order with no live item as a safety net.
 
+### The receipt has to read like a receipt (November 1, 2026)
+
+**The symptom:** the kiosk printed a sheet with raw translation keys on it -
+`receipt.receipt`, `receipt.date`, `receipt.table`, `receipt.subtotal`, `receipt.tax`,
+`receipt.total`, `receipt.payment`, `receipt.terms`, `receipt.policy` - while the Orders
+screen printed a proper receipt.
+
+**The cause:** the receipt labels live in the **orders** namespace. The printer hook took
+the caller's translator, and the kiosk's translator is bound to the **staffOrder**
+namespace - so every `t('receipt.…')` in the template resolved to nothing and i18next
+returned the key itself.
+
+```js
+// hooks/useReceiptPrinter.js - the hook owns its translator now
+const { t } = useTranslation('orders')
+```
+
+The hook no longer takes a `t` from the caller, so the two screens cannot drift again.
+
+**The payment method on the receipt.** A settlement carries `orders: [...]`, and with one
+order in it the printer took the order from the database - which has `payment_method`,
+not the `paymentMethod` the banner uses. The receipt printed "Payment: N/A". The printer
+now falls back through `base.paymentMethod -> order.paymentMethod -> base.payment_method`.
+
+### The cash tender field (November 1, 2026)
+
+**The symptom:** "sometimes the cash tender textbox can't be input amount".
+
+**The cause:** the field was a controlled `<input type="number">`. A number input reports
+`value === ""` for anything the browser cannot parse as a number - and **"50." is not a
+valid number**, so the decimal point was swallowed and React wrote "" back into the
+field. "50.90" became "5090"; a leading "." was dropped as well. It looked random because
+it depends on which key you pressed.
+
+**The fix** - `frontend/src/utils/moneyInput.js`:
+
+```jsx
+<input type="text" inputMode="decimal" autoComplete="off"
+       value={cashReceived}
+       onChange={(e) => setCashReceived(sanitizeAmount(e.target.value))} />
+```
+
+`sanitizeAmount` keeps the digits and the first decimal point (two decimals max). The
+numeric keypad still shows on a tablet, and "50.90" and ".50" now survive.
+
 ### The visual design — "Midnight POS"
 
 The kiosk is a **different mode**, not the app with the chrome removed, so it gets its own
