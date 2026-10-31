@@ -624,6 +624,13 @@ meant to change visually.
 be checked. `selectedOrderId` had two readers - the payment modal (correct) and the
 remove-item modal (wrong).
 
+**The checklist for the next state move:**
+1. Grep the old name across the app and list every **reader** and **writer** before the move.
+2. If the moved code must make the screen react (a banner, a refresh, a print), give the
+   new owner an explicit callback - do not let it reach into screen state.
+3. A green build and a clean route sweep do **not** prove behaviour. Both bugs passed
+   "24/24 routes, 0 console errors". The flow has to be exercised and asserted in the browser.
+
 ### The visual design — "Midnight POS"
 
 The kiosk is a **different mode**, not the app with the chrome removed, so it gets its own
