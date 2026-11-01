@@ -6,7 +6,7 @@ description: Plan enforcement and cross-tenant isolation for the AI API family, 
 # AI Feature Gating and Tenant Isolation
 
 **Date:** November 2, 2026  
-**Status:** Approved — the four plan rules are decided (November 2); ready for implementation  
+**Status:** **Implemented and verified** — November 2, 2026  
 **Scope:** `backend/app/routes/ai/*`, `ai_chatbot.py`, `ai_forecast.py`, `ai_orders.py`, `ai_search.py`, `ai_security.py`, `competitors.py`, `chatbot.py` — 61 routes
 
 ---
@@ -291,6 +291,67 @@ The four rules that settled the plan gate:
 | 4 | **The Staff Order "you might also like" is allowed on every plan** | `/api/ai/recommendations/*` is **not** plan-gated |
 
 **The tenant check (step A) applies to every route in every case.** None of these four decisions weakens the isolation — they only decide what a restaurant *pays for*, not what it may *read*.
+
+---
+
+## What was built (November 2, 2026)
+
+### A — the tenant check
+
+`require_outlet_access(db, request, key_info, outlet_id)` in
+`backend/app/core/tenant.py`:
+
+- the tenant of the outlet is always derived from the outlet itself
+- a signed-in staff member: the outlet's tenant must equal the session's
+  tenant, or the request is refused (403) — the session wins over any claim
+- an API-key caller: when it sends a `customer_id` claim, the outlet's tenant
+  must equal that claim (403); without a claim the outlet is the scope — the
+  rule the customer app already relies on for the menu and the cart
+
+Applied to 39 routes across 8 routers (`ai/__init__.py`, `ai_chatbot.py`,
+`ai_forecast.py`, `ai_orders.py`, `ai_search.py`, `ai_security.py`,
+`chatbot.py`, `competitors.py`), plus the resource-level checks
+(`require_resource_tenant`, `require_customer_resource_tenant`) for the
+alert, campaign and competitor rows.
+
+### B — the plan gate
+
+| Router | Routes | Feature |
+|---|---|---|
+| `ai_chatbot.py` | `/order`, `/search-and-order` | AI Chatbot |
+| `ai_search.py` | `/suggestions` | AI Tools |
+| `chatbot.py` | all 4 | AI Chatbot |
+| `competitors.py` | the analysis group (7) | Competitor Analysis |
+| `competitors.py` | the discover group (5) | Competitor Discover |
+| `ai/__init__.py` | `/insights`, `/menu-analytics`, `/campaigns/*` | AI Insights / Menu Analytics / AI Campaigns (already in place) |
+
+The free routes carry no plan gate: the dashboard AI
+(`customer-insights`, `forecast`, `orders`, `security`), the recommendations,
+the customer routes and the menu search.
+
+### C — the verification
+
+| Probe | Result |
+|---|---|
+| AES reading Demo's outlet (11 routes) | **403** ✓ |
+| AES reading its own outlet (5 routes) | **200** ✓ |
+| Demo reading its own outlet (7 routes) | **200** ✓ |
+| Demo reading AES's outlet | **403** ✓ |
+| AES on the AI Tools (13 routes) | **403** with the plan message ✓ |
+| AES on the free routes (13 routes) | **200** ✓ |
+| Demo on the AI Tools (8 routes) | **200** ✓ |
+| The public customer key on the guest routes | **200** ✓ |
+| The public customer key with a wrong claim | **403** ✓ |
+| The POS route sweep | **24 / 24** ✓ |
+| The customer app regression | clean ✓ |
+| The browser, per role (AES starter / Demo enterprise) | no failed calls, no console errors ✓ |
+
+### One frontend fix
+
+`frontend/src/pages/AI/index.jsx` — while the feature list was still loading,
+`isTabAccessible()` returned true for every tab, so a locked tab rendered and
+called the API (a 403 in the console). The tab content now renders only once
+the features are known (`!featureLoading &&`).
 
 ---
 
