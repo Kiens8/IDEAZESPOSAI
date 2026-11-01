@@ -1,0 +1,258 @@
+---
+title: AI Feature Gating and Tenant Isolation
+description: Plan enforcement and cross-tenant isolation for the AI API family, including the customer app carve-out
+---
+
+# AI Feature Gating and Tenant Isolation
+
+**Date:** November 2, 2026  
+**Status:** Proposed — awaiting approval  
+**Scope:** `backend/app/routes/ai/*`, `ai_chatbot.py`, `ai_forecast.py`, `ai_orders.py`, `ai_search.py`, `ai_security.py`, `competitors.py`, `chatbot.py` — 61 routes
+
+---
+
+## Overview
+
+The POS AI family is the last part of the API that answers *"who may call this, and whose data may it touch?"* with only half an answer. The inventory family was fixed on November 1 (52 routes, 7 routers). The AI family was left behind.
+
+Two gates exist in the system today:
+
+| Gate | Question it answers | Source of truth |
+|---|---|---|
+| **Role / permission** | May this *person* (or key) touch this kind of data? | `ROLE_PERMISSIONS` in `backend/app/middleware/auth.py` |
+| **Plan / feature** | Did this *restaurant* buy this capability? | the subscription plan, stamped into the session as `feat` at login |
+
+A third, equally important question has no answer at all on these routes:
+
+| Missing gate | Question it answers | Today |
+|---|---|---|
+| **Tenant / resource** | Whose *rows* may this request read or write? | **not implemented on any of the 61 AI routes** |
+
+This document proposes closing all three gaps as **one change set (A + B + C)**.
+
+---
+
+## The two findings
+
+### Finding 1 — 44 of the 61 AI routes are not plan-gated
+
+| Router | Routes | Plan-gated | Not gated |
+|---|---|---|---|
+| `ai/__init__.py` (`/api/ai`) | 21 | 11 | 10 |
+| `ai_chatbot.py` (`/api/ai/chat`) | 3 | 1 | 2 |
+| `ai_forecast.py` (`/api/ai`) | 4 | 0 | **4** |
+| `ai_orders.py` (`/api/ai/orders`) | 4 | 0 | **4** |
+| `ai_security.py` (`/api/ai/security`) | 4 | 0 | **4** |
+| `ai_search.py` (`/api/ai/search`) | 2 | 0 | 2 |
+| `ai_inventory.py` | 5 | 5 | 0 |
+| `competitors.py` (`/api/competitors`) | 14 | 0 | **14** |
+| `chatbot.py` (`/api/chatbot`) | 4 | 0 | 4 |
+| **Total** | **61** | **17** | **44** |
+
+Live evidence — a tenant on the **Starter** plan (AES, tenant 3):
+
+```
+GET  /api/ai/insights              -> 403  This feature is not included in your plan: AI Insights
+GET  /api/ai/forecast/daily        -> 200  ← should be refused
+GET  /api/ai/orders/insights       -> 200  ← should be refused
+GET  /api/ai/security/alerts       -> 200  ← should be refused
+GET  /api/ai/customer-insights/1   -> 200  ← should be refused
+```
+
+The 14 competitor-analysis routes are the sharpest case: **Competitor Analysis** is an Enterprise-plan feature, and a Starter tenant can call it today.
+
+### Finding 2 — the AI family has no tenant isolation at all
+
+None of the six AI routers import `app.core.tenant`. The `outlet_id` arrives as a query parameter and is used to read data directly.
+
+Live evidence — AES (**tenant 3**) reading Demo (**tenant 1**) data by asking for `outlet_id=1`:
+
+```
+GET /api/ai/forecast/daily?outlet_id=1   -> 200   Demo's sales forecast
+GET /api/ai/orders/insights?outlet_id=1  -> 200   Demo's order insights
+GET /api/ai/security/alerts?outlet_id=1  -> 200   Demo's security alerts (alert id 66)
+GET /api/ai/customer-insights/1          -> 200   Demo's customer insights (89 orders)
+```
+
+**The plan gate would not have caught this.** Demo is on the Enterprise plan, so its plan legitimately includes every AI feature. This is a pure isolation failure, and it is the more serious of the two findings.
+
+---
+
+## Scope — A, B and C ship together
+
+| Step | What it does | Why it cannot ship alone |
+|---|---|---|
+| **A** | The tenant check on all 61 AI routes | Without B, a Starter tenant still gets a friendly 403 instead of a 403 — but the *other* tenant's data is still exposed to a Starter tenant on any route that is not gated |
+| **B** | The plan gate on the AI family | Without A, an Enterprise tenant can read a Starter tenant's data — the plan gate says nothing about ownership |
+| **C** | The verification pass | Without C, neither A nor B can be trusted — the customer app is the shared path and must keep working on every plan |
+
+**All three are one change set.** A without B leaves the plan half-enforced; B without A leaves the isolation hole open; C exists because both A and B touch routes the customer app uses.
+
+---
+
+## A — The tenant check
+
+### A1. The two-caller problem
+
+The AI routes have two very different callers:
+
+| Caller | Credential | Tenant source | Strictness |
+|---|---|---|---|
+| POS staff (browser) | signed session | the session (`key_info.customer_id`) | strict — the session wins, a browser can never claim another tenant |
+| Customer app (PWA) | shared API key | the `customer_id` claim, **which the PWA often omits** | the outlet itself is the scope |
+
+The customer app calls these routes **without** a `customer_id` claim in most cases:
+
+```
+GET  /api/ai/search?q=coffee&outlet_id=1          → no customer_id
+GET  /api/ai/recommendations/cart?outlet_id=1     → no customer_id
+GET  /api/ai/recommendations/frequently-bought     → no customer_id
+POST /api/ai/chat/order?outlet_id=1&customer_id=…  → claim present, but optional
+```
+
+So a strict `require_tenant_claim()` would answer **400** and break the guest ordering flow. The check has to work for both callers.
+
+### A2. The helper
+
+A new helper in `backend/app/core/tenant.py`:
+
+```python
+def require_outlet_access(db: Session, request: Request, key_info: dict, outlet_id: int) -> int:
+    """Fail unless the caller may read the outlet's data.
+
+    The tenant of the outlet is always derived from the outlet itself.
+
+    * A signed-in staff member: the outlet's tenant must equal the
+      session's tenant, or the request is refused (403).
+    * An API-key caller: when it sends a customer_id claim, the outlet's
+      tenant must equal that claim (403). Without a claim the outlet is
+      the scope - the same rule the customer app already relies on for
+      the menu and the cart.
+    """
+```
+
+The rule stays: **the tenant of a resource is derived from the resource.** The claim is only ever a cross-check, never an authority.
+
+### A3. The mapping
+
+| Route shape | Check | Example |
+|---|---|---|
+| takes `outlet_id` | `require_outlet_access(...)` | `/api/ai/forecast/daily` |
+| takes `customer_id` (the POS tenant) | `require_customer_tenant(customer_id, tenant)` | `/api/competitors/{customer_id}` |
+| takes a row id (alert, campaign, competitor, item) | load the row, then `require_resource_tenant(db, row, tenant)` → 404 unknown, 403 foreign | `/api/ai/security/alerts/{alert_id}` |
+| row id + a body payload that carries another tenant | the row wins; a mismatch in the payload is a 403 | `POST /api/ai/campaigns` |
+| no tenant at all (pure config) | none needed, but the write still needs the role gate | `/api/ai/campaigns/suggest` |
+
+---
+
+## B — The plan gate
+
+### B1. The feature names
+
+The plan's features are read from the website API at login and stamped into the session as `feat` (the display names of the `features` catalogue). The gate is `require_plan_feature(*names)`.
+
+| Feature name (catalogue) | Grants |
+|---|---|
+| **AI Insights** | `/api/ai/insights`, `/api/ai/customer-insights/*`, `ai_forecast/*`, `ai_orders/*`, `ai_security/*` |
+| **AI Chatbot** | `/api/ai/chat/order`, `/api/ai/chat/search-and-order`, `/api/chatbot/*` |
+| **Menu Analytics** | `/api/ai/menu-analytics` |
+| **AI Campaigns** | `/api/ai/campaigns/*` |
+| **Competitor Analysis** | `/api/competitors/*` |
+| **AI Tools** | the AI-only search suggestions (`/api/ai/search/suggestions`) |
+| **Inventory** | the inventory family and `ai_inventory/*` (already done) |
+
+### B2. What is deliberately **not** gated
+
+| Route | Why |
+|---|---|
+| `/api/ai/search` (the menu search) | it is the **staff menu search** on the POS, not an AI feature — gating it would break menu search for a Starter tenant |
+| `/api/ai/recommendations/*`, `/api/ai/customer/*` | the customer app's own recommendations and greeting — a customer-facing benefit, not a management feature |
+
+### B3. The customer app carve-out — the AI stays available on every plan
+
+**Decision: the customer app's AI is a customer benefit and is available on every plan, Starter included.**
+
+The mechanism already guarantees this, structurally:
+
+```python
+# app/middleware/auth.py — require_plan_feature
+if key_info.get("key_type") != "user":
+    return key_info          # a server-to-server caller is not plan-gated
+```
+
+Only a **browser session** is plan-gated. The customer app calls with the shared API key, so it is never refused by the plan — on any plan, for any route, including the ones this document gates. The same carve-out covers the routes the PWA shares with the POS (`/api/ai/chat/order`, `/api/ai/search`, `/api/ai/customer/*`, `/api/ai/recommendations/*`).
+
+One consequence to keep in mind: the plan gate and the tenant check are **independent**. Gating the staff side of a shared route never closes the customer app, and the tenant check applies to both callers.
+
+---
+
+## C — The verification pass
+
+C is not a code change; it is the proof that A and B are correct and that nothing was broken.
+
+### C1. The probe matrix
+
+| # | Probe | Expected |
+|---|---|---|
+| 1 | Enterprise tenant, own outlet | **200** on every gated route |
+| 2 | Starter tenant, own outlet | **403** on every gated route, with `This feature is not included in your plan: <name>` |
+| 3 | Starter tenant, **another tenant's** outlet | **403** (isolation) on every route that takes an outlet |
+| 4 | Enterprise tenant, **another tenant's** outlet | **403** (isolation) — the plan does not grant ownership |
+| 5 | Unknown row id (alert, campaign, competitor) | **404** |
+| 6 | The public customer key, the customer app's own routes | **200** — the guest ordering flow |
+| 7 | The public customer key, the staff-only routes | **403** |
+
+### C2. The customer app smoke test
+
+The guest flow is checked end to end on a **Starter** plan, because that is the plan where a mistake would show up:
+
+```
+menu → search → AI chat → add to cart → place the order → the receipt
+```
+
+### C3. The regression
+
+- The 24-route POS sweep (`/tmp/regress_all.js`) → `routes with problems: 0 / 24`
+- The PWA regression (`scripts/pwa_check.js`)
+- The browser check per role (admin / manager / staff) → no console errors
+
+---
+
+## Implementation order
+
+| Phase | Work | Gate to the next phase |
+|---|---|---|
+| 1 | `require_outlet_access()` + the tenant check on the 6 AI routers | the probe matrix rows 3 and 4 pass |
+| 2 | The plan gate on the AI family (the catalogue names) | the probe matrix rows 1 and 2 pass |
+| 3 | `competitors.py` + `chatbot.py` | a Starter tenant gets 403 on both |
+| 4 | The customer app smoke test on a Starter plan + the regression | the guest flow is intact, 24/24 |
+
+Each phase is independently revertable — the helper is additive and the gate is a single dependency per route.
+
+---
+
+## Risk and rollback
+
+| Risk | Mitigation |
+|---|---|
+| The customer app breaks (the PWA sends no claim) | the helper accepts a key caller without a claim; the smoke test runs on every phase |
+| The staff menu search breaks on a Starter plan | `/api/ai/search` is excluded from the gate by design (B2) |
+| A session issued before the feature list existed | `require_plan_feature` already lets an empty `feat` list through — an old cookie never locks anybody out |
+| The gate blocks a plan that *should* have the feature | the feature list comes from the same website API the frontend uses, so the sidebar and the API can never disagree |
+
+**Rollback:** remove the `Depends(require_plan_feature(...))` / `Depends(require_outlet_access(...))` from a route. No schema change, no data migration.
+
+---
+
+## Open decisions
+
+1. **`/api/ai/security/*`** — the catalogue has a `Security` feature that *every* plan includes, so gating the AI security alerts on it would be a no-op. The proposal gates them on **AI Insights**. Alternative: leave them ungated.
+2. **`/api/ai/search/suggestions`** — the proposal gates them on **AI Tools**. Alternative: leave them ungated with the plain menu search.
+3. **The competitor routes** — the proposal gates all 14 on **Competitor Analysis**, including the ones that only write the tenant's own competitor list (rather than calling an external service).
+
+---
+
+## Related
+
+- `system-design/program-changes/inventory/inventory-module.mdx` — the inventory family, gated and isolated on November 1
+- `system-design/api-authentication-strategy.mdx` — the key types and the tenant model
