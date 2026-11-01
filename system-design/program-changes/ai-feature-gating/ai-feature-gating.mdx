@@ -355,6 +355,76 @@ the features are known (`!featureLoading &&`).
 
 ---
 
+## How the gate knows the plan (added November 2, 2026)
+
+The gate has to answer *"does this tenant's plan include this feature?"* — and
+the plan lives in the **website API** (the billing system's database). The
+first implementation read the plan **once, at login**, and stamped it into the
+signed session.
+
+That made the plan a snapshot for the life of the session (12 hours):
+
+- a customer who upgraded kept the old plan until the next sign-in
+- the frontend reads the plan **live** on every page load, so it showed the
+  new features while the API still refused them — the sidebar said "AI Tools"
+  and clicking gave a 403
+- a plan that was read but came back empty meant *"we know nothing"* → the
+  gate let everything through, so a tenant with no subscription, or a login
+  where the website API was unreachable, silently got every paid feature
+
+### The live plan
+
+**`backend/app/core/plan_cache.py`** — a small in-memory cache, filled **on
+demand**:
+
+| | |
+|---|---|
+| a request for a tenant whose entry is missing or old | one read of the website API (~15 ms), then the reads after that come from memory |
+| **nothing polls it** | there is no timer and no background job — the traffic is the number of *active tenants* per minute, not the number of requests |
+| the website API **pushes** a notification when a plan changes | `POST /internal/plan-changed` → the POS backend refreshes that tenant immediately → **an upgrade is visible without signing in again** |
+| the TTL (5 minutes) | only the safety net for a lost notification |
+
+The push comes from the website API, from every place a plan or a feature
+list changes: a new subscription, an upgrade, a cancel, a resume, the Stripe
+webhook, the admin's subscription editor, the per-customer feature override
+and the admin's plan-feature editor. The notification is fire-and-forget — it
+must never fail the billing flow.
+
+**Three states, and the difference is money:**
+
+| State | Meaning | What the gate does |
+|---|---|---|
+| a list of feature names | the plan includes them | the features in the list are allowed, the rest are refused |
+| an **empty** list | we read the plan and it includes nothing | **the paid features are refused** — "you did not buy it" |
+| **None** | we could not read the plan | fall back to the session's snapshot; an old session is not locked out on a technicality |
+
+A stale plan is served when the website API is unreachable — locking a paying
+customer out is worse than showing them the previous plan for a few minutes.
+
+### The endpoints
+
+| Endpoint | Who | What |
+|---|---|---|
+| `POST /internal/plan-changed` | the website API (the internal key) | `{"customer_id": 23}` → drop the cached plan; `{"customer_id": 23, "features": [...]}` → store the new plan straight away; `{"plan_id": 3}` → drop the whole cache (a plan-wide change) |
+| `GET /internal/plan-cache` | the website API | how many tenants are cached — for the logs |
+
+Both are protected by the internal key: a server-to-server secret, not a
+browser session.
+
+### Verified
+
+| Probe | Result |
+|---|---|
+| the cache at the login | 1 tenant, 20 features (the starter plan) ✓ |
+| the starter plan on the AI Tools | **403** ✓ |
+| **the push, then the same session** | **200** — the new features, no new login ✓ |
+| the push without a feature list | the plan is read again → the starter plan → **403** ✓ |
+| an **empty** plan | **403** (not "allow everything"), and the free dashboard AI still **200** ✓ |
+| the internal endpoint without the key | **401** ✓ |
+| the route sweep / the customer app / the browser | **24/24**, clean, no console errors ✓ |
+
+---
+
 ## Related
 
 - `system-design/program-changes/inventory/inventory-module.mdx` — the inventory family, gated and isolated on November 1
