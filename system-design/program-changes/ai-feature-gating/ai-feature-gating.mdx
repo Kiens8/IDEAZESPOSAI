@@ -162,6 +162,10 @@ That gives every AI route exactly one home:
 | `/api/ai/search/suggestions` | the AI search suggestions | follows the plan | **AI Tools** |
 | `/api/competitors/analyze`, `/api/competitors/ai-insights/*`, the competitor CRUD | AI Tools → Competitor Analysis | follows the plan | **Competitor Analysis** |
 | `/api/competitors/discover-places`, `/analyze-discovered`, `/save-discovered` | AI Tools → Competitor Discover | follows the plan | **Competitor Discover** |
+
+**Each competitor group is gated on its own feature** (Kens, November 2) — the
+discover group on **Competitor Discover**, the analysis group on **Competitor
+Analysis**, matching the two AI Tools tabs exactly.
 | `/api/chatbot/*` | the legacy chatbot | follows the plan | **AI Chatbot** |
 | `/api/ai/customer-insights/*` | **the Dashboard** | **all plans** | — |
 | `/api/ai/forecast/*` | **the Dashboard** | **all plans** | — |
