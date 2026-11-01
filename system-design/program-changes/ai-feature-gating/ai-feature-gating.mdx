@@ -6,7 +6,7 @@ description: Plan enforcement and cross-tenant isolation for the AI API family, 
 # AI Feature Gating and Tenant Isolation
 
 **Date:** November 2, 2026  
-**Status:** Proposed — awaiting approval  
+**Status:** Approved — the four plan rules are decided (November 2); ready for implementation  
 **Scope:** `backend/app/routes/ai/*`, `ai_chatbot.py`, `ai_forecast.py`, `ai_orders.py`, `ai_search.py`, `ai_security.py`, `competitors.py`, `chatbot.py` — 61 routes
 
 ---
@@ -147,26 +147,54 @@ The rule stays: **the tenant of a resource is derived from the resource.** The c
 
 ## B — The plan gate
 
-### B1. The feature names
+### B1. The rule, in one table
 
-The plan's features are read from the website API at login and stamped into the session as `feat` (the display names of the `features` catalogue). The gate is `require_plan_feature(*names)`.
+**The AI at the dashboard is a free benefit for every plan. The AI Tools follow the subscription. The AI in the customer app is free for every plan. The "you might also like" in Staff Order is free for every plan.**
 
-| Feature name (catalogue) | Grants |
-|---|---|
-| **AI Insights** | `/api/ai/insights`, `/api/ai/customer-insights/*`, `ai_forecast/*`, `ai_orders/*`, `ai_security/*` |
-| **AI Chatbot** | `/api/ai/chat/order`, `/api/ai/chat/search-and-order`, `/api/chatbot/*` |
-| **Menu Analytics** | `/api/ai/menu-analytics` |
-| **AI Campaigns** | `/api/ai/campaigns/*` |
-| **Competitor Analysis** | `/api/competitors/*` |
-| **AI Tools** | the AI-only search suggestions (`/api/ai/search/suggestions`) |
-| **Inventory** | the inventory family and `ai_inventory/*` (already done) |
+That gives every AI route exactly one home:
 
-### B2. What is deliberately **not** gated
+| Route family | Where it shows | Plan rule | Feature that grants it |
+|---|---|---|---|
+| `/api/ai/insights` (GET + POST) | AI Tools → Insights | follows the plan | **AI Insights** |
+| `/api/ai/menu-analytics` | AI Tools → Menu Analytics | follows the plan | **Menu Analytics** |
+| `/api/ai/campaigns/*` | AI Tools → Campaigns | follows the plan | **AI Campaigns** |
+| `/api/ai/chat/order`, `/api/ai/chat/search-and-order`, `/api/ai/chat/suggest` | the POS chatbot | follows the plan | **AI Chatbot** |
+| `/api/ai/search/suggestions` | the AI search suggestions | follows the plan | **AI Tools** |
+| `/api/competitors/analyze`, `/api/competitors/ai-insights/*`, the competitor CRUD | AI Tools → Competitor Analysis | follows the plan | **Competitor Analysis** |
+| `/api/competitors/discover-places`, `/analyze-discovered`, `/save-discovered` | AI Tools → Competitor Discover | follows the plan | **Competitor Discover** |
+| `/api/chatbot/*` | the legacy chatbot | follows the plan | **AI Chatbot** |
+| `/api/ai/customer-insights/*` | **the Dashboard** | **all plans** | — |
+| `/api/ai/forecast/*` | **the Dashboard** | **all plans** | — |
+| `/api/ai/orders/*` | **the Dashboard** | **all plans** | — |
+| `/api/ai/security/*` | **the Dashboard** (the AI alerts panel) | **all plans** | — |
+| `/api/ai/recommendations/*` | **Staff Order** ("you might also like") + the customer app | **all plans** | — |
+| `/api/ai/customer/*` | the customer app | **all plans** | — |
+| `/api/ai/search` | the staff menu search + the customer app | **all plans** | — |
+| `/api/ai/inventory/*` | the Inventory page | the Inventory feature | **Inventory** (already done) |
 
-| Route | Why |
-|---|---|
-| `/api/ai/search` (the menu search) | it is the **staff menu search** on the POS, not an AI feature — gating it would break menu search for a Starter tenant |
-| `/api/ai/recommendations/*`, `/api/ai/customer/*` | the customer app's own recommendations and greeting — a customer-facing benefit, not a management feature |
+The names are the display names of the `features` catalogue — the same names the AI Tools tabs already carry in `frontend/src/pages/AI/index.jsx` (`feature: 'AI Insights'`, `'Menu Analytics'`, `'AI Campaigns'`, `'Competitor Discover'`, `'Competitor Analysis'`). The sidebar and the API therefore cannot disagree.
+
+### B2. The asymmetry that matters
+
+**The same route can be free for the customer app and paid for the POS.** `/api/ai/chat/order` is the AI order chat in both places:
+
+- the **customer app** calls it with the shared API key → never plan-gated → free on every plan ✓
+- the **POS** calls it with a staff session → gated on **AI Chatbot** → follows the subscription ✓
+
+That is the plan gate doing its job: it prices the *staff tools*, and the customer-facing benefit stays open. The tenant check (step A) applies to both callers, always.
+
+### B3. What the customer app keeps, whatever the plan
+
+The customer app's calls are never refused by the plan, because `require_plan_feature` only inspects a **browser session** (`key_type == "user"`) and the customer app authenticates with the shared API key:
+
+```
+GET  /api/ai/search?q=…&outlet_id=…            free on every plan
+GET  /api/ai/customer/{id}/greeting?outlet_id=… free on every plan
+POST /api/ai/recommendations/cart?outlet_id=…   free on every plan
+POST /api/ai/chat/order?outlet_id=…             free on every plan
+```
+
+This is structural, not a special case: any route gated in the future is free for the customer app, and any route left free is free for the POS staff too.
 
 ### B3. The customer app carve-out — the AI stays available on every plan
 
@@ -194,13 +222,14 @@ C is not a code change; it is the proof that A and B are correct and that nothin
 
 | # | Probe | Expected |
 |---|---|---|
-| 1 | Enterprise tenant, own outlet | **200** on every gated route |
-| 2 | Starter tenant, own outlet | **403** on every gated route, with `This feature is not included in your plan: <name>` |
-| 3 | Starter tenant, **another tenant's** outlet | **403** (isolation) on every route that takes an outlet |
-| 4 | Enterprise tenant, **another tenant's** outlet | **403** (isolation) — the plan does not grant ownership |
-| 5 | Unknown row id (alert, campaign, competitor) | **404** |
-| 6 | The public customer key, the customer app's own routes | **200** — the guest ordering flow |
-| 7 | The public customer key, the staff-only routes | **403** |
+| 1 | Enterprise tenant, own outlet | **200** on every route |
+| 2 | Starter tenant, own outlet, **a plan-gated route** | **403** with `This feature is not included in your plan: <name>` |
+| 3 | Starter tenant, own outlet, **a free route** (the dashboard AI, the recommendations, the menu search) | **200** — the free benefit stays free |
+| 4 | Starter tenant, **another tenant's** outlet | **403** (isolation) on every route that takes an outlet |
+| 5 | Enterprise tenant, **another tenant's** outlet | **403** (isolation) — the plan does not grant ownership |
+| 6 | Unknown row id (alert, campaign, competitor) | **404** |
+| 7 | The public customer key, the customer app's routes | **200** on every plan — the guest ordering flow |
+| 8 | The public customer key, the staff-only routes | **403** |
 
 ### C2. The customer app smoke test
 
@@ -222,8 +251,8 @@ menu → search → AI chat → add to cart → place the order → the receipt
 
 | Phase | Work | Gate to the next phase |
 |---|---|---|
-| 1 | `require_outlet_access()` + the tenant check on the 6 AI routers | the probe matrix rows 3 and 4 pass |
-| 2 | The plan gate on the AI family (the catalogue names) | the probe matrix rows 1 and 2 pass |
+| 1 | `require_outlet_access()` + the tenant check on the 6 AI routers | the probe matrix rows 4 and 5 pass (the isolation) |
+| 2 | The plan gate on the **AI Tools only** — the dashboard AI, the recommendations, the customer routes and the menu search stay free (decisions 1, 3, 4) | the probe matrix rows 1, 2 and 3 pass |
 | 3 | `competitors.py` + `chatbot.py` | a Starter tenant gets 403 on both |
 | 4 | The customer app smoke test on a Starter plan + the regression | the guest flow is intact, 24/24 |
 
@@ -236,7 +265,9 @@ Each phase is independently revertable — the helper is additive and the gate i
 | Risk | Mitigation |
 |---|---|
 | The customer app breaks (the PWA sends no claim) | the helper accepts a key caller without a claim; the smoke test runs on every phase |
-| The staff menu search breaks on a Starter plan | `/api/ai/search` is excluded from the gate by design (B2) |
+| The staff menu search breaks on a Starter plan | `/api/ai/search` is excluded from the gate by design (B1) |
+| The dashboard AI is refused on a Starter plan | the dashboard AI is free on every plan by decision 1 — the gate must not be applied to it (the probe matrix row 3) |
+| The Staff Order upsell is refused on a Starter plan | the recommendations are free on every plan by decision 4 |
 | A session issued before the feature list existed | `require_plan_feature` already lets an empty `feat` list through — an old cookie never locks anybody out |
 | The gate blocks a plan that *should* have the feature | the feature list comes from the same website API the frontend uses, so the sidebar and the API can never disagree |
 
@@ -244,11 +275,18 @@ Each phase is independently revertable — the helper is additive and the gate i
 
 ---
 
-## Open decisions
+## Decisions (Kens, November 2, 2026)
 
-1. **`/api/ai/security/*`** — the catalogue has a `Security` feature that *every* plan includes, so gating the AI security alerts on it would be a no-op. The proposal gates them on **AI Insights**. Alternative: leave them ungated.
-2. **`/api/ai/search/suggestions`** — the proposal gates them on **AI Tools**. Alternative: leave them ungated with the plain menu search.
-3. **The competitor routes** — the proposal gates all 14 on **Competitor Analysis**, including the ones that only write the tenant's own competitor list (rather than calling an external service).
+The four rules that settled the plan gate:
+
+| # | Decision | Effect on the plan gate |
+|---|---|---|
+| 1 | **The AI at the dashboard is allowed on every plan** | the dashboard AI (`customer-insights`, `forecast`, `orders`, `security`) is **not** plan-gated |
+| 2 | **The AI Tools follow the plan subscription** | the AI Tools page (Insights, Menu Analytics, Campaigns, the chatbot, Competitor Analysis and Discover, the AI search suggestions) **is** plan-gated, on the catalogue feature each tab already declares |
+| 3 | **The AI in the customer order app is allowed on every plan** | the customer app's calls are never plan-gated (the shared key is not a session) |
+| 4 | **The Staff Order "you might also like" is allowed on every plan** | `/api/ai/recommendations/*` is **not** plan-gated |
+
+**The tenant check (step A) applies to every route in every case.** None of these four decisions weakens the isolation — they only decide what a restaurant *pays for*, not what it may *read*.
 
 ---
 
