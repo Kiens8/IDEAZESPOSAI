@@ -23,10 +23,20 @@ The intent is simple and correct:
 > **When the paid period ends and the subscription is not renewed, the user
 > must not be able to sign in to the POS again.**
 
-The implementation does not quite deliver that. It blocks the right people,
-but it does it at the **wrong moment** in three cases, and it only checks at
-login. This document describes the current behaviour, the four disagreements
-between the billing system and the POS, and the model that fixes them.
+The renewal design says the same thing about the cancellation, in one line:
+
+> *"Cancellation: status → 'cancelled' immediately (**access until period
+> end**)"*
+
+So the design is already right — **the POS login gate is what does not
+implement it.** This document describes the current behaviour, the
+disagreements between the billing system and the POS, and the model that
+fixes them.
+
+**The grace period is a setting, not a constant** (Kens, November 2): it is
+the admin app's `payment_due_days` — 14 today, changeable by the admin, read
+live by the code that needs it. Nothing in this document introduces a second
+grace.
 
 ---
 
@@ -105,15 +115,27 @@ The two halves of the product disagree with each other. A customer who
 cancels on day 20 of a 30-day period loses the ten days they have already
 paid for.
 
-### 2. The trial's grace period is not honoured at the POS
+### 2. The trial: the POS matches the design, the code does not
 
-The billing design is explicit: when a trial ends, the status **stays `trial`
-until the invoice is paid**, and that invoice is due `trial_ends_at + 14 days`.
+The renewal design says:
 
-The login gate ignores that: condition 5 blocks any trial whose
-`trial_ends_at` has passed — **on the trial-end day**, while the invoice the
-customer was sent is not due for another fortnight. The customer is locked out
-of the POS exactly when the system says they still have time to pay.
+> *"On trial end: status stays 'trial', first paid invoice created. **Invoice
+> due immediately.**"*
+
+The login gate does exactly that — condition 5 blocks any trial whose
+`trial_ends_at` has passed ✓ — so **the POS is right here**.
+
+The mismatch is inside the billing code: `process_trial_end()` creates the
+first paid invoice with `due_date = period_start + grace` (14 days by the
+setting), while the design says the invoice is **due immediately**. So the
+customer is billed with 14 days to pay but locked out of the POS on the
+trial-end day.
+
+This one is a **decision, not a bug in the POS**: either the trial invoice is
+due immediately (the design, and then the trial block at the POS is right) or
+the trial gets the same grace as everything else (and then the login gate has
+to honour it). The proposal follows the design — due immediately — and keeps
+the gate as it is.
 
 ### 3. The status is only checked at login
 
@@ -162,14 +184,16 @@ The rules:
 | `cancelled`, `current_period_end > now` | **active** + a warning ("your plan ends on the 30th") | they paid for the period |
 | `cancelled`, `current_period_end <= now` | **blocked** | the period they paid for is over |
 | `trial`, `trial_ends_at > now` | **trial** (+ a warning near the end) | the trial is running |
-| `trial`, `trial_ends_at <= now`, the first invoice not yet due | **grace** | the billing system allows the grace |
+| `trial`, `trial_ends_at <= now`, the first invoice not yet due | **blocked** (the design: the trial invoice is due immediately) — or **grace**, if the trial is given the admin's grace | the decision in finding 2 |
 | `active`, a pending invoice not yet due | **active** + a warning | the renewal is pending |
-| `active`, a pending invoice past its due date | **grace** until the grace ends, then **blocked** | one rule for every grace |
+| `active`, a pending invoice past its due date | **grace** until the grace ends, then **blocked** | the grace is `payment_due_days` |
 | `active`, everything paid | **active** | ✓ |
 
-**One grace rule for everything.** The trial grace and the renewal grace are
-the same 14 days (`payment_due_days`), measured from the moment the period
-ends. Today the POS honours it for one and not the other.
+**One grace rule for everything, and it is the admin's setting.** The grace
+period is `payment_due_days` from the admin app's settings (14 today) — read
+live, never hardcoded. The renewal grace and the trial grace are the same
+value, measured from the moment the period ends. Today the POS honours it for
+the renewal and not for the trial.
 
 ### The cancellation records the intent, the state stays honest
 
@@ -256,14 +280,22 @@ Each phase is independently revertable.
 
 ## Open decisions
 
-1. **The grace length** — one setting for everything (`payment_due_days`, 14
-   today) or a separate grace for the trial? The proposal: one setting.
-2. **The warning period** — how long before the period ends does the customer
-   see "your plan ends on the 30th"? The proposal: 7 days, alongside the
-   existing billing reminders.
-3. **A cancelled tenant that resumes** — the resume route restores `active`
-   but not `current_period_end`. The proposal: the resume sets a fresh period
-   from today and clears `cancelled_at`.
+1. **The trial invoice** — due immediately (the renewal design) or with the
+   admin's grace (`payment_due_days`)? The proposal: **due immediately**,
+   which keeps the login gate as it is today.
+2. **A cancelled tenant that resumes** — the resume route restores `active`
+   but not `current_period_end` (which may already be in the past). The
+   proposal: the resume sets a fresh period from today and clears
+   `cancelled_at`.
+
+**Already decided**
+
+- **The grace period** — the admin app's setting `payment_due_days` (14
+  today), read live. One value for the trial and the renewal ✓
+- **The warning period** — the admin app's setting `overdue_warning_days`
+  (7 today), the same window the billing reminders already use ✓
+- **The cancellation** — the status changes at once, the **access lasts until
+  the period end** ✓ (the renewal design says so; the POS gate does not)
 
 ---
 
