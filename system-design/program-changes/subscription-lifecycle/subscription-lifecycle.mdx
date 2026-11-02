@@ -6,9 +6,9 @@ description: How a tenant's subscription decides whether they can use the POS, a
 # Subscription Lifecycle and Access
 
 **Date:** November 2, 2026  
-**Status:** Approved — **Phase 1 and Phase 2 are done and live** (November 2, 2026); phases 3–5 are still to do  
+**Status:** Approved — **all five phases are done and live** (November 2, 2026)  
 **Scope:** the website API (the billing system) and the POS login gate  
-**Files:** `website_api/app/services/subscription_access.py` (new), `website_api/app/routes/admin.py`, `backend/app/services/subscription_gate.py` (new), `backend/app/routes/auth.py`, `website_api/scripts/send_notifications.py`
+**Files:** `website_api/app/services/subscription_access.py` (new), `website_api/app/services/payment_providers.py` (new), `website_api/app/services/subscription_notify.py` (new), `website_api/app/routes/admin.py`, `website_api/app/routes/subscription.py`, `website_api/app/routes/webhooks.py`, `website_api/scripts/send_notifications.py`, `backend/app/services/subscription_gate.py` (new), `backend/app/core/subscription_cache.py` (new), `backend/app/middleware/subscription.py` (new), `backend/app/routes/internal.py`, `backend/app/routes/auth.py`
 
 ---
 
@@ -315,9 +315,9 @@ only tells it what the truth is now.
 |---|---|---|---|
 | 1 | `effective_access()` in the website API, with its own tests, and the subscription endpoint returns what the decision needs (`current_period_end`, `trial_ends_at`, the real payment state, the grace) | the matrix in the verification section passes | ✅ **done** |
 | 2 | the login gate uses it — the seven conditions become one call, and it implements the renewal system's Access Decision Table | the login matrix below passes | ✅ **done** |
-| 3 | the cron forgives the unpaid invoice of a **cancelled** subscription at the grace end and flips it to `expired` (the skip goes) | a cancelled tenant past the grace reads `expired` ✓ | ⬜ to do |
-| 4 | the cancellation reaches the **payment provider** (Stripe now; HitPay and PayWay later — see below) | a cancelled tenant is not billed again ✓ | ⬜ to do |
-| 5 | the pushed subscription cache in the POS backend | an open session is affected within seconds ✓ | ⬜ to do |
+| 3 | the cron forgives the unpaid invoice of a **cancelled** subscription at the grace end and flips it to `expired` (the skip goes) | a cancelled tenant past the grace reads `expired` ✓ | ✅ **done** |
+| 4 | the cancellation reaches the **payment provider** (Stripe now; HitPay and PayWay later — see below) | a cancelled tenant is not billed again ✓ | ✅ **done** |
+| 5 | the pushed subscription cache in the POS backend | an open session is affected within seconds ✓ | ✅ **done** |
 
 Each phase is independently revertable.
 
@@ -377,12 +377,72 @@ website API answers without an `access` object (an older website API).
 ### The tests
 
 ```bash
-cd website_api && python3 scripts/test_effective_access.py   # 31 checks - the scenarios
-cd backend    && python3 scripts/test_subscription_gate.py    # 20 checks - the gate
+cd website_api && python3 scripts/test_effective_access.py        # 31 checks - the scenarios
+cd backend    && python3 scripts/test_subscription_gate.py         # 20 checks - the gate
+cd backend    && python3 scripts/test_subscription_middleware.py  #  9 checks - the per-request check
 ```
 
 No database, no server: the scenarios are described with plain objects, so
 the rules can be checked in a second.
+
+### What phase 3, 4 and 5 built
+
+**Phase 3 — the cron keeps the state honest**
+
+`check_expired_subscriptions` no longer skips the cancelled subscriptions:
+a cancelled subscription whose invoice is unpaid past its due date is
+**forgiven** and becomes **`expired`** (Scenario 7 — the cancellation does
+not protect from non-payment).
+
+`check_cancelled_subscriptions` no longer only prints: a cancelled
+subscription whose **paid** period has ended becomes **`expired`**
+(Scenario 6). A cancelled subscription whose invoice is still inside the
+grace is left alone — the access continues.
+
+**Phase 4 — the cancellation reaches the gateway**
+
+`app/services/payment_providers.py` (new) — one interface, three gateways:
+
+```python
+provider = get_provider(sub.payment_provider)   # stripe | hitpay | payway
+provider.cancel_at_period_end(sub)
+```
+
+The subscription code never talks to a gateway directly. `subscriptions`
+gained a **`payment_provider`** column (default `stripe`).
+
+The cancel route tells the provider; the resume route tells it to charge
+again. A gateway that could not be reached is **logged, not fatal** — the
+local state is already correct (the customer keeps the access until the
+period end), so a Stripe outage must not fail a cancellation.
+
+The Stripe webhook learned the `customer.subscription.updated` event: the
+`cancel_at_period_end` flag sets the local status to `cancelled` (and back
+to `active` when the customer comes back). Without it the POS and Stripe
+disagreed about whether the customer was still subscribed.
+
+**Phase 5 — the pushed cache**
+
+The website API pushes the change; the POS backend refreshes what it knows:
+
+- `website_api/app/services/subscription_notify.py` (new) — the notifier
+  (fire and forget, it never breaks the billing flow).
+- `backend/app/core/subscription_cache.py` (new) — the cache, filled **on
+  demand** and pushed. The TTL (2 minutes) is only the safety net for a
+  lost notification.
+- `backend/app/services/subscription_state.py` (new) — the reader (the
+  website API over loopback).
+- `backend/app/routes/internal.py` — `POST /internal/subscription-changed`
+  and `GET /internal/subscription-cache`. The plan notification invalidates
+  the subscription cache too — a plan change is usually a subscription
+  change.
+- `backend/app/middleware/subscription.py` (new) — **every** request of a
+  signed-in member of staff checks the tenant's access from the cache. An
+  open session is affected within seconds, not within twelve hours.
+
+Two rules keep the middleware safe: it **never** calls the website API (a
+request must not wait for the network) and it **never** blocks a request it
+cannot answer (the cache is empty → the request goes through).
 
 ### The payment providers (phase 4)
 
@@ -399,7 +459,12 @@ subscription at the period end" — and each provider implements it. The
 subscription's `stripe_subscription_id` becomes a provider reference with a
 provider field, and the renewal/webhook code reads it the same way.
 
-That is a **separate task** — the subscription lifecycle comes first.
+That is how it is built: `payment_providers.py` has a `StripeProvider`
+(implemented), a `HitPayProvider` and a `PayWayProvider` (the interface is
+there, the gateway call is not — they say so instead of pretending).
+
+**The HitPay and PayWay integration itself is a separate task** — it comes
+with the site apps.
 
 ---
 
