@@ -5,8 +5,8 @@ description: How the Malaysian payment methods get into the customer portal, wha
 
 # HitPay Integration — Malaysia (DuitNow, Touch 'n Go)
 
-**Document Version:** 2.0  
-**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR)  
+**Document Version:** 3.0  
+**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice  
 **Status:** Design complete — pending implementation  
 **Scope:** the website API (the billing system), the site (the customer portal), the renewal cron  
 **Related:** `payway-integration.mdx` (Cambodia), `program-changes/subscription-lifecycle/subscription-lifecycle.mdx` (the access rules we just built), `program-changes/customer-portal/subscription-wizard-proposal.mdx` (the wizard UI this plugs into)
@@ -70,7 +70,11 @@ business.
 - **The currency.** Our plans are priced in **USD** by default
   (`subscription_plans.currency_code = 'USD'`), while DuitNow and TnG
   settle in **MYR**. When a Malaysian customer pays by QR, the amount
-  **converts to the MYR price of the same plan** (section 12).
+  **converts to the MYR price of the same plan** (section 12). And the
+  **method is chosen once** (section 4.4): Stripe stays USD for every
+  cycle, DuitNow and TnG stay MYR for every cycle — which is why the
+  invoice page needs a **Pay now** button for every unpaid invoice
+  (section 6.5).
 
 ---
 
@@ -232,6 +236,43 @@ paid by us. It is not a HitPay method. (The HitPay docs mention
 Buy-Now-Pay-Later credit products. If we ever want those, they are new
 methods, not our `pay_later`.)
 
+### 4.4 The method is chosen once and it stays
+
+**Kens' rule (November 2, 2026):** the payment method is decided **at the
+subscribe step** and it applies to **every cycle** of that subscription.
+
+> *"If subscribe [with] Stripe then it is Stripe for the following
+> [cycles]. Touch 'n Go or DuitNow — also the same."*
+
+So:
+
+- The subscription carries the method (`subscriptions.payment_method`),
+  and the **invoice inherits it**. The customer does **not** choose a
+  method per invoice.
+- The **currency follows the method** (section 12): a Stripe subscription
+  invoices USD, a DuitNow or Touch 'n Go subscription invoices **MYR** —
+  for the first payment and for every renewal.
+- The **pay button on the invoice page** therefore has **one** method: the
+  subscription's. A MYR invoice is paid with the MYR method — never with a
+  USD Stripe checkout, and never the other way round.
+- The rule already exists for Stripe: the upgrade route refuses a method
+  change (*"Cannot change payment method. You are currently on Stripe.
+  Please contact support to change your payment method."*). HitPay gets the
+  same rule.
+- The server enforces it: the invoice's method comes from the
+  subscription, not from the request body. The browser's
+  `payment_method` is a claim.
+
+**Why it matters:** a method that changes per invoice would mean a
+subscription that bills USD one month and MYR the next — two currencies,
+two prices and two different totals for the same plan. One method per
+subscription keeps the invoice, the currency and the price in one place.
+
+*(The open question: can a customer **switch** method later — from Stripe
+to Touch 'n Go, say? Today: no, they contact support. Section 15,
+question 6.)*
+
+
 ---
 
 ## 5. The Malaysian methods, in detail
@@ -360,6 +401,130 @@ wallet, because there is no wallet.
 - The existing cancel route already knows how to tell a provider
   (`payment_providers.py`, phase 4 of the lifecycle work) — HitPay slots in
   there.
+
+### 6.5 Paying an invoice from the portal — the Pay button
+
+The subscription is not the only thing the customer can pay: **every unpaid
+invoice** gets a **Pay now** button on the billing page.
+
+**What is there today** (`site/src/app/[locale]/portal/billing/page.tsx`):
+
+```jsx
+{invoice.status === 'pending' && (
+  <button onClick={() => handlePayInvoice(invoice.id)}>
+    {t('billing.payNow')}
+  </button>
+)}
+```
+
+Two gaps:
+
+1. **Only `pending` invoices get the button.** An **`overdue`** invoice —
+   the one that actually needs paying — has **no button**. The button must
+   be shown for `pending` **and** `overdue` (everything except `paid`).
+2. **The method is hard-coded.** `handlePayInvoice(invoice.id)` uses the
+   default `payment_method = 'stripe'` → a Malaysian subscription would be
+   sent to a USD Stripe checkout. The method must come from the
+   **subscription** (section 4.4).
+
+**The new flow:**
+
+```
+The billing page → the customer clicks "Pay now" on an unpaid invoice
+   ↓
+POST /api/billing/invoices/{invoice_id}/pay
+     (the method is NOT taken from the body - the API reads it from the
+      subscription; the body may only confirm it)
+   ↓ the website API
+   - the invoice belongs to the customer and is not paid  → else 404 / 400
+   - the method = subscription.payment_method (the locked one)
+   - the method is allowed in the customer's country     → else 400
+   - the currency = the method's currency (section 12)
+   ↓
+   STRIPE:  create the checkout session (today's behaviour)
+            → { "requires_checkout": true, "checkout_url": "https://…" }
+   HITPAY:  POST /v1/payment-requests  (amount = the invoice amount in MYR,
+            currency = myr, payment_methods[] = duitnow | touch_n_go,
+            generate_qr = true, reference = the invoice id)
+            → { "requires_payment": true,
+                "payment": { "provider": "hitpay",
+                             "method": "hitpay_duitnow",
+                             "qr_code": "…",
+                             "expires_at": "…",
+                             "payment_request_id": "…" } }
+            (for Touch 'n Go the panel may also offer the direct link:
+             "direct_link": "https://…")
+   ↓
+The portal opens the payment panel:
+   - a QR code (with the expiry) or the "Pay with Touch 'n Go" button
+   - "the code expires in N minutes" + a "Get a new code" button
+   - a note: "the payment is confirmed automatically" (the webhook)
+   ↓
+payment_request.completed → the invoice is paid → the portal refreshes
+```
+
+**The panel states** (the site must handle all of them):
+
+| The state | What the customer sees |
+|---|---|
+| waiting | the QR + the expiry countdown |
+| the code expired | "This code has expired" + **Get a new code** (a new payment request for the same invoice; the old one is abandoned) |
+| paid | "Payment received — thank you" (the webhook already marked the invoice) |
+| failed | the reason + a retry |
+
+**A note for the customer:** with DuitNow the payment cannot be refunded
+through HitPay (section 5.1) — the panel says so **before** the payment,
+not after.
+
+**The API's response shape** — one endpoint, two shapes:
+
+```jsonc
+// Stripe
+{ "requires_checkout": true, "checkout_url": "https://checkout.stripe.com/…" }
+
+// HitPay
+{ "requires_payment": true,
+  "payment": { "provider": "hitpay", "method": "hitpay_duitnow",
+               "qr_code": "https://api.hit-pay.com/…/qr?…",
+               "qr_image_mime": "image/png",
+               "expires_at": "2026-11-02T18:00:00Z",
+               "direct_link": null,
+               "payment_request_id": "a3209af5-…" } }
+```
+
+The site's `handlePayInvoice` becomes:
+
+```jsx
+const data = await res.json()
+if (data.requires_checkout && data.checkout_url) {
+  window.location.assign(data.checkout_url)          // Stripe (today)
+} else if (data.requires_payment && data.payment) {
+  setPaymentPanel(data.payment)                      // the QR / the TnG link
+} else {
+  alert(data.message || t('billing.paymentInitiationFailed'))
+}
+```
+
+**The endpoint today** (`website_api/app/routes/billing.py`, line ~189) has
+the Stripe branch and the manual methods (`bank_transfer`, `cash`); the
+HitPay branch is the third one:
+
+```python
+elif request.payment_method in ("hitpay_duitnow", "hitpay_touch_n_go"):
+    # the method must be the subscription's one (section 4.4)
+    if invoice.subscription_id and invoice.subscription.payment_method != request.payment_method:
+        raise HTTPException(status_code=400,
+                            detail="This invoice is paid with another method.")
+    payment = hitpay.create_payment_request(
+        amount=invoice.amount, currency=invoice.currency,
+        method=request.payment_method, reference=str(invoice.id))
+    if not payment.ok:
+        raise HTTPException(status_code=502, detail="The payment could not be started.")
+    invoice.hitpay_payment_request_id = payment.id
+    db.commit()
+    return {"requires_payment": True, "payment": {...}}
+```
+
 
 ---
 
@@ -562,7 +727,8 @@ an invoice paid because *it* decided to.
 | `website_api/scripts/send_notifications.py` | the invoice currency for a HitPay subscription |
 | `website_api/app/models/models.py` | the new columns + the idempotency table |
 | `site/src/app/[locale]/portal/page.tsx` | the payment method list (it is hardcoded: `pay_later` and `stripe`, around line 995) + the QR panel |
-| `site/src/app/[locale]/portal/billing/page.tsx` | the QR / the TnG link on the invoice page |
+| `site/src/app/[locale]/portal/billing/page.tsx` | the **Pay now** button on every unpaid invoice (`pending` **and** `overdue`), the payment panel (the QR / the TnG link), the expiry countdown and the "Get a new code" action |
+| `website_api/app/routes/billing.py` | the HitPay branch of `POST /invoices/{invoice_id}/pay` (the endpoint already exists — it has the Stripe and the manual branches) |
 | the site's translation files | the new labels (the site is localised — `en`, `zh`, `km`) |
 
 **What does not change:** the subscription lifecycle, the access rules, the
@@ -599,8 +765,21 @@ So the currency is decided by **the method**, not by the plan:
 | Cambodia | anything | the USD row | USD |
 | Anywhere else | Stripe | the USD row | USD |
 
-The implementation (one place, called by both the subscribe route and the
-renewal cron):
+**And the method is locked at the subscribe step (section 4.4)** — so the
+currency is locked with it. The customer chooses the method **once**:
+
+```
+Subscribe with Stripe   → every invoice of that subscription is USD
+Subscribe with DuitNow  → every invoice of that subscription is MYR
+Subscribe with TnG      → every invoice of that subscription is MYR
+```
+
+That is why the renewal cron and the invoice page's **Pay now** button both
+read the method from the **subscription**: there is only ever one method and
+one currency per subscription.
+
+The implementation (one place, called by the subscribe route, the renewal
+cron and the invoice's pay endpoint):
 
 ```python
 # website_api/app/services/plan_pricing.py  (NEW)
@@ -626,6 +805,13 @@ def resolve_price(db, plan_id: str, billing_cycle: str, method: str | None):
 
     return (row.price_annual if billing_cycle == "annual" else row.price_monthly), currency
 ```
+
+**One source of truth for the invoice amount:** the subscribe route writes
+the invoice with the resolved amount and currency; the renewal cron writes
+the next invoice with **the same method → the same currency → the same
+price row**. The invoice page only *shows* what the invoice already says —
+it never re-resolves a price (that would be a second price for the same
+plan).
 
 **What the portal shows** (the customer must see the ringgit before they
 pay):
@@ -686,6 +872,12 @@ the existing customers are charged. This document leaves Stripe on USD.
 - [ ] **The price conversion**: a Malaysian customer (id 23, AES Restaurant)
       picks the USD plan and DuitNow → the invoice is **MYR 80.00**, not
       USD 20.00
+- [ ] **The Pay button**: an unpaid invoice (`pending` **and** `overdue`)
+      shows "Pay now" → the panel opens → the QR → the payment →
+      `payment_request.completed` → the invoice is paid
+- [ ] **The method lock**: the invoice's pay endpoint ignores the method in
+      the body and uses the subscription's — a Stripe subscription always
+      gets a Stripe checkout, a HitPay subscription always gets a MYR QR
 - [ ] The failure path: an unpaid invoice → the grace → the reminder → the
       access closes
 
@@ -728,6 +920,17 @@ the existing customers are charged. This document leaves Stripe on USD.
 5. **Does HitPay's business verification accept our structure** (Ideazes as
    a Malaysian entity selling SaaS to restaurants)? Their Sales team
    (`sales@hit-pay.com`) is the right address for it.
+6. **Can a customer switch the method later** (from Stripe to Touch 'n Go,
+   say)? Today the upgrade route refuses a method change and asks the
+   customer to contact support. A **"switch payment method"** action on
+   the billing page would be the natural answer — it would move the
+   subscription's method (and with it the currency) and let the next
+   invoice be paid the new way. It is a small route, but it has to handle
+   the half-paid and the mid-cycle cases.
+7. **The Pay button on the billing page** — should it also appear on the
+   **portal overview** (a banner when an invoice is overdue)? The billing
+   page is one click away, but an overdue invoice that nobody opens is an
+   invoice that expires.
 
 ---
 
