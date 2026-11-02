@@ -834,6 +834,11 @@ salts in play:
 The code uses `HITPAY_WEBHOOK_SALT` and falls back to `HITPAY_SALT` (so
 the account salt works until the endpoint's own salt is pasted in).
 
+**Status (November 3, 2026):** the endpoint's salt is in
+`website_api/.env` (`HITPAY_WEBHOOK_SALT`) ✓ and the webhook **verifies**
+✓ — the sandbox's `payment_request.completed` marks the invoice paid and
+starts the subscription within seconds ✓.
+
 ---
 
 ## 9. The webhook
