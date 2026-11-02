@@ -821,6 +821,19 @@ Three rules:
 - `hmac.compare_digest` — a constant-time comparison.
 - A wrong signature → **400, nothing else happens**.
 
+**The salt is per endpoint, not per account.** HitPay's own words: *"Each
+webhook endpoint you create under **Developers → Webhook Endpoints** has
+its own salt, used to verify `Hitpay-Signature`."* So there are **two**
+salts in play:
+
+| The salt | Where it comes from | What it signs |
+|---|---|---|
+| `HITPAY_SALT` | the account (Settings → API Keys) | the **API requests** |
+| `HITPAY_WEBHOOK_SALT` | **each webhook endpoint** (Settings → Developers → Webhook Endpoints) | the **webhooks** |
+
+The code uses `HITPAY_WEBHOOK_SALT` and falls back to `HITPAY_SALT` (so
+the account salt works until the endpoint's own salt is pasted in).
+
 ---
 
 ## 9. The webhook
@@ -834,9 +847,37 @@ POST https://apisite.ideazes.com/api/webhooks/hitpay
 HitPay's rules: the URL must be **HTTPS** and resolve to a **public**
 destination — *"Loopback and private network addresses are rejected."*
 `apisite.ideazes.com` is public ✓. The endpoint must be registered in the
-HitPay dashboard (Developers → API Keys → the webhook URL) or via
+HitPay dashboard (**Developers → Webhook Endpoints**) or via
 `POST /v1/webhook-events`, and it must be **the same URL for production and
 a different one for the sandbox** (the sandbox sends to the test endpoint).
+
+**One URL, the event type in the header.** HitPay posts to
+`/api/webhooks/hitpay` — *not* to a URL with the event in the path. The
+event comes in the headers:
+
+```
+Hitpay-Event-Type: completed | created | updated | failed
+Hitpay-Event-Object: payment_request | charge | payout | invoice | order | transfer
+Hitpay-Signature: <the HMAC>
+```
+
+So the route is `POST /api/webhooks/hitpay` and the event type is built
+from the headers (`completed` → `payment_request.completed` ✓). The route
+with the event in the path is kept as well — it costs nothing.
+
+**Two bugs that kept the webhooks from ever arriving** (found November 3,
+2026 — they are fixed):
+
+1. **Our own security middleware blocked them.** The tier-1 middleware
+   checks the `Origin` header — a payment gateway sends **none**, so
+   every webhook was answered with **403 Forbidden** before the handler
+   could verify the signature. The webhooks are now exempt from the
+   origin check (their security is the **signature** ✓). This also
+   affected the **Stripe** webhook ✓.
+2. **The `.env` was read by a relative path** (`env_file = ".env"`), so
+   every process that did not sit in the project folder — the
+   reconciliation cron among them — ran with an **empty HitPay key**
+   (*"Invalid business api key"*). The path is now absolute ✓.
 
 ### 9.2 The events we listen to
 
@@ -864,6 +905,9 @@ If the origin firewall filters, allow:
 
 The site sits behind Cloudflare → the **origin** (Caddy) must let those IPs
 through, and the endpoint must not be blocked by the WAF.
+
+**And the application must not block them either** — see 9.1 ✓ (the
+origin check is for the browser, not for the gateways).
 
 ### 9.4 How we know the customer really paid
 
