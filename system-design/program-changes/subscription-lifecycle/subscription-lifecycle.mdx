@@ -45,18 +45,18 @@ is allowed while the invoice is unpaid **and** its due date has not passed;
 when the due date passes unpaid, the cron forgives the invoice, the
 subscription becomes `expired` and the access is blocked.
 
-**Two things the renewal system says that the code does not do yet**
+**Two things the renewal system said that the code did not do** *(both fixed on November 2, 2026)*
 
 - *"Cancellation does NOT protect from non-payment. At Day 14, the
-  subscription becomes EXPIRED."* — the cron **skips** the cancelled
-  subscriptions, so they never reach `expired`.
+  subscription becomes EXPIRED."* — the cron **skipped** the cancelled
+  subscriptions, so they never reached `expired`. → phase 3
 - *"Payment extends nothing — the period end date stays fixed."* — a resume
-  must not invent a new period (see the decision 2 in the decisions table
-  above).
+  must not invent a new period. → the resume route never moves
+  `current_period_end` ✓ (verified: the period end stayed 2026-12-02)
 
 ---
 
-## How it works today
+## How it works now (after the five phases)
 
 ### The stored state
 
@@ -85,14 +85,19 @@ Runs in this order:
    **the status stays `trial`**; the invoice's `due_date` is
    `trial_ends_at + payment_due_days` → the grace ✓ (Scenario 12)
 3. `generate_renewal_invoices` — an **active** subscription whose `current_period_end` has passed gets its next invoice (due at `period_end + grace`) and the period rolls forward
-4. `check_expired_subscriptions` — a pending invoice past its due date → the invoice is forgiven and the subscription becomes **`expired`** — **but the cancelled subscriptions are skipped** ✗
-5. `check_cancelled_subscriptions` — a cancelled subscription past its period end → **it only prints a line** ✗
+4. `check_expired_subscriptions` — a pending invoice past its due date → the invoice is forgiven and the subscription becomes **`expired`** — the **cancelled** subscriptions are **not** skipped any more ✓ (phase 3)
+5. `check_cancelled_subscriptions` — a cancelled subscription past its period end → it becomes **`expired`** ✓ (phase 3)
 6. the notices (the trial-ending notices, the billing reminders, the final reminders)
 
 ### The login gate (the POS backend, `backend/app/routes/auth.py`)
 
-At login the POS backend calls the website API's
-`GET /api/admin/customer/{id}/subscription` and applies:
+At login the POS backend asks the website API for the tenant's **effective
+access** (`GET /api/admin/customer/{id}/subscription` → the `access` object)
+and enforces that answer. The gate has **no rules of its own** any more.
+
+The seven conditions it used to apply are still in the code — as the
+**fallback** for an older website API that answers without an `access`
+object:
 
 | # | Condition | Result |
 |---|---|---|
@@ -119,28 +124,35 @@ period ends → the renewal invoice is created (14-day grace)
 AES until 2026-11-30 (its renewal invoice lands on the 30th, the grace runs to
 December 14).
 
-### What the gate cannot see today
+### What the gate could not see before (it can now)
 
-The website API's endpoint returns `status`, `payment_status`
-(`active` / `pending` / `overdue`), `due_date`, `overdue_invoices` and
-`latest_invoice_due_date`. It does **not** return:
+Before phase 1 the website API's endpoint returned `status`,
+`payment_status` (`active` / `pending` / `overdue`), `due_date`,
+`overdue_invoices` and `latest_invoice_due_date`. It did **not** return:
 
-- **`trial_ends_at`** → condition 5 above is **dead code**: it never fires, so
-  a trial is never blocked by the gate (the trial is blocked later, when the
-  cron flips the status to `expired` — which is why the trial accidentally
-  behaves like Scenario 12 today).
-- **`current_period_end`** → the gate cannot know when the paid period ends,
-  so it cannot implement "cancelled + paid → the access lasts until the
-  period end" (Scenario 6).
-- the **real payment state of the period** → `payment_status` is `active` for
-  a paid subscription, never `paid`, so the gate cannot tell Scenario 6
-  (cancel with payment) from Scenario 7 (cancel without payment).
+- **`trial_ends_at`** → the gate's condition 5 was **dead code**: it never
+  fired, so a trial was never blocked by the gate (the trial was blocked
+  later, when the cron flipped the status to `expired` — which is why the
+  trial accidentally behaved like Scenario 12).
+- **`current_period_end`** → the gate could not know when the paid period
+  ends, so it could not implement "cancelled + paid → the access lasts until
+  the period end" (Scenario 6).
+- the **real payment state of the period** → `payment_status` was `active`
+  for a paid subscription, never `paid`, so the gate could not tell
+  Scenario 6 (cancel with payment) from Scenario 7 (cancel without payment).
 
-**This is why the decision belongs in the website API, not in the gate.**
+**Now it returns** `access`, `payment_state`, `current_period_end`,
+`trial_ends_at` and `grace_days` — so the gate asks one question and gets
+one answer. That is why the decision belongs in the website API, not in the
+gate.
 
 ---
 
-## The disagreements
+## The disagreements (all resolved)
+
+> This section describes what was wrong **before** the five phases. Every
+> item below was fixed on November 2, 2026 — the text is kept so the reason
+> for the model stays readable.
 
 ### 1. A cancellation cuts the access off immediately — the renewal system says otherwise
 
@@ -200,26 +212,37 @@ trial on the trial-end day and Scenario 12 breaks.
 
 ### 3. The status is only checked at login
 
-The subscription is read once, when the user signs in. An open session keeps
+The subscription was read once, when the user signed in. An open session kept
 working for up to **12 hours** after a cancellation or an expiry.
 
-This is the same weakness the plan features had until November 2 (see
-`ai-feature-gating.mdx`): the entitlement was a snapshot. The features now
-come from a pushed cache — the subscription status still does not.
+This was the same weakness the plan features had until November 2 (see
+`ai-feature-gating.mdx`): the entitlement was a snapshot. The features came
+from a pushed cache — the subscription status did not.
+
+**Now:** the subscription state is a pushed cache too, and the middleware
+checks it on **every** request (phase 5) — an open session is affected
+within seconds.
 
 ### 4. A cancelled subscription never becomes "expired"
 
-`check_cancelled_subscriptions` finds the cancelled subscriptions past their
-period end and **only prints a line**. The status stays `cancelled` forever,
-so the "expired" reporting and the admin's own state never see those tenants.
+`check_cancelled_subscriptions` found the cancelled subscriptions past their
+period end and **only printed a line**. The status stayed `cancelled`
+forever, so the "expired" reporting and the admin's own state never saw
+those tenants.
+
+**Now:** it writes `expired` (phase 3).
 
 ### Also worth knowing: cancelling does not cancel the Stripe subscription
 
-`POST /cancel` never calls Stripe. The webhook *does* handle
-`customer.subscription.deleted` ✓ — but nothing ever cancels the Stripe
-subscription, so the event never fires and **the customer keeps being
-charged** after cancelling in the app. That is a money bug rather than an
-access bug, but it belongs to the same feature.
+`POST /cancel` never called Stripe. The webhook *did* handle
+`customer.subscription.deleted` ✓ — but nothing ever cancelled the Stripe
+subscription, so the event never fired and **the customer kept being
+charged** after cancelling in the app.
+
+**Now:** the cancel route tells the payment provider to cancel at the period
+end, and the resume route tells it to charge again (phase 4). The Stripe
+webhook learned `customer.subscription.updated`, so the two sides agree even
+when the change came from the Stripe dashboard.
 
 ---
 
@@ -320,6 +343,15 @@ only tells it what the truth is now.
 | 5 | the pushed subscription cache in the POS backend | an open session is affected within seconds ✓ | ✅ **done** |
 
 Each phase is independently revertable.
+
+### What is still outstanding
+
+| # | The item | Why it is not in the five phases | Where it goes |
+|---|---|---|---|
+| 1 | **HitPay (Malaysia) and PayWay (Cambodia)** — the gateway calls | phase 4 built the **interface** and the Stripe implementation; the other two gateways need their own API study and their merchant accounts. The interface says "not implemented" instead of pretending | with the site apps (the country-specific site builds) |
+| 2 | The **customer PWA** (the ordering app) is not gated | the document is about the **staff** access. The PWA authenticates with the public customer key, not with a staff session, so the middleware has no session to read. The customer ordering app of a lapsed restaurant is a separate question | with the PWA work |
+| 3 | The **admin panel** does not show the effective access | the endpoint returns it, so the admin app could show it — the panel was not changed | a small admin-app change |
+| 4 | The **reactivation** is logged but not linked | a reactivation creates a new subscription and leaves the old one as it is (`expired` / `cancelled` — that is the archive). There is no `superseded_by` link on the old subscription | a column, when the subscription history needs to be browsable |
 
 ### What phase 1 and 2 built
 
