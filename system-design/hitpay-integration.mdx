@@ -998,11 +998,18 @@ USD 20.00   →   MYR 80.00        (you will be charged MYR 80.00)
    renewal cron must use the same resolution — otherwise the first invoice
    is MYR and the second is USD.
 
-### 12.4 The open pricing question
+### 12.4 The pricing decision (Kens, November 2, 2026)
 
-Should the **Stripe** price for a Malaysian customer also become MYR? That
-is a **pricing decision for Kens, not a technical one** — it changes what
-the existing customers are charged. This document leaves Stripe on USD.
+~~Should the **Stripe** price for a Malaysian customer also become MYR?~~
+
+**Decided: the customer chooses.** The portal shows the **$ USD / RM MYR**
+switch at the plan step, and the choice is stored on the subscription
+(`subscriptions.currency`). It is locked from then on — the renewal, the
+trial's first invoice and the reminder email all follow the subscription's
+currency.
+
+The **existing** customers are not moved: a subscription that was created
+in USD stays in USD (its `currency` is on the row).
 
 ---
 
