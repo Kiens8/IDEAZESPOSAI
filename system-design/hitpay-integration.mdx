@@ -386,8 +386,17 @@ merchant account, so it is out of scope (section 15, question 1).
 
 ### 5.2b The QR image — the sandbox serves HTML, not a PNG
 
-HitPay gives us a **URL** for the code (`qr_code_data.qr_code`), not always
-an image:
+HitPay gives us the **payload of the code** in `qr_code_data.qr_code` — and
+it is not the same thing in the two places:
+
+| Where | What the value is | What we do |
+|---|---|---|
+| **production** | a **raw payload string** (the DuitNow/EMV string) | **draw the QR** from it (HitPay's own words: *"you should convert it into a scannable QR code using a QR code library"*) |
+| **the sandbox** | a **URL** (the mock payment page) | HitPay's own note: *"visit the URL directly or scan it with a standard QR reader"* → the QR carries that URL |
+
+So the answer is the same in both: **we draw the QR**, from the value
+HitPay gave us. (Only a value that is already an **image** is used as it
+is.)
 
 | Where | What the URL serves |
 |---|---|
@@ -407,6 +416,12 @@ So the API owns the image:
   header), so the panel **fetches the image** and shows it as an object
   URL — with HitPay's own URL as the fallback.
 - It is drawn **on demand**, because the code expires.
+
+**The sandbox adds one hop — by design.** Scanning the QR in the sandbox
+opens HitPay's **mock payment page** (the page with the DuitNow icon),
+because the sandbox simulates the banking app. In production the QR
+carries the raw DuitNow payload, so the customer's banking app pays
+**directly** — there is no second page.
 
 ### 5.3 The consequence: what a HitPay subscription is
 
@@ -442,7 +457,11 @@ POST /api/subscriptions/  {payment_method: "hitpay_duitnow" | "hitpay_touch_n_go
         amount = the MYR price, currency = myr,
         payment_methods[] = duitnow | touch_n_go,
         generate_qr = true (or generate_direct_link = true for the TnG link),
-        reference = the invoice id
+        name = the restaurant name, email = the customer's email,
+        purpose = the invoice description,
+        reference_number = the invoice id
+        (these are **HitPay's** parameter names - docs.hitpayapp.com,
+        "Step 1: Create a Payment Request")
    ↓ 201 → qr_code_data.qr_code  /  direct_link.direct_link_url
    ↓
 { "requires_payment": true,
@@ -572,7 +591,9 @@ POST /api/billing/invoices/{invoice_id}/pay
             currency = myr, payment_methods[] = duitnow | touch_n_go,
             generate_qr = true            (DuitNow),
             generate_direct_link = true   (Touch 'n Go),
-            reference = the invoice id)
+            name = the restaurant name, email = the customer's email,
+            purpose = the invoice description,
+            reference_number = the invoice id)
             → { "requires_payment": true,
                 "payment": { "provider": "hitpay",
                              "method": "hitpay_duitnow",
@@ -670,7 +691,9 @@ elif request.payment_method in ("hitpay_duitnow", "hitpay_touch_n_go"):
                             detail="This invoice is paid with another method.")
     payment = hitpay.create_payment_request(
         amount=invoice.amount, currency=invoice.currency,
-        method=request.payment_method, reference=str(invoice.id))
+        method=request.payment_method, reference=str(invoice.id),
+        customer_email=customer.email, customer_name=customer.restaurant_name,
+        description=invoice.description)
     if not payment.ok:
         raise HTTPException(status_code=502, detail="The payment could not be started.")
     invoice.hitpay_payment_request_id = payment.id
