@@ -5,9 +5,9 @@ description: How the Malaysian payment methods get into the customer portal, wha
 
 # HitPay Integration — Malaysia (DuitNow, Touch 'n Go)
 
-**Document Version:** 4.0  
-**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike · **v4** — how the webhook proves the payment, both billing cycles allowed, and the sole-proprietor onboarding  
-**Status:** Design complete — pending implementation  
+**Document Version:** 4.1  
+**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike · **v4** — how the webhook proves the payment, both billing cycles allowed, and the sole-proprietor onboarding · **v4.1** — what was built, and the two bugs the build found  
+**Status:** **Built and tested (sandbox)** — the backend, the cron and the site are in; the production account is the next step  
 **Scope:** the website API (the billing system), the site (the customer portal), the renewal cron  
 **Related:** `payway-integration.mdx` (Cambodia), `program-changes/subscription-lifecycle/subscription-lifecycle.mdx` (the access rules we just built), `program-changes/customer-portal/subscription-wizard-proposal.mdx` (the wizard UI this plugs into)
 
@@ -1094,7 +1094,73 @@ the existing customers are charged. This document leaves Stripe on USD.
 
 ---
 
-## 16. The sources
+## 16. What was built (November 2, 2026, the sandbox)
+
+The design above is **in** — the backend, the renewal cron and the site.
+Every step was tested against the **sandbox**, and the site was tested in a
+real browser.
+
+### 16.1 The backend (the website API)
+
+| The file | What it does |
+|---|---|
+| `app/services/hitpay.py` | the client — `create_payment_request`, `get_payment_request`, the signature helper. The sandbox keys live in `.env` (`HITPAY_API_KEY`, `HITPAY_SALT`, `HITPAY_API_URL`) |
+| `app/services/hitpay_provider.py` | the provider behind the existing `payment_providers.py` seam |
+| `app/services/payment_methods.py` | **the country rule** — one function, two callers (the API and the site) |
+| `app/services/plan_pricing.py` | **the MYR resolution** — the plan's ringgit price out of `plan_prices` |
+| `app/routes/webhooks.py` | the HitPay branch of the webhook — the signature, the event id, the amount + currency check, then the subscription flips to active |
+| `app/routes/billing.py` | `GET /billing/payment-methods` (the country decides) and `POST /billing/invoices/{id}/pay` (the method is **resolved, never chosen**) |
+| `app/routes/subscription.py` | the HitPay branch of the subscribe + the upgrade — the QR is created at the moment of the payment |
+| `scripts/send_notifications.py` | the renewal invoice of a HitPay subscription is invoiced in **MYR**, and **`reconcile_hitpay_payments()`** — the safety net for a lost webhook |
+
+**The method resolution** (the heart of the "one method, one currency" rule):
+
+```
+the invoice's method  →  the subscription's method  →  the body's method
+```
+
+A body that names **another** method is refused with a **400** — the method
+of a subscription never changes. The body may also be **empty**.
+
+### 16.2 The site (Next.js)
+
+| The file | What it does |
+|---|---|
+| `src/components/PaymentPanel.tsx` | the QR (or the Touch 'n Go link), the expiry countdown, **I have paid** (it watches the invoice), **Get a new code** |
+| `src/app/[locale]/portal/page.tsx` | the wizard's payment methods come from the **API** — the site never invents a method. The order summary shows the price **in the method's currency** (MYR for DuitNow and Touch 'n Go) |
+| `src/app/[locale]/portal/billing/page.tsx` | the **Pay button for `overdue`** too, and the panel opens with a fresh QR |
+
+### 16.3 The two bugs the build found
+
+1. **The Pay button only appeared for `pending`.** An **overdue** customer had
+   no way to pay at all. The button now appears for both, and says
+   *Pay Now (overdue)*.
+2. **The site sent `payment_method: 'stripe'` with every payment.** The API
+   (rightly) refused it — the invoice's method is locked. The site now sends
+   **nothing**: the invoice decides.
+
+### 16.4 What is verified
+
+- the four methods for a Malaysian customer (and the Cambodian list unchanged) ✓
+- the wizard → DuitNow → **MYR 80.00** for the Pro plan ✓ (the ringgit price,
+  not the dollar one)
+- the subscribe → the panel with a fresh QR ✓
+- the billing page → Pay Now / Pay Now (overdue) → the panel ✓
+- the renewal invoice of a HitPay subscription → **MYR**, from the cron ✓
+- the reconciliation poll → it asks HitPay for every waiting invoice ✓
+- no console errors in the browser ✓
+
+### 16.5 What is left
+
+- the **production** HitPay account (the sole-prospector KYB) — the sandbox
+  keys are in place, the production ones are not
+- the webhook URL has to be registered with HitPay for the production account
+- the customer portal's **emails** (the invoice reminder) could mention the
+  method — not touched yet
+
+---
+
+## 17. The sources
 
 All read on **November 2, 2026**:
 
