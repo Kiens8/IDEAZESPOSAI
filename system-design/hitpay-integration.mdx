@@ -1028,21 +1028,24 @@ the existing customers are charged. This document leaves Stripe on USD.
 - [x] **DuitNow one-off → 201**, a QR + an expiry
 - [x] **Touch 'n Go one-off → 201** with `generate_qr=true` (a QR) and with
       `generate_direct_link=true` (a link to the TnG app)
-- [ ] The webhook: register `https://apisite.ideazes.com/api/webhooks/hitpay`,
-      sign a test payload with the salt, verify the signature check accepts
-      it and rejects a wrong one
-- [ ] The full loop in the portal: subscribe → the QR → the payment →
-      the invoice is paid → **the POS access opens** (the same check the
-      Stripe path has)
-- [ ] **The price conversion**: a Malaysian customer (id 23, AES Restaurant)
-      picks the USD plan and DuitNow → the invoice is **MYR 80.00**, not
-      USD 20.00
-- [ ] **The Pay button**: an unpaid invoice (`pending` **and** `overdue`)
+- [x] The webhook: a payload signed with the salt is **accepted** (the
+      invoice is paid, the subscription starts) and a wrong signature is
+      **rejected** (400 "Invalid signature.") — the same event twice is
+      **ignored** ("already processed")
+- [x] The full loop: subscribe → the QR → the payment → the invoice is paid
+      → **the subscription starts** (verified with a signed
+      `payment_request.completed`; the same activation the Stripe path
+      uses)
+- [x] **The price conversion**: a Malaysian customer picks the USD plan and
+      DuitNow → the invoice is **MYR 80.00**, not USD 20.00 — the same for
+      the **trial's first invoice** and the **renewal**
+- [x] **The Pay button**: an unpaid invoice (`pending` **and** `overdue`)
       shows "Pay now" → the panel opens → the QR → the payment →
       `payment_request.completed` → the invoice is paid
-- [ ] **The method lock**: the invoice's pay endpoint ignores the method in
+- [x] **The method lock**: the invoice's pay endpoint ignores the method in
       the body and uses the subscription's — a Stripe subscription always
       gets a Stripe checkout, a HitPay subscription always gets a MYR QR
+      (a body that names another method is refused with a **400**)
 - [ ] The failure path: an unpaid invoice → the grace → the reminder → the
       access closes
 
@@ -1372,13 +1375,18 @@ const planPrice = (plan, cycle, method) => {
 )}
 ```
 
-### 16.10 The three bugs the build found
+### 16.10 The five bugs the build found
 
 | # | The bug | The fix |
 |---|---|---|
 | 1 | **The Pay button only appeared for `pending`** — an **overdue** customer had no way to pay at all | the button now appears for both, and says *Pay Now (overdue)* |
 | 2 | **The site sent `payment_method: 'stripe'`** with every payment → the API (rightly) refused it → the panel never opened | the site sends **nothing** — the invoice decides |
 | 3 | **The plan list did not carry the per-currency prices** → the site showed "MYR 10.00" for a plan that costs MYR 40 | `/api/plans` now carries `prices` per currency |
+| 4 | **The trial's first invoice was in USD** (`currency=plan.currency_code or 'USD'`) → a DuitNow customer would have been asked to pay dollars in a ringgit wallet | the trial invoice resolves the price the same way (the MYR row) — it is **MYR 80.00** now |
+| 5 | **The billing reminder email said "USD {price}"** — hard-coded → a Malaysian customer was reminded in dollars | the email resolves the amount in the method's currency (**MYR 80.00**) |
+
+The last two were found by auditing every place that writes an amount or a
+currency — not by a test that failed.
 
 ### 16.11 What was verified
 
@@ -1408,11 +1416,29 @@ and check the markers (`resolve_price_safe`, `reconcile_hitpay_payments`).
 
 ### 16.13 What is left
 
-- the **production** HitPay account (the sole-prospector KYB) — the sandbox
-  keys are in `.env`, the production ones are not
+**The account (Kens's step)**
+
+- the **production** HitPay account (the sole-prospector KYB, the SSM
+  registration) — the sandbox keys are in `.env`, the production ones are not
 - the webhook URL has to be registered with HitPay for the production account
-- the customer portal's **emails** (the invoice reminder) could mention the
-  method — not touched yet
+
+**The code that is still missing**
+
+| # | The gap | Why it matters |
+|---|---|---|
+| 1 | **The refund warning in the portal.** Section 13 says *DuitNow cannot be refunded* and that **the portal must say so before the payment** | today the panel does not say it — a customer must learn it afterwards |
+| 2 | **The refund event** (`charge.updated`). What happens to the access when a payment is refunded is **not specified** | a policy decision, not a mechanism |
+| 3 | **The prorated HitPay upgrade.** `create-upgrade-checkout` is Stripe-only; a HitPay customer who upgrades gets the change at the **next renewal** (a normal MYR invoice + QR) — but there is no "pay the difference now with a QR" | the site uses the deferring route, so this is latent — it only matters if an immediate proration is wanted |
+| 4 | **The emails do not name the method** (they say "ensure your payment method is up to date" and link to the billing page) | a nice-to-have; the flow works without it |
+
+**The decisions that are still open** (section 15)
+
+- the **"switch payment method"** action (the upgrade route refuses a method
+  change today and asks the customer to contact support)
+- the **portal banner** for an overdue invoice
+- the wording before the choice ("you will pay once a month by QR")
+- whether **Stripe should also price in MYR** for the Malaysian customers
+- **PayWay (Cambodia)** — the next country, the same shape of work
 
 ---
 
