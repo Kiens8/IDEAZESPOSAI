@@ -1,12 +1,12 @@
 ---
-title: HitPay Integration — Malaysia (Touch 'n Go, DuitNow)
+title: HitPay Integration — Malaysia (DuitNow, Touch 'n Go)
 description: How the Malaysian payment methods get into the customer portal, what HitPay allows a SaaS POS to do, and the three things that decide whether it works
 ---
 
-# HitPay Integration — Malaysia (Touch 'n Go, DuitNow)
+# HitPay Integration — Malaysia (DuitNow, Touch 'n Go)
 
-**Document Version:** 1.0  
-**Created:** 2026-11-02  
+**Document Version:** 2.0  
+**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR)  
 **Status:** Design complete — pending implementation  
 **Scope:** the website API (the billing system), the site (the customer portal), the renewal cron  
 **Related:** `payway-integration.mdx` (Cambodia), `program-changes/subscription-lifecycle/subscription-lifecycle.mdx` (the access rules we just built), `program-changes/customer-portal/subscription-wizard-proposal.mdx` (the wizard UI this plugs into)
@@ -18,12 +18,20 @@ description: How the Malaysian payment methods get into the customer portal, wha
 Kens asked three questions. Here they are, with what was verified in the
 HitPay sandbox **today** (November 2, 2026).
 
-**1. Does HitPay support recurring billing for Touch 'n Go?** ✅ **Yes.**
-Touch 'n Go is one of the few wallets with tokenisation + scheduled
-auto-charge. Verified: `POST /v1/recurring-billing` with
-`payment_methods[]=touch_n_go` and `save_payment_method=true` returned
-**201** and a direct link — the customer authorises the wallet in the
-browser, and HitPay charges it off-session later.
+**1. Does HitPay support recurring billing for Touch 'n Go?** ✅ The
+**technology** exists — TnG is one of the few wallets with tokenisation +
+scheduled auto-charge, and `POST /v1/recurring-billing` with
+`save_payment_method=true` returns a direct link (verified: **201**).
+
+**But we are not using it.** Touch 'n Go's recurring flow belongs to a
+**HitPay merchant account** (our own account, onboarded and verified as a
+business). Until that account exists, **Touch 'n Go behaves exactly like
+DuitNow: a one-off payment**. The customer pays; the invoice is paid; the
+period continues. There is no saved wallet and no off-session charge.
+
+*(Version 1 of this document designed the TnG auto-renewal. Kens' decision
+on November 2, 2026: **both** Malaysian methods are one-off payments, so
+the two behave the same and there is only one flow to build.)*
 
 **2. Does HitPay allow our SaaS POS to use it for the Malaysian
 customers?** ✅ **Yes — but there are two different models, and what was
@@ -50,17 +58,19 @@ business.
 
 **3. What are the catches?** Three, and they decide the design:
 
-- **DuitNow cannot renew itself.** DuitNow is **not recurring** and **not
-  refundable**. Touch 'n Go is the only Malaysian wallet that can auto-charge
-  a subscription. A DuitNow subscription is a manual payment every cycle.
-- **Where *we* are onboarded decides what we can do.** TnG recurring exists
-  **only for a merchant onboarded in Malaysia** (BNM licence, MYR
-  settlement, MYR only). A Singapore account gets TnG only as a
-  cross-border QR — **without recurring** → no auto-renewal at all.
+- **Neither Malaysian method renews itself.** DuitNow and Touch 'n Go are
+  both **one-off** here. Every cycle the customer pays again — the renewal
+  is a manual step. This is a deliberate choice (no dependency on a HitPay
+  merchant account for the auto-charge), and it is the **single most
+  important product consequence** of this document.
+- **Where *we* are onboarded decides the money.** DuitNow and TnG settle in
+  **MYR** for a Malaysian merchant. A Singapore account can still take the
+  cross-border QR, but it settles in **SGD** with a conversion — so a
+  Malaysian account is the clean answer (see the open questions).
 - **The currency.** Our plans are priced in **USD** by default
-  (`subscription_plans.currency_code = 'USD'`), while TnG and DuitNow settle
-  in **MYR**. The amount charged must come from the **MYR row of
-  `plan_prices`** — otherwise we would charge $10 into a MYR wallet.
+  (`subscription_plans.currency_code = 'USD'`), while DuitNow and TnG
+  settle in **MYR**. When a Malaysian customer pays by QR, the amount
+  **converts to the MYR price of the same plan** (section 12).
 
 ---
 
@@ -77,14 +87,13 @@ For a Malaysian merchant account:
 | Licence | **BNM Merchant Acquirer** |
 | Card (online) | HitPay direct + Stripe |
 | Local APMs | FPX, DuitNow Online Banking, DuitNow QR, Touch 'n Go eWallet, GrabPay, ShopeePay, MAE, Atome, SPayLater, Grab PayLater, WeChat Pay, Alipay |
-| Recurring | **Cards, TnG, ShopeePay, GrabPay, ZaloPay** |
+| Recurring | Cards, TnG, ShopeePay, GrabPay, ZaloPay — **not used by this design** |
 | Settlement | MYR, to our own Malaysian bank account |
 
 Two facts from the docs worth keeping in mind:
 
 - *"The market you pick is where **your business is onboarded**. The payment
-  methods listed are where your customers pay from."* — so onboarding in
-  Malaysia is what unlocks TnG recurring for our Malaysian restaurants.
+  methods listed are where your customers pay from."*
 - *"All alternative payment methods (APMs, regional QR rails, recurring) are
   always HitPay-acquired direct."* — HitPay is the acquirer, not a reseller
   of someone else's licence.
@@ -103,7 +112,7 @@ The restaurant (the customer)  ──pays──►  IDEAZES (the merchant)
 ```
 
 - One HitPay account, verified once, owned by Ideazes.
-- The restaurant pays the **subscription** with TnG or DuitNow.
+- The restaurant pays the **subscription** with DuitNow or Touch 'n Go.
 - HitPay's BNM licence covers us; we do not touch the licensing.
 - The access rules stay exactly as they are today: the invoice is paid → the
   access opens (`subscription-lifecycle.mdx`).
@@ -158,6 +167,10 @@ Kens's rule:
 | **Cambodia** | PayWay (not integrated yet), Stripe, Pay Later |
 | **Anything else** | Stripe only |
 
+The two HitPay methods are **one-off payments** (section 5) — the customer
+pays each cycle. The country's price currency follows the method (section
+12).
+
 ### 4.1 One function, two callers
 
 The rule must live in **one** place, and it must be enforced by the server:
@@ -165,7 +178,7 @@ The rule must live in **one** place, and it must be enforced by the server:
 ```python
 # website_api/app/services/payment_methods.py  (NEW)
 
-STripe = "stripe"
+STRIPE = "stripe"
 PAY_LATER = "pay_later"
 HITPAY_TNG = "hitpay_touch_n_go"
 HITPAY_DUITNOW = "hitpay_duitnow"
@@ -190,25 +203,25 @@ def available_payment_methods(country: str | None) -> list[str]:
 - **The API** calls it to **accept** the choice. *"The client never chooses
   the tenant"* — the same rule as the tenant claim: the browser's choice is
   a claim, the server decides. A request with
-  `payment_method: "hitpay_touch_n_go"` from a Cambodian customer is
+  `payment_method: "hitpay_duitnow"` from a Cambodian customer is
   **rejected**, not silently downgraded.
 
 ### 4.2 The country is already there
 
 `website_customers.country` exists ✓ and is set at signup
-(`website_api/app/routes/auth.py` → the signup model). Today:
+(`website_api/app/routes/auth.py` → the signup model). As of November 2,
+2026:
 
 | Customer | Country |
 |---|---|
-| Demo Restaurant Group | *(null)* |
-| VARMAN | Cambodia |
-| AES Restaurant | Cambodia |
+| Demo Restaurant Group (id 1) | **Cambodia** |
+| VARMAN (id 12) | Cambodia |
+| AES Restaurant (id 23) | **Malaysia** |
 
-**The gap:** the country is **never set by a customer** — it is set by
-whoever creates the account (the admin, or the signup default). It needs to
-be a first-class field of the signup and of the portal (a customer can
-change it), and the **null** case must be decided deliberately
-(the safe pair: Stripe + Pay Later).
+**The gap:** the country is set by whoever creates the account, never by the
+customer. It should be a first-class field of the signup and of the portal
+(a customer can change it), and the **null** case must be decided
+deliberately (the safe pair: Stripe + Pay Later).
 
 ### 4.3 What "Pay Later" means here (it is not a gateway)
 
@@ -225,9 +238,9 @@ methods, not our `pay_later`.)
 
 The matrix from HitPay's payment-method reference (the Malaysia tab):
 
-| Method | Code | Online | In-person | **Recurring** | **Refunds** | Currency |
+| Method | Code | Online | In-person | Recurring (HitPay) | Refunds | Currency |
 |---|---|---|---|---|---|---|
-| **Touch 'n Go eWallet** | `touch_n_go` | ✅ | ✅ | ✅ | ✅ | MYR |
+| **Touch 'n Go eWallet** | `touch_n_go` | ✅ | ✅ | ✅ *(not used)* | ✅ | MYR |
 | **DuitNow** | `duitnow` | ✅ | ✅ | ❌ | ❌ | MYR |
 | Cards | `card` | ✅ | ✅ | ✅ | ✅ | MYR |
 | GrabPay | `grabpay_direct` | ✅ | ✅ | ✅ | ✅ | MYR |
@@ -235,22 +248,11 @@ The matrix from HitPay's payment-method reference (the Malaysia tab):
 | FPX | `fpx` | ✅ | ❌ | ❌ | ✅ | MYR |
 | MayBank QR | `razer_maybankqr` | ✅ | ❌ | ❌ | ✅ | MYR |
 
-And the save-payment-method reference is stricter about Touch 'n Go:
-**"Touch 'n Go | Malaysia | MYR"** — the saved wallet is a Malaysian,
-ringgit-only thing. Cross-border, TnG is listed as **not recurring**.
+**What we use: the one-off flow for both.** The "Recurring" column is
+HitPay's capability, not our design — the auto-charge needs our own HitPay
+merchant account, so it is out of scope (section 15, question 1).
 
-### 5.1 Touch 'n Go — the auto-renewal method
-
-- The customer authorises the wallet **in the browser** through a direct
-  link (`generate_direct_link=true` → `direct_link.direct_link_url`). No
-  redirect to a HitPay page, no app switch we cannot control.
-- HitPay stores the wallet token and fires `recurring_billing.method_attached`.
-- From then on we charge it off-session: `POST /v1/charge/recurring-billing/{id}`.
-- **MYR only.** The amount is ours to choose each time (the save-payment-method
-  API is the "variable amount" one — an upgrade or a proration is just a
-  different number).
-
-### 5.2 DuitNow — the one-off QR
+### 5.1 DuitNow — the QR
 
 - We generate the QR (`generate_qr=true` → `qr_code_data.qr_code` +
   `qr_code_expiry`) and show it in the portal. The customer scans it with
@@ -260,87 +262,102 @@ ringgit-only thing. Cross-border, TnG is listed as **not recurring**.
   refunded through HitPay. That is a customer-facing caveat we must show
   before the customer pays.
 
-### 5.3 The consequence: what a DuitNow subscription is
+### 5.2 Touch 'n Go — the same behaviour, a different presentation
 
-A DuitNow customer must pay **every cycle by hand**. The honest design:
+- TnG works as a one-off too: `payment_methods[]=touch_n_go` with
+  `generate_qr=true` gives a **QR** (verified in the sandbox: **201**), and
+  with `generate_direct_link=true` it gives a **direct link** to the TnG app
+  (also verified: **201**).
+- The direct link is the nicer UX on a phone (the app opens, the customer
+  confirms); the QR is the fallback (a desktop customer scans it with the
+  phone, exactly like DuitNow).
+- **Both are one-off.** The wallet is not saved and nothing is charged
+  automatically — the same manual cycle as DuitNow.
 
-- **DuitNow = the first payment + a saved invoice.** After the first QR
-  payment, the subscription continues on our existing **invoice** machinery
-  (the same as `pay_later`), with the DuitNow QR shown on the invoice page
-  each cycle. The customer is reminded; if they do not pay, the normal
-  grace rules apply (14 days) and then the access closes — exactly as
-  designed in `subscription-lifecycle.mdx`.
-- **The recommendation to the customer:** *"Pay with Touch 'n Go to switch
-  on automatic renewal."* TnG is the method that makes the subscription
-  hands-off, and the upgrade path is one click (the saved wallet already
-  exists — the flow is identical to the one in section 6.1).
+### 5.3 The consequence: what a HitPay subscription is
+
+A DuitNow or Touch 'n Go customer must pay **every cycle by hand**. The
+honest design:
+
+- The first payment happens at the subscribe step (a QR, or a TnG link).
+- Every cycle after that, the renewal cron writes the **invoice** and the
+  billing page shows the QR / the TnG link for that invoice.
+- If the customer does not pay, the normal grace rules apply (14 days) and
+  then the access closes — exactly as designed in
+  `subscription-lifecycle.mdx`. The subscription never falls into a state
+  where it is paid but the access is closed.
+
+**The product question this creates** (section 15, question 2): a customer
+who is used to a card being charged automatically now has to remember. The
+portal has to say so **before** they choose, not after.
 
 ---
 
 ## 6. The flows
 
-### 6.1 Touch 'n Go — the first payment and the saved wallet
+### 6.1 The first payment (both methods)
 
 ```
-The portal (the customer picks "Touch 'n Go")
+The portal (the customer picks "DuitNow" or "Touch 'n Go")
    ↓
-POST /api/subscriptions/  {payment_method: "hitpay_touch_n_go", ...}
+POST /api/subscriptions/  {payment_method: "hitpay_duitnow" | "hitpay_touch_n_go", ...}
    ↓ the website API
-   POST https://api.hit-pay.com/v1/recurring-billing
-        name, customer_email, amount (the MYR price), currency=myr,
-        save_payment_method=true, payment_methods[]=touch_n_go,
-        generate_direct_link=true, redirect_url=…/portal/billing?hitpay=return,
-        reference = the subscription id
-   ↓ 201 → direct_link.direct_link_url
+   - checks the country (section 4.1)          → refuse if not allowed
+   - resolves the price in MYR (section 12)    → the MYR row of plan_prices
+   - POST https://api.hit-pay.com/v1/payment-requests
+        amount = the MYR price, currency = myr,
+        payment_methods[] = duitnow | touch_n_go,
+        generate_qr = true (or generate_direct_link = true for the TnG link),
+        reference = the invoice id
+   ↓ 201 → qr_code_data.qr_code  /  direct_link.direct_link_url
    ↓
-The browser shows the button → the customer authorises the TnG wallet
+{ "requires_payment": true,
+  "payment": { "provider": "hitpay", "method": "hitpay_duitnow",
+               "qr_code": "…", "expires_at": "…", "payment_request_id": "…" } }
    ↓
-HitPay → recurring_billing.method_attached (webhook)
-   ↓ we store the token → the subscription is active, the auto-renewal is on
+The portal renders the QR (or the TnG button)
+   ↓
+The customer scans / confirms → payment_request.completed (webhook)
+   ↓ the invoice is marked paid → the access opens → the period is set
 ```
 
-The **first** charge: either we charge immediately after the wallet is
-attached (`POST /v1/charge/recurring-billing/{id}`) or we let the first
-renewal date be the first charge (the "delayed first charge" the
-save-payment-method API is built for — the right choice when the customer
-came from a trial).
+**The first payment is not optional** — the subscription is created with the
+invoice, and the period starts when the payment lands (the same way Stripe
+works today).
 
-### 6.2 The renewal (the cron)
+### 6.2 The renewal (the cron) — no charging, only an invoice
 
 ```
 The daily cron (the same one that writes the Stripe invoices)
    ↓
-For each subscription due for renewal, with a saved TnG wallet:
-   POST /v1/charge/recurring-billing/{recurring_billing_id}
-        amount = the current MYR price, currency=myr, reference = the invoice id
-   ↓
-charge.created  → the invoice is paid → the period extends (the same path
-                  Stripe takes today — the access rules do not change)
-charge.failed   → the invoice stays unpaid → the normal grace rules apply
+For each subscription due for renewal:
+    if the provider is hitpay:
+        → write the invoice (the MYR amount) and NOTHING else
+        → the billing page shows the QR / the TnG link for that invoice
+        → the customer pays → payment_request.completed → the invoice is paid
+        → if they do not pay: the normal grace rules (14 days) → then expired
 ```
 
-### 6.3 DuitNow — a one-off payment
+**The rule that matters:** the webhook marks the invoice paid (the gateway
+is the source of truth), exactly as Stripe does today. The cron never marks
+an invoice paid because *it* decided to — and it never tries to charge a
+wallet, because there is no wallet.
 
-```
-The portal shows the QR (the invoice page, or the subscribe button)
-   ↓
-POST /v1/payment-requests  {amount, currency=myr, payment_methods[]=duitnow,
-                            generate_qr=true, reference = the invoice id}
-   ↓ 201 → qr_code_data.qr_code (+ the expiry)
-   ↓
-The customer scans → payment_request.completed → the invoice is paid ✓
-```
+### 6.3 The upgrade
 
-### 6.4 The upgrade and the cancellation
+- An upgrade (a plan change) with a **prorated amount**: the new amount is
+  written as an invoice in the same currency as the old subscription, and
+  the customer pays it with the same method.
+- The amount is resolved the same way as section 12 — the MYR row for a
+  HitPay payment.
 
-- **The upgrade** (a plan change with a prorated amount): the
-  save-payment-method API is the *variable amount* one, so an upgrade is
-  simply another charge for the difference ✓ (the same simplification the
-  PayWay design chose with `MITU_FLEX`).
-- **The cancellation**: the customer cancels in the portal → the
-  subscription is cancelled → **the saved wallet is detached**
-  (`recurring_billing.method_detached`) so we never charge a customer who
-  left. The existing cancel route already knows how to tell a provider
+### 6.4 The cancellation
+
+- The customer cancels in the portal → the subscription is cancelled → **the
+  invoices stop**. There is nothing to cancel at the gateway (a one-off
+  payment method has no subscription), so the provider call is a no-op that
+  returns "nothing to cancel".
+- The existing cancel route already knows how to tell a provider
   (`payment_providers.py`, phase 4 of the lifecycle work) — HitPay slots in
   there.
 
@@ -348,57 +365,44 @@ The customer scans → payment_request.completed → the invoice is paid ✓
 
 ## 7. The data model
 
-### 7.1 New table — `hitpay_payment_methods` (the saved wallets)
+### 7.1 No saved wallets
 
-The saved wallet is **not** a card: it has no brand, no last4 and no expiry.
-The existing `payment_methods` table is Stripe-shaped
-(`stripe_payment_method_id`, `brand`, `last4`, `exp_month`, `exp_year`), so
-the wallets get their own table.
+**There is no `hitpay_payment_methods` table in this design.** A saved
+wallet belongs to the auto-charge flow we are not building: without it there
+is nothing to store (no token, no recurring billing id, no
+`method_attached` event). The wallet token would stay at HitPay anyway —
+we would only have stored a handle — so there is nothing to lose.
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | int | |
-| `customer_id` | int | the website customer |
-| `recurring_billing_id` | str | HitPay's recurring billing id — **the handle we charge with** |
-| `payment_method` | str | `touch_n_go`, `shopee_pay`, `grabpay_direct`, `card` |
-| `currency` | str | `myr` |
-| `status` | str | `attached` / `detached` / `expired` |
-| `is_default` | bool | |
-| `attached_at` / `detached_at` | datetime | |
-| `created_at` / `updated_at` | datetime | |
-
-The **wallet token itself stays at HitPay** — we store the handle, not the
-credential. (A wallet token in our database would be a liability; HitPay's
-recurring billing is designed so we never hold it.)
+*(If the auto-charge is ever built, the table comes back: `customer_id`,
+`recurring_billing_id`, `payment_method`, `currency`, `status`,
+`attached_at`, `detached_at`.)*
 
 ### 7.2 Modified — `subscriptions`
 
 | Column | Notes |
 |---|---|
 | `payment_provider` | `'hitpay'` (the column phase 4 of the lifecycle work added) |
-| `payment_method` | `'hitpay_touch_n_go'` / `'hitpay_duitnow'` (our own vocabulary, not HitPay's) |
-| `hitpay_recurring_billing_id` | the handle for the auto-charge |
-| `hitpay_payment_method_id` | the saved wallet (the row in 7.1) |
-| `hitpay_charge_id` | the last charge (for the reconciliation) |
+| `payment_method` | `'hitpay_duitnow'` / `'hitpay_touch_n_go'` (our own vocabulary, not HitPay's) |
+| `currency` | **MYR** for a HitPay subscription (today it follows the plan's USD default — see section 12) |
 
 ### 7.3 Modified — `invoices`
 
 | Column | Notes |
 |---|---|
-| `hitpay_payment_request_id` | the one-off QR payment request |
-| `hitpay_charge_id` | the auto-charge |
-| `currency` | **MYR** for a HitPay invoice (today the invoice takes `plan.currency_code`, which is USD — see section 12) |
+| `hitpay_payment_request_id` | the HitPay payment request (the QR / the link) |
+| `currency` | **MYR** for a HitPay invoice |
+| `amount` | the MYR price (section 12) |
 
 ### 7.4 New table — `hitpay_webhook_events` (the idempotency)
 
 HitPay retries a webhook that is not answered with a 2xx. The same event can
-therefore arrive twice, and it must not charge twice or extend the period
-twice. Every webhook is recorded **before** it is processed:
+therefore arrive twice, and it must not mark an invoice paid twice. Every
+webhook is recorded **before** it is processed:
 
 | Column | Notes |
 |---|---|
 | `event_id` | the HitPay event id — **unique** |
-| `event_type` | `charge.created`, … |
+| `event_type` | `payment_request.completed`, … |
 | `received_at` | |
 | `processed_at` | |
 | `payload` | the raw JSON (for the audit) |
@@ -446,9 +450,15 @@ provider.cancel_at_period_end(sub)
 ```
 
 `HitPayProvider` implements the same three methods
-(`cancel_at_period_end`, `resume`, `is_active`) with HitPay's calls
-(detach the wallet / re-attach / read the recurring billing's status). The
-subscription code never talks to HitPay directly.
+(`cancel_at_period_end`, `resume`, `is_active`):
+
+| Method | What HitPay does |
+|---|---|
+| `cancel_at_period_end` | **nothing to cancel** — a one-off method has no subscription. It stops our invoices and returns a "nothing to cancel" note (not an error) |
+| `resume` | nothing to resume at the gateway — the invoices start again |
+| `is_active` | the subscription's own state (the last invoice paid, the period not ended) |
+
+The subscription code never talks to HitPay directly.
 
 ### 8.4 The signature — the salt
 
@@ -491,14 +501,16 @@ a different one for the sandbox** (the sandbox sends to the test endpoint).
 
 | Event | What it means for us |
 |---|---|
-| `payment_request.completed` | a DuitNow QR was paid → the invoice is paid |
-| `payment_request.failed` | the QR payment failed → the invoice stays unpaid |
-| `recurring_billing.method_attached` | the customer authorised the TnG wallet → the auto-renewal is on |
-| `recurring_billing.method_detached` | the wallet was detached → no more auto-charges |
-| `recurring_billing.subscription_updated` | the subscription changed (active, cancelled, paused, expired) → mirror it |
-| `charge.created` | an auto-charge succeeded → the invoice is paid |
-| `charge.failed` | an auto-charge failed → the invoice stays unpaid → the grace rules |
-| `charge.updated` | a refund happened (HitPay's cards and TnG — **not** DuitNow) |
+| `payment_request.completed` | the QR / the TnG link was paid → **the invoice is paid** |
+| `payment_request.failed` | the payment failed → the invoice stays unpaid |
+| `charge.created` | a charge succeeded (the cards) → the invoice is paid |
+| `charge.failed` | a charge failed → the invoice stays unpaid → the grace rules |
+| `charge.updated` | a refund happened (the cards and TnG — **not** DuitNow) |
+
+**Not used:** `recurring_billing.method_attached` /
+`method_detached` / `subscription_updated` — they belong to the auto-charge
+flow that is out of scope. They are harmless to receive; the handler simply
+does not know them.
 
 ### 9.3 The allowlist
 
@@ -517,16 +529,17 @@ through, and the endpoint must not be blocked by the WAF.
 ## 10. The renewal processor (the cron)
 
 The existing daily cron (`website_api/scripts/send_notifications.py`) already
-writes the invoices and tells the POS backend. HitPay adds one step:
+writes the invoices and tells the POS backend. For HitPay there is **no
+extra step** — the only difference is the currency and the invoice:
 
 ```
 For each subscription due for renewal:
-    if the provider is hitpay and a saved wallet exists:
-        charge = hitpay.charge_recurring(sub, amount=the MYR price)
-        if charge.ok  → the invoice is marked paid by the webhook
-        else          → the invoice stays unpaid → the normal grace rules
-    if the provider is hitpay and there is NO saved wallet (a DuitNow customer):
-        → nothing to charge → the invoice is sent (the QR is on the invoice page)
+    if the provider is hitpay:
+        → the invoice is written in MYR (section 12)
+        → nothing is charged (there is no wallet)
+        → the billing page shows the QR / the TnG link for that invoice
+        → the customer pays → payment_request.completed → the invoice is paid
+        → if they do not pay: the normal grace rules (14 days) → then expired
 ```
 
 **The rule that matters:** the webhook marks the invoice paid (the gateway
@@ -545,10 +558,11 @@ an invoice paid because *it* decided to.
 | `website_api/app/routes/subscription.py` | the `payment_method` branches (the Stripe branch is at line ~155) |
 | `website_api/app/routes/webhooks.py` | the HitPay endpoint + the events |
 | `website_api/app/services/payment_providers.py` | register `hitpay` in the provider table |
-| `website_api/scripts/send_notifications.py` | the renewal charge (section 10) |
-| `website_api/app/models/models.py` | the new table + the new columns |
-| `site/src/app/[locale]/portal/page.tsx` | the payment method list (it is hardcoded: `pay_later` and `stripe`, around line 995) |
-| `site/src/app/[locale]/portal/billing/page.tsx` | the DuitNow QR on the invoice page |
+| `website_api/app/services/plan_pricing.py` | **NEW** — the country → price currency rule (section 12) |
+| `website_api/scripts/send_notifications.py` | the invoice currency for a HitPay subscription |
+| `website_api/app/models/models.py` | the new columns + the idempotency table |
+| `site/src/app/[locale]/portal/page.tsx` | the payment method list (it is hardcoded: `pay_later` and `stripe`, around line 995) + the QR panel |
+| `site/src/app/[locale]/portal/billing/page.tsx` | the QR / the TnG link on the invoice page |
 | the site's translation files | the new labels (the site is localised — `en`, `zh`, `km`) |
 
 **What does not change:** the subscription lifecycle, the access rules, the
@@ -557,9 +571,9 @@ plan gate, the grace, the cancellation. A HitPay invoice is a paid invoice
 
 ---
 
-## 12. The currency — the landmine
+## 12. The currency — the rule and the conversion
 
-Today:
+### 12.1 The situation today
 
 - `subscription_plans.currency_code = 'USD'` (Starter/Basic/Pro) with a
   `plan_prices` table that already holds **MYR** rows:
@@ -567,19 +581,77 @@ Today:
   plan at **MYR 200 / 2000**.
 - The Stripe checkout hard-codes `'currency': 'usd'`.
 - The invoice takes `plan.currency_code or "MYR"`.
+- The prices are **already prepared for ringgit** — but nothing selects the
+  row by the customer's country yet.
 
-So the prices are **already prepared for ringgit** — but nothing selects the
-row by the customer's country yet. Before the first HitPay charge:
+### 12.2 The rule (Kens' decision, November 2, 2026)
 
-1. The **amount** must come from `plan_prices` for the customer's country
-   (`MY` → the MYR row), not from the plan's USD default.
-2. The **invoice currency** must be MYR for a HitPay invoice, and the
-   portal must show the ringgit price (a customer in Kuala Lumpur must not
-   be quoted $20).
-3. The **Stripe** prices stay in USD for the customers who pay by card
-   today — unless we decide that MY customers should see ringgit for
-   Stripe as well. **That is a pricing decision for Kens, not a technical
-   one** (and it changes what the existing customers are charged).
+> **A Malaysian customer who selects a USD plan and then chooses DuitNow or
+> Touch 'n Go is charged the MYR price of the same plan.**
+
+So the currency is decided by **the method**, not by the plan:
+
+| The customer's country | The method | The plan price used | The invoice currency |
+|---|---|---|---|
+| Malaysia | Stripe | the USD row (today's behaviour) | USD |
+| Malaysia | Pay Later | the USD row (today's behaviour) | USD |
+| Malaysia | **DuitNow / Touch 'n Go** | **the MYR row of the same plan** | **MYR** |
+| Cambodia | anything | the USD row | USD |
+| Anywhere else | Stripe | the USD row | USD |
+
+The implementation (one place, called by both the subscribe route and the
+renewal cron):
+
+```python
+# website_api/app/services/plan_pricing.py  (NEW)
+
+CURRENCY_BY_METHOD = {
+    "hitpay_duitnow":    "MYR",
+    "hitpay_touch_n_go": "MYR",
+}
+
+def resolve_price(db, plan_id: str, billing_cycle: str, method: str | None):
+    """The price a customer is actually charged, in the currency they pay in."""
+    currency = CURRENCY_BY_METHOD.get(method)      # None → the plan's own currency
+    row = db.query(PlanPrice).filter(
+        PlanPrice.plan_id == plan_id,
+        PlanPrice.currency_code == currency,        # None → the plan's default
+        PlanPrice.is_active == True,
+    ).one_or_none()
+
+    if row is None:
+        # No `|| 1` fallback: if the plan has no MYR price, we do not
+        # silently charge the USD amount into a ringgit wallet.
+        raise NoPriceForCurrency(plan_id, currency)
+
+    return (row.price_annual if billing_cycle == "annual" else row.price_monthly), currency
+```
+
+**What the portal shows** (the customer must see the ringgit before they
+pay):
+
+```
+IDEAZES Pro — monthly
+USD 20.00   →   MYR 80.00        (you will be charged MYR 80.00)
+```
+
+### 12.3 The two things this needs
+
+1. **The MYR price must exist** for every plan that a Malaysian customer may
+   buy. The admin app already has the plan-price editor (it writes
+   `plan_prices`) — the four MYR rows exist; the rule needs a **guard**: a
+   plan published to Malaysia without a MYR price must not be sellable by
+   DuitNow/TnG. The rule above **fails loudly** instead of charging the USD
+   amount.
+2. **The invoice currency** must be MYR for a HitPay invoice, and the
+   renewal cron must use the same resolution — otherwise the first invoice
+   is MYR and the second is USD.
+
+### 12.4 The open pricing question
+
+Should the **Stripe** price for a Malaysian customer also become MYR? That
+is a **pricing decision for Kens, not a technical one** — it changes what
+the existing customers are charged. This document leaves Stripe on USD.
 
 ---
 
@@ -587,9 +659,9 @@ row by the customer's country yet. Before the first HitPay charge:
 
 | Situation | What we do |
 |---|---|
-| The gateway is down | the charge fails → the invoice stays unpaid → **the normal grace rules** (14 days) apply. The customer is never locked out by our outage. The access rules already survive a late payment ✓ |
-| The customer refuses the wallet authorisation | no `method_attached` → the subscription stays unpaid → the invoice is sent (a DuitNow QR) |
-| The charge fails (no balance, the wallet was closed) | `charge.failed` → the invoice stays unpaid → the grace → a reminder email |
+| The gateway is down | the payment request fails → the customer is not charged and the subscription is not created → they can retry. **An existing subscription is never touched** by a gateway outage (no charge is attempted) |
+| The QR is never paid | the invoice stays unpaid → the normal grace rules (14 days) → a reminder email → the access closes |
+| The QR expires before it is paid | the customer asks for a new one → a new payment request for the same invoice (the old one is abandoned) |
 | The webhook is delivered twice | the `hitpay_webhook_events` insert is unique → the second one is ignored |
 | The signature does not match | **400**, nothing happens |
 | The customer wants a refund | **cards and TnG can be refunded** (`charge.updated`); **DuitNow cannot** — the portal must say so before the payment |
@@ -602,52 +674,58 @@ row by the customer's country yet. Before the first HitPay charge:
 
 - [x] The API key authenticates (`POST /v1/subscription-plan` → 422 on the
       empty body = the key passed, the validation caught it)
-- [x] TnG recurring → **201**, a direct link, `status: scheduled`
-- [x] DuitNow one-off → **201**, a QR + an expiry
+- [x] **DuitNow one-off → 201**, a QR + an expiry
+- [x] **Touch 'n Go one-off → 201** with `generate_qr=true` (a QR) and with
+      `generate_direct_link=true` (a link to the TnG app)
 - [ ] The webhook: register `https://apisite.ideazes.com/api/webhooks/hitpay`,
       sign a test payload with the salt, verify the signature check accepts
       it and rejects a wrong one
 - [ ] The full loop in the portal: subscribe → the QR → the payment →
       the invoice is paid → **the POS access opens** (the same check the
       Stripe path has)
-- [ ] The renewal: a saved wallet → the cron charges it → the period extends
-- [ ] The failure path: a failed charge → the grace → the reminder
+- [ ] **The price conversion**: a Malaysian customer (id 23, AES Restaurant)
+      picks the USD plan and DuitNow → the invoice is **MYR 80.00**, not
+      USD 20.00
+- [ ] The failure path: an unpaid invoice → the grace → the reminder → the
+      access closes
 
 ### 14.2 Production
 
 - [ ] A **separate** HitPay account (sandbox ≠ production — they cannot be
-      converted) with the **business country = Malaysia** (BNM licence)
+      converted) with the **business country = Malaysia** (BNM licence, MYR
+      settlement)
 - [ ] The business verification (Ideazes' documents)
 - [ ] The MYR settlement account
 - [ ] The production API key + the production salt
 - [ ] The webhook registered on the production endpoint, with the
       production IPs allowed
-- [ ] The live test: MYR 1.00 → refunded (cards and TnG can be refunded;
-      **DuitNow cannot** — test it with a card, not with DuitNow)
+- [ ] The live test: MYR 1.00 → refunded (a card can be refunded;
+      **DuitNow cannot** — do not test a refund with DuitNow)
 
 ---
 
 ## 15. The open questions
 
-1. **Where is Ideazes onboarded?** This is the first decision, because it
-   decides whether Touch 'n Go can renew itself at all. **Malaysia** (BNM,
-   MYR, TnG recurring ✅) or **Singapore** (MAS, SGD, TnG cross-border
-   **without** recurring ❌). Our customers are in Malaysia and Cambodia and
-   the prices are already in MYR → **Malaysia is the answer** — but it needs
-   the business verification.
-2. **Do we want Model B** (the POS collecting the diners' payments for the
-   restaurants)? It is a much bigger product decision, and the platform
-   programme needs an email to HitPay. Not needed for the subscription.
-3. **The DuitNow customer experience** — a manual payment every cycle, and
-   no refunds. Do we show DuitNow at all for the **annual** plan, or only
-   as the "pay this invoice now" method (with the recommendation to switch
-   to TnG for the auto-renewal)?
-4. **The pricing** — do the Malaysian customers see MYR for **Stripe** as
-   well (a pricing change for the existing customers), or only for HitPay?
-5. **PayWay (Cambodia)** — the same document already exists
+1. **Where is Ideazes onboarded?** A **Malaysia** account settles in MYR
+   (BNM licence) — the clean answer. A Singapore account can still take the
+   cross-border DuitNow/TnG QR, but it settles in **SGD with a conversion**,
+   so the customer is charged a converted amount and we carry the FX
+   movement. This is the first decision — and it is also the door to the
+   **auto-charge** (the recurring TnG flow needs our own merchant account
+   anyway).
+2. **The manual cycle** — a customer who is used to a card being charged
+   automatically now has to remember. Do we:
+   - (a) show it plainly (*"DuitNow and Touch 'n Go pay once per cycle — you
+     will get a reminder and a new QR each month"*), or
+   - (b) offer these methods **only** on the annual plan (one payment a
+     year), keeping the monthly plan on Stripe?
+3. **PayWay (Cambodia)** — the same document already exists
    (`payway-integration.mdx`); the country rule puts it next to Stripe and
-   Pay Later for Cambodia, and it is "not integrated yet".
-6. **Does HitPay's business verification accept our structure** (Ideazes as
+   Pay Later for Cambodia, and it is "not integrated yet". The demo account
+   is now Cambodia, so the PayWay work becomes the next country.
+4. **Should Stripe also price in MYR** for the Malaysian customers? (A
+   pricing decision — section 12.4.)
+5. **Does HitPay's business verification accept our structure** (Ideazes as
    a Malaysian entity selling SaaS to restaurants)? Their Sales team
    (`sales@hit-pay.com`) is the right address for it.
 
@@ -659,11 +737,11 @@ All read on **November 2, 2026**:
 
 | The page | What it gave us |
 |---|---|
-| [API Sandbox Guide](https://docs.hitpayapp.com/apis/guide/sandbox) | the sandbox rules, the test cards, the recurring mock flow (ShopeePay, GrabPay, **TnG**), the webhook IPs, the base URLs |
-| [Embedded QR Code Payments — Domestic QR](https://docs.hitpayapp.com/apis/guide/embedded-qr-code-payments/domestic-qr) | `generate_qr` vs `generate_direct_link`, DuitNow (QR only) and TnG (both) |
-| [Recurring Billing](https://docs.hitpayapp.com/apis/guide/recurring-billing) | the subscription plan → the recurring billing → the charge flow |
+| [API Sandbox Guide](https://docs.hitpayapp.com/apis/guide/sandbox) | the sandbox rules, the test cards, the recurring mock flow, the webhook IPs, the base URLs |
+| [Embedded QR Code Payments — Domestic QR](https://docs.hitpayapp.com/apis/guide/embedded-qr-code-payments/domestic-qr) | `generate_qr` vs `generate_direct_link`, DuitNow (QR) and TnG (both) |
+| [Recurring Billing](https://docs.hitpayapp.com/apis/guide/recurring-billing) | the subscription plan → the recurring billing → the charge flow (**not used**) |
 | [Embedded Recurring APMs](https://docs.hitpayapp.com/apis/guide/embedded-recurring-billing) | the direct link for TnG, the "exactly one generate parameter" rule |
-| [Save Payment Method](https://docs.hitpayapp.com/apis/guide/save-payment-method) | the variable-amount charge, the country/currency limits per wallet |
+| [Save Payment Method](https://docs.hitpayapp.com/apis/guide/save-payment-method) | the variable-amount charge, the country/currency limits per wallet (**not used**) |
 | [Payment Methods reference](https://docs.hitpayapp.com/apis/guide/payment-methods-reference) | the Malaysia matrix (recurring, refunds, sandbox) |
 | [Availability by market](https://docs.hitpayapp.com/getting-started/availability-by-market) | the licences, the core markets, the cross-border table |
 | [Webhooks](https://docs.hitpayapp.com/apis/guide/events) | the event list, the signature header, the platform webhook rules |
