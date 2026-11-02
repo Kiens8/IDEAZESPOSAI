@@ -5,8 +5,8 @@ description: How the Malaysian payment methods get into the customer portal, wha
 
 # HitPay Integration — Malaysia (DuitNow, Touch 'n Go)
 
-**Document Version:** 4.1  
-**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike · **v4** — how the webhook proves the payment, both billing cycles allowed, and the sole-proprietor onboarding · **v4.1** — what was built, and the two bugs the build found  
+**Document Version:** 5.0  
+**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike · **v4** — how the webhook proves the payment, both billing cycles allowed, and the sole-proprietor onboarding · **v4.1** — what was built, and the bugs the build found · **v5** — **the actual changes**: every file, the real code, the database, the cron and the verification  
 **Status:** **Built and tested (sandbox)** — the backend, the cron and the site are in; the production account is the next step  
 **Scope:** the website API (the billing system), the site (the customer portal), the renewal cron  
 **Related:** `payway-integration.mdx` (Cambodia), `program-changes/subscription-lifecycle/subscription-lifecycle.mdx` (the access rules we just built), `program-changes/customer-portal/subscription-wizard-proposal.mdx` (the wizard UI this plugs into)
@@ -865,6 +865,13 @@ For each subscription due for renewal:
 is the source of truth), exactly as Stripe does today. The cron never marks
 an invoice paid because *it* decided to.
 
+**The safety net (built):** the webhook is the fast path, but a webhook can
+be lost. `reconcile_hitpay_payments()` — every 10 minutes
+(`send_notifications.py --reconcile-only`) — asks HitPay about every invoice
+that waits for a payment and applies **the same checks** the webhook
+applies (the amount, the currency). It never invents a payment: only the
+gateway can say that the money arrived.
+
 ---
 
 ## 11. The integration with the existing code
@@ -872,7 +879,7 @@ an invoice paid because *it* decided to.
 | File | Change |
 |---|---|
 | `website_api/app/services/hitpay.py` | **NEW** — the client |
-| `website_api/app/services/hitpay_provider.py` | **NEW** — `HitPayProvider` (the interface from phase 4) |
+| `website_api/app/services/payment_providers.py` | `HitPayProvider` — added behind the existing provider seam (phase 4) |
 | `website_api/app/services/payment_methods.py` | **NEW** — the country rule (section 4.1) |
 | `website_api/app/routes/subscription.py` | the `payment_method` branches (the Stripe branch is at line ~155) |
 | `website_api/app/routes/webhooks.py` | the HitPay endpoint + the events |
@@ -888,6 +895,10 @@ an invoice paid because *it* decided to.
 **What does not change:** the subscription lifecycle, the access rules, the
 plan gate, the grace, the cancellation. A HitPay invoice is a paid invoice
 — the rules that read the invoice do not care who paid it.
+
+**This table is the plan.** What was actually built — every file, the real
+code, the database, the cron and the verification — is in
+[section 16](#16-what-was-built-november-2-2026--the-sandbox).
 
 ---
 
@@ -1094,66 +1105,311 @@ the existing customers are charged. This document leaves Stripe on USD.
 
 ---
 
-## 16. What was built (November 2, 2026, the sandbox)
+## 16. What was built (November 2, 2026 — the sandbox)
 
 The design above is **in** — the backend, the renewal cron and the site.
-Every step was tested against the **sandbox**, and the site was tested in a
-real browser.
+Everything below was tested against the **HitPay sandbox**, and the site was
+tested in a real browser (the production site, a real login).
 
-### 16.1 The backend (the website API)
+### 16.1 The files — what is new, what changed
 
-| The file | What it does |
+**New files (3)**
+
+| The file | What it is |
 |---|---|
-| `app/services/hitpay.py` | the client — `create_payment_request`, `get_payment_request`, the signature helper. The sandbox keys live in `.env` (`HITPAY_API_KEY`, `HITPAY_SALT`, `HITPAY_API_URL`) |
-| `app/services/payment_providers.py` | `HitPayProvider` — the provider behind the existing seam (`create_payment`, `void_payment`, `get_status`) |
-| `app/services/payment_methods.py` | **the country rule** — one function, two callers (the API and the site) |
-| `app/services/plan_pricing.py` | **the MYR resolution** — the plan's ringgit price out of `plan_prices` |
-| `app/routes/webhooks.py` | the HitPay branch of the webhook — the signature, the event id, the amount + currency check, then the subscription flips to active |
-| `app/routes/billing.py` | `GET /billing/payment-methods` (the country decides) and `POST /billing/invoices/{id}/pay` (the method is **resolved, never chosen**) |
-| `app/routes/subscription.py` | the HitPay branch of the subscribe + the upgrade — the QR is created at the moment of the payment |
-| `scripts/send_notifications.py` | the renewal invoice of a HitPay subscription is invoiced in **MYR**, and **`reconcile_hitpay_payments()`** — the safety net for a lost webhook (it runs **every 10 minutes**: `send_notifications.py --reconcile-only`) |
+| `website_api/app/services/hitpay.py` | the HitPay client — `create_payment_request`, `get_payment_request`, `verify_signature`, `get_client` |
+| `website_api/app/services/payment_methods.py` | **the country rule** — one place, two callers |
+| `website_api/app/services/plan_pricing.py` | **the currency rule** — the price of a plan in the currency of the method |
+| `site/src/components/PaymentPanel.tsx` | the panel — the QR (or the Touch 'n Go link) |
 
-**The method resolution** (the heart of the "one method, one currency" rule):
+**Changed files (9)**
 
-```
-the invoice's method  →  the subscription's method  →  the body's method
-```
-
-A body that names **another** method is refused with a **400** — the method
-of a subscription never changes. The body may also be **empty**.
-
-### 16.2 The site (Next.js)
-
-| The file | What it does |
+| The file | The change |
 |---|---|
-| `src/components/PaymentPanel.tsx` | the QR (or the Touch 'n Go link), the expiry countdown, **I have paid** (it watches the invoice), **Get a new code** |
-| `src/app/[locale]/portal/page.tsx` | the wizard's payment methods come from the **API** — the site never invents a method. The order summary shows the price **in the method's currency** (MYR for DuitNow and Touch 'n Go) |
-| `src/app/[locale]/portal/billing/page.tsx` | the **Pay button for `overdue`** too, and the panel opens with a fresh QR |
+| `website_api/app/routes/billing.py` | `GET /billing/payment-methods` · `POST /billing/invoices/{id}/pay` — the method is **resolved, never chosen** · `InvoicePayRequest.payment_method` is now `Optional` |
+| `website_api/app/routes/plans.py` | the plan list now carries `prices` per currency (USD + MYR) |
+| `website_api/app/routes/subscription.py` | the HitPay branch of the subscribe + the upgrade — the QR is created at the click |
+| `website_api/app/routes/webhooks.py` | the HitPay webhook — the four checks, then the subscription flips to active |
+| `website_api/app/services/payment_providers.py` | `HitPayProvider` behind the existing seam |
+| `website_api/app/models/models.py` | `invoices.hitpay_payment_request_id` · `subscriptions.payment_method / payment_provider / currency` · the `hitpay_webhook_events` table |
+| `website_api/scripts/send_notifications.py` | the renewal invoice of a HitPay subscription is **MYR** · `reconcile_hitpay_payments()` · the `--reconcile-only` switch |
+| `site/src/app/[locale]/portal/page.tsx` | the methods come from the API · the price in the method's currency · the panel |
+| `site/src/app/[locale]/portal/billing/page.tsx` | the **Pay button for `overdue`** · the panel · **no method in the body** |
+| `site/src/i18n/messages/{en,km,zh}/portal.json` | `payment.*` · the DuitNow / Touch 'n Go labels · `billing.payOverdue` |
 
-### 16.3 The two bugs the build found
+### 16.2 The country rule — `app/services/payment_methods.py`
 
-1. **The Pay button only appeared for `pending`.** An **overdue** customer had
-   no way to pay at all. The button now appears for both, and says
-   *Pay Now (overdue)*.
-2. **The site sent `payment_method: 'stripe'` with every payment.** The API
-   (rightly) refused it — the invoice's method is locked. The site now sends
-   **nothing**: the invoice decides.
+The whole rule is a table. The DB stores the country **name** ("Malaysia"),
+the signup form sends the name, so the name is mapped to the code:
 
-### 16.4 What is verified
+```python
+COUNTRY_METHODS = {
+    "MY": [STRIPE, PAY_LATER, HITPAY_DUITNOW, HITPAY_TNG],
+    "KH": [PAYWAY, STRIPE, PAY_LATER],
+}
+DEFAULT_METHODS = [STRIPE, PAY_LATER]      # an unknown country
+```
 
-- the four methods for a Malaysian customer (and the Cambodian list unchanged) ✓
-- the wizard → DuitNow → **MYR 80.00** for the Pro plan ✓ (the ringgit price,
-  not the dollar one)
-- the subscribe → the panel with a fresh QR ✓
-- the billing page → Pay Now / Pay Now (overdue) → the panel ✓
-- the renewal invoice of a HitPay subscription → **MYR**, from the cron ✓
-- the reconciliation poll → it asks HitPay for every waiting invoice ✓
-- no console errors in the browser ✓
+Three functions, and the split matters:
 
-### 16.5 What is left
+| The function | Who calls it | What it answers |
+|---|---|---|
+| `available_payment_methods(country)` | **the site** (via `/billing/payment-methods`) | "what may I show?" |
+| `is_method_allowed(country, method)` | **the API** (the subscribe + the upgrade) | "may this customer pay with that?" — the request body is only a *claim* |
+| `is_hitpay_method(method)` | the API | "is this one of the two HitPay methods?" |
+
+A Cambodian customer that sends `payment_method: "hitpay_duitnow"` is
+**refused**, not silently downgraded.
+
+### 16.3 The currency rule — `app/services/plan_pricing.py`
+
+The currency follows the **method**, not the plan:
+
+```python
+CURRENCY_BY_METHOD = {
+    "hitpay_duitnow": "MYR",
+    "hitpay_touch_n_go": "MYR",
+}
+```
+
+`resolve_price(db, plan, billing_cycle, method)` returns
+`(amount, currency)`:
+
+- a HitPay method → the **MYR row** of `plan_prices`;
+- every other method → the plan's own currency and price (today USD).
+
+**There is no fallback.** If a plan has no MYR price, `NoPriceForCurrency`
+is raised — we do not quietly charge a dollar amount into a ringgit wallet.
+`resolve_price_safe()` is the same thing but returns `(None, None)`, for the
+places where a failure must not stop the flow (the renewal cron logs it and
+leaves the subscription alone).
+
+### 16.4 The pay route — the method is **resolved, never chosen**
+
+`POST /api/billing/invoices/{invoice_id}/pay` — the actual code:
+
+```python
+locked_method = (invoice.payment_method or '').strip() or None
+subscription = invoice.subscription
+if not locked_method and subscription is not None:
+    locked_method = (subscription.payment_method or '').strip() or None
+
+body_method = (request.payment_method or '').strip() or None
+if locked_method and body_method and body_method != locked_method:
+    raise HTTPException(status_code=400, detail=(
+        f"This invoice is paid with {locked_method}. "
+        "The payment method of a subscription never changes."
+    ))
+
+payment_method = locked_method or body_method or 'stripe'
+```
+
+Three consequences:
+
+1. the invoice's method wins; the subscription's method is the fallback; the
+   body is the last resort — and it may be **empty**;
+2. a body that names another method is a **400**;
+3. the HitPay branch creates the payment request with **that** method and
+   stores the id on the invoice (`invoice.hitpay_payment_request_id`) — that
+   id is what the reconciliation poll uses.
+
+The answer the site gets:
+
+```json
+{
+  "message": "Scan the code or use Touch 'n Go to pay",
+  "requires_payment": true,
+  "payment": {
+    "provider": "hitpay", "method": "hitpay_duitnow",
+    "payment_request_id": "a320f131-…",
+    "qr_code": "https://api.sandbox.hit-pay.com/mock/payment/…/qr?…",
+    "qr_code_expiry": null, "direct_link": null,
+    "amount": 80.0, "currency": "MYR",
+    "invoice_id": 7, "invoice_number": "INV-20261102-…"
+  }
+}
+```
+
+### 16.5 The subscribe + the upgrade — the QR at the click
+
+In `app/routes/subscription.py` the HitPay branch (line ~446):
+
+1. the invoice is created **in MYR** (`resolve_price_safe` → the ringgit
+   price of the chosen plan);
+2. the payment request is created **right there** (`generate_qr=True`);
+3. the payment request id is stored on the invoice;
+4. the subscription stays **pending** — the access does not open until the
+   webhook (or the poll) confirms the payment.
+
+The answer:
+
+```json
+{
+  "id": 5, "status": "pending", "payment_status": "pending",
+  "payment_method": "hitpay_duitnow",
+  "requires_payment": true,
+  "payment": { "…": "the QR, as above" }
+}
+```
+
+If the gateway does not answer, the subscription **and** the invoice are
+deleted again — we do not leave a half-created subscription behind.
+
+### 16.6 The webhook — the four checks
+
+`POST /api/webhooks/hitpay/{event_type}` — the actual order:
+
+| # | The check | What it stops |
+|---|---|---|
+| 1 | **the signature** — `verify_signature(raw_body, header)` — the HMAC-SHA256 of the **raw** body with the salt, compared with `compare_digest` | a forged "paid" |
+| 2 | **the event id** — `{event_type}:{payment_request_id}` in `hitpay_webhook_events` | HitPay's retries doing the work twice |
+| 3 | **the amount and the currency** — the invoice's own numbers | a payment of the wrong size settling the wrong invoice |
+| 4 | **the invoice** — the payment request's reference is our invoice id | a payment landing on nothing |
+
+A webhook we have seen answers **2xx** (so HitPay stops retrying); a webhook
+we cannot verify answers **400**. An event that failed (an amount mismatch)
+may be delivered again — it is retried, not swallowed.
+
+Then `_hitpay_activate_subscription()` does what the webhook branch of the
+existing lifecycle does: the invoice becomes paid, the subscription becomes
+active, and the POS is notified.
+
+### 16.7 The renewal cron — MYR + the safety net
+
+**The renewal invoice** (`generate_renewal_invoices`): the amount and the
+currency come from `resolve_price_safe` for a HitPay subscription:
+
+```python
+invoice_currency = plan.currency_code or 'USD'
+if sub.payment_method in ('hitpay_duitnow', 'hitpay_touch_n_go'):
+    resolved_amount, resolved_currency = resolve_price_safe(
+        db, plan, effective_billing_cycle, sub.payment_method)
+    if resolved_amount is None:
+        print(f"  ⚠ Subscription {sub.id}: the plan '{plan.name}' has no MYR price …")
+        continue
+    amount = resolved_amount
+    invoice_currency = resolved_currency
+```
+
+A HitPay renewal is therefore invoiced in **MYR 80.00** — never USD 20.00.
+
+**The reconciliation poll** (`reconcile_hitpay_payments`): the webhook is the
+fast path, this is the pull. For every invoice that waits for a HitPay
+payment it asks the gateway what happened, and it applies **the same
+checks** as the webhook (the amount, the currency). A paid invoice is
+flipped, the subscription is activated, and the event is recorded as
+`reconcile:{payment_request_id}` so the webhook that arrives later is
+ignored instead of doing the work twice.
+
+It runs **every 10 minutes**:
+
+```cron
+*/10 * * * * /usr/bin/python3 …/website_api/scripts/send_notifications.py --reconcile-only >> …/logs/hitpay-reconcile.log 2>&1
+```
+
+(the daily 09:00 job still runs the whole notification set).
+
+### 16.8 The database
+
+**New columns**
+
+| The table | The column |
+|---|---|
+| `invoices` | `hitpay_payment_request_id` (the id the poll asks about) |
+| `subscriptions` | `payment_method` · `payment_provider` · `currency` |
+
+**New table** — `hitpay_webhook_events`: `event_id` (unique), `event_type`,
+`payment_request_id`, `invoice_id`, `payload`, `status`
+(`received` / `processed` / `ignored`), `received_at`, `processed_at`, `note`.
+
+**The MYR prices** — the `plan_prices` table now has a MYR row for every
+plan (the ringgit price of the same plan):
+
+| The plan | USD monthly / annual | **MYR monthly / annual** |
+|---|---|---|
+| Starter | 0 / 0 | **0 / 0** |
+| Basic | 10 / 100 | **40 / 400** |
+| Pro | 20 / 200 | **80 / 800** |
+| Enterprise | 50 / 500 | **200 / 2000** |
+
+### 16.9 The site
+
+**The panel** — `src/components/PaymentPanel.tsx`:
+
+- the QR (or the Touch 'n Go link), with the **expiry countdown**;
+- **I have paid** — it re-reads `/api/billing/invoices` every 8 seconds and
+  turns into the success state when the invoice is paid;
+- **Get a new code** — a new QR at any time (the code is generated at the
+  click, so it is always fresh).
+
+**The wizard** — `src/app/[locale]/portal/page.tsx`:
+
+```tsx
+// the methods come from the API - the site never invents a method
+const res = await fetch(`${API_URL}/api/billing/payment-methods`, …)
+```
+
+```tsx
+// the currency follows the method
+const currencyForMethod = (method) =>
+  method && method.startsWith('hitpay_') ? 'MYR' : 'USD'
+
+// the price of the plan in that currency
+const planPrice = (plan, cycle, method) => {
+  const perCurrency = plan.prices?.[currencyForMethod(method)]
+  return perCurrency ? (cycle === 'annual' ? perCurrency.annual : perCurrency.monthly)
+                     : (cycle === 'annual' ? plan.price_annual : plan.price_monthly)
+}
+```
+
+**The billing page** — `src/app/[locale]/portal/billing/page.tsx`:
+
+```tsx
+{(invoice.status === 'pending' || invoice.status === 'overdue') && (
+  <button onClick={() => handlePayInvoice(invoice.id)} …>
+    {invoice.status === 'overdue' ? t('billing.payOverdue') : t('billing.payNow')}
+  </button>
+)}
+```
+
+### 16.10 The three bugs the build found
+
+| # | The bug | The fix |
+|---|---|---|
+| 1 | **The Pay button only appeared for `pending`** — an **overdue** customer had no way to pay at all | the button now appears for both, and says *Pay Now (overdue)* |
+| 2 | **The site sent `payment_method: 'stripe'`** with every payment → the API (rightly) refused it → the panel never opened | the site sends **nothing** — the invoice decides |
+| 3 | **The plan list did not carry the per-currency prices** → the site showed "MYR 10.00" for a plan that costs MYR 40 | `/api/plans` now carries `prices` per currency |
+
+### 16.11 What was verified
+
+| The check | The result |
+|---|---|
+| the methods of a Malaysian customer | `["stripe","pay_later","hitpay_duitnow","hitpay_touch_n_go"]` ✓ |
+| the methods of a Cambodian customer | `["payway","stripe","pay_later"]` — unchanged ✓ |
+| the wizard → DuitNow → the order summary | **MYR 80.00** (the Pro plan in ringgit, not $20) ✓ |
+| the subscribe → the panel | a fresh QR, the panel opens, no console errors ✓ |
+| the billing page → Pay Now / Pay Now (overdue) | the panel opens with a fresh QR ✓ |
+| the renewal invoice (the cron) | **MYR 80.00**, `payment_method: hitpay_duitnow` ✓ |
+| the reconciliation poll | it asks HitPay about the waiting invoice ✓ |
+| a forged webhook | **400 "Invalid signature."** ✓ |
+| the pay route with an empty body | the invoice's method is used ✓ |
+| the pay route with another method | **400** — "the payment method of a subscription never changes" ✓ |
+
+The test customers (and their invoices) were **deleted** afterwards.
+
+### 16.12 A note for the next session
+
+`website_api/scripts/send_notifications.py` **lost two edits** during the
+build: the file on disk was a different version of the same script and the
+changes were not in it. The other eight files were untouched. The changes
+were re-applied to the version that was actually on disk (and they stayed),
+but the lesson is worth keeping: **after editing that script, read it back**
+and check the markers (`resolve_price_safe`, `reconcile_hitpay_payments`).
+
+### 16.13 What is left
 
 - the **production** HitPay account (the sole-prospector KYB) — the sandbox
-  keys are in place, the production ones are not
+  keys are in `.env`, the production ones are not
 - the webhook URL has to be registered with HitPay for the production account
 - the customer portal's **emails** (the invoice reminder) could mention the
   method — not touched yet
