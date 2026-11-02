@@ -1,12 +1,12 @@
 ---
 title: Subscription Lifecycle and Access
-description: How a tenant's subscription decides whether they can use the POS, and the four places where the billing system and the POS disagree
+description: How a tenant's subscription decides whether they can use the POS, and where the POS login gate still disagrees with the renewal system
 ---
 
 # Subscription Lifecycle and Access
 
 **Date:** November 2, 2026  
-**Status:** Proposed — awaiting approval  
+**Status:** Approved — the open questions are answered, ready to implement  
 **Scope:** the website API (the billing system) and the POS login gate  
 **Files:** `website_api/app/routes/subscription.py`, `website_api/app/routes/admin.py`, `website_api/scripts/send_notifications.py`, `backend/app/routes/auth.py`
 
@@ -23,20 +23,36 @@ The intent is simple and correct:
 > **When the paid period ends and the subscription is not renewed, the user
 > must not be able to sign in to the POS again.**
 
-The renewal design says the same thing about the cancellation, in one line:
-
-> *"Cancellation: status → 'cancelled' immediately (**access until period
-> end**)"*
-
 So the design is already right — **the POS login gate is what does not
 implement it.** This document describes the current behaviour, the
 disagreements between the billing system and the POS, and the model that
 fixes them.
 
-**The grace period is a setting, not a constant** (Kens, November 2): it is
-the admin app's `payment_due_days` — 14 today, changeable by the admin, read
-live by the code that needs it. Nothing in this document introduces a second
-grace.
+---
+
+## The decisions (Kens, November 2)
+
+| # | The question | The answer | The source |
+|---|---|---|---|
+| 1 | **The trial** — the trial invoice is due immediately, or the trial gets the grace? | **Scenario 12 — Trial: Not Paid.** At the trial end the first paid invoice is created, `status` stays `trial`, **the access continues for the grace**, and when the grace runs out the invoice is forgiven → `expired` → **blocked** | `renewal-system.mdx` → Scenario 12 |
+| 2 | **A cancellation** — when does the access actually stop? | **Scenario 7 — Cancel: Without Payment (Within Grace Period).** The cancellation is recorded, but it does **not** protect from non-payment: with a paid period the access lasts **until the period end**, without a payment it lasts only **until the grace ends**, then the subscription becomes `expired` and the access is blocked | `renewal-system.mdx` → Scenario 7 + the Cancellation Decision Table |
+| — | **The grace period** | the admin app's setting **`payment_due_days`** (14 today) — read live, never hardcoded | `renewal-system.mdx` → Grace Period Settings |
+| — | **The frontend POS login checking** | it implements the renewal system's **Access Decision Table** — the POS gate is not allowed to have its own rules | `renewal-system.mdx` → Access Control Logic |
+
+**The one rule behind all of it:** the invoice's `due_date` already contains
+the grace (a subscription on day 0 has an invoice due on day 14). The access
+is allowed while the invoice is unpaid **and** its due date has not passed;
+when the due date passes unpaid, the cron forgives the invoice, the
+subscription becomes `expired` and the access is blocked.
+
+**Two things the renewal system says that the code does not do yet**
+
+- *"Cancellation does NOT protect from non-payment. At Day 14, the
+  subscription becomes EXPIRED."* — the cron **skips** the cancelled
+  subscriptions, so they never reach `expired`.
+- *"Payment extends nothing — the period end date stays fixed."* — a resume
+  must not invent a new period (see the decision 2 in the decisions table
+  above).
 
 ---
 
@@ -56,17 +72,21 @@ grace.
 | `payment_due_date` | when a "pay later" invoice is due |
 
 `invoices` carry their own `status` (`pending` / `paid` / `forgiven`) and
-`due_date`.
+`due_date`. **The invoice's `due_date` is the grace:** it is
+`period_start + payment_due_days`, so an unpaid invoice blocks the access
+exactly when the grace runs out.
 
 ### The daily cron (09:00, `send_notifications.py`)
 
 Runs in this order:
 
 1. `mark_zero_invoices_paid` — a $0 invoice (a trial, a free plan) counts as paid
-2. `process_trial_end` — a trial that ended gets its first paid invoice; **the status stays `trial` until it is paid**; the invoice is due at `trial_ends_at + grace`
-3. `generate_renewal_invoices` — an **active** subscription whose `current_period_end` has passed gets its next invoice (due at `period_end + grace`, the grace comes from the setting `payment_due_days`, 14 by default) and the period rolls forward
-4. `check_expired_subscriptions` — a pending invoice past its due date → the invoice is forgiven and the subscription becomes **`expired`**
-5. `check_cancelled_subscriptions` — a cancelled subscription past its period end → **it only prints a line**
+2. `process_trial_end` — a trial that ended gets its first paid invoice;
+   **the status stays `trial`**; the invoice's `due_date` is
+   `trial_ends_at + payment_due_days` → the grace ✓ (Scenario 12)
+3. `generate_renewal_invoices` — an **active** subscription whose `current_period_end` has passed gets its next invoice (due at `period_end + grace`) and the period rolls forward
+4. `check_expired_subscriptions` — a pending invoice past its due date → the invoice is forgiven and the subscription becomes **`expired`** — **but the cancelled subscriptions are skipped** ✗
+5. `check_cancelled_subscriptions` — a cancelled subscription past its period end → **it only prints a line** ✗
 6. the notices (the trial-ending notices, the billing reminders, the final reminders)
 
 ### The login gate (the POS backend, `backend/app/routes/auth.py`)
@@ -99,43 +119,84 @@ period ends → the renewal invoice is created (14-day grace)
 AES until 2026-11-30 (its renewal invoice lands on the 30th, the grace runs to
 December 14).
 
+### What the gate cannot see today
+
+The website API's endpoint returns `status`, `payment_status`
+(`active` / `pending` / `overdue`), `due_date`, `overdue_invoices` and
+`latest_invoice_due_date`. It does **not** return:
+
+- **`trial_ends_at`** → condition 5 above is **dead code**: it never fires, so
+  a trial is never blocked by the gate (the trial is blocked later, when the
+  cron flips the status to `expired` — which is why the trial accidentally
+  behaves like Scenario 12 today).
+- **`current_period_end`** → the gate cannot know when the paid period ends,
+  so it cannot implement "cancelled + paid → the access lasts until the
+  period end" (Scenario 6).
+- the **real payment state of the period** → `payment_status` is `active` for
+  a paid subscription, never `paid`, so the gate cannot tell Scenario 6
+  (cancel with payment) from Scenario 7 (cancel without payment).
+
+**This is why the decision belongs in the website API, not in the gate.**
+
 ---
 
-## The four disagreements
+## The disagreements
 
-### 1. A cancellation cuts the access off immediately, not at the end of the period
+### 1. A cancellation cuts the access off immediately — the renewal system says otherwise
 
 `POST /cancel` sets `status = "cancelled"` the moment the customer clicks.
-The login gate blocks on `cancelled` → **instant lockout**. But the route's
-own docstring, its response body and its cancellation email all say:
+The login gate blocks on `cancelled` → **instant lockout**. But the renewal
+system's Cancellation Decision Table says:
 
-> "Subscription cancelled. Access continues until period end."
+| Payment | Cancel when | Result |
+|---|---|---|
+| **Paid** | any time | **the access lasts until the period end**, then blocked (Scenario 6) |
+| **Not paid** | before the grace ends | **the access lasts until the grace ends**, then the subscription becomes **EXPIRED** and the access is blocked (Scenario 7) |
+| **Not paid** | after the grace ended | already EXPIRED, the cancellation has no effect (Scenario 8) |
+
+The route's own docstring, its response body and its cancellation email say
+*"Access continues until period end"* — the same wording as Scenario 6, but
+without Scenario 7's **"cancellation does not protect from non-payment"**.
 
 The two halves of the product disagree with each other. A customer who
 cancels on day 20 of a 30-day period loses the ten days they have already
-paid for.
+paid for. And a customer who cancels without paying keeps the access for the
+**whole grace** — which today they do not get either: they are locked out on
+the cancellation day.
 
-### 2. The trial: the POS matches the design, the code does not
+The cron makes it worse: `check_expired_subscriptions` **skips** the cancelled
+subscriptions (*"letting expire naturally"*), so a cancelled subscription
+never becomes `expired` — it stays `cancelled` forever, and the "expired"
+reporting and the admin's own state never see those tenants.
 
-The renewal design says:
+### 2. The trial: the billing code already follows Scenario 12 — the gate does not
 
-> *"On trial end: status stays 'trial', first paid invoice created. **Invoice
-> due immediately.**"*
+Scenario 12 says:
 
-The login gate does exactly that — condition 5 blocks any trial whose
-`trial_ends_at` has passed ✓ — so **the POS is right here**.
+```
+Day 30:  Trial ends
+           Invoice #2 created for the paid version: $XX, status = pending
+           subscription_status = trial  (the grace period starts)
+Day 44:  Grace period ends, no payment
+           Invoice #2 status → forgiven
+           subscription_status = expired
+           Access = BLOCKED
+```
 
-The mismatch is inside the billing code: `process_trial_end()` creates the
-first paid invoice with `due_date = period_start + grace` (14 days by the
-setting), while the design says the invoice is **due immediately**. So the
-customer is billed with 14 days to pay but locked out of the POS on the
-trial-end day.
+The billing code does exactly this: `process_trial_end()` creates the invoice
+with `due_date = trial_ends_at + payment_due_days` (14) and keeps the status
+`trial`; the cron forgives the invoice when the due date passes and flips the
+status to `expired` → the gate blocks ✓.
 
-This one is a **decision, not a bug in the POS**: either the trial invoice is
-due immediately (the design, and then the trial block at the POS is right) or
-the trial gets the same grace as everything else (and then the login gate has
-to honour it). The proposal follows the design — due immediately — and keeps
-the gate as it is.
+So the trial case is **right today** — but only because condition 5 is dead
+code (the endpoint does not return `trial_ends_at`). The moment somebody
+"fixes" the endpoint to return `trial_ends_at`, the gate starts blocking the
+trial on the trial-end day and Scenario 12 breaks.
+
+> **Note:** the renewal design's prose line *"On trial end: … invoice due
+> immediately"* is superseded by Scenario 12 — the invoice is due immediately
+> **and the access lasts for the grace**. Both are true: the invoice is
+> created and payable at once, the lockout waits for the grace to end.
 
 ### 3. The status is only checked at login
 
@@ -175,39 +236,62 @@ def effective_access(subscription, invoices, now) -> Access:
     """active | trial | grace | blocked - and the reason why."""
 ```
 
-The rules:
+The rules — **the renewal system's Access Decision Table**, with the grace
+from the admin setting:
 
-| Stored state | Effective access | Why |
-|---|---|---|
-| no subscription | **blocked** | they never subscribed |
-| `expired` | **blocked** | the grace ran out |
-| `cancelled`, `current_period_end > now` | **active** + a warning ("your plan ends on the 30th") | they paid for the period |
-| `cancelled`, `current_period_end <= now` | **blocked** | the period they paid for is over |
-| `trial`, `trial_ends_at > now` | **trial** (+ a warning near the end) | the trial is running |
-| `trial`, `trial_ends_at <= now`, the first invoice not yet due | **blocked** (the design: the trial invoice is due immediately) — or **grace**, if the trial is given the admin's grace | the decision in finding 2 |
-| `active`, a pending invoice not yet due | **active** + a warning | the renewal is pending |
-| `active`, a pending invoice past its due date | **grace** until the grace ends, then **blocked** | the grace is `payment_due_days` |
-| `active`, everything paid | **active** | ✓ |
+| Stored state | Payment | Effective access | Why |
+|---|---|---|---|
+| no subscription | — | **blocked** | they never subscribed |
+| `expired` | — | **blocked** | the grace ran out |
+| `active` | paid | **active** | ✓ |
+| `active` | pending, the invoice not yet due | **active** + a warning | the renewal is pending |
+| `active` | pending, the invoice past its due date | **blocked** | the grace ran out (the cron forgives the invoice → `expired`) |
+| `cancelled` | **paid** | **active** until `current_period_end` + a warning ("your plan ends on the 30th") | they paid for the period (Scenario 6) |
+| `cancelled` | **not paid** | **active** until the invoice's due date (the grace end), then **blocked** | the cancellation does not protect from non-payment (Scenario 7) |
+| `trial` | — | **trial** + a warning near the end; **active** during the grace after the trial end | the invoice is created at the trial end and the grace starts (Scenario 12) |
+| `trial`, the grace has ended, the invoice unpaid | — | **blocked** | the cron forgives the invoice → `expired` |
+| `expired` **and a new active subscription exists** | — | **active** | reactivated (Scenario 9/10) |
 
 **One grace rule for everything, and it is the admin's setting.** The grace
 period is `payment_due_days` from the admin app's settings (14 today) — read
-live, never hardcoded. The renewal grace and the trial grace are the same
-value, measured from the moment the period ends. Today the POS honours it for
-the renewal and not for the trial.
+live, never hardcoded. The renewal grace, the trial grace and the grace after
+a cancellation are the same value.
 
 ### The cancellation records the intent, the state stays honest
 
 No schema change is needed:
 
 - the cancellation keeps writing `status = "cancelled"` and `cancelled_at` ✓
-- the **effective** access reads `current_period_end` → so the access lasts
-  until the period ends ✓
-- the cron, after the period end, flips the cancelled subscriptions to
-  **`expired`** ✓ (the missing step, and it makes the reporting correct)
+- the **effective** access reads the payment and the invoice's due date →
+  a paid period lasts until the period end (Scenario 6), an unpaid one only
+  until the grace ends (Scenario 7) ✓
+- the cron forgives the unpaid invoice of a cancelled subscription at the
+  grace end and flips the status to **`expired`** ✓ (the missing step, and it
+  makes the reporting correct)
 
 The Stripe subscription is cancelled with `at_period_end=True` ✓ → the
 customer is not charged again, and the billing stops at the same moment the
 access stops.
+
+### A resume does not invent a period
+
+`POST /resume` today flips `status` back to `active` and leaves
+`current_period_end` alone — which may be in the past. That is a subscription
+in name only: the renewal cron immediately invoices a period that has already
+ended.
+
+Following Scenario 7 and the renewal system's *"payment extends nothing — the
+period end date stays fixed"*:
+
+- a **resume** restores the access to the period that was paid for; it does
+  **not** create a fresh period and it does **not** move `current_period_end`
+  ✓
+- the outstanding invoice stays as it is, with its due date (the grace) — the
+  resume does not buy the customer extra time
+- if the grace has already run out (the subscription is `expired`), the
+  customer is **reactivated**, not resumed: a **new** subscription with a
+  fresh period, the old one archived, and the POS data preserved
+  (Scenarios 9/10 and the Reactivation Flow)
 
 ### The status is checked live, like the features
 
@@ -229,9 +313,9 @@ only tells it what the truth is now.
 
 | Phase | Work | Gate to the next phase |
 |---|---|---|
-| 1 | `effective_access()` in the website API, with its own tests | the matrix in the verification section passes |
-| 2 | the login gate uses it (the seven conditions become one call) | the login matrix below passes |
-| 3 | the cron flips the cancelled subscriptions to `expired` after the period end | a cancelled tenant past the period end reads `expired` ✓ |
+| 1 | `effective_access()` in the website API, with its own tests, and the subscription endpoint returns what the decision needs (`current_period_end`, `trial_ends_at`, the real payment state, the grace) | the matrix in the verification section passes |
+| 2 | the login gate uses it — the seven conditions become one call, and it implements the renewal system's Access Decision Table | the login matrix below passes |
+| 3 | the cron forgives the unpaid invoice of a **cancelled** subscription at the grace end and flips it to `expired` (the skip goes) | a cancelled tenant past the grace reads `expired` ✓ |
 | 4 | the Stripe cancellation at the period end + the webhook reaction | a cancelled tenant is not billed again ✓ |
 | 5 | the pushed subscription cache in the POS backend | an open session is affected within seconds ✓ |
 
@@ -247,13 +331,16 @@ Each phase is independently revertable.
 |---|---|
 | an active subscription, everything paid | **allowed** ✓ |
 | an active subscription, the renewal invoice pending, inside the grace | **allowed** + a warning ✓ |
-| an active subscription, the invoice past its due date | **allowed** during the grace, **blocked** after it ✓ |
-| a cancelled subscription, before the period end | **allowed** + a warning ("your plan ends on the 30th") ✓ |
-| a cancelled subscription, after the period end | **blocked** ✓ |
+| an active subscription, the invoice past its due date | **blocked** ✓ (the cron has flipped it to `expired`) |
+| a cancelled subscription, the period **paid**, before the period end | **allowed** + a warning ("your plan ends on the 30th") ✓ (Scenario 6) |
+| a cancelled subscription, the period **paid**, after the period end | **blocked** ✓ |
+| a cancelled subscription, **not paid**, before the grace ends | **allowed** ✓ (Scenario 7 — the cancellation does not protect from non-payment) |
+| a cancelled subscription, **not paid**, after the grace ends | **blocked** ✓ (the cron has flipped it to `expired`) |
 | a trial, before it ends | **allowed** + a warning near the end ✓ |
-| a trial, after it ends, the first invoice not yet due | **allowed** (the grace) ✓ |
-| a trial, after it ends, the invoice past its due date | **blocked** ✓ |
+| a trial, after it ends, inside the grace | **allowed** ✓ (Scenario 12) |
+| a trial, after the grace ends, the invoice unpaid | **blocked** ✓ |
 | an expired subscription | **blocked** ✓ |
+| a cancelled/expired subscription **and a new active subscription** | **allowed** ✓ (reactivated) |
 | no subscription | **blocked** ✓ |
 | the website API unreachable | **allowed** + a warning ✓ (fail-open) |
 
@@ -278,33 +365,43 @@ Each phase is independently revertable.
 
 ---
 
-## Open decisions
+## The decisions (all of them)
 
-1. **The trial invoice** — due immediately (the renewal design) or with the
-   admin's grace (`payment_due_days`)? The proposal: **due immediately**,
-   which keeps the login gate as it is today.
-2. **A cancelled tenant that resumes** — the resume route restores `active`
-   but not `current_period_end` (which may already be in the past). The
-   proposal: the resume sets a fresh period from today and clears
-   `cancelled_at`.
+1. **The trial** — **Scenario 12**: the invoice is created at the trial end,
+   the status stays `trial`, the access continues for the grace
+   (`payment_due_days`), and the grace running out forgives the invoice →
+   `expired` → blocked ✓
+2. **A cancellation** — **Scenario 7** + Scenario 6: paid → the access lasts
+   until the period end; unpaid → the access lasts until the grace ends and
+   the subscription then becomes `expired` ✓
+3. **A resume** — no fresh period, the period end stays fixed; a reactivation
+   (after the grace) is a **new** subscription with the POS data preserved ✓
+4. **The grace period** — the admin app's setting `payment_due_days` (14
+   today), read live. One value for the trial, the renewal and the
+   cancellation ✓
+5. **The warning period** — the admin app's setting `overdue_warning_days`
+   (7 today), the same window the billing reminders already use ✓
+6. **The POS login checking** — it implements the renewal system's **Access
+   Decision Table**; the gate does not have rules of its own ✓
 
-**Already decided**
-
-- **The grace period** — the admin app's setting `payment_due_days` (14
-  today), read live. One value for the trial and the renewal ✓
-- **The warning period** — the admin app's setting `overdue_warning_days`
-  (7 today), the same window the billing reminders already use ✓
-- **The cancellation** — the status changes at once, the **access lasts until
-  the period end** ✓ (the renewal design says so; the POS gate does not)
+**Noted, not changed:** the renewal design contradicts itself on one line —
+*"Payment received during grace: extend period from the original end date"*
+against *"Payment extends nothing — the period end date stays fixed"* in the
+same box. The implemented behaviour is **the period end stays fixed** (per
+`proposed-renewal-updates.mdx`, DONE) ✓.
 
 ---
 
 ## Related
 
-- `system-design/program-changes/renewal-changes/renewal-features.mdx` — the
-  renewal system this document builds on: *"payment extends nothing, the period
-  end stays fixed"*, the invoice at the period end, the 14-day grace. This
-  document adds the **access** side — what the POS does with those states.
+- `system-design/renewal-system.mdx` — the source of truth for the access
+  rules: the Access Decision Table, the Cancellation Decision Table, Scenario
+  7 (cancel without payment) and Scenario 12 (trial not paid).
+- `system-design/program-changes/renewal-changes/renewal-features.mdx` —
+  the renewal system this document builds on: *"payment extends nothing, the
+  period end stays fixed"*, the invoice at the period end, the 14-day grace.
+  This document adds the **access** side — what the POS does with those
+  states.
 - `system-design/program-changes/renewal-changes/proposed-renewal-updates.mdx`
   — the changes that aligned the code with that design ✓ (all done)
 - `system-design/program-changes/ai-feature-gating/ai-feature-gating.mdx` —
