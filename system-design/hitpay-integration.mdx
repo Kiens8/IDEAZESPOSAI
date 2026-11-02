@@ -920,21 +920,35 @@ code, the database, the cron and the verification — is in
 > **A Malaysian customer who selects a USD plan and then chooses DuitNow or
 > Touch 'n Go is charged the MYR price of the same plan.**
 
-So the currency is decided by **the method**, not by the plan:
+And (Kens, later the same evening): **a Malaysian customer chooses the
+currency**, and **the country decides whether ringgit is on the table at
+all**:
 
-| The customer's country | The method | The plan price used | The invoice currency |
-|---|---|---|---|
-| Malaysia | Stripe | the USD row (today's behaviour) | USD |
-| Malaysia | Pay Later | the USD row (today's behaviour) | USD |
-| Malaysia | **DuitNow / Touch 'n Go** | **the MYR row of the same plan** | **MYR** |
-| Cambodia | anything | the USD row | USD |
-| Anywhere else | Stripe | the USD row | USD |
+| The customer's country | The currency switch | The method | The plan price used | The invoice currency |
+|---|---|---|---|---|
+| **Malaysia** | **USD or MYR — the customer chooses** | Stripe | the row of the chosen currency | **USD or MYR** |
+| **Malaysia** | **USD** | Pay Later | the row of the chosen currency | **USD or MYR** |
+| **Malaysia** | **MYR** | **DuitNow / Touch 'n Go** | **the MYR row of the same plan** | **MYR** (always) |
+| Cambodia | **USD — locked** | anything | the USD row | USD |
+| Anywhere else | **USD — locked** | Stripe / Pay Later | the USD row | USD |
+
+**The methods follow the currency (Malaysia):** in **USD** only **Stripe and
+Pay Later** are on the table; in **MYR** all **four** are. The Malaysian
+wallets belong to the ringgit column — they settle in ringgit, so they are
+offered with it.
+
+**The country decides whether ringgit exists.** MYR is a Malaysian currency:
+a customer outside Malaysia sees a **disabled switch** (USD) and **the
+server enforces the same rule** — the body's `currency` is only a claim,
+so a Cambodian customer asking for MYR is charged in **USD** (and one
+asking for DuitNow is refused outright).
 
 **And the method is locked at the subscribe step (section 4.4)** — so the
 currency is locked with it. The customer chooses the method **once**:
 
 ```
-Subscribe with Stripe   → every invoice of that subscription is USD
+Subscribe with Stripe   → every invoice of that subscription is in the
+                           currency the customer chose (USD or MYR)
 Subscribe with DuitNow  → every invoice of that subscription is MYR
 Subscribe with TnG      → every invoice of that subscription is MYR
 ```
