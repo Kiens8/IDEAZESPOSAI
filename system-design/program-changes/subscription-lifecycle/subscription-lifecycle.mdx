@@ -6,9 +6,9 @@ description: How a tenant's subscription decides whether they can use the POS, a
 # Subscription Lifecycle and Access
 
 **Date:** November 2, 2026  
-**Status:** Approved — the open questions are answered, ready to implement  
+**Status:** Approved — **Phase 1 and Phase 2 are done and live** (November 2, 2026); phases 3–5 are still to do  
 **Scope:** the website API (the billing system) and the POS login gate  
-**Files:** `website_api/app/routes/subscription.py`, `website_api/app/routes/admin.py`, `website_api/scripts/send_notifications.py`, `backend/app/routes/auth.py`
+**Files:** `website_api/app/services/subscription_access.py` (new), `website_api/app/routes/admin.py`, `backend/app/services/subscription_gate.py` (new), `backend/app/routes/auth.py`, `website_api/scripts/send_notifications.py`
 
 ---
 
@@ -311,15 +311,95 @@ only tells it what the truth is now.
 
 ## The implementation
 
-| Phase | Work | Gate to the next phase |
-|---|---|---|
-| 1 | `effective_access()` in the website API, with its own tests, and the subscription endpoint returns what the decision needs (`current_period_end`, `trial_ends_at`, the real payment state, the grace) | the matrix in the verification section passes |
-| 2 | the login gate uses it — the seven conditions become one call, and it implements the renewal system's Access Decision Table | the login matrix below passes |
-| 3 | the cron forgives the unpaid invoice of a **cancelled** subscription at the grace end and flips it to `expired` (the skip goes) | a cancelled tenant past the grace reads `expired` ✓ |
-| 4 | the Stripe cancellation at the period end + the webhook reaction | a cancelled tenant is not billed again ✓ |
-| 5 | the pushed subscription cache in the POS backend | an open session is affected within seconds ✓ |
+| Phase | Work | Gate to the next phase | State |
+|---|---|---|---|
+| 1 | `effective_access()` in the website API, with its own tests, and the subscription endpoint returns what the decision needs (`current_period_end`, `trial_ends_at`, the real payment state, the grace) | the matrix in the verification section passes | ✅ **done** |
+| 2 | the login gate uses it — the seven conditions become one call, and it implements the renewal system's Access Decision Table | the login matrix below passes | ✅ **done** |
+| 3 | the cron forgives the unpaid invoice of a **cancelled** subscription at the grace end and flips it to `expired` (the skip goes) | a cancelled tenant past the grace reads `expired` ✓ | ⬜ to do |
+| 4 | the cancellation reaches the **payment provider** (Stripe now; HitPay and PayWay later — see below) | a cancelled tenant is not billed again ✓ | ⬜ to do |
+| 5 | the pushed subscription cache in the POS backend | an open session is affected within seconds ✓ | ⬜ to do |
 
 Each phase is independently revertable.
+
+### What phase 1 and 2 built
+
+**The website API — `app/services/subscription_access.py` (new)**
+
+```python
+effective_access(subscription, invoices, now, grace_days, warning_days) -> Access
+```
+
+One function, one place. It reads the stored state and returns the answer:
+
+| Field | Meaning |
+|---|---|
+| `state` | `active` · `trial` · `grace` · `blocked` |
+| `allowed` | may the tenant use the POS? |
+| `reason` | the machine code (the gate logs it) |
+| `message` | what the user is told when it is blocked |
+| `warning` | the soft warning (a trial ending, a payment due, a plan ending) |
+| `access_until` | when the access ends |
+| `grace_days` | the grace that was applied |
+
+The grace and the warning window are **read live** from the admin app's
+settings (`payment_due_days`, `overdue_warning_days`) — the caller passes
+them in, the function never hardcodes them.
+
+**The endpoint** — `GET /api/admin/customer/{id}/subscription` now also
+returns `access`, `payment_state`, `current_period_end`, `trial_ends_at` and
+`grace_days`. The old fields (`status`, `payment_status`, …) stay exactly as
+they were, so nothing else breaks.
+
+**The POS gate — `app/services/subscription_gate.py` (new)**
+
+```python
+check_subscription_access(data, warning_days, warning_days_fetcher) -> GateResult
+```
+
+The gate reads the answer and enforces it. The old seven conditions are the
+**fallback** inside the same function — they are only reached when the
+website API answers without an `access` object (an older website API).
+
+### Two bugs the rewrite found
+
+1. **The eight-hour skew.** The website API stores its dates in **UTC**
+   (`datetime.utcnow()`); the gate compared them with `datetime.now()` — the
+   server's **local** time, which is `+08` in Malaysia. Every deadline was
+   eight hours early: the login was refused eight hours before the payment
+   was actually due. The decision now happens in the website API, in UTC,
+   once.
+2. **The truncated days.** `(due_date - now).days` truncates — a payment due
+   in **two hours** has `0` days left, so the old code treated it as
+   **overdue** and refused the login. The same bug applied to a trial that
+   was about to end. The days are now rounded **up**, and the "is it over"
+   test is an exact comparison.
+
+### The tests
+
+```bash
+cd website_api && python3 scripts/test_effective_access.py   # 31 checks - the scenarios
+cd backend    && python3 scripts/test_subscription_gate.py    # 20 checks - the gate
+```
+
+No database, no server: the scenarios are described with plain objects, so
+the rules can be checked in a second.
+
+### The payment providers (phase 4)
+
+The cancellation has to reach the **payment provider**, and there will be
+more than one:
+
+- **Stripe** — the current one.
+- **HitPay** — Malaysia.
+- **PayWay** — Cambodia.
+
+So the cancellation must not be written against one gateway's API. The
+phase 4 design keeps the provider behind one interface — "cancel the
+subscription at the period end" — and each provider implements it. The
+subscription's `stripe_subscription_id` becomes a provider reference with a
+provider field, and the renewal/webhook code reads it the same way.
+
+That is a **separate task** — the subscription lifecycle comes first.
 
 ---
 
@@ -352,6 +432,18 @@ Each phase is independently revertable.
 - the POS route sweep → `routes with problems: 0 / 24`
 - the browser check per role → no console errors
 
+**What was checked when phase 1 and 2 went live (November 2, 2026)**
+
+| Check | Result |
+|---|---|
+| `scripts/test_effective_access.py` — the renewal system's scenarios 1–12 | **31 / 31** ✓ |
+| `scripts/test_subscription_gate.py` — the gate's matrix + the fallback + the timezone | **20 / 20** ✓ |
+| the endpoint, live, for the two live tenants (Demo → 2027-09-17, AES → 2026-11-30) | `access.allowed = true` ✓ |
+| the endpoint, live, for a throwaway tenant: cancelled + paid / cancelled + unpaid / the trial / no subscription | the four answers as designed ✓ (the throwaway tenant was removed afterwards) |
+| the POS login (API) for a live tenant | `success: true`, `access_status: granted` ✓ |
+| the POS login in the browser | the dashboard loads, no error on the screen ✓ |
+| the isolation suite (the backend's own tests) | **45 / 45** ✓ |
+
 ---
 
 ## The risks
@@ -362,6 +454,8 @@ Each phase is independently revertable.
 | The grace becomes a free window | one rule, measured from the moment the period ends, and the trial case now matches the billing system's own design |
 | The live cache locks someone out on a technicality | the cache falls back to the last known state, and the login gate keeps its fail-open behaviour when the website API is unreachable |
 | The Stripe change double-charges or stops the billing wrongly | the cancellation is `at_period_end=True` — the billing stops exactly when the access ends ✓ |
+| The gate and the billing system disagree | the gate has **no rules of its own** any more — it enforces the website API's answer, and the old conditions are only a fallback for an older website API ✓ |
+| A deadline is read in the wrong timezone | the decision happens in the website API, in UTC, once — the POS no longer does date math ✓ |
 
 ---
 
