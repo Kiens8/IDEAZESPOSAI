@@ -360,6 +360,7 @@ merchant account, so it is out of scope (section 15, question 1).
 - We generate the QR (`generate_qr=true` → `qr_code_data.qr_code` +
   `qr_code_expiry`) and show it in the portal. The customer scans it with
   the DuitNow app.
+- DuitNow is a **QR flow** — the code is the payment.
 - `payment_request.completed` fires → the invoice is paid → the access opens.
 - **No auto-charge, ever.** And **no refunds** — a DuitNow payment cannot be
   refunded through HitPay. That is a customer-facing caveat we must show
@@ -374,8 +375,38 @@ merchant account, so it is out of scope (section 15, question 1).
 - The direct link is the nicer UX on a phone (the app opens, the customer
   confirms); the QR is the fallback (a desktop customer scans it with the
   phone, exactly like DuitNow).
+- **What we ask for:** Touch 'n Go gets the **direct link**
+  (`generate_direct_link=true` + the redirect back to the portal) — HitPay
+  asks for **exactly one** of the two per request, so the TnG request is
+  not a QR request. The panel then shows the **"Pay with Touch 'n Go"**
+  button (and the QR we draw from the same link, so a desktop customer can
+  scan it too).
 - **Both are one-off.** The wallet is not saved and nothing is charged
   automatically — the same manual cycle as DuitNow.
+
+### 5.2b The QR image — the sandbox serves HTML, not a PNG
+
+HitPay gives us a **URL** for the code (`qr_code_data.qr_code`), not always
+an image:
+
+| Where | What the URL serves |
+|---|---|
+| **production** | a **PNG** (`qr_image_mime: image/png`) → an `<img>` shows it |
+| **the sandbox** | the **mock payment page** (HTML!) → an `<img>` is a **broken image** ✗ |
+
+So the API owns the image:
+
+- `GET /api/billing/invoices/{invoice_id}/qr` → the invoice's own payment
+  request → the QR URL → **fetch it; if it is not an image, draw the QR
+  ourselves** (`qrcode` + Pillow → a PNG) from that same link. The URL is
+  the payment either way, so the customer's app opens it after the scan —
+  the same code.
+- When the payment request has no QR (Touch 'n Go, or a lookup that does
+  not carry it), the **checkout link** (`payment_request.url`) is used.
+- The browser cannot use a plain `<img src>` (the endpoint needs the auth
+  header), so the panel **fetches the image** and shows it as an object
+  URL — with HitPay's own URL as the fallback.
+- It is drawn **on demand**, because the code expires.
 
 ### 5.3 The consequence: what a HitPay subscription is
 
@@ -539,7 +570,9 @@ POST /api/billing/invoices/{invoice_id}/pay
             → { "requires_checkout": true, "checkout_url": "https://…" }
    HITPAY:  POST /v1/payment-requests  (amount = the invoice amount in MYR,
             currency = myr, payment_methods[] = duitnow | touch_n_go,
-            generate_qr = true, reference = the invoice id)
+            generate_qr = true            (DuitNow),
+            generate_direct_link = true   (Touch 'n Go),
+            reference = the invoice id)
             → { "requires_payment": true,
                 "payment": { "provider": "hitpay",
                              "method": "hitpay_duitnow",
