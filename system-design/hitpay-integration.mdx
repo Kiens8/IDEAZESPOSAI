@@ -1105,13 +1105,13 @@ real browser.
 | The file | What it does |
 |---|---|
 | `app/services/hitpay.py` | the client — `create_payment_request`, `get_payment_request`, the signature helper. The sandbox keys live in `.env` (`HITPAY_API_KEY`, `HITPAY_SALT`, `HITPAY_API_URL`) |
-| `app/services/hitpay_provider.py` | the provider behind the existing `payment_providers.py` seam |
+| `app/services/payment_providers.py` | `HitPayProvider` — the provider behind the existing seam (`create_payment`, `void_payment`, `get_status`) |
 | `app/services/payment_methods.py` | **the country rule** — one function, two callers (the API and the site) |
 | `app/services/plan_pricing.py` | **the MYR resolution** — the plan's ringgit price out of `plan_prices` |
 | `app/routes/webhooks.py` | the HitPay branch of the webhook — the signature, the event id, the amount + currency check, then the subscription flips to active |
 | `app/routes/billing.py` | `GET /billing/payment-methods` (the country decides) and `POST /billing/invoices/{id}/pay` (the method is **resolved, never chosen**) |
 | `app/routes/subscription.py` | the HitPay branch of the subscribe + the upgrade — the QR is created at the moment of the payment |
-| `scripts/send_notifications.py` | the renewal invoice of a HitPay subscription is invoiced in **MYR**, and **`reconcile_hitpay_payments()`** — the safety net for a lost webhook |
+| `scripts/send_notifications.py` | the renewal invoice of a HitPay subscription is invoiced in **MYR**, and **`reconcile_hitpay_payments()`** — the safety net for a lost webhook (it runs **every 10 minutes**: `send_notifications.py --reconcile-only`) |
 
 **The method resolution** (the heart of the "one method, one currency" rule):
 
