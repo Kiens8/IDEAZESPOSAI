@@ -534,6 +534,21 @@ reads the `annual` column of `plan_prices` when `billing_cycle ==
   (`payment_providers.py`, phase 4 of the lifecycle work) — HitPay slots in
   there.
 
+### 6.5b Where the customer lands after the payment
+
+**The same place for every method** — the **overview** (`/portal`), exactly
+like the Stripe checkout:
+
+| The method | What happens |
+|---|---|
+| **DuitNow** (the QR) | the customer stays on our page → the panel polls the status every 8 seconds → the webhook flips the invoice → the panel closes, the portal goes to the **overview** and says *"Payment received — your subscription is active"* ✓ |
+| **Touch 'n Go** (the link) | the browser goes to HitPay → HitPay redirects back to `?payment=success&status=completed` → the portal cleans the query, shows *"Payment received — we are confirming it"* and stays on the **overview** ✓ |
+
+The message differs on purpose: the **QR flow** knows the payment arrived
+(the webhook confirmed it), the **redirect** only says it is being
+confirmed — the redirect alone proves nothing (the invoice turns paid when
+the webhook arrives ✓).
+
 ### 6.5 Paying an invoice from the portal — the Pay button
 
 The subscription is not the only thing the customer can pay: **every unpaid
