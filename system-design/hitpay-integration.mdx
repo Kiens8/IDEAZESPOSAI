@@ -5,8 +5,8 @@ description: How the Malaysian payment methods get into the customer portal, wha
 
 # HitPay Integration — Malaysia (DuitNow, Touch 'n Go)
 
-**Document Version:** 3.1  
-**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike  
+**Document Version:** 4.0  
+**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike · **v4** — how the webhook proves the payment, both billing cycles allowed, and the sole-proprietor onboarding  
 **Status:** Design complete — pending implementation  
 **Scope:** the website API (the billing system), the site (the customer portal), the renewal cron  
 **Related:** `payway-integration.mdx` (Cambodia), `program-changes/subscription-lifecycle/subscription-lifecycle.mdx` (the access rules we just built), `program-changes/customer-portal/subscription-wizard-proposal.mdx` (the wizard UI this plugs into)
@@ -106,6 +106,63 @@ Two facts from the docs worth keeping in mind:
 - *"All alternative payment methods (APMs, regional QR rails, recurring) are
   always HitPay-acquired direct."* — HitPay is the acquirer, not a reseller
   of someone else's licence.
+
+### 2.1 The business behind the account — a sole proprietor
+
+**Kens' decision (November 2, 2026): the business starts as an
+individual** (a sole proprietorship), not a company, targeting **Malaysia
+and Cambodia**.
+
+HitPay's own Malaysia onboarding rules say a sole proprietor is a first-class
+entity type:
+
+| The entity type | The document HitPay asks for |
+|---|---|
+| **Business (Sole Proprietor)** | **the SSM Business Profile** (the ROB registration) |
+| Company | the SSM Company Profile |
+| LLP | the LLP profile |
+
+And the payout rule:
+
+> *"**Companies and LLPs** must use a **corporate bank account** to receive
+> payouts. **Sole Proprietors** may use a **personal bank account**
+> registered under the owner's name."*
+
+So an individual business in Malaysia **can** hold a HitPay account. The
+documents:
+
+- the **SSM Business Profile** (the sole proprietorship registration — the
+  "Business (Sole Proprietor)" profile, not a company profile),
+- the account representative's **ID** and a **selfie** (identity
+  verification),
+- a **personal bank account** in the owner's name (the payouts go there).
+
+**Three consequences for this design:**
+
+1. **The account must be Malaysian, not Cambodian.** HitPay does not onboard
+   Cambodian businesses — the country-specific verification pages exist for
+   Singapore, Malaysia, the Philippines, Thailand, Hong Kong, Australia and
+   New Zealand. **There is no Cambodia page.** So the Cambodia market keeps
+   **PayWay + Stripe + Pay Later**, and the HitPay account is a Malaysian
+   one. (This is also why the onboarding market question resolves to
+   **Malaysia** rather than Singapore: MYR settlement, and the customers who
+   need TnG and DuitNow are the Malaysian ones.)
+2. **A registered sole proprietorship is needed, not just an ID.** HitPay's
+   sign-up accepts a personal ID (their blog mentions sole proprietors
+   verifying with personal identification), but the **Malaysia verification**
+   asks for the **SSM Business Profile**. So the registration (ROB) is the
+   step to do first.
+3. **The platform model (Model B) is unaffected by our entity type** — the
+   KYB sits with each **sub-merchant** (each restaurant), not with us. But
+   the **Platform Key** arrangement (commissions) is commercial and may
+   assume a company on our side — worth one email to HitPay when we get
+   there.
+
+**The business side (not HitPay's business, but ours):** as an individual,
+the invoices we issue to the restaurants come from an individual trading
+as a business — the receipts, the tax and the contracts follow that
+structure. That is a decision for Kens and his accountant; the **code does
+not care** (nothing in this document assumes a company).
 
 ---
 
@@ -388,6 +445,26 @@ For each subscription due for renewal:
 is the source of truth), exactly as Stripe does today. The cron never marks
 an invoice paid because *it* decided to — and it never tries to charge a
 wallet, because there is no wallet.
+
+**Monthly and yearly both work the same way** (Kens' decision,
+November 2, 2026 — *"we can't force the customer to pay for annual if they
+use DuitNow or Touch 'n Go"*). There is **no restriction** on the billing
+cycle for the two HitPay methods:
+
+| The cycle | The invoice | The price | When the next invoice is written |
+|---|---|---|---|
+| **Monthly** | MYR 40 (Basic) | the MYR monthly row | a month later |
+| **Annual** | MYR 400 (Basic) | the MYR annual row | **a year** later |
+
+The customer chooses the cycle at the subscribe step, exactly as they do
+with Stripe. An annual HitPay customer pays **once a year** — which is
+the nicest thing about the annual plan for them: one QR, twelve months of
+access. The monthly customer pays once a month. Same flow, same button,
+same MYR invoice — only the amount and the interval differ.
+
+Nothing in the design treats the cycles differently: `resolve_price()`
+reads the `annual` column of `plan_prices` when `billing_cycle ==
+'annual'`, and the cron writes the next invoice when the period ends.
 
 ### 6.3 The upgrade
 
@@ -732,6 +809,40 @@ If the origin firewall filters, allow:
 The site sits behind Cloudflare → the **origin** (Caddy) must let those IPs
 through, and the endpoint must not be blocked by the WAF.
 
+### 9.4 How we know the customer really paid
+
+**Yes — the webhook tells us.** `payment_request.completed` means the money
+landed; `payment_request.failed` means it did not. But a webhook is an
+**inbound message from the internet**, so it is verified in four steps
+before it touches an invoice:
+
+| # | The check | What it stops |
+|---|---|---|
+| 1 | **The signature** — `Hitpay-Signature` = HMAC-SHA256 of the **raw** body with the salt, compared with `hmac.compare_digest` | a forged "paid" event |
+| 2 | **The event id** — the `hitpay_webhook_events` insert is unique | the same payment being counted twice (HitPay retries) |
+| 3 | **The reference** — our `reference` is the invoice id; the invoice must exist, belong to the customer and still be unpaid | a payment landing on the wrong invoice |
+| 4 | **The amount and the currency** — the event's amount and currency must equal the invoice's | a MYR 1.00 payment marking a MYR 80.00 invoice paid |
+
+If any check fails → the invoice is **not** touched, the event is logged,
+and (for checks 3 and 4) it raises an alert: that means somebody paid the
+wrong amount and **the money has to go back to them**.
+
+**The webhook can be delayed, or lost.** Two fallbacks:
+
+- **The reconciliation poll** — the daily cron asks HitPay for the state of
+  the payment requests it is waiting for (`GET /v1/payment-requests/{id}`)
+  and marks the invoice paid if HitPay says so. The webhook is the fast
+  path; the poll is the safety net. (The same pattern as the plan cache: a
+  push, and a pull that repairs a lost push.)
+- **The portal polls while the panel is open** — the payment panel asks the
+  API every few seconds *"is this invoice paid yet?"* so the customer sees
+  **"Payment received — thank you"** without refreshing the page. The
+  answer comes from our invoice's state, which the webhook already set.
+
+**The order of the truth:** the **gateway** is the source of truth for the
+payment; **our** invoice is the source of truth for the access. The webhook
+moves the invoice; the access rules read the invoice. Neither one guesses.
+
 ---
 
 ## 10. The renewal processor (the cron)
@@ -941,28 +1052,34 @@ the existing customers are charged. This document leaves Stripe on USD.
 
 ## 15. The open questions
 
-1. **Where is Ideazes onboarded?** A **Malaysia** account settles in MYR
-   (BNM licence) — the clean answer. A Singapore account can still take the
-   cross-border DuitNow/TnG QR, but it settles in **SGD with a conversion**,
-   so the customer is charged a converted amount and we carry the FX
-   movement. This is the first decision — and it is also the door to the
-   **auto-charge** (the recurring TnG flow needs our own merchant account
-   anyway).
-2. **The manual cycle** — a customer who is used to a card being charged
-   automatically now has to remember. Do we:
-   - (a) show it plainly (*"DuitNow and Touch 'n Go pay once per cycle — you
-     will get a reminder and a new QR each month"*), or
-   - (b) offer these methods **only** on the annual plan (one payment a
-     year), keeping the monthly plan on Stripe?
+> **Closed on November 2, 2026:** the billing cycle is **not** restricted
+> for DuitNow or Touch 'n Go (both monthly and yearly work, section 6.2),
+> and the business behind the account is a **sole proprietor** (section 2.1).
+
+1. **Where is Ideazes onboarded?** — **settled: Malaysia.** The account is a
+   Malaysian sole proprietorship (section 2.1): MYR settlement, BNM
+   licence, DuitNow and TnG as local methods. **HitPay does not onboard
+   Cambodian businesses**, so the Cambodian market is PayWay + Stripe.
+   *Still open: when the SSM Business Profile (the ROB registration) is
+   ready — it is the first step for the production account, and it is also
+   the door to the auto-charge later.*
+2. ~~The manual cycle — DuitNow/TnG only on the annual plan?~~ **Settled:
+   both cycles work.** The customer is never forced onto the annual plan
+   (section 6.2). *Still open: how plainly we say it before they choose
+   ("you will pay once a month by QR" — a wording decision, not a
+   mechanism).*
 3. **PayWay (Cambodia)** — the same document already exists
    (`payway-integration.mdx`); the country rule puts it next to Stripe and
    Pay Later for Cambodia, and it is "not integrated yet". The demo account
    is now Cambodia, so the PayWay work becomes the next country.
 4. **Should Stripe also price in MYR** for the Malaysian customers? (A
    pricing decision — section 12.4.)
-5. **Does HitPay's business verification accept our structure** (Ideazes as
-   a Malaysian entity selling SaaS to restaurants)? Their Sales team
-   (`sales@hit-pay.com`) is the right address for it.
+5. **Does HitPay's business verification accept our structure** (a sole
+   proprietor selling SaaS to restaurants)? HitPay's Malaysia rules accept
+   the entity type (section 2.1) — what is left is the *fit* with their
+   compliance team (a SaaS subscription business may draw extra
+   questions). Their Sales team (`sales@hit-pay.com`) is the right address
+   for it.
 6. **Can a customer switch the method later** (from Stripe to Touch 'n Go,
    say)? Today the upgrade route refuses a method change and asks the
    customer to contact support. A **"switch payment method"** action on
