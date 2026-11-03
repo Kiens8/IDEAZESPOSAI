@@ -1233,3 +1233,39 @@ from being swallowed - it is a new payment and gets its own invoice ✓.
 **The test:** `website_api/scripts/test_stripe_invoice_dedupe.py` - **13/13** ✓ (both event
 orders ✓, and a renewal a month later ✓). It uses its **own** customer - it deletes its
 subscriptions, so it must never touch a real account ✓.
+
+### The end-to-end test (the real Stripe checkout) - 16/16 ✓
+
+The unit test proves the handlers ✓ - but the bug lived in the **event order** ✓, so the
+only proof that counts is the **real** flow: a Stripe test checkout ✓, the test card ✓, the
+real webhook events ✓, the real handlers ✓, and then the portal ✓.
+
+`website_api/scripts/e2e_stripe_checkout.py` runs it end to end ✓ (the browser part is
+`scripts/e2e_pay.js` ✓ - it needs a display, so it runs under `xvfb-run` ✓ - the hCaptcha
+blocks a headless browser ✓):
+
+```bash
+python3 scripts/e2e_stripe_checkout.py
+```
+
+**It checks:**
+- **one** local invoice for **one** Stripe invoice ✓ (and the local invoice IS the Stripe
+  invoice ✓);
+- the price is the **promotion price** ($10 on a $20 plan ✓) and the invoice is **paid** ✓;
+- the subscription carries its **payment method** ✓, its **currency** ✓, the Stripe
+  subscription id ✓, the promotion ✓ and **the end of the period the promotion covers** ✓;
+- the Stripe side: one active subscription ✓ and one invoice ✓.
+
+**What the real run found** (the unit test could not ✗):
+- The subscription was created by the **`customer.subscription.created`** event ✓ (it arrives
+  before the checkout ✓) - that branch created the row **without** a payment method and
+  **without** a currency ✓. Both subscription-creation branches now set them ✓.
+- The Stripe promotion was **not** snapshotted ✗ (the webhook skipped it for Stripe ✗), so
+  the portal had no promotion period ✗. It is snapshotted now ✓ - with `periods = 0` ✓ (the
+  coupon covers the first invoice only ✓) and **the end of the period it covers** ✓. After
+  that period the regular price is what the next invoice costs ✓ - exactly what the Stripe
+  coupon does ✓.
+
+**The portal after the test** (`/portal/billing` ✓): **one** invoice ✓ - `INV-…` , $10.00 ✓,
+Paid ✓ - and the price line reads **$10.00  $20.00/mo** with *"Promotional price for your
+first period."* ✓.
