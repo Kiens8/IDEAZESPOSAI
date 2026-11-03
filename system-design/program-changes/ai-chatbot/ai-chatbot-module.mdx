@@ -408,6 +408,92 @@ The system prompt now says ✓:
   gets the group's staff count ✓; a **request** gets the guest's reply ✓. The staff role no
   longer has the intent ✓ (the guest keeps it ✓).
 
+## The tool layer - the chatbot queries the database (Nov 4, 2026)
+
+Kens' decisions ✓:
+
+1. **Tenant wide with an outlet filter** ✓
+2. **Read only** ✓
+3. **Admin only** ✓ (the manager's chatbot keeps the intents and the AI fallback ✓)
+4. **Aggregated** ✓ (counts and sums ✓ - never a guest's name ✓)
+
+### The shape
+
+```
+the question
+   ↓
+the intents (fast, free, exact) - "how many tables are served" ✓
+   ↓ (no intent matched, or the question is analytical)
+MiniMax-M3 gets a CATALOGUE of read-only tools ✓
+   ↓
+the model calls them: get_sales({period, outlet}) ✓
+   ↓
+the backend runs them (tenant-scoped ✓) and hands the JSON back ✓
+   ↓
+the model writes the answer in plain English ✓ - with the numbers it actually queried ✓
+```
+
+MiniMax-M3 **does** support function calling ✓ (the OpenAI-compatible `tools` + `tool_calls`
+shape ✓) ✓.
+
+### The tools (`backend/app/ai/chatbot_tools.py` ✓)
+
+| Tool | Answers |
+|---|---|
+| `get_sales` | the revenue and the order count of a period ✓ |
+| `get_orders` | the counts by status, by type and by hour ✓ |
+| `list_outlets` | the outlets: their name, their currency, their size ✓ |
+| `compare_outlets` | the same numbers for every outlet ✓ |
+| `get_tables` | the occupancy right now ✓ |
+| `get_menu_performance` | the best and the worst sellers ✓ |
+| `get_staff` | the headcount per outlet and per role ✓ |
+| `get_customers` | the guests served - counts only ✓ |
+| `get_payments` | the payment mix ✓ |
+| `get_alerts` | the recent AI alerts ✓ |
+
+### The rails
+
+- **The tenant comes from the session** ✓ - the model may ask for an **outlet** ✓, and the
+  outlet must belong to the tenant ✓. *"VARMAN"* (another tenant's outlet ✗) is **refused**
+  with the group's outlet names in the refusal ✓.
+- **Read-only** ✓ - there is no tool that writes anything ✓; the model picks a tool and passes
+  parameters ✓ - it never writes SQL ✓.
+- **Aggregated** ✓ - the tools return counts and sums ✓ - no guest's name ✓, no staff's name ✓.
+- **The money is grouped per currency and never added up** ✓ - Demo Cafe 1 bills in USD ✓ and
+  Kens SS17 in MYR ✓, and they are in the **same group** ✓ - so every figure carries its own
+  currency ✓ and the two are never summed ✓. The AI says so ✓:
+  *"the two outlets run in different currencies (USD vs MYR), so I can't rank them head-to-head
+  on revenue"* ✓.
+- **The answer is traceable** ✓ - the tools that ran come back in the API's `data.tools_used` ✓.
+
+### The test
+
+`backend/scripts/test_chatbot_tools.py` - **51/51** ✓ (the catalogue ✓, the read-only rails ✓,
+the tenant refusal ✓, the outlet filter ✓, the money grouping ✓, the periods ✓, the
+aggregation ✓, a bad argument ✓).
+
+### Phase 0 - the two silent wrong answers
+
+1. **"How much did we make yesterday?"** was answered with **today's** sales ✓ - the pattern
+   matched and the handler always reported today ✓. The sales and the completed-orders
+   handlers now **parse the period** from the question ✓ (today ✓, yesterday ✓, last 7 days ✓,
+   this week ✓, last 30 days ✓, this month ✓, this year ✓).
+2. **The currency** ✓ - the chatbot follows the **outlet's own** settings ✓ (Demo Cafe 1 is `$`
+   ✓, Kens SS17 is `RM` ✓) and every figure now names its currency code ✓.
+
+### The answer it gives now
+
+> *"Yesterday's Sales - $0.00 USD / 0 orders and RM0.00 MYR / 0 orders - yesterday was
+> completely empty for the whole group."* ✓
+>
+> *"**Demo Cafe 1** - it's the only outlet with any activity at all. Kens SS17 recorded $0 (0
+> orders) across yesterday, the last 7 days and the last 30 days."* ✓
+>
+> *"What's actually going on with Kens SS17: 0 tables, 0 staff configured for that outlet, $0
+> revenue across a full 30-day window. Since yesterday was $0 for both branches - including
+> Demo Cafe 1, which normally trades - it's worth confirming whether yesterday was a genuine
+> closed day or a data capture issue."* ✓
+
 ## Future Improvements
 
 - [ ] Translate all hardcoded strings
