@@ -102,6 +102,34 @@ older API version ✓.
 cosmetic one. The helper is verified against the **real Stripe test API** ✓ (the SDK here
 is 15.6.1 ✓, the key is a test key ✓).
 
+### The conversion statistics (Nov 4, 2026)
+
+Did the offer sell, and did the customers who took it stay?
+
+**`GET /api/admin/reports/promotion?days=90`** (`website_api/app/services/promotion_stats.py`) →
+the **Promotion** tab in the admin's Reports.
+
+| Number | What it is |
+|---|---|
+| `promo_customers` / `promo_invoices` | how many took the offer |
+| `promo_revenue` | the money the offer brought in (per currency) |
+| `promo_discount` | what the discount cost (the regular price **today** minus what they paid) |
+| `retained` / `retention_rate` | how many paid the **second** invoice at the full price |
+| `by_plan` / `by_currency` / `by_month` | the breakdowns |
+| `comparison` | every new subscription with the offer and without it, and the retention of each group |
+
+**The rules:**
+
+- A promotion invoice is the **first paid invoice** of its subscription (the promotion only
+  ever covers the first period ✓).
+- A **proration** (an upgrade) is never a promotion, even though its amount is below the
+  regular price ✓ - the proration invoices are numbered `UPG-...` ✓.
+- The discount is measured against the plan's regular price **today** (the prices are edited
+  in the admin, so that is what the offer is worth right now ✓). The **revenue** is exact ✓.
+- Every amount is per currency ✓ - the money is never added up ✓.
+
+The test: `website_api/scripts/test_promotion_stats.py` - **13/13** ✓.
+
 ### The grandfathering rule
 
 > A promotion published today applies to subscriptions that **start** today.
