@@ -309,6 +309,50 @@ Frontend Loads
 3. **Dynamic content** (menu items, prices) not translated
 4. **AI responses** depend on MiniMax language capability
 
+## The intents, the roles and the outlet (fixed Nov 4, 2026)
+
+Kens clicked the **"🪑 Tables Served"** chip as a **manager** and the bot answered
+*"🙃 I'm not sure I understand that question."* - as the **admin** the same question was
+answered fine.
+
+**It was not the role.** The chip sends **"How many tables are served?"** - and that string
+matched **no pattern**: the old `tables_served` pattern only knew *"tables served"* and *"tables
+is served"* (no **"are"** ✗). The intent fell through to `general` ✗, and from there the two
+roles diverged:
+
+| Role | `general` | What the customer saw |
+|---|---|---|
+| **admin** | the **AI fallback** ✓ | MiniMax answers it (with the outlet's data ✓) |
+| **manager** | the **canned help** ✗ | *"I'm not sure I understand that question."* ✗ |
+| **staff** | the canned help ✓ | (the chatbot is manager+ only ✓ - `ai:read` ✓) |
+
+So the admin's chatbot worked **because of the AI fallback**, not because the admin can do
+more - the intent never matched for anybody ✓.
+
+### The fixes
+
+1. **The patterns speak like people.** Every management intent now matches the natural
+   phrasing - *"how many tables are served?"* ✓, *"how many tables are occupied?"* ✓,
+   *"occupied tables"* ✓, *"how many orders are pending?"* ✓, *"how many orders are in the
+   kitchen?"* ✓, *"how many orders are ready?"* ✓, *"how many did we make today?"* ✓.
+2. **The order-count intents outrank the generic `order` intent** (score 0.9 ✓) - otherwise
+   *"how many orders are ready?"* matched `order` (the bare word *"order"*) ✗.
+3. **The manager gets the AI fallback too** ✓ - a manager has `reports:*` ✓, so the data in
+   the fallback is data they may see ✓. The **staff must not** ✗ (the fallback carries the
+   sales ✗ and they have no `reports:*` ✓).
+4. **The customer app has its own intent list** ✓ - it used to inherit the **staff's** list ✓,
+   and the staff may now ask about the tables ✓ - a guest may not ✗.
+5. **The counts are the outlet's.** `_handle_tables_served` ✓, `_handle_pending_orders` ✓,
+   `_handle_kitchen_status` ✓, `_handle_ready_orders` ✓ and `_handle_completed_orders` ✓
+   counted **every tenant's** orders ✗ - a restaurant saw another one's numbers ✗. They are
+   filtered by `outlet_id` now ✓ (`Table.outlet_id` for the tables ✓).
+
+### The test
+
+`backend/scripts/test_chatbot_intents.py` - **33/33** ✓: the chip messages ✓, the natural
+phrasings ✓, the roles ✓ (the staff may not ask about the sales ✓, the customer app may not
+ask about the tables ✓), the fallback ✓ and the outlet filters ✓.
+
 ## Future Improvements
 
 - [ ] Translate all hardcoded strings
