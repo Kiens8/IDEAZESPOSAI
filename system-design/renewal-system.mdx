@@ -1170,3 +1170,36 @@ Overdue - BLOCK
 ---
 
 *Last Updated: September 25, 2026*
+
+## The trial that converts on Stripe (fixed Nov 3, 2026)
+
+A trial is a **local** subscription (`status='trial'`, `payment_status='not_required'`) - the
+customer gives no card during the trial. When the trial ends, the cron creates the invoice
+(the promotion price ✓) and the customer pays it in the portal.
+
+**The Stripe path used to break in two places:**
+
+1. **The webhook assumed every Stripe checkout is a new subscription.** A payment session
+   (`mode='payment'`) or a checkout that settles an existing invoice
+   (`mode='subscription'` + `metadata['invoice_id']`) created a **second subscription** and a
+   **duplicate invoice** - the trial never converted, it just duplicated itself.
+2. **`find_invoice` was `async` and every caller used it without `await`.** The result was a
+   coroutine, and `invoice.stripe_pdf_url = ...` raised
+   `'coroutine' object has no attribute 'stripe_pdf_url'`. **Every** Stripe invoice event
+   (`invoice.created`, `invoice.finalized`, `invoice.paid`) died on that line - the Stripe
+   invoices were never mirrored into the ledger.
+
+**How it works now:**
+
+| Step | What happens |
+|---|---|
+| The trial ends | the cron creates the invoice at the promotion price ✓ |
+| The customer pays | the portal creates a **subscription** checkout (`mode='subscription'`) at the **regular** price + a one-time coupon for the difference ✓ - so the renewals bill themselves ✓ |
+| `checkout.session.completed` | the mode decides: an existing invoice is **settled** (paid ✓, the subscription activated ✓, the Stripe subscription attached ✓) and **no second subscription and no second invoice are created** ✓ |
+| `invoice.finalized` for the same payment | it is **linked** to our invoice, not counted twice ✓ (`_is_the_same_payment` ✓) |
+| The renewals | Stripe bills ✓, the cron skips the subscription (it has a `stripe_subscription_id` ✓) and advances the period ✓, the invoice webhooks mirror the invoice ✓ |
+
+The shared activation is `_activate_subscription_on_payment()` (it was `_hitpay_activate_subscription` -
+it was never HitPay-specific ✓).
+
+**The test:** `website_api/scripts/test_stripe_trial_conversion.py` - **15/15** ✓.

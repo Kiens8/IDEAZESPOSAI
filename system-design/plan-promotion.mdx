@@ -1,0 +1,489 @@
+---
+title: Plan Promotion System
+description: How IDEAZES POS AI sells a promotional price on a plan, and what happens at the renewal
+---
+
+# Plan Promotion System
+
+IDEAZES POS AI can sell a plan at a **promotional price**. The promotion is an offer we make to
+a **new customer** — it is not a change to the plan's price.
+
+:::info
+**A promotion applies to every payment method**
+
+DuitNow, Touch 'n Go, Stripe and Pay Later. **Stripe is just a payment method** — a customer in
+Malaysia and a customer in the United States must both be able to buy a promoted plan. The
+promotion price is therefore stored **per currency**, and the Stripe renewal has to switch the
+price back on its own.
+
+**Existing customers are never affected.** A promotion that is published today reaches only
+the subscriptions that start today.
+:::
+
+---
+
+## Core Concepts
+
+### Key Rule
+
+**A promotion is the price of a NEW subscription's FIRST billing period. From the next cycle the
+customer pays the regular price — automatically, with nobody touching anything.**
+
+### What "first period" means
+
+| The customer subscribes | The promotion covers | The next invoice |
+|---|---|---|
+| **Monthly** | the first **month** (Day 0 → Day 30) | Day 30 → the **regular** monthly price |
+| **Annual** | the first **year** | the end of the year → the **regular** annual price |
+
+So yes — **the next cycle goes back to the normal price.** The promotion is not a permanent
+discount that you have to remember to switch off, and it never becomes a surprise on a
+renewal invoice.
+
+### The three prices
+
+| Price | Where it lives | Who it applies to |
+|---|---|---|
+| **The regular price** | `plan_prices.price_monthly` / `price_annual` | every customer, every cycle |
+| **The promotion price** | `plan_prices.promo_price_monthly` / `promo_price_annual` (nullable) | a **new** subscription's first period |
+| **The snapshot** | `subscriptions.promo_price` + `subscriptions.promo_cycles_left` | the customer who was actually sold it |
+
+`promo_cycles_left` = **the upcoming PAID invoices the promotion still covers**. A normal signup
+pays its first invoice right away, so the promotion is used up immediately (`0`); a trial pays
+its first invoice at the end of the trial, so its promotion is still waiting (`1`).
+
+### Why the snapshot exists
+
+The renewal cron re-prices **from the plan** on every cycle — today the price a customer paid is
+not stored anywhere (`Subscription` has no price column).
+
+That means a naive promotion — "if the plan has a promotion price, use it" — would **silently
+re-price every existing subscriber** the moment you published the promotion, and it would repeat
+**every month, forever** until you cleared the field.
+
+The snapshot fixes both:
+
+1. **Only new subscriptions get the promotion** (the customers who signed up before it was
+   published keep the regular price).
+2. **The promotion ends by itself** (the counter runs out at the first renewal).
+
+### The confirmation email
+
+The first paid invoice of a subscription sends the **subscription confirmation email**
+(`app/services/subscription_email.py`). When the invoice was made out at the plan's
+promotion price, the email carries:
+
+- the amount they paid,
+- the regular price it discounts (struck through),
+- how much they saved (the amount and the %),
+- when the offer ends.
+
+The promotion is recognised **by the price** - the invoice amount equals the plan's
+promotion price for that currency. That works for every payment method (HitPay, Pay
+Later, Stripe - where the promotion was a one-time coupon). The invoice is the truth
+about what they paid.
+
+### The Stripe coupon - the API moved (Nov 3, 2026)
+
+The Stripe API changed under us and **both changes failed silently** (the code catches the
+exception and carries on) - so a Stripe customer was charged the **REGULAR price** while the
+site advertised the promotion:
+
+| What | Before | Now |
+|---|---|---|
+| The coupon's amount | `amount=` | `amount_off=` (the Basil API renamed it) |
+| The discount | `subscription_data={'discounts': [...]}` | `discounts=[...]` **on the session** |
+
+Both go through one helper: `website_api/app/services/stripe_coupon.py`
+(`create_one_time_coupon` ✓) - it tries `amount_off` ✓ and falls back to `amount` ✓ for an
+older API version ✓.
+
+**The lesson:** a Stripe call that fails inside a `try/except` is a *money* bug, not a
+cosmetic one. The helper is verified against the **real Stripe test API** ✓ (the SDK here
+is 15.6.1 ✓, the key is a test key ✓).
+
+### The grandfathering rule
+
+> A promotion published today applies to subscriptions that **start** today.
+> A subscription that is already running keeps the regular price at its next renewal.
+
+The regular **price change** keeps its current behaviour — if you raise a plan's regular price,
+every subscriber sees the new price at their next renewal. Only the **promotion** is
+grandfathered.
+
+---
+
+## Data Model
+
+### `plan_prices` — the promotion price (per currency)
+
+| Column | Type | Notes |
+|---|---|---|
+| `promo_price_monthly` | `Float`, nullable | the promoted monthly price |
+| `promo_price_annual` | `Float`, nullable | the promoted annual price |
+
+`NULL` = **no promotion** (both of them, or one of them — a plan can promote only its monthly
+price if it wants to).
+
+The promotion lives on the **price row**, not on the plan, because the prices are per currency:
+the site's price switch shows `plan.prices[MYR]` next to `plan.prices[USD]`, so a promotion
+must exist in the same currency as the price it discounts. Otherwise the card would show a USD
+promotion next to a MYR price.
+
+### `subscription_plans` — the label and the end date
+
+| Column | Type | Notes |
+|---|---|---|
+| `promo_price_monthly` | `Float`, nullable | the plan's own currency (the fallback when the plan has no `plan_prices` row) |
+| `promo_price_annual` | `Float`, nullable | idem |
+| `promo_label` | `String`, nullable | **the admin's own text** — the ribbon on the card ("Launch Offer", "Founding Customer") |
+| `promo_ends_at` | `Date`, nullable | optional — "the offer ends on" |
+
+### `subscriptions` — the snapshot
+
+| Column | Type | Notes |
+|---|---|---|
+| `promo_price` | `Float`, nullable | the amount this customer was sold |
+| `promo_cycles_left` | `Integer`, nullable | the upcoming PAID invoices still covered (0 after a normal signup, 1 for a trial) |
+| `promo_currency` | `String`, nullable | the currency the promotion was in (a plan price change must not reinterpret it) |
+
+### Nothing is backfilled
+
+The migration adds **nullable** columns only. `NULL` means "no promotion", so **no existing
+customer or invoice is touched** by the migration.
+
+---
+
+## The Flow
+
+### 1. The admin publishes a promotion
+
+`admin/src/pages/PlanManagement.jsx` — the create / edit plan modal:
+
+- **Promotion price (monthly)** — blank = none
+- **Promotion price (annual)** — blank = none
+- **Promotion label** — your own text, shown on the ribbon (blank = the automatic "SAVE 33%")
+- **Promotion ends on** — optional
+
+The same two promotion fields exist in the **per-currency price editor**, because the promotion
+price has to exist in every currency the plan is sold in.
+
+> **The plan modal's promotion is the plan's OWN currency, and it is mirrored into that
+> currency's price row.** The pricing cards read the `plan_prices` row (the prices are per
+> currency), so a promotion that lives only on the plan would never reach the card. The
+> backend writes it into the row of `plan.currency_code` when the plan is saved.
+
+The plan list shows a **PROMO** chip, so you can see at a glance which plans are on promotion.
+
+### 2. The site shows it
+
+`site/src/app/[locale]/page.tsx` — the pricing cards:
+
+- the **regular price struck through**, the **promotion price** next to it (the bigger number);
+- **"Save 33%"** (computed) next to it;
+- the **offer end date** when the admin set one ("Offer ends 30 Nov 2026");
+- a **diagonal corner ribbon across the top-left corner** of the card (the classic corner
+  banner: a red/orange gradient band with the fold at the corner) carrying the admin's label
+  (or "SAVE 33%" when there is no label). The card's content moves down and right so the ribbon
+  never covers the plan name;
+- the whole thing reads from `plan.prices[currency]` → the API returns the promotion price in
+  the same dictionary as the regular price.
+
+The signup page and the portal's billing page show the same treatment, plus a line that says
+what happens next: *"Your first invoice is RM60. From 4 Dec the regular price is RM80."*
+
+### 3. The customer subscribes
+
+The **server** decides the price — the browser never sends an amount:
+
+```python
+amount, currency = resolve_price_safe(db, plan, cycle, method, chosen_currency)
+promo_amount, promo_currency = resolve_promo_price_safe(db, plan, cycle, method, chosen_currency)
+if promo_amount is not None:
+    amount = promo_amount              # the first period is the promotion
+    sub.promo_price = promo_amount
+    sub.promo_cycles_left = 1
+    sub.promo_currency = promo_currency
+```
+
+The invoice is created at the promotion price, and the subscription keeps the snapshot.
+
+### 4. The renewal — the regular price
+
+At the first renewal the cron creates the next invoice:
+
+```python
+if sub.promo_cycles_left and sub.promo_cycles_left > 0:
+    amount = sub.promo_price          # the promotion still covers an invoice
+    sub.promo_cycles_left -= 1
+else:
+    amount = the regular price        # today's behaviour, unchanged
+```
+
+**The invoice at the end of the promotion period is the regular price.** The customer sees the
+promotion on the first invoice only.
+
+### 5. Stripe — the one-time coupon
+
+Stripe bills automatically, so the cron does **not** create a local invoice for a Stripe
+subscription — Stripe charges what its Checkout Session says.
+
+The Stripe price stays the **regular** price and the promotion is applied as a **one-time
+coupon** (`duration: 'once'`), which Stripe applies to the **first invoice only**:
+
+| Moment | What Stripe charges | Why |
+|---|---|---|
+| The signup | the **promotion** price | the regular price minus the one-time coupon |
+| The first renewal | the **regular** price | the coupon is spent |
+
+This is the clean way to do it: **no price swap, no race** at the period boundary (the swap
+approach would have to beat Stripe's own renewal invoice), and no dependency on the webhook or
+the cron being timely.
+
+```python
+# the difference in the checkout's own currency
+discount = round((regular_amount - promo_amount) * 100)
+coupon = stripe.Coupon.create(
+    amount=discount,
+    currency=(resolved_currency or 'USD').lower(),
+    duration='once',
+    name=f"{plan.name} promotion",
+)
+stripe.checkout.Session.create(
+    ...,
+    subscription_data={'discounts': [{'coupon': coupon.id}]},
+)
+```
+
+If the coupon cannot be created, the customer pays the **regular** price (never a wrong price)
+and the failure is logged.
+
+**The multi-currency case**: the Checkout Session uses the currency the customer chose
+(`price_data.currency`) and the coupon is created in **that** currency ✓ — the promotion price
+and the regular price are both resolved in it ✓.
+
+### 6. What if the customer upgrades during the promotion?
+
+The proration uses the subscriber's **effective** price:
+
+```
+the difference = (the target plan's REGULAR price − the subscriber's EFFECTIVE price) × days_left / days_total
+```
+
+- The subscriber's effective price = their promotion price while `promo_cycles_left > 0`,
+  otherwise the regular price.
+- The target plan's price = its **regular** price. **A mid-cycle upgrade does not receive a new
+  promotion** — the promotion is an offer for a new subscription, not a discount on the
+  difference.
+- The promotion period itself is untouched by the upgrade: the counter keeps counting down, and
+  the renewal after it is the regular price of the **new** plan.
+
+---
+
+## The Decision Table
+
+### What a renewal invoice costs
+
+| The subscription | The renewal amount |
+|---|---|
+| No promotion snapshot | the **regular** price (today's behaviour) |
+| A snapshot with `promo_cycles_left > 0` | the **promotion** price, and the counter goes down |
+| A snapshot with `promo_cycles_left = 0` | the **regular** price |
+| A Stripe subscription | Stripe's own billing — the coupon covered the first invoice |
+
+### What a new subscription costs
+
+| The plan | The first invoice | The next invoice |
+|---|---|---|
+| No promotion | the regular price | the regular price |
+| A promotion (monthly) | the promotion price | the regular price (the next month) |
+| A promotion (annual) | the promotion price | the regular price (the next year) |
+
+### What the access does
+
+**Nothing changes.** The renewal system owns the access — the grace period, the statuses, the
+blocking. A promotion is only a price; it never touches the access rules.
+
+---
+
+## Scenarios
+
+### Scenario 1: New subscription - monthly - promotion - paid on time
+
+```
+Day 0:  The customer subscribes (Pro, MYR 80/month, the promotion is MYR 60).
+        The invoice is created at MYR 60, the subscription snapshots
+        promo_price = 60, promo_cycles_left = 1.
+        The period is Day 0 → Day 30.
+Day 7:  The warning email (the renewal system's own schedule).
+Day 14: The invoice is due.
+Day 14: The customer pays MYR 60 → paid → the access is Full.
+Day 30: The renewal invoice is created at **MYR 80** (the regular price).
+        promo_cycles_left becomes 0.
+```
+
+**Result:** one month at MYR 60, then the regular price.
+
+### Scenario 2: New subscription - annual - promotion - paid on time
+
+The same flow with the annual cycle: the first invoice is the annual promotion price, and the
+invoice at the end of the year is the regular annual price.
+
+### Scenario 3: The renewal after the promotion
+
+The invoice at the end of the promotion period is the **regular** price. The customer is never
+surprised: the portal and the billing page say what the next invoice will be.
+
+### Scenario 4: A new subscription while the promotion is running
+
+The plan has a promotion price → the new customer's first invoice is at the promotion price ✓.
+The promotion applies to everybody who subscribes while it is published.
+
+### Scenario 5: A subscription that started BEFORE the promotion
+
+```
+Before the promotion:  the customer subscribed at the regular MYR 80.
+Today:                 the admin publishes the promotion (MYR 60).
+The customer's next renewal invoice: **MYR 80** (the regular price).
+```
+
+**The grandfathering rule.** The running subscription has no snapshot → the cron uses the plan's
+regular price ✓. Nothing changes for the customer, and nothing has to be migrated.
+
+### Scenario 6: An upgrade mid-cycle from a promotion subscriber
+
+```
+Pro (MYR 80) with the promotion (MYR 60), 10 of 30 days left.
+The customer upgrades to Enterprise (MYR 200).
+The difference = (200 − 60) × 10 / 30 = **MYR 46.67**
+```
+
+The old price is the subscriber's **effective** price (the promotion), not the regular price —
+otherwise the customer would be charged the difference against a price they never agreed to pay.
+
+### Scenario 7: An upgrade mid-cycle TO a promoted plan
+
+The target plan has a promotion (say RM150 instead of RM200) → the **difference is still
+computed from the regular prices**: (200 − 80) × days/total. The promotion is an offer for a new
+subscription; it does not discount the difference of a mid-cycle upgrade. The customer's renewal
+at the end of the cycle is the **regular** price of the new plan.
+
+### Scenario 8: A Stripe subscription with a promotion
+
+```
+Day 0:  The Checkout Session is created with the REGULAR price and a
+        one-time coupon for the difference. The customer pays the
+        promotion price. The subscription snapshots promo_price and
+        promo_cycles_left = 0.
+Day 30: The coupon is spent → the next Stripe invoice is the regular price.
+```
+
+No price swap, no race at the period end ✓.
+
+### Scenario 9: The promotion is removed while a customer is in their promotion period
+
+The customer's snapshot holds: their first invoice is at the promotion price (already paid) and
+their next invoice is the regular price — the same result either way ✓. Removing a promotion
+never changes an invoice that has already been issued.
+
+### Scenario 10: The promotion has no label
+
+The ribbon falls back to the automatic **"SAVE 33%"** (computed from the two prices).
+
+### Scenario 11: A trial that converts into a promotion
+
+The trial's first **paid** invoice (at the end of the trial) is the promotion price — the trial
+itself is free, so the promotion starts with the first period they actually pay for.
+
+### Scenario 12: A free plan
+
+A free plan (Starter, RM0) cannot have a promotion — the validation rejects it.
+
+---
+
+## Validation Rules
+
+| Rule | The message |
+|---|---|
+| The promotion must be greater than 0 | "The promotion price must be greater than zero" |
+| The promotion must be **lower** than the regular price | "The promotion price must be lower than the regular price" |
+| The annual promotion must be lower than the annual regular price | idem |
+| The promotion is only for a paid plan | "A free plan cannot have a promotion" |
+| The promotion price is **per currency** | it is entered in the per-currency price editor |
+| Blank = no promotion | `NULL` |
+
+---
+
+## What Does NOT Change
+
+- **The renewal system** — the access, the grace period, the statuses, the blocking. Untouched.
+  A promotion is only a price.
+- **The regular price change** — it still reaches every subscriber at their next renewal ✓.
+- **The proration formula** — the same shape, only the old price is the effective price ✓.
+- **The invoice statuses** — `pending`, `paid`, `failed`, `forgiven`, `refunded`, `cancelled` ✓.
+- **The currency rules** — DuitNow and Touch 'n Go settle in MYR, Stripe keeps the customer's
+  chosen currency ✓.
+
+---
+
+## The Implementation Map
+
+### Backend (website API)
+
+| File | The change |
+|---|---|
+| `app/models/models.py` | the new columns on `subscription_plans`, `plan_prices`, `subscriptions` |
+| `app/services/plan_pricing.py` | `resolve_promo_price_safe(db, plan, cycle, method, currency)` — the promotion price or `None` |
+| `app/services/plan_promotion.py` | **new** — the effective price of a subscription (the snapshot first, then the regular price) and the promotion entitlement helpers |
+| `app/routes/subscription.py` | the signup applies the promotion and writes the snapshot; the upgrade uses the effective price |
+| `app/routes/plans.py` | `/api/plans/published` returns the promotion prices |
+| `app/routes/admin.py` | the plan create / update / price endpoints accept the promotion fields |
+| `app/services/upgrade_proration.py` | the old price = the subscriber's effective price |
+| `scripts/send_notifications.py` | the renewal amount = the promotion price while the counter lasts |
+| `app/routes/webhooks.py` | the Stripe checkout writes the promotion snapshot (from the checkout metadata) |
+
+### Admin app
+
+| File | The change |
+|---|---|
+| `admin/src/pages/PlanManagement.jsx` | the two promotion fields + the label + the end date, the validation, the per-currency editor, the PROMO chip |
+
+### Site
+
+| File | The change |
+|---|---|
+| `site/src/app/[locale]/page.tsx` | the pricing cards: the strike-through, the promotion price, "Save X%", the ribbon |
+| `site/src/app/[locale]/portal/billing/page.tsx` | the promotion price + the regular price struck through, while the customer is in their promotion period |
+| the message catalogues (en / zh / km) | `pricing.save`, `pricing.savePercent`, `pricing.promoFirstPeriod`, `billing.promoFirstPeriod` |
+
+### The migration
+
+`website_api/scripts/migrate_promotion.py` — **idempotent** (it adds a column only when it is
+missing, so it can run on every deploy). Nullable columns only. **No backfill** — `NULL` = no
+promotion, and no running customer is touched.
+
+### The tests
+
+`website_api/scripts/test_promotion.py` — **21 checks, all passing**:
+
+1. the first invoice is at the promotion price ✓
+2. the renewal falls back to the regular price ✓
+3. a subscriber who signed up **before** the promotion pays the regular price ✓
+4. the proration from a promotion subscriber uses their promotion price ✓
+5. an upgrade **to** a promoted plan uses the regular prices ✓
+6. the trial's first paid invoice is the promotion ✓
+7. removing the promotion does not change an issued invoice ✓
+8. the published payload carries the promotion (the cards) ✓
+9. the validation (not lower than the regular price, not zero) ✓
+
+---
+
+## Related
+
+- [Subscription Renewal System](/system-design/renewal-system) — the access, the grace period, the scenarios, the trial that converts on Stripe
+- [HitPay Integration](/system-design/hitpay-integration) — the QR, the webhook, the reconciliation
+- [Multi-currency money](/system-design/multi-currency-money) — why the money is per currency and never added up
+
+---
+
+*Last Updated: November 3, 2026*

@@ -1,0 +1,86 @@
+---
+title: "Multi-currency money in the admin app"
+description: "Why the admin's numbers are per currency, and how the API reports them"
+---
+
+# Multi-currency money in the admin app
+
+The site sells in **more than one currency** (USD, MYR). Every amount that reaches the
+admin app is therefore **grouped by currency**:
+
+```json
+{ "USD": 20.0, "MYR": 135.0 }
+```
+
+There is **no** cross-currency total. RM 200 + $20 is not a number - it is a bug that
+looks like a number. Adding them up would need an exchange rate, and an exchange rate
+is a lie that gets older every minute.
+
+## What was wrong
+
+The admin's dashboard, reports and invoices summed `invoice.amount` across currencies:
+
+- "Total Revenue RM 250.00" (a mix of $20 and RM 230)
+- "MRR $ 0.00" - the MRR read `plan.price_monthly`, which is **0** for every plan whose
+  prices live in `plan_prices` (the per-currency rows).
+
+## The API
+
+`website_api/app/services/money.py` holds the helpers:
+
+| Helper | What it does |
+|---|---|
+| `group_by_currency(invoices, statuses=...)` | the money of the invoices, per currency |
+| `merge_by_currency(*groups)` | merges several currency groups |
+| `plan_price(plan, currency, cycle)` | a plan's price **in a currency** (the `plan_prices` row) |
+| `mrr_by_currency(db, subscriptions)` | the MRR, each subscription priced in the currency **its invoices are in** |
+| `changes_by_currency(current, previous)` | the change in %, per currency |
+
+The endpoints that changed shape (the admin app is the only consumer):
+
+- `GET /api/admin/dashboard` → `monthly_revenue`, `pending_revenue` and every point of
+  `revenue_chart` are per currency. `currencies` lists them.
+- `GET /api/admin/reports/summary` → `total_revenue`, `mrr` and `revenue_change` are per
+  currency.
+- `GET /api/admin/reports/revenue` → each month carries `revenue: {currency: amount}`.
+- `GET /api/admin/reports/plans` → each plan carries `prices: {currency: {monthly, annual}}`.
+- `GET /api/admin/subscriptions` → each subscription carries its `currency` and its
+  `price_monthly` **in that currency**.
+- `GET /api/admin/plans` → each plan carries `prices: {currency: {...}}`.
+
+## The admin app
+
+- `admin/src/lib/money.js` - `moneyIn(group, currency)`, `formatMoney`, `currenciesIn`.
+- `admin/src/components/CurrencyToggle.jsx` - the switcher (USD / MYR, the default USD).
+
+Every money screen (the dashboard, the reports, the invoices, the subscriptions) has the
+switcher in its header and shows **one currency at a time**.
+
+## The three extras (23:50, Nov 3)
+
+1. **The "By currency" breakdown** - under the revenue chart in the reports. Both
+   currencies side by side (total revenue, MRR, the revenue of the period) so nothing is
+   hidden behind the switcher. The money is still never added up.
+2. **A working CSV export** - the Export button had no handler at all. It now exports the
+   **selected** currency: the header (currency, period, generated), the summary, the
+   monthly revenue and the invoice lines of that currency. The currency is in the file
+   name: `ideazes-revenue-usd-2026-11-03.csv`. A UTF-8 BOM so Excel reads it.
+3. **A currency filter on the invoice list** - the rows always keep their own currency
+   (an invoice is RM 135 or $20, full stop); the filter only narrows the list down.
+
+**What the totals mean:** the totals (Total Received, Pending) are the whole book in the
+switcher's currency - they never follow the list filters. The list is the filtered view.
+
+## The rule to remember
+
+> Money that crosses a currency boundary is never added up. It is grouped, and the
+> reader picks the currency.
+
+## Related
+
+- [Plan Promotion System](/system-design/plan-promotion) — the promotion price, per currency
+- [Subscription Renewal System](/system-design/renewal-system) — the invoices, the renewal, the trial that converts on Stripe
+
+---
+
+*Last Updated: November 3, 2026*
