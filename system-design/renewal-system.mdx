@@ -1203,3 +1203,33 @@ The shared activation is `_activate_subscription_on_payment()` (it was `_hitpay_
 it was never HitPay-specific ✓).
 
 **The test:** `website_api/scripts/test_stripe_trial_conversion.py` - **15/15** ✓.
+
+### One Stripe invoice is one local invoice (fixed Nov 4, 2026)
+
+Kens subscribed the monthly Pro plan with Stripe and the portal showed **two invoices for
+the same Stripe invoice** (`in_1UXkZVE...` on both, two different invoice numbers).
+
+**Why:** Stripe sends `invoice.finalized` **before** `checkout.session.completed** for a
+subscription checkout. At that moment the local subscription does not exist yet, so the
+invoice handler could only create a **dangling** invoice (no subscription, no session) - and
+the checkout then created the real one. Two local invoices for one Stripe payment.
+
+**The rule:** one Stripe invoice is one local invoice.
+
+| Event | What it does now |
+|---|---|
+| `checkout.session.completed` | creates the invoice of a signup - and **adopts** a recent orphan (the same customer, the same amount and currency, no subscription, no session, within 15 minutes ✓) instead of creating a second one ✓ |
+| `invoice.created` / `invoice.finalized` / `invoice.paid` | **links** to the invoice we already recorded (the same subscription, the same amount, within 2 hours ✓) instead of creating a duplicate ✓ - and never creates a second invoice for the same payment ✓ |
+
+The 2-hour window and the amount check keep a **renewal** (a month later, the same amount)
+from being swallowed - it is a new payment and gets its own invoice ✓.
+
+**Two more things the same account exposed:**
+- The subscription's `payment_method` and `currency` were **empty** (they are only set in
+  the upgrade branch ✗) - now both are set on every Stripe subscription ✓.
+- The promotion snapshot was taken **before** the period was set ✗, so `promo_period_end`
+  was always empty ✗ - the period is now set first ✓.
+
+**The test:** `website_api/scripts/test_stripe_invoice_dedupe.py` - **13/13** ✓ (both event
+orders ✓, and a renewal a month later ✓). It uses its **own** customer - it deletes its
+subscriptions, so it must never touch a real account ✓.
