@@ -1219,7 +1219,12 @@ the checkout then created the real one. Two local invoices for one Stripe paymen
 | Event | What it does now |
 |---|---|
 | `checkout.session.completed` | creates the invoice of a signup - and **adopts** a recent orphan (the same customer, the same amount and currency, no subscription, no session, within 15 minutes ✓) instead of creating a second one ✓ |
-| `invoice.created` / `invoice.finalized` / `invoice.paid` | **links** to the invoice we already recorded (the same subscription, the same amount, within 2 hours ✓) instead of creating a duplicate ✓ - and never creates a second invoice for the same payment ✓ |
+| `invoice.created` / `invoice.finalized` / `invoice.paid` | **links** to the invoice we already recorded (the same subscription, the same amount, within the window ✓) instead of creating a duplicate ✓ - and never creates a second invoice for the same payment ✓ |
+
+**The window:** the *same payment* check (`_is_the_same_payment`) - the same subscription ✓,
+the same amount ✓, the same currency ✓, **within 14 days** ✓. A renewal is a month later ✓,
+so it is never swallowed ✓ (a trial that converts after 14 days is the same payment ✓ and
+*is* linked ✓).
 
 The 2-hour window and the amount check keep a **renewal** (a month later, the same amount)
 from being swallowed - it is a new payment and gets its own invoice ✓.
@@ -1269,3 +1274,19 @@ python3 scripts/e2e_stripe_checkout.py
 **The portal after the test** (`/portal/billing` ✓): **one** invoice ✓ - `INV-…` , $10.00 ✓,
 Paid ✓ - and the price line reads **$10.00  $20.00/mo** with *"Promotional price for your
 first period."* ✓.
+
+### Two more dead handlers (the E2E found them) ✓
+
+- **`invoice.created` crashed.** It read the grace period with
+  `from app.routes.admin import get_setting_value` - but that helper **moved** to
+  `app/routes/subscription.py` ✓. The handler died with an `ImportError` ✓ **every time** ✓ -
+  and a Stripe invoice whose local record was missing simply **never got one** ✓ (the
+  customer paid and the portal showed nothing ✓). The import is fixed ✓ and a settings
+  lookup can no longer kill the handler ✓.
+- **`invoice.created` and `invoice.paid` created duplicates.** They only looked the invoice
+  up by its Stripe id ✓ - the checkout handler's invoice had **no Stripe id yet** ✓ (the
+  event arrives first ✓), so they did not find it ✓ and created a second one ✓. Both link
+  now ✓ (the same payment check ✓).
+
+**The unit test found the second one** (the event order: checkout first ✓ → the invoice
+event ✓ → the duplicate ✓) - and it was the reason the E2E was worth writing ✓.
