@@ -1,0 +1,428 @@
+---
+title: Malaysia e-Invoice (MyInvois) Integration
+description: How the POS speaks to LHDN's MyInvois - the tax invoice on demand, the consolidated e-invoice for walk-in guests, and the rails around both
+---
+
+# Malaysia e-Invoice (MyInvois) Integration
+
+**Document Version:** 1.0  
+**Created:** 2026-11-04 (v1)  
+**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet  
+**Scope:** the POS backend (the ERP client), the POS frontend (the counter and the settings), the LHDN MyInvois API  
+**Related:** `hitpay-integration.mdx` (the Malaysian payment methods ✓), `multi-currency-money.mdx` (the per-outlet currency ✓ — it decides who may submit ✓), `program-changes/ai-chatbot/ai-chatbot-module.mdx` (the tool layer ✓ — the same read-only discipline ✓), `api-authentication-strategy.mdx` (the tenant rules this feature inherits ✓)
+
+## Overview
+
+Malaysia's e-Invoice mandate is live. **No industry is exempt** — restaurants included. This
+document is the plan for making the POS an e-Invoice-compliant ERP for our Malaysian
+customers: the tax invoice the guest asks for at the counter, and the consolidated e-invoice
+that covers the walk-in sales nobody asked a receipt for.
+
+Two things make this a POS problem and not an accounting problem:
+
+1. **The volume is per transaction.** A restaurant serving 200 covers a day would need 200
+   validated e-Invoices a day. LHDN's answer is the **consolidated e-Invoice**: one document
+   for all the B2C sales of a period, submitted **by the 7th of the following month** ✓.
+2. **The clock starts at the table.** The guest asks for a tax invoice *while the coffee is
+   still hot*. If the POS cannot produce one at the counter, the restaurant sends someone to
+   LHDN's portal by hand — and then does not buy a POS that cannot do it.
+
+### The shape of the solution
+
+```
+the order is paid
+   ├── the guest did NOT ask for a tax invoice → a normal receipt
+   │      └── the sale joins the CONSOLIDATED e-INVOICE (one per period, by the 7th)
+   └── the guest DID ask for a tax invoice → an INDIVIDUAL e-INVOICE
+          ├── the guest gave a TIN → validate it (once, then cache it) → the document
+          │      carries the buyer's details
+          └── the guest gave no TIN → the buyer's name + address only (never "unknown")
+```
+
+## Who is in scope
+
+| Band | Status | Note |
+|---|---|---|
+| Turnover > RM100M | in scope | already live |
+| RM25M – RM100M | in scope | already live |
+| RM5M – RM25M | in scope | already live |
+| RM1M – RM5M | from **1 Jan 2027** | deferred 12 months (announced 5 Jan 2026) |
+| Up to RM5M (Phase 4) | from 1 Jan 2026, **relaxation to 31 Dec 2027** | penalties from 1 Jan 2028 |
+| **Turnover ≤ RM3M** | **exempt** | the exemption threshold, General Guideline v4.8 (30 Aug 2026) — it was RM1M from Dec 2025 and RM500K before that |
+
+> **Read this before selling it.** Most of our restaurant customers are **under RM3M and
+> therefore exempt**. The e-Invoice is not a compliance deadline for them — it is a
+> **differentiator** for the chains that cross RM3M, for the ones that are growing towards it,
+> and for the ones whose *customers* (corporate accounts, hotels, canteens) demand an
+> e-Invoice from them. Sell it as readiness, not as a threat.
+
+**No sector is exempt** (LHDN's general FAQ) — the tourism, hospitality and F&B industries
+are in scope like everything else. The F&B-specific guidance is about *how* (the
+consolidated mechanism), not *whether*.
+
+## How MyInvois works
+
+The POS becomes an **ERP client**. LHDN does not push invoices at us — we push documents at
+LHDN and they validate them.
+
+1. **Authenticate.** OAuth 2.0 client credentials against the identity service → a bearer
+   token valid for **60 minutes** ✓.
+2. **Submit.** One or more documents, each a **base64-encoded UBL 2.1 JSON** plus its
+   **SHA-256 hash** and a **code number** (our reference) ✓. The API answers **202** with a
+   `submissionUID` and the accepted/rejected document IDs ✓ — *accepted*, not *valid*.
+3. **Wait.** Validation is asynchronous. We poll **Get Submission** until the submission is
+   `valid` or `invalid` ✓.
+4. **Show.** A valid document gets a UUID; the receipt carries the **LHDN validation QR** so
+   the guest can check it themselves ✓.
+
+### The APIs we use
+
+| API | Method & path | RPM | What it is for |
+|---|---|---|---|
+| Login as Taxpayer System | `POST /connect/token` | **12** | the client credentials → the token (60 min) |
+| Submit Documents | `POST /api/v1.0/documentsubmissions/` | **100** | the documents |
+| Get Submission | `GET /api/v1.0/documentsubmissions/{uid}` | **300** | the polling |
+| Get Document | `GET /api/v1.0/documents/{uuid}` | 60 | the detail |
+| Cancel Document | `PUT /api/v1.0/documents/state/{uuid}/state` | 12 | a mistake, within **72 hours** of validation |
+| Validate Taxpayer's TIN | `GET /api/v1.0/taxpayer/validate/{tin}?idType=&idValue=` | 60 | the buyer's TIN — **validate once, then cache** |
+| Get Document Type | `GET /api/v1.0/documenttypes/{code}` | — | the structure + the workflow parameters (the cancel window) |
+
+> The rate limit is **per Client ID** — one Client ID per tenant, so our own traffic is our
+> own problem, but a busy tenant cannot starve another one ✓.
+
+## The document we build
+
+**UBL 2.1 JSON**, `Invoice` version **1.0** (no digital signature) or **1.1** (signed).
+**Start with 1.0** — the only difference between them is the signature, and a signature is a
+whole project on its own. 1.1 is the target once the pipeline is proven ✓.
+
+### The field mapping (our `Order` → UBL)
+
+| UBL path | Ours | Notes |
+|---|---|---|
+| `Invoice.UBLVersionID` | — | `2.1` |
+| `Invoice.ID` | — | the document's own id (the UUID comes later) |
+| `Invoice.InvoiceTypeCode` | — | `01` invoice, `02` credit, `03` debit, `04` refund (`11`–`14` self-billed) |
+| `Invoice.InvoiceNumber` / `codeNumber` | `order.id` + the outlet prefix | **must be unique per taxpayer** ✓ |
+| `Invoice.IssueDate` | `order.created_at` | the outlet's timezone |
+| `Invoice.InvoiceCurrencyCode` | `outlet_settings.currency_code` | **must be MYR** — see the currency validator below |
+| `Invoice.TaxTotal` | `order.tax` | `TaxAmount` + `TaxSubtotal` per rate |
+| `Invoice.TaxTotal.TaxCategory` | `outlet_settings.sst_rate` | `SST` / `EX` |
+| `Invoice.TaxTotal.TaxSubtotal.TaxCategory.TaxSchemeID` | — | `SST` |
+| `...TaxCategory.TaxApplicablePercent` | `sst_rate` (6.0) | |
+| `...TaxCategory.TaxScheme.TaxType` | — | `01` sales tax, `02` service tax, `06` not applicable |
+| `Invoice.LegalMonetaryTotal` | `subtotal` / `discount` / `tax` / `total` | `PayableAmount` = our `total` |
+| `Invoice.InvoiceLine` | `order.items` | one per line: `ID`, `InvoicedQuantity`, `PriceAmount`, `TaxTotal` |
+| `Invoice.InvoiceLine.Item.Name` | `menu_item.name` | the multilingual name ✓ |
+| `...Item.ClassifiedTaxCategory` | the menu item's tax class | |
+| `...Item.ClassificationCode` | the item's classification code | from the code table |
+| `Invoice.PaymentMeans` | `order.payment_method` | the payment mode **code**: `01` cash, `02` cheque, `03` bank transfer, `04` credit card, `05` debit card, `06` e-wallet, `07` digital bank, `08` others — our `cash` → `01`, `card` → `04`/`05`, `duitnow_qr` / `grabpay` / `boost` / `touch_n_go` / `ewallet` → `06` ✓ (DuitNow by QR: `03` or `06` — confirm with LHDN ✓) |
+| `Invoice.PaymentMeans.PaymentID` | the payment's id | |
+| `Invoice.PaymentTerms` | the payment's terms | |
+| `Invoice.SellerParty` | the outlet | `PartyName`, `PostalAddress`, `PartyTaxScheme` (the TIN), `PartyLegalEntity` (the registration no.) |
+| `Invoice.BuyerParty` | the guest | `PartyName` + `PostalAddress` — **always** — and `PartyTaxScheme` (the TIN) when the guest gave one |
+| `Invoice.Delivery` | `order.delivery_address` | delivery orders only |
+
+> **The rule that catches people:** the buyer's details are **mandatory** on every
+> e-Invoice, even a walk-in guest's. "No TIN" is a legal buyer identity — the guest's **name
+> and address** — never a blank and never the string `unknown`. The POS already knows the
+> guest's name and phone from the loyalty app ✓; the address is the one field we may have to
+> ask for.
+
+### The code tables we must respect
+
+| Table | What we use |
+|---|---|
+| Tax types | `01` sales tax, `02` service tax, `03` tourism tax, `06` not applicable, `E` exemption |
+| e-Invoice types | `01` invoice, `02` credit note, `03` debit note, `04` refund note, `11`–`14` self-billed |
+| Currency | `MYR` — and the **exchange rate** when it is not |
+| Unit of measurement | `EA` (each) for food ✓, and the item's own unit where it differs — the table is UN/ECE Rec 20 ✓ (`EA` = each, `H87` = piece, `KGM` = kilogram …) |
+| Country | `MY` |
+| State | the 14 states + 3 federal territories |
+| Payment modes | `Cash`, `CreditCard`, `DebitCard`, `Payable`, `Cheque`, `DirectDebit`, … |
+| Classification / MSIC | the restaurant's MSIC code on the seller's party |
+
+Every one of these is validated by the **Code Validator** — a wrong code is a rejected
+document, not a warning ✓.
+
+### The validators we will meet
+
+| Validator | What it rejects | How we stay out of trouble |
+|---|---|---|
+| Structure | the document does not match the version's schema | build the JSON from the **Get Document Type** schema, and validate it locally before sending |
+| Core fields | the mandatory fields are missing | the buyer always has a name and an address |
+| Taxpayer | the seller/buyer TIN is invalid at the issue date | validate the buyer's TIN **when it is saved**, not at the counter |
+| Referenced documents | a credit note points at an invalid invoice | the credit note carries the original's UUID ✓ |
+| Code | a code is not in the table | the code tables are **seeded into the backend** at deploy time, not typed by hand |
+| **Duplicate document** | the same `codeNumber` submitted twice | the code number is immutable and unique per taxpayer — a retry **never** changes it |
+| **Currency** | the wrong currency / a missing exchange rate | **only MYR outlets may submit** — see below |
+
+> **The currency validator is a real constraint on us.** Demo Cafe 1 bills in **USD** and
+> Kens SS17 in **RM/MYR** — and they are the **same tenant**. MyInvois is a Malaysian system:
+> a USD invoice either fails the currency validator or needs an exchange rate and a foreign
+> currency code. **The rule: an outlet submits e-Invoices only when its
+> `currency_code == "MYR"`.** The USD outlet keeps its receipts; the MYR outlet gets the
+> e-Invoices. The tenant-scoped design makes this a per-outlet flag, not a per-tenant one ✓.
+
+## The two flows
+
+### A. The individual tax invoice (on request)
+
+```
+the guest asks for a tax invoice at the payment
+   → the payment panel shows a "Tax invoice" toggle + a TIN field (optional)
+   → the guest's details are validated once (Validate Taxpayer's TIN) and cached
+   → the order is marked e_invoice_requested = true
+   → the order is queued for submission
+   → the worker builds the UBL JSON, submits it, polls the submission
+   → the receipt carries the LHDN validation QR once the document is valid
+```
+
+**The guest must not wait for the network.** The receipt prints immediately with the
+document's reference and the QR is added when the document is validated (a re-print is
+available from the order) ✓. A restaurant that stalls the queue while LHDN validates is a
+restaurant that turns the feature off.
+
+### B. The consolidated e-Invoice (the walk-in sales)
+
+- Every order that was **not** individually invoiced joins the period's batch.
+- **At minimum one consolidated e-Invoice per day**, covering the B2C sales of that day,
+  submitted **by the 7th of the following month** ✓.
+- The buyer's identity is the **general public buyer identifier** LHDN designates — not a
+  customer TIN ✓.
+- The buyer **still gets a receipt** at the table ✓ — the consolidated document is the tax
+  record, the receipt is the guest's proof.
+- **If a guest asks for an individual e-Invoice, they get one on the spot** — regardless of
+  the consolidated practice ✓. The order leaves the batch.
+- B2B is **never** consolidated ✓.
+
+> The monthly batch is the piece that can be forgotten. It must be a **scheduled job with a
+> visible deadline**, not a button — and the POS must show the operator how many sales are
+> still waiting to be batched ✓.
+
+### C. The credit note (the voided order)
+
+An order that was already invoiced and must be reversed:
+- **Within 72 hours** of the validation → `Cancel Document` ✓ (free, no document).
+- **After 72 hours** → a **credit note** (`InvoiceTypeCode 02`) that references the original's
+  UUID ✓ (the Referenced Documents Validator checks it).
+
+The POS's "cancel order" action must therefore know whether an e-Invoice exists for that
+order — the cancel path cannot simply mark the order cancelled and walk away ✓.
+
+## The architecture
+
+```
+backend/app/einvoice/
+├── client.py       the HTTP client: the token cache, the rate limiter, the errors
+├── builder.py      the order -> UBL 2.1 JSON (the pure part, no I/O)
+├── codes.py        the code tables (seeded from the SDK's JSON files)
+├── submitter.py    the submit + poll + retry, the anti-patterns respected
+├── consolidated.py the daily/monthly batch builder
+├── models.py       EInvoiceSettings, EInvoiceDocument, EInvoiceSubmission
+└── routes.py       the admin routes (the settings, the documents, the retry, the batch)
+```
+
+### The tables
+
+**`einvoice_settings`** — one row per **outlet** (the seller is the outlet, and the tax
+payer is the outlet's business):
+
+| Column | Notes |
+|---|---|
+| `outlet_id` | the owner ✓ |
+| `enabled` | the outlet is an e-Invoice taxpayer |
+| `tin` | the business's TIN (the SSM number) |
+| `id_type` | `BRN` / `NRIC` / `PASSPORT` / `ARMY` |
+| `registration_no` | the business's registration number |
+| `msic_code` | the restaurant's MSIC code |
+| `client_id` / `client_secret` | **the ERP credentials — encrypted at rest** ✓ |
+| `sandbox` | the credentials point at the sandbox ✓ |
+| `cancel_window_hours` | read from the Get Document Type API, default 72 ✓ |
+| `consolidated_enabled` | the outlet batches its B2C sales ✓ |
+
+**`einvoice_documents`** — one row per document we intend to submit:
+
+| Column | Notes |
+|---|---|
+| `order_id` | the order (nullable — a consolidated document covers many) ✓ |
+| `outlet_id` | the seller |
+| `document_type` | `01` / `02` / `03` / `04` |
+| `code_number` | **immutable** — the retry uses the same one ✓ |
+| `payload` | the exact JSON we submitted (the audit trail) |
+| `document_hash` | the SHA-256 of the payload ✓ |
+| `status` | `draft` → `queued` → `submitted` → `valid` / `invalid` / `cancelled` |
+| `myinvois_uuid` | the document's UUID ✓ |
+| `submission_uid` | the submission it went in ✓ |
+| `error` | the rejection reason, verbatim ✓ |
+| `attempts` | the retry count ✓ |
+
+**`einvoice_submissions`** — one row per submission: the `submissionUID`, the status, the
+poll count, the next poll at.
+
+### The worker
+
+- A **background task** (the backend already runs scheduled jobs ✓) that picks the `queued`
+  documents, builds them, submits them and polls them.
+- The **token is cached per tenant** and refreshed at 55 minutes — **never** a token per
+  call ✓ (the SDK names this as the #1 anti-pattern).
+- The **429** answers carry a `Retry-After` — we honour it ✓.
+- The **backoff** on a failure is exponential ✓.
+- A submission is **never re-sent** because we did not hear back — the duplicate-document
+  validator would reject the second copy and the API would start throttling us ✓.
+
+## The frontend
+
+### The settings (`/settings` → **E-Invoice**, admin only)
+
+- The toggle ✓, the TIN + the id type ✓, the registration number ✓, the MSIC code ✓.
+- The **client id** and the **client secret** — entered once, stored encrypted, **never sent
+  back to the browser** (the API returns `has_credentials: true` and nothing else) ✓.
+- A **"Test connection"** button that logs in and reports ✓ (the SDK's own anti-pattern
+  list warns against pointless login attempts — this button is the only one).
+- The **sandbox** switch ✓ — the credentials are different on each side, and a restaurant
+  must never test against production by accident.
+
+### The payment panel
+
+- A **"Tax invoice"** toggle (only when the outlet is enabled and the currency is MYR) ✓.
+- The **TIN** field, with the validation happening as the guest types (debounced, cached
+  per tenant ✓).
+- The guest's **name** and **address** when there is no TIN ✓.
+- The toggle **survives the split bill** ✓ — one tax invoice per order, not per split.
+
+### The receipt
+
+- The **LHDN validation QR** once the document is valid ✓, with the document's UUID ✓.
+- The **"e-Invoice submitted, validation pending"** line while it is still in flight ✓ — the
+  guest must never be told it is done when it is not.
+- The **reprint** from the order ✓.
+
+### The orders screen
+
+- An **e-Invoice column** with the status ✓ — `not required` / `queued` / `submitted` /
+  `valid` / `invalid` ✓.
+- An **invalid document** shows the reason and offers a **retry** ✓ — the retry reuses the
+  same `codeNumber` and the same payload ✓.
+- A **cancel** action on a document that is still inside its 72-hour window ✓.
+
+### The B2B flow (the corporate account)
+
+A corporate guest (a hotel, a canteen, a company lunch) needs an individual e-Invoice with
+their TIN ✓ — the consolidated mechanism does not apply to them ✓. The POS already has the
+loyalty guest's details; the TIN is one more field on the guest ✓.
+
+## The rails
+
+The **audit recipe** applies to every route this feature adds ✓:
+
+1. **Who may call it?** → `require_permission("einvoice:read")` / `require_permission("einvoice:write")`
+   (the admin role ✓) and `require_staff_permission("staff:einvoice:read")` for the counter's
+   read-only view ✓. The **role table** is `ROLE_PERMISSIONS` in `backend/app/middleware/auth.py` ✓.
+2. **Whose data may it touch?** → the tenant helpers in `backend/app/core/tenant.py` ✓ —
+   `require_outlet_tenant` for the settings and the documents ✓. The **tenant comes from the
+   session** ✓, never from a query parameter ✓.
+3. **Did the tenant buy it?** → `require_plan_feature("E-Invoice")` ✓ — the plan cache reads
+   it live ✓ (the plan's `features` list ✓).
+4. **Does the UI agree?** → the nav item's `minRole` + `feature` in
+   `frontend/src/config/navItems.js` ✓ and the settings tab's gate ✓.
+
+The same discipline for the frontend: check `res.ok` **and** `Array.isArray(...)` before
+`.filter` / `.map` ✓; skip the call entirely when the feature is off ✓.
+
+### The credentials
+
+- The **client secret** lives **in the backend only** ✓ — never in the browser, never in the
+  receipt, never in a log line ✓.
+- Encrypted at rest ✓ (the same treatment as the other secrets ✓).
+- The **token cache is per tenant and in memory** ✓ — a restart just means one extra login ✓.
+- The **sandbox and production credentials are separate columns** ✓ so a test can never
+  touch production ✓.
+
+## The test plan
+
+### The sandbox first
+
+LHDN runs a **sandbox** with its own credentials (a lower rate limit ✓, and the data is
+deleted after 3 months ✓). **Nothing is written to production until the sandbox is green** ✓.
+
+### The local checks (before a document ever leaves)
+
+- The **JSON matches the version's schema** — checked against the structure from
+  `Get Document Type` ✓.
+- The **codes are in the tables** ✓ — the tax type, the unit, the country, the state, the
+  payment mode ✓.
+- The **currency is MYR** ✓.
+- The **buyer has a name and an address** ✓.
+- The **code number is unique** for the taxpayer ✓.
+- The **hash matches the payload** ✓.
+
+### The tests
+
+| Suite | What it proves |
+|---|---|
+| `test_einvoice_builder.py` | the order → the UBL JSON, **golden files** — the exact JSON for a normal order, a discounted order, a service-charge order, a delivery order, a credit note ✓ |
+| `test_einvoice_codes.py` | every code we emit is in the SDK's tables ✓ |
+| `test_einvoice_tenant.py` | tenant A cannot see tenant B's settings or documents; the client secret never leaves the backend ✓ |
+| `test_einvoice_submitter.py` | the token is cached (one login for many calls) ✓; a 429 honours `Retry-After` ✓; a retry reuses the code number ✓; a 202 is **not** treated as valid ✓ |
+| `test_einvoice_consolidated.py` | the batch covers exactly the uninvoiced B2C sales of the period, once, and never includes a guest who asked for an individual invoice ✓ |
+
+### The live probe (the audit recipe's)
+
+```bash
+curl -s -b tenantA.jar "https://app.ideazes.com/api/einvoice/settings?customer_id=<B>"  # must be 403
+curl -s -H "X-API-Key: customer_app_key" "https://app.ideazes.com/api/einvoice/settings"  # must be 403
+curl -s -b tenantB.jar "https://app.ideazes.com/api/einvoice/settings?customer_id=<B>"   # must be 200
+```
+
+## The phased plan
+
+**Phase 1 — the taxpayer (2 weeks)**
+The settings, the credentials, the sandbox connection, the builder, the individual tax
+invoice for one outlet, the receipt's QR ✓.
+
+**Phase 2 — the counter (1 week)**
+The payment panel's toggle, the TIN validation, the guest's details, the orders screen's
+status column, the retry ✓.
+
+**Phase 3 — the batch (2 weeks)**
+The daily consolidated e-Invoice, the scheduled monthly submission with the **7th** deadline
+visible, the B2B split out of the batch ✓.
+
+**Phase 4 — the group (2 weeks)**
+Multi-outlet, the credit notes, the cancellation inside the 72-hour window, the self-billed
+documents, the reports ✓.
+
+**Phase 5 — the digital signature (later)**
+Invoice **v1.1** — the signature. A separate project ✓.
+
+## The open questions
+
+1. **The QR code endpoint.** The SDK lists a "Taxpayer's QR Code" API (60 RPM) — the exact
+   path and the payload must be confirmed against the SDK page before the receipt work
+   starts ✓.
+2. **The structure of v1.0 in practice** — the field paths must be taken from
+   `Get Document Type` (the SDK serves the structure definition) rather than guessed from
+   the UBL spec ✓.
+3. **The consolidated document's buyer identifier** — the exact value LHDN designates for
+   the "general public buyer" ✓.
+4. **The daily vs the monthly batch** — LHDN's FAQ describes at least one consolidated
+   document per day and a monthly submission by the 7th; we should confirm whether the daily
+   document is required or optional ✓.
+5. **The VAT** — the VAT regime replaces SST; the tax type codes will change with it ✓ —
+   the code tables are seeded, so this is a deploy, not a code change ✓.
+
+## The sources
+
+- The SDK — [Getting started](https://sdk.myinvois.hasil.gov.my/start/),
+  [the APIs](https://sdk.myinvois.hasil.gov.my/api/),
+  [Submit Documents](https://sdk.myinvois.hasil.gov.my/einvoicingapi/02-submit-documents/),
+  [Login as Taxpayer System](https://sdk.myinvois.hasil.gov.my/api/07-login-as-taxpayer-system/),
+  [Validate Taxpayer's TIN](https://sdk.myinvois.hasil.gov.my/einvoicingapi/01-validate-taxpayer-tin/),
+  [Cancel Document](https://sdk.myinvois.hasil.gov.my/einvoicingapi/03-cancel-document/),
+  [the code tables](https://sdk.myinvois.hasil.gov.my/codes/),
+  [the document types](https://sdk.myinvois.hasil.gov.my/types/),
+  [the validation rules](https://sdk.myinvois.hasil.gov.my/document-validation-rules/),
+  [the integration practices](https://sdk.myinvois.hasil.gov.my/integration-practices/)
+- LHDN's general FAQ — <https://www.hasil.gov.my/wp-content/uploads/lhdnm-e-invoice-general-faqs.pdf>
+- The General Guideline v4.8 (30 Aug 2026) — the RM3M exemption threshold ✓
