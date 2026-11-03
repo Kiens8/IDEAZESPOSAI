@@ -349,9 +349,64 @@ more - the intent never matched for anybody ✓.
 
 ### The test
 
-`backend/scripts/test_chatbot_intents.py` - **33/33** ✓: the chip messages ✓, the natural
+`backend/scripts/test_chatbot_intents.py` - **45/45** ✓: the chip messages ✓, the natural
 phrasings ✓, the roles ✓ (the staff may not ask about the sales ✓, the customer app may not
 ask about the tables ✓), the fallback ✓ and the outlet filters ✓.
+
+## The admin's chatbot gets the group's data (fixed Nov 4, 2026)
+
+The admin asked *"Now we have how many outlets?"* and the bot answered *"The number of outlets
+isn't available in the current data"* - and then quoted the **tables**, which it did have.
+
+**Why:** the AI fallback's context held **one outlet's** numbers (today's sales, the pending
+orders, the tables, the popular items) - **nothing about the group** ✓. The outlet count was
+never in it ✓, so the model said so ✓ (it did NOT invent a number ✓ - it quoted the tables it
+really had ✓).
+
+### What the admin's chatbot knows now
+
+| In the context | What it is |
+|---|---|
+| **the outlets** | the count, the names and **per outlet**: the tables, the staff, today's sales and today's orders ✓ |
+| **the staff count** | the group's active staff accounts ✓ |
+| today's sales | the revenue, the orders, the average order value ✓ |
+| 7 days / 30 days | the same three ✓ |
+| the pending orders | the outlet's ✓ |
+| the tables | occupied / total / available ✓ |
+| the popular items | the top five of the last 7 days ✓ |
+
+The **tenant** is the outlet's `customer_id` ✓ (the restaurant group ✓) - the same rule the
+rest of the backend uses ✓.
+
+### A new intent: `outlets`
+
+*"How many outlets do we have?"* is answered **exactly** ✓ - the count, and each outlet with
+its tables, its staff and today's sales ✓ (the manager may ask ✓, the staff may not ✓).
+
+A **comparison** (*"which outlet is doing better?"*) is deliberately **not** an intent ✓ - it
+goes to the AI ✓, which has the per-outlet numbers and can reason about them ✓:
+
+> *"Neither outlet is outperforming the other today - both have $0 sales and 0 orders. However,
+> Demo Cafe 1 is more operational, with 14 tables and 2 staff, while Kens SS17 has 0 tables."* ✓
+
+### The prompt's rules about the data
+
+The system prompt now says ✓:
+1. the numbers are the whole truth - if the answer is not in them, say it is not available ✓,
+   never estimate, never guess, never invent a number ✓;
+2. a question about the **group** uses the OUTLETS lines ✓ - not the single outlet's numbers ✓;
+3. a zero is a zero ✓ - do not soften it ✓.
+
+### Two more traps
+
+- **`"hi"` matched `"which"`.** The greeting pattern was the bare word `hi` ✓, so *"which
+  outlet is doing better?"* was a **greeting** ✓ (and so were *"this"* ✓ and *"chips"* ✓). The
+  patterns have word boundaries now ✓ (`\bhi\b` ✓, `\bhello\b` ✓, `\bhey\b` ✓).
+- **The `staff` intent was the guest's.** *"I need a waiter"* is a **guest's** request ✓, but
+  the admin's *"How many staff do we have?"* got the guest's reply (*"just wave and our team
+  will assist you"* ✗). The intent now answers **both shapes** ✓: a **count** (*"how many"*)
+  gets the group's staff count ✓; a **request** gets the guest's reply ✓. The staff role no
+  longer has the intent ✓ (the guest keeps it ✓).
 
 ## Future Improvements
 
