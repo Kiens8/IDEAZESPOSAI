@@ -3,9 +3,9 @@ title: The Kitchen Full Screen (the KDS wall display)
 description: The Kitchen Display gets a full-screen mode, built exactly like the Staff Order kiosk
 ---
 
-**Document Version:** 1.3  
+**Document Version:** 1.5  
 **Created:** 2026-11-04  
-**Status:** **BUILT AND DEPLOYED ✓** — Phase 1 ✓, Phase 2 ✓ and Phase 3 ✓ are live on `app.ideazes.com` ✓ ✓ · **v1.1: the two open questions are answered ✓ (no PIN on the Exit ✓, no auto-return ✓)** · **v1.2: Phase 1 landed ✓ and was verified in a browser ✓** · **v1.3: Phases 2 and 3 landed ✓ and were deployed ✓**  
+**Status:** **BUILT AND DEPLOYED ✓** — Phase 1 ✓, Phase 2 ✓ and Phase 3 ✓ are live on `app.ideazes.com` ✓ ✓ · **v1.1: the two open questions are answered ✓ (no PIN on the Exit ✓, no auto-return ✓)** · **v1.2: Phase 1 landed ✓ and was verified in a browser ✓** · **v1.3: Phases 2 and 3 landed ✓ and were deployed ✓** · **v1.4: the embedded header overflowed on a phone ✓ — fixed ✓** · **v1.5: the Full screen button gets its own row on a phone ✓ + the status cards 2×2 ✓ — deployed ✓**  
 **Scope:** the POS frontend ✓ (`frontend/src/` ✓) — **no backend change** ✓, **no new endpoint** ✓, **no new plan feature** ✓  
 **Related:** `pos-app/kitchen-kds` (the user-facing Kitchen documentation ✓) · the Staff Order kiosk (`frontend/src/pages/StaffOrder.jsx` ✓) · the app shell (`frontend/src/App.jsx` ✓)
 
@@ -72,6 +72,24 @@ contrast on the screen ✓ — and the kitchen borrows it **as it is** ✓:
 | a translucent button ✓ | `bg-white/10 hover:bg-white/20 border border-white/10 text-slate-100` ✓ |
 | the **Exit** button ✓ | `bg-white hover:bg-slate-100 text-slate-900 text-sm font-semibold` ✓ |
 | the page ✓ | `bg-slate-100` ✓ — the cards stay white ✓ ✓ |
+
+**The embedded header on a phone ✓ (v1.4 ✓)** — the same rule as the kiosk ✓: **the
+buttons drop their labels** ✓ (`hidden sm:inline` ✓) so the row is icons ✓, the **title
+shrinks and truncates** ✓ (`text-lg sm:text-2xl` ✓ + `truncate` ✓), the **active-count chip
+steps aside** on the smallest screens ✓ (`hidden sm:inline-flex` ✓ — the status cards below
+carry the counts ✓ ✓), and the right-hand group is `shrink-0` ✓ with the left `min-w-0` ✓ →
+the buttons are **never clipped** ✓ ✓.
+
+**The Full screen button gets its own row on a phone ✓ (v1.5 ✓)** — in the header row it
+was pushed against the screen edge and did not line up with the cards below ✓ → on a phone
+it is now **its own full-width row under the header** ✓ (`sm:hidden w-full` ✓, the same
+16px margins as the content ✓ → **it lines up with the cards** ✓ ✓); on the desktop it stays
+in the header row ✓ with its label ✓ (unchanged ✓ ✓).
+
+**The status cards go 2×2 on a phone ✓ (v1.5 ✓)** — in a 4-wide grid at 390px the labels
+("Pending", "Confirmed", "Preparing") were **clipped by the card borders** ✓ ✓ → now
+`grid-cols-2 sm:grid-cols-4` ✓ ✓, and the **settings readout wraps** ✓ (`flex-wrap` ✓)
+instead of one long line ✓ ✓.
 
 **The kitchen's own pieces, re-skinned for the wall ✓**
 - the **active count** chip ✓ (today `bg-orange-100 text-orange-700` ✓) → in the kiosk it
@@ -171,6 +189,14 @@ in `lucide-react` ✓ ✓) ✓.
   never reaches `/kitchen/full` ✓ ✓;
 - a **refresh** on `/kitchen/full` keeps the kiosk ✓ (the route decides ✓ ✓) ✓;
 - the reminder pulse ✓ and the countdown ✓ still read correctly ✓ at the larger type ✓ ✓;
+- the phone ✓ — the embedded Kitchen ✓ — the header fits ✓ (no clipping ✓, no horizontal
+  overflow ✓ — `document.scrollWidth` = the window width ✓) ✓ and the **Full screen button
+  has its own full-width row** ✓ under the header ✓, aligned with the cards ✓ ✓;
+- the phone ✓ — the status cards ✓ — **2×2** ✓ and every label readable ✓ (no clipping ✓
+  ✓) and the settings readout wraps ✓ ✓;
+- the desktop ✓ — unchanged ✓: the title stays `text-2xl` ✓, the labels stay visible ✓,
+  the chip stays ✓, the Full screen button stays **in the header row** ✓ and the status
+  cards stay **4 across** ✓ ✓;
 - the phone ✓ — the kiosk hides the bottom bar ✓ and the header wraps to the icons only
   ✓ (the same `hidden sm:inline` treatment ✓ ✓) ✓;
 - the **kiosk-only** rule ✓ — the embedded screen keeps its sizes ✓ and its settings line ✓ ✓;
