@@ -5,17 +5,44 @@ description: How the POS speaks to LHDN's MyInvois - the tax invoice on demand, 
 
 # Malaysia e-Invoice (MyInvois) Integration
 
-**Document Version:** 2.0  
-**Created:** 2026-11-04 (v1) · **Updated:** 2026-11-04 (v2 — the submission rules were read out of LHDN's own guidelines: **monthly**, not daily ✓ and three findings that change the design ✓)  
+**Document Version:** 3.0  
+**Created:** 2026-11-04 (v1) · **Updated:** 2026-11-04 (v2 — the submission rules were read out of LHDN's own guidelines: **monthly**, not daily ✓ and three findings that change the design ✓) · **v3 (a review against the guidelines and the SDK: six corrections and ten design holes closed ✓)**  
 **Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet  
 **Scope:** the POS backend (the ERP client), the POS frontend (the counter and the settings), the LHDN MyInvois API  
 **Related:** `hitpay-integration.mdx` (the Malaysian payment methods ✓), `multi-currency-money.mdx` (the per-outlet currency ✓ — it decides who may submit ✓), `program-changes/ai-chatbot/ai-chatbot-module.mdx` (the tool layer ✓ — the same read-only discipline ✓), `api-authentication-strategy.mdx` (the tenant rules this feature inherits ✓)
 
 > **v2 changed three things.** The consolidated e-Invoice is **monthly**, submitted within
 > **7 calendar days after the month-end** — not daily ✓ (§3.6.2 ✓). A single transaction
-> above **RM10,000** needs its **own** e-Invoice, in every phase ✓ (Table 3.6 ✓). And the
-> buyer may ask for an e-Invoice **later, within the month of the transaction** ✓ (§3.6.8 ✓)
-> — which is the whole reason the monthly cut-off exists, and which the POS must support.
+> above **RM10,000** needs its **own** e-Invoice ✓ (Table 3.6 ✓ — **but not during the
+> interim relaxation period ✓**, see v3 below). And the buyer may ask for an e-Invoice
+> **later, within the month of the transaction** ✓ (§3.6.8 ✓) — which is the whole reason
+> the monthly cut-off exists, and which the POS must support.
+
+> **v3 (this revision) — six corrections, read back out of the guidelines and the SDK ✓**
+> 1. **The RM10,000 rule is not "every phase"** ✓ — §16.2(a) ✓: during the **interim
+>    relaxation period** a taxpayer **may** consolidate everything, including the §3.7
+>    categories ✓. Phase 4 (up to RM5M) is relaxed **until 31 December 2027** ✓
+>    (Table 16.1 ✓) — and that is **our** customer segment ✓ → the guard becomes a
+>    **setting**, not a hard rule ✓ (§16.2 ✓).
+> 2. **§16.2(d) ✓** — during the relaxation period a supplier may even **decline** a
+>    buyer's request for an individual e-Invoice ✓ → the POS must **record** the request
+>    and say "consolidated", not fail ✓.
+> 3. **The receipt reference goes in the *"Description"* field** ✓ (Table 3.5's note ✓,
+>    Examples 2 and 3 ✓) — and the field mapping had no row for it ✓.
+> 4. **The QR is ours to draw** ✓ — the SDK's "Taxpayer's QR Code" API reads a
+>    *business's* QR ✓, it is **not** the receipt's validation QR ✓ (General Guideline
+>    v4.8 §2.4.4 ✓: the supplier embeds a validation link ✓).
+> 5. **The rate limit is per Client ID** ✓ — and in the **intermediary** model that is
+>    **one shared bucket for every tenant** ✓ → a fair queue, not "our traffic is
+>    separate" ✓.
+> 6. **The consolidated buyer's details are in Table 3.5** ✓ (Specific Guideline v4.9 ✓)
+>    — not Appendix 2 ✓ (that one is about shipping recipients ✓).
+>
+> **v3 also closes ten design holes** ✓ — the batch lock ✓, the correction strategy for
+> an invalid consolidated document ✓, the buyer's rejection path ✓, the multi-tax model
+> (a service charge is service tax, not sales tax ✓), the tax-inclusive rounding ✓, the
+> split payment ✓, the TIN lookup ✓, the portal's ownership proof ✓, the counter's write
+> permission ✓, and the six missing APIs ✓.
 
 ## Overview
 
@@ -38,15 +65,17 @@ Two things make this a POS problem and not an accounting problem:
 ```
 the order is paid
    ├── the guest did NOT ask for a tax invoice → a normal receipt
-   │      └── the sale joins the MONTHLY CONSOLIDATED e-INVOICE (by the 7th of the next month)
+   │      └── the sale joins the MONTHLY CONSOLIDATED e-INVOICE (locked on the 1st,
+   │             submitted by the 7th of the next month)
    ├── the guest DID ask for a tax invoice → an INDIVIDUAL e-INVOICE
    │      ├── the guest gave a TIN → validate it (once, then cache it) → the document
    │      │      carries the buyer's details
+   │      ├── the guest gave a name or an id but no TIN → Search Taxpayer's TIN
    │      ├── the guest gave only a MyKad / MyPR / MyKAS → the General TIN + the id number
    │      ├── the guest gave only a passport (a foreigner) → EI00000000020 + the passport
    │      └── the guest gave nothing → they get a receipt, and the sale is consolidated
-   └── the guest asks LATER (within the month) → the order leaves the batch and is
-          invoiced individually (the retro-request)
+   └── the guest asks LATER (within the month, before the batch lock) → the order leaves
+          the batch and is invoiced individually (the retro-request)
 ```
 
 ## The rules, as LHDN actually wrote them
@@ -61,11 +90,14 @@ blog ✓.
 | The supplier may aggregate **one or a combination**: (a) each receipt's summary as separate line items, (b) the receipts as line items **in a continuous receipt-number chain** (a break in the chain starts a new line item), (c) **per branch or location**, adopting (a) or (b) | Specific Guideline v4.9 **§3.6.3** ✓ |
 | *"the receipt reference number for each transaction are required to be included"* in the consolidated e-Invoice | Specific Guideline v4.9 **Table 3.5** ✓ |
 | The limits: **5MB per submission**, **100 e-Invoices per submission**, **300KB per e-Invoice** — and the supplier may **split** the receipts into several consolidated e-Invoices to meet them | Specific Guideline v4.9 **§3.6.4** ✓ |
-| Consolidation is **not allowed** for: motor vehicles, flight tickets, private aircraft charters, luxury goods & jewellery, construction contracts and materials, betting & gaming payouts, agent/dealer/distributor payments — **and any single transaction above RM10,000** (effective 1 Jan 2026, every business, every phase) | Specific Guideline v4.9 **Table 3.6** ✓ |
+| Consolidation is **not allowed** for: motor vehicles, flight tickets, private aircraft charters, construction contracts and materials, betting & gaming payouts, agent/dealer/distributor payments — **and any single transaction above RM10,000** (effective 1 Jan 2026 ✓). *Luxury goods & jewellery is **on hold** ✓ — "taxpayers are allowed to issue consolidated e-Invoice … until further notice" ✓ — so it is **not** on our list.* | Specific Guideline v4.9 **Table 3.6** ✓ |
+| **BUT** during the **interim relaxation period** the taxpayer **may** consolidate **all** activities and transactions, **including the Table 3.6 industries** ✓ — and **may decline** an individual e-Invoice request ✓ | Specific Guideline v4.9 **§16.2(a)** and **§16.2(d)** ✓ |
+| The relaxation lasts **six months** from each phase's implementation date ✓ — and for **Phase 4 (up to RM5M) it runs until 31 December 2027** ✓ (both the 1 Jan 2026 and the 1 Jul 2026 implementation dates ✓). Phases 1–3 are already past it (31 Jan 2025 / 30 Jun 2025 / 31 Dec 2025 ✓) | Specific Guideline v4.9 **Table 16.1** ✓ |
+| For a **consolidated** e-Invoice, IRBM notifies the **Supplier only** ✓ — no buyer notification ✓, and therefore **no buyer rejection** is possible ✓ — and the validated document **need not be shared** with the buyer ✓ | Specific Guideline v4.9 **§3.6.10** ✓ |
 | *"if Buyers require an e-Invoice after receiving a receipt from the Supplier, the Buyer can request for an e-Invoice from the Supplier **within the month of the transaction**. The aforementioned timeframe allows the Supplier to have a cut-off for the receipt to be aggregated into the consolidated e-Invoice"* | Specific Guideline v4.9 **§3.6.8** ✓ |
 | Consolidation does **not** apply to self-billed e-Invoices (except transactions with individuals and interest payments to the public) | Specific Guideline v4.9 §3.6.5 ✓ |
 | The POS flow: the cashier asks for the buyer's details (**up to 60 seconds** of interaction), the POS sends the request, and *"the API responds to the POS with a validated e-Invoice **in less than two (2) seconds**"* — the POS then displays it to the cashier and prints it | Specific Guideline v4.9 **Figure 3.10** ✓ |
-| The transmission methods: (i) a direct ERP integration, (ii) **Peppol service providers**, (iii) **non-Peppol technology providers** — our POS is (iii) ✓ | e-Invoice Guideline v2.0 ✓ |
+| The transmission mechanisms: (i) a direct API connection to IRBM, (ii) **Peppol technology providers**, (iii) **non-Peppol technology providers** — our POS is (iii) ✓ | General Guideline v4.8 **Table 2.1** ✓ |
 | The exemption threshold is **RM3M** annual turnover/revenue | General Guideline v4.8 §1.6.1(e) ✓ |
 
 ### The buyer's details we must collect at the counter (Table 3.1 ✓)
@@ -89,7 +121,7 @@ non-Malaysian individual who has no TIN gives the **passport number** ✓, and w
 | **`EI00000000010`** | the MyKad / MyTentera / MyPR / MyKAS holder with no TIN ✓ · **the consolidated e-Invoice's buyer** ✓ |
 | **`EI00000000020`** | the foreigner with only a passport ✓ · an export transaction with no foreign TIN ✓ |
 
-### The consolidated buyer's details — verbatim (Appendix 2 ✓)
+### The consolidated buyer's details — verbatim (Table 3.5 ✓)
 
 | Field | What we put |
 |---|---|
@@ -99,6 +131,23 @@ non-Malaysian individual who has no TIN gives the **passport number** ✓, and w
 | Address | `NA` ✓ |
 | Contact number | `NA` ✓ |
 | SST registration number | `NA` ✓ |
+| MSIC code | the **taxpayer's own** MSIC ✓ (the "00000" instruction is for the consolidated **self-billed** document ✓) |
+| Classification | a 3-digit integer from IRBM's catalogue ✓ |
+| Description of product / service | **the receipt reference number(s)** ✓ — see below ✓ |
+
+> **The citation is Table 3.5** ✓ of the Specific Guideline v4.9 ✓ — *"Details to be
+> included by Supplier for issuance of consolidated e-Invoice"* ✓ — **not** Appendix 2 ✓
+> of the General Guideline (that one is the **import/export shipping recipient** list ✓).
+
+> **And where the receipt reference goes ✓:** *"the receipt reference number for each
+> transaction are required to be included under this field in the consolidated e-Invoice"*
+> ✓ (Table 3.5's note ✓) — and Examples 2 and 3 say it plainly ✓: *"required to include
+> all the receipt reference numbers that made up the total sales in **'Description' field**
+> for the relevant branch"* ✓. So the receipt reference is **`InvoiceLine.Item.Description`**
+> ✓ — under method (a) it is one receipt's summary, under method (b) it is the **chain of
+> receipt numbers** in one description ✓. *During the relaxation period we may put
+> anything in that field ✓ (§16.2(c) ✓) — but the receipt number is what the auditor
+> wants ✓, so we keep it ✓.*
 
 > So the consolidated document needs **no guest data at all** ✓ — it is issued to the
 > General Public ✓ and its only obligation to us is to carry **each receipt's reference
@@ -155,10 +204,11 @@ at LHDN and they validate them ✓.
    **SHA-256 hash** and a **code number** (our reference) ✓. The API answers **202** with a
    `submissionUID` and the accepted/rejected document IDs ✓ — *accepted*, not *valid* ✓.
 3. **Wait.** Validation is asynchronous ✓. We poll **Get Submission** until the submission
-   is `valid` or `invalid` ✓. In practice the validated document comes back in **under two
+   is `valid` or `invalid` ✓ — and the **notifications** tell us the same thing without
+   the polling ✓ ✓. In practice the validated document comes back in **under two
    seconds** ✓ (the guideline's own POS flow ✓).
-4. **Show.** A valid document gets a UUID ✓; the receipt carries the **LHDN validation QR**
-   so the guest can check it themselves ✓.
+4. **Show.** A valid document gets a UUID ✓; the receipt carries the **validation QR we
+   draw from that UUID** ✓ so the guest can check it themselves ✓.
 
 ### The APIs we use
 
@@ -172,9 +222,29 @@ at LHDN and they validate them ✓.
 | Cancel Document | `PUT /api/v1.0/documents/state/{uuid}/state` | 12 | a mistake, within **72 hours** of validation ✓ |
 | Validate Taxpayer's TIN | `GET /api/v1.0/taxpayer/validate/{tin}?idType=&idValue=` | 60 | the buyer's TIN — **validate once, then cache** ✓ |
 | Get Document Type | `GET /api/v1.0/documenttypes/{code}` | — | the structure + the workflow parameters (the cancel window) ✓ |
+| **Get All Document Types** | `GET /api/v1.0/documenttypes` | — | the catalogue of the types + their versions ✓ |
+| **Get Document Type Version** | `GET /api/v1.0/documenttypes/{code}/versions/{version}` | — | the **v1.0 → v1.1** structure ✓ (the migration path ✓) |
+| **Get Notifications** | `GET /api/v1.0/notifications` | — | **the push channel** ✓ — the invoice clearance ✓ and the buyer's rejection ✓ (General Guideline v4.8 §2.3.4 ✓) — it replaces most of the polling ✓ |
+| **Get Document Details** | `GET /api/v1.0/documents/{uuid}/details` | — | the **validation result** and the error list ✓ — what the retry screen reads ✓ |
+| **Search Documents** | `GET /api/v1.0/documents` | — | the reconciliation ✓ — find our own document by `codeNumber` after a crash ✓ (the SDK names "Get Recent Documents" as the anti-pattern ✓ — it only sees 31 days ✓) |
+| **Search Taxpayer's TIN** | `GET /api/v1.0/taxpayers/search` | — | **find a TIN by name, or by idType + idValue** ✓ — the counter needs this ✓ (a guest knows their name and IC, **not** their TIN ✓) |
+| **Reject Document** | buyer side | — | the **buyer rejects** our e-Invoice within 72 hours ✓ → we must cancel or credit-note ✓ (General Guideline v4.8 §2.3.6 ✓) |
+| Taxpayer's QR Code | `GET /api/v1.0/taxpayers/qrcodeinfo/{qrCodeText}` | 60 | reads a **business's** QR ✓ (TIN, BRN, SST, MSIC, address ✓) — **it is not the receipt's QR** ✓ |
 
-> The rate limit is **per Client ID** ✓ — one Client ID per tenant keeps our traffic
-> separate, but a busy tenant cannot starve another one ✓.
+> **The rate limit is per Client ID** ✓ — and **in the intermediary model that is one
+> bucket for every tenant** ✓ (we hold one credential ✓). So the claim "a busy tenant
+> cannot starve another one" is **false** in the model we recommend ✓ → the worker needs
+> a **fair queue** ✓: one in-flight submission per tenant, round-robin between the
+> tenants, and a per-tenant daily cap ✓. *In the **direct** model each tenant has its
+> own Client ID ✓ and the isolation is free ✓ — that is a real argument for the direct
+> model for the big chains ✓.*
+
+> **The receipt's validation QR is ours to draw ✓** — there is **no API** that returns
+> it ✓. The General Guideline v4.8 §2.4.4 ✓ says the *supplier* *"embeds a QR code which
+> contains a **validation link** to the visual representation of the validated e-Invoice"*
+> ✓ — so we build the QR from the document's **UUID** ✓ (a MyInvois validation URL ✓)
+> and print it on the receipt ✓. The SDK's "Taxpayer's QR Code" API ✓ is a different
+> thing entirely ✓ (it reads a business's own QR ✓).
 
 ### Two ways to be connected — and which one we pick
 
@@ -186,7 +256,7 @@ at LHDN and they validate them ✓.
 | The risk | the tenant's key sits in our database ✓ | we are on the hook for every tenant's document ✓ |
 | Fits | the big chains with their own ERP ✓ | **the long tail — our customers** ✓ |
 
-> **We are a "non-Peppol technology provider"** ✓ (e-Invoice Guideline v2.0 ✓) — the model
+> **We are a "non-Peppol technology provider"** ✓ (General Guideline v4.8 ✓, Table 2.1 ✓) — the model
 > the market's integrators use ✓. **Recommendation: the intermediary model** ✓ — one LHDN
 > credential for the platform ✓, one authorisation per tenant ✓, and the tenant's own
 > credentials stay theirs ✓. The **direct model** is the fallback for a chain that insists
@@ -197,6 +267,12 @@ at LHDN and they validate them ✓.
 **UBL 2.1 JSON** ✓, `Invoice` version **1.0** (no digital signature) or **1.1** (signed) ✓.
 **Start with 1.0** ✓ — the only difference between them is the signature, and a signature
 is a whole project on its own ✓. 1.1 is the target once the pipeline is proven ✓.
+**But v1.0 is on borrowed time** ✓ — the SDK says *"v1.0 … will be deprecated and replaced
+by version 1.1 at a later date that will be announced later"* ✓ → the signing work is
+**not** a Phase 5 luxury ✓, it is a **migration with a deadline we do not know yet** ✓ →
+the certificate / PKI lead time has to start early ✓ ✓. The SVDP versions are **v1.2
+(unsigned)** ✓ and **v1.3 (signed)** ✓ ✓ — note the SDK's numbering ✓, and the guideline's
+"**SVDP 1.2**" ✓ / "**SVDP 1.3**" ✓ ✓ — they are the same documents ✓.
 
 ### The field mapping (our `Order` → UBL)
 
@@ -218,17 +294,38 @@ is a whole project on its own ✓. 1.1 is the target once the pipeline is proven
 | `Invoice.InvoiceLine.ID` | — | the line number ✓ |
 | `Invoice.InvoiceLine.InvoicedQuantity` | the quantity | `unitCode: "C62"` (one) ✓ — the SDK's sample ✓; `EA` (each) is equally valid ✓ |
 | `Invoice.InvoiceLine.LineExtensionAmount` | the line total | ✓ |
-| `Invoice.InvoiceLine.Item.Description` | `menu_item.name` | the multilingual name ✓ |
+| `Invoice.InvoiceLine.Item.Description` | `menu_item.name` | the multilingual name ✓ — **and on a consolidated line: the receipt reference number(s)** ✓ (Table 3.5's note ✓) |
 | `Invoice.InvoiceLine.Item.CommodityClassification.ItemClassificationCode` | the item's classification code | the SDK's sample uses `004` with `listID: "CLASS"` ✓ |
 | `Invoice.InvoiceLine.Item.OriginCountry.IdentificationCode` | — | `MYS` ✓ |
-| `Invoice.InvoiceLine.Price.PriceAmount` | the unit price | ✓ |
-| `Invoice.PaymentMeans` | `order.payment_method` | the payment mode **code**: `01` cash, `02` cheque, `03` bank transfer, `04` credit card, `05` debit card, `06` e-wallet, `07` digital bank, `08` others ✓ — our `cash` → `01`, `card` → `04`/`05`, `duitnow_qr` / `grabpay` / `boost` / `touch_n_go` / `ewallet` → `06` ✓ |
+| `Invoice.InvoiceLine.Price.PriceAmount` | the unit price | **tax-inclusive** ✓ (see the money rules below ✓) |
+| `Invoice.PaymentMeans` | `order.payment_method` | the payment mode **code**: `01` cash, `02` cheque, `03` bank transfer, `04` credit card, `05` debit card, `06` e-wallet, `07` digital bank, `08` others ✓ — our `cash` → `01`, `card` → `04`/`05`, `duitnow_qr` / `grabpay` / `boost` / `touch_n_go` / `ewallet` → `06` ✓ — **one entry per payment** ✓ (a split bill = several `PaymentMeans` ✓) |
 | `Invoice.PaymentMeans.PaymentID` | the payment's id | ✓ |
 | `Invoice.SellerParty` | the outlet | `PartyLegalEntity.RegistrationName` ✓, `PartyTaxScheme` (the TIN) ✓, `PartyLegalEntity.RegistrationID` (the BRN) ✓ |
 | `...SellerParty.IndustryClassificationCode` | the tenant's MSIC code | the sample's `46510` ✓ — ours is the restaurant's ✓ |
 | `...SellerParty.PartyIdentification.ID` | the TIN, the BRN, the SST, the TTX | each with its `schemeID` ✓ — `NA` for the ones the tenant does not have ✓ |
 | `Invoice.BuyerParty` | the guest | `PartyLegalEntity.RegistrationName` ✓, `PartyTaxScheme` (the TIN ✓ or the General TIN ✓), `PostalAddress` ✓, `Contact` ✓ |
 | `Invoice.Delivery` | `order.delivery_address` | delivery orders only ✓ |
+| `Invoice.AdditionalDocumentReference` | the receipt reference | the **secondary** place to carry the receipt number ✓ (the Description is the primary one ✓ — Table 3.5 ✓) |
+| `Invoice.BillingReference` / `Invoice.InvoiceDocumentReference` | the original's UUID | **required on a credit / debit / refund note** ✓ — the Referenced Documents Validator ✓ |
+
+#### The tax model — one tax category is not enough ✓
+
+A restaurant's bill is not one tax ✓. The food is **sales tax 6%** ✓ (`01` ✓) and the
+**service charge** is **service tax 5%** ✓ (`02` ✓) ✓ — and in some states a **tourism
+tax** ✓ (`03` ✓) applies ✓. So the invoice carries **one `TaxSubtotal` per tax category**
+✓ — UBL allows several ✓ — and the mapping above's single `TaxSubtotal` row is the
+**simple case** ✓ (a food-only order ✓).
+
+**The money rules (decided once, applied everywhere ✓)**
+- **Prices are tax-inclusive** ✓ (that is how a Malaysian menu is written ✓) → the line
+  amount is the **gross** ✓ and the taxable base is `amount / 1.06` ✓ (or `/ 1.05` ✓ for
+  a service-charge line ✓).
+- **Round per line to 2 decimals** ✓, then **the invoice's tax is the sum of the lines'
+  tax** ✓ — the remainder never floats between the line and the total ✓.
+- **`LegalMonetaryTotal` must tie** ✓: `TaxableAmount + TaxAmount = PayableAmount` ✓ per
+  tax category ✓ and the categories sum to the invoice total ✓.
+- **The VAT regime replaces SST** ✓ — the tax type codes change with it ✓ → the tax type
+  is read from the **seeded table** ✓, never hardcoded ✓ (open question 4 ✓).
 
 > **The two codes I had wrong** (checked against the SDK's own samples ✓): the country is
 > **`MYS`** with `listID: "ISO3166-1"` ✓ — not `MY` ✓; and the tax scheme is **`OTH`** with
@@ -258,9 +355,9 @@ files** ✓ — never typed by hand ✓.
 | Structure | the document does not match the version's schema ✓ | build the JSON from the **Get Document Type** schema ✓, and validate it locally before sending ✓ |
 | Core fields | the mandatory fields are missing ✓ | the buyer always has a name, an address and a contact number ✓ |
 | Taxpayer | the seller/buyer TIN is invalid at the issue date ✓ | validate the buyer's TIN **when it is saved** ✓, not at the counter ✓ |
-| Referenced documents | a credit note points at an invalid invoice ✓ | the credit note carries the original's UUID ✓ |
-| Code | a code is not in the table ✓ | the code tables are **seeded** ✓ |
-| **Duplicate document** | the same `codeNumber` submitted twice ✓ | the code number is immutable and unique per taxpayer ✓ — a retry **never** changes it ✓ |
+| Referenced documents | a credit note points at an invalid invoice ✓ | the credit note carries the original's UUID ✓ (`BillingReference` ✓) |
+| Code | a code is not in the table ✓ | the code tables are **seeded** ✓ — **the DuitNow payment mode (`03` vs `06` ✓) is still open** ✓, so it must be **seeded, not guessed** ✓ |
+| **Duplicate document** | the same `codeNumber` submitted twice ✓ | the code number is immutable and unique per taxpayer ✓ — a retry **never** changes it ✓ — **and a rejected document is never "fixed and resubmitted"** ✓: the payload is immutable too ✓ → the correction path is the **credit / debit / refund note** ✓, or a **new document with a new code number** ✓ (see the correction strategy ✓) |
 | **Currency** | the wrong currency / a missing exchange rate ✓ | **only MYR outlets may submit** ✓ — see below ✓ |
 
 > **The currency validator is a real constraint on us.** Demo Cafe 1 bills in **USD** ✓ and
@@ -277,17 +374,34 @@ files** ✓ — never typed by hand ✓.
 ```
 the guest asks for a tax invoice at the payment
    → the payment panel shows a "Tax invoice" toggle + the buyer's fields (Table 3.1)
-   → the guest's TIN is validated once (Validate Taxpayer's TIN) and cached
+   → the guest's TIN is resolved: a TIN they know → Validate Taxpayer's TIN
+     a name or an IC they know → Search Taxpayer's TIN (by name, or idType + idValue)
+     both are cached per tenant (with a TTL — see below)
    → the order is marked e_invoice_requested = true
    → the order is queued for submission
    → the worker builds the UBL JSON, submits it, polls the submission
    → the validated document comes back (in practice, under 2 seconds ✓)
-   → the receipt carries the LHDN validation QR ✓
+   → the receipt carries the validation QR we drew from the document's UUID ✓
 ```
 
 **The counter interaction may take up to 60 seconds** ✓ (the guideline's own POS flow ✓) —
 so asking the guest for their details at the table is the intended design ✓, not an
 excuse ✓.
+
+**The TIN cache ✓** — the SDK says validate **once**, at the moment the buyer is recorded ✓
+(*"it is advised to perform validation of buyer's TINs when the buyer entity is being
+defined" ✓*), and *"not … before every document submission"* ✓ (the calls would be
+throttled ✓). So ✓
+- the cache is keyed by **(tenant, TIN or idType+idValue)** ✓,
+- it has a **TTL** (30 days ✓) — because the Taxpayer Validator checks the taxpayer's
+  validity **at the date of issuance** ✓ ✓,
+- and a **rejected** document that failed the Taxpayer Validator triggers a
+  **re-validation** ✓ (never a blind retry ✓).
+
+**A guest usually does not know their TIN ✓** — they know their **name** and their **MyKad
+/ MyPR / passport number** ✓. `Validate Taxpayer's TIN` needs a **TIN in the path** ✓, so
+the counter needs **Search Taxpayer's TIN** ✓ (by taxpayer name ✓, or by
+idType + idValue ✓) ✓ — otherwise the flow dies at step two ✓.
 
 **The guest must never be told it is done when it is not** ✓. If the validation is slow or
 LHDN is down ✓, the receipt prints with the reference and the status ✓ and the document
@@ -301,39 +415,117 @@ transaction** ✓. That is exactly the window the monthly batch needs ✓.
 
 So the POS needs a **"request an e-Invoice for a past order"** path ✓:
 - from the **order history** ✓ (the manager searches the order ✓ and issues the invoice ✓)
-- or from the **customer portal** ✓ (the loyalty guest finds their order ✓ and requests it ✓) ✓ — this is a nice fit for the customer portal we already have ✓
+- or from the **customer portal** ✓ (the loyalty guest finds their order ✓ and requests it ✓) ✓ — this is a nice fit for the customer portal we already have ✓ — **but the portal must prove the guest owns the order** ✓ (the PWA pattern ✓): `table_uuid` ✓ or `dining_customer_id` ✓ — otherwise anybody can request an invoice for somebody else's order ✓
 - the order **leaves the monthly batch** ✓ and is invoiced individually ✓
-- the request after the month-end is too late ✓ — the POS says so plainly ✓
+- the request after the month-end is too late ✓ — the POS says so plainly ✓ (the guideline
+  says the supplier **may** deny a late request ✓ — Example 5 ✓)
+
+#### The race the doc must answer: the batch lock ✓
+
+The buyer's right ends with the month ✓ (§3.6.8 ✓ — *"within the month of the
+transaction"* ✓, Example 5 ✓: a request on 1 October for a 30 September purchase is
+**late** ✓) — but our **batch** runs on ✓. So the two clocks must be lined up ✓:
+**the buyer's window ends at the month-end ✓, our batch locks on the 1st ✓** — the very
+same moment ✓ ✓.
+
+**The rule ✓**
+- The batch is **built and locked on the 1st** ✓ (the period's last day + 1 ✓) — which is
+  exactly when the buyer's retro-request right expires ✓ ✓.
+- The **locked** batch is submitted by the **7th** ✓ (§3.6.2 ✓) ✓ — the **submission**
+  and the **request window** are two different clocks ✓, and only the first one is
+  seven days long ✓ ✓.
+- A request that arrives **after the lock** → the POS says plainly: *"this sale is already
+  in the monthly consolidated e-Invoice"* ✓ and offers the **consolidated document's
+  reference** ✓ — not a second invoice ✓ (and a second e-Invoice for the same sale would
+  be a **duplicate** ✓ — the Duplicate Document Validator ✓ — and simply wrong ✓) ✓.
 
 ### C. The monthly consolidated e-Invoice
 
 - Every order that was **not** individually invoiced joins the month's batch ✓.
-- The batch is submitted **within 7 calendar days after the month-end** ✓ (§3.6.2 ✓) —
-  by the **7th** ✓.
+- The batch is **built and locked on the 1st** ✓ and **submitted within 7 calendar days
+  after the month-end** ✓ (§3.6.2 ✓) — by the **7th** ✓.
 - **The consolidation method is ours to choose** (§3.6.3 ✓):
   - **(a) each receipt's summary as a separate line item** ✓ — the clearest for a reviewer ✓
   - **(b) the receipts as line items in a continuous receipt-number chain** ✓ — the
     smallest document ✓ (a break in the chain starts a new line ✓)
   - **(c) per branch or location** ✓ — **each outlet submits its own consolidated
     e-Invoice** ✓ ✓ — which is the natural fit for our multi-outlet tenant ✓
-- **The receipt reference number must be on every line** ✓ (Table 3.5 ✓) — our order
-  number is the audit trail ✓.
-- **The buyer is `General Public` / `EI00000000010`** ✓ and the rest is `NA` ✓ (Appendix 2 ✓).
+- **The receipt reference number must be on every line** ✓ (Table 3.5 ✓) — **in the
+  *"Description"* field** ✓ — our order number is the audit trail ✓.
+- **The buyer is `General Public` / `EI00000000010`** ✓ and the rest is `NA` ✓
+  (**Table 3.5** ✓ — not Appendix 2 ✓).
 - **The limits**: 5MB per submission ✓, 100 e-Invoices per submission ✓, 300KB per
   e-Invoice ✓ — so a busy month is **split into several documents** ✓ (§3.6.4 ✓).
-- **Never consolidated**: a transaction above **RM10,000** ✓ (its own e-Invoice ✓), B2B ✓,
-  and the industries in Table 3.6 ✓.
+- **Never consolidated**: a transaction above **RM10,000** ✓ (its own e-Invoice ✓ — **unless
+  the outlet is inside the relaxation period** ✓, see below ✓), a **buyer we know is a
+  business** ✓ (a B2B sale ✓ — see below ✓), and the industries in Table 3.6 ✓.
 
-> **Monthly, not daily** ✓ — and the daily idea is not merely unnecessary ✓: the monthly
-> cut-off is what gives the buyer the right to ask for an individual invoice afterwards ✓
-> (§3.6.8 ✓). A daily submission would destroy that right ✓.
+#### The relaxation switch ✓ (§16.2 ✓)
+
+The RM10,000 rule and the Table 3.6 industries **do not apply** during the **interim
+relaxation period** ✓ — and for **Phase 4 (up to RM5M) that period runs until
+31 December 2027** ✓ (Table 16.1 ✓) ✓ — i.e. **for the customers we are actually selling
+to** ✓.
+
+**So the outlet setting ✓**
+- `relaxation_until` ✓ — the tenant's own phase and its relaxation end date ✓ (the tenant
+  declares its turnover ✓ — **we never compute an exemption for it** ✓).
+- While the tenant is inside the window ✓ → the RM10,000 guard is **off** ✓ and the
+  Section 3.7 industries are **not** blocked ✓ (§16.2(a) ✓).
+- After the window ✓ → the guard is **on** ✓ (1 Jan 2028 for Phase 4 ✓) ✓.
+
+**And §16.2(d) ✓** — during the relaxation period a supplier **may decline** an
+individual request ✓. **We do not** ✓ — we issue the individual e-Invoice anyway ✓ (the
+buyer gets a better outcome ✓ and the receipt is honest ✓). But the POS must be able to
+**record** the request and answer *"your sale is in the monthly consolidated
+e-Invoice"* ✓ if we ever do decline ✓ — the request is **never silently dropped** ✓.
+
+#### A B2B sale is only B2B if we know it ✓
+
+"Never consolidated: B2B" ✓ is only actionable if we **know** the buyer is a business ✓
+— and we know it **only** when the buyer gave a TIN ✓ (or is a known corporate account ✓).
+So the operative rule is ✓:
+
+- The buyer **asks for an e-Invoice** → an individual document ✓ (always ✓).
+- The buyer **gives a TIN** but does **not** ask → it is still a **business sale** ✓ →
+  **never consolidated** ✓ → the POS offers the e-Invoice ✓.
+- The buyer gives **nothing** → the sale is B2C ✓ → consolidated ✓.
+
+#### The correction strategy — a rejected consolidated document ✓
+
+The payload is immutable ✓ and the code number is immutable ✓ → **a rejected consolidated
+document cannot be edited and resubmitted** ✓. The path is ✓:
+
+1. The rejection reason is stored **verbatim** ✓ on the document ✓.
+2. If the document was **validated** and the mistake is ours → **cancel it** ✓ (inside the
+   72-hour window ✓) and **rebuild** the batch ✓ — the rebuilt batch carries **new code
+   numbers** ✓ and the same receipt references ✓ (the audit trail survives ✓).
+3. If the window has passed → the receipts are re-issued as **individual** e-Invoices ✓
+   (each with its own code number ✓) and the consolidated document is **cancelled** ✓.
+4. Every rebuilt document keeps the **same `receipt_ref`** ✓ → the reconciliation
+   between the receipt and the e-Invoice never breaks ✓.
 
 ### D. The credit note (the voided order)
 
 An order that was already invoiced and must be reversed:
-- **Within 72 hours** of the validation → `Cancel Document` ✓ (free, no document) ✓.
+- **Within 72 hours** of the validation → `Cancel Document` ✓ (free, no document) ✓ —
+  with a **`reason`** ✓ (≤ 300 characters ✓) — and the error states are ours to handle ✓:
+  `OperationPeriodOver` ✓ (the window has closed ✓), `IncorrectState` ✓ (the document is
+  already rejected or invalid ✓), `ActiveReferencingDocuments` ✓ (a credit note already
+  points at it ✓ → the credit note is the answer ✓).
 - **After 72 hours** → a **credit note** (`InvoiceTypeCode 02`) that references the
-  original's UUID ✓ (the Referenced Documents Validator checks it ✓).
+  original's UUID ✓ (the Referenced Documents Validator checks it ✓ — the reference goes
+  in `BillingReference` ✓).
+
+**The buyer can reject our e-Invoice ✓** — within 72 hours ✓ — and the rejection arrives
+as a **notification** ✓ (General Guideline v4.8 §2.3.4 ✓) ✓. So the POS needs ✓:
+- a **notification reader** ✓ (the worker polls Get Notifications ✓) ✓,
+- an **orders-screen alert** ✓ (*"the buyer rejected e-Invoice INV-1234 — cancel or credit
+  it"*) ✓,
+- and the **same 72-hour clock** ✓ as our own cancel ✓.
+
+> **A consolidated e-Invoice cannot be rejected ✓** — IRBM notifies the **supplier only**
+> ✓ (§3.6.10 ✓) ✓, so the rejection path is an **individual-document** problem only ✓.
 
 The POS's "cancel order" action must therefore know whether an e-Invoice exists for that
 order ✓ — the cancel path cannot simply mark the order cancelled and walk away ✓.
@@ -372,6 +564,10 @@ taxpayer is the outlet's business ✓):
 | `cancel_window_hours` | read from the Get Document Type API ✓, default 72 ✓ |
 | `consolidation_method` | `a` / `b` / `c` ✓ (§3.6.3 ✓) ✓ |
 | `consolidated_enabled` | the outlet batches its B2C sales ✓ |
+| `relaxation_until` | **the tenant's interim relaxation end date** ✓ (Table 16.1 ✓) — while it is in the future ✓ the RM10,000 guard is **off** ✓ (§16.2(a) ✓) ✓ |
+| `implement_date` | the tenant's own e-Invoice implementation date ✓ (Table 1.1 ✓) — **declared by the tenant** ✓, we never compute it ✓ |
+| `batch_lock_day` | the day of the month the batch is built and locked ✓ (default the 1st ✓) ✓ |
+| `buyer_tin_cache` | the cached TIN validations ✓ (per tenant ✓, with a TTL ✓) ✓ — not a column but a table beside it ✓ |
 
 **`einvoice_documents`** — one row per document we intend to submit ✓:
 
@@ -390,6 +586,8 @@ taxpayer is the outlet's business ✓):
 | `error` | the rejection reason, verbatim ✓ |
 | `attempts` | the retry count ✓ |
 | `period` | the month a consolidated document covers ✓ |
+| `rejected_by_buyer` | the buyer rejected this document ✓ (set by the notification reader ✓) ✓ |
+| `replaces_document_id` | the document this one corrects ✓ (a rebuilt batch ✓, a credit note ✓) ✓ |
 
 **`einvoice_submissions`** — one row per submission ✓: the `submissionUID` ✓, the status ✓,
 the poll count ✓, the next poll at ✓.
@@ -400,13 +598,26 @@ the poll count ✓, the next poll at ✓.
   `queued` documents ✓, builds them ✓, submits them ✓ and polls them ✓.
 - **The monthly batch job runs on the 1st–7th of the month** ✓ — and the operator sees
   the deadline and how many sales are still unbatched ✓.
-- The **token is cached per tenant** ✓ and refreshed at 55 minutes ✓ — **never** a token per
-  call ✓ (the SDK names this as the #1 anti-pattern ✓).
+- The **token is cached** ✓ — **per credential** ✓ (one set in the intermediary model ✓,
+  one per tenant in the direct model ✓) — and refreshed at 55 minutes ✓ — **never** a
+  token per call ✓ (the SDK names this as the #1 anti-pattern ✓).
 - The **429** answers carry a `Retry-After` ✓ — we honour it ✓.
 - The **backoff** on a failure is exponential ✓.
 - A submission is **never re-sent** because we did not hear back ✓ — the
   duplicate-document validator would reject the second copy ✓ and the API would start
   throttling us ✓.
+- **The poll cadence** ✓ — poll `Get Submission` every **2 seconds** ✓ (the guideline's
+  own flow validates in under two seconds ✓) up to **30 attempts** ✓ (a minute ✓) — then
+  fall back to **Get Notifications** ✓ (the push channel ✓) and **Get Document Details**
+  ✓ (the validation result ✓) ✓. Polling is the *fallback*, not the primary ✓ ✓.
+- **The fair queue** ✓ — the rate limit is per Client ID ✓ and in the intermediary model
+  that is **one bucket for every tenant** ✓ → the worker keeps **one in-flight submission
+  per tenant** ✓ and serves the tenants **round-robin** ✓, with a **per-tenant daily cap**
+  ✓ ✓ (a big chain's month-end batch must not eat the API's 100 RPM ✓).
+- **The reconciliation** ✓ — after a crash we may hold a document with no `submissionUID`
+  ✓ (the POST succeeded, the write did not ✓) → we **search** for our own `codeNumber` ✓
+  (Search Documents ✓ — **not** Get Recent Documents ✓, which only sees 31 days ✓)
+  ✓ and recover the UUID ✓ — we never re-send ✓ ✓.
 
 ## The frontend
 
@@ -421,46 +632,73 @@ the poll count ✓, the next poll at ✓.
 - The **sandbox** switch ✓ — the credentials are different on each side ✓, and a restaurant
   must never test against production by accident ✓.
 - The **consolidation method** (§3.6.3 ✓) and the **consolidated toggle** ✓.
+- The tenant's **implementation date** ✓ and its **relaxation end date** ✓ (Table 1.1 ✓,
+  Table 16.1 ✓) — **declared by the tenant** ✓, never computed by us ✓ — and the POS
+  **shows** them ✓ ("your e-Invoice duty starts 1 Jan 2026 ✓; you are inside the interim
+  relaxation period until 31 Dec 2027 ✓") ✓.
+- The **tax profile** ✓ — the SST number ✓, the TTX number ✓, the **service-charge tax
+  treatment** ✓ (service tax `02` ✓) and the **tourism tax** ✓ where it applies ✓.
 
 ### The payment panel ✓
 
-- A **"Tax invoice"** toggle ✓ (only when the outlet is enabled ✓ and the currency is MYR ✓).
+- A **"Tax invoice" toggle** ✓ (only when the outlet is enabled ✓ and the currency is MYR ✓).
 - The **buyer's fields** ✓ (Table 3.1 ✓): the name ✓, the TIN ✓ (or the MyKad / MyPR /
   MyKAS number ✓, or the passport ✓), the address ✓, the contact number ✓, the SST number ✓.
-- The **TIN is validated as it is typed** ✓ (debounced ✓, cached per tenant ✓).
+- The **TIN is resolved as it is typed** ✓ (debounced ✓, cached per tenant ✓) — a TIN ✓ →
+  Validate ✓ · a name or an id number ✓ → **Search Taxpayer's TIN** ✓ ✓.
 - The **RM10,000 guard** ✓ — an order above RM10,000 **cannot** be consolidated ✓, so the
-  toggle is forced on ✓ and the POS says why ✓.
-- The toggle **survives the split bill** ✓ — one tax invoice per order ✓, not per split ✓.
+  toggle is forced on ✓ and the POS says why ✓ — **but only when the outlet is outside its
+  relaxation period** ✓ (§16.2(a) ✓) ✓; inside the window the guard is off ✓ and the sale
+  may be consolidated ✓.
+- The toggle **survives the split bill** ✓ — one tax invoice per order ✓, not per split ✓
+  (so a split bill cannot slip under the RM10,000 threshold ✓ — the threshold is on the
+  **order's gross total** ✓, not on a split ✓).
 
 ### The receipt ✓
 
-- The **LHDN validation QR** once the document is valid ✓, with the document's UUID ✓.
+- The **validation QR** once the document is valid ✓ — **we draw it** ✓ from the
+  document's UUID ✓ (a MyInvois validation link ✓) ✓.
 - The **"e-Invoice submitted, validation pending"** line while it is in flight ✓ — the guest
   must never be told it is done when it is not ✓.
 - The **reprint** from the order ✓.
 - The **consolidated batch's receipt reference** ✓ — so the guest's paper matches a line in
   the monthly document ✓.
+- The **buyer's data on the receipt** ✓ is the guest's own data ✓ — and it is **not** kept
+  longer than the e-Invoice needs it ✓ (PDPA ✓ — see the data note below ✓).
 
 ### The orders screen ✓
 
 - An **e-Invoice column** with the status ✓ — `not required` / `queued` / `submitted` /
-  `valid` / `invalid` ✓.
-- An **invalid document** shows the reason and offers a **retry** ✓ — the retry reuses the
-  same `codeNumber` and the same payload ✓.
-- A **cancel** action on a document that is still inside its 72-hour window ✓.
+  `valid` / `invalid` / `rejected by buyer` ✓ / `cancelled` ✓.
+- An **invalid document** shows the reason ✓ — and the action is **not always "retry"** ✓:
+  a **structure or code** failure means the payload was **wrong** ✓ → it is **rebuilt** ✓
+  with a **new code number** ✓ (the payload is immutable ✓); a **transient** failure
+  (a 5xx, a timeout ✓) is **retried with the same `codeNumber` and the same payload** ✓
+  ✓.
+- A **cancel** action on a document that is still inside its 72-hour window ✓ — it asks
+  for a **reason** ✓ (≤ 300 characters ✓) ✓.
 - A **"request an e-Invoice"** action on a paid order **within the month** ✓ (the
-  retro-request ✓).
+  retro-request ✓) — and it is **disabled after the batch lock** ✓, with the reason
+  shown ✓ ✓.
+- A **"the buyer rejected this e-Invoice"** alert ✓ — with the 72-hour clock ✓ ✓.
 
 ### The monthly batch screen ✓
 
 - The **period** (the month ✓), the **count of unbatched sales** ✓, the **total** ✓.
+- The **lock state** ✓ — *locked on the 1st* ✓, *submitted by the 7th* ✓ ✓ — and the
+  **deadline** ✓ visible ✓.
 - A **"submit now"** button ✓ — but the deadline is visible and automatic ✓.
-- The **submitted batches** with their status ✓.
+- The **submitted batches** with their status ✓ — and a **rejected** batch shows the reason
+  and offers the **rebuild** ✓ (new code numbers ✓, the same receipt references ✓) ✓.
 
 ### The customer portal ✓
 
 - The guest finds their order and **requests an e-Invoice** ✓ — within the month ✓ (the
   retro-request ✓). This is the natural home for it ✓ — we already have the portal ✓.
+- **The ownership proof** ✓ — the portal asks for the **table UUID** ✓ or the
+  **dining customer id** ✓ (the PWA pattern ✓) ✓ — the same proof the order lookup
+  already demands ✓ — so nobody can request an invoice for somebody else's meal ✓ ✓.
+- The **privacy note** ✓ — what we collect and for how long ✓ ✓.
 
 ## The rails
 
@@ -470,11 +708,17 @@ The **audit recipe** applies to every route this feature adds ✓:
    `require_permission("einvoice:write")` ✓ (the admin role ✓) and
    `require_staff_permission("staff:einvoice:read")` ✓ for the counter's read-only view ✓.
    The **role table** is `ROLE_PERMISSIONS` in `backend/app/middleware/auth.py` ✓.
+   **And a write for the counter** ✓ — the cashier must set `e_invoice_requested` ✓ and
+   store the buyer's details ✓ on the order ✓, so the counter's write goes through the
+   **order** route ✓ (`orders:write` ✓ — the role already has it ✓) and the e-Invoice
+   routes themselves stay admin-only ✓ ✓. A read-only staff permission alone cannot
+   express "the guest asked for an invoice" ✓.
 2. **Whose data may it touch?** → the tenant helpers in `backend/app/core/tenant.py` ✓ —
    `require_outlet_tenant` for the settings and the documents ✓. The **tenant comes from
    the session** ✓, never from a query parameter ✓.
 3. **Did the tenant buy it?** → `require_plan_feature("E-Invoice")` ✓ — the plan cache reads
-   it live ✓.
+   it live ✓. **And the outlet must be MYR** ✓ — a USD outlet never sees the tab ✓ ✓
+   (the currency validator ✓).
 4. **Does the UI agree?** → the nav item's `minRole` + `feature` in
    `frontend/src/config/navItems.js` ✓ and the settings tab's gate ✓.
 
@@ -486,7 +730,8 @@ The same discipline for the frontend ✓: check `res.ok` **and** `Array.isArray(
 - The **client secret** lives **in the backend only** ✓ — never in the browser ✓, never in
   the receipt ✓, never in a log line ✓.
 - Encrypted at rest ✓ (the same treatment as the other secrets ✓).
-- The **token cache is per tenant and in memory** ✓ — a restart just means one extra login ✓.
+- The **token cache is per credential and in memory** ✓ — one set in the intermediary
+  model ✓, one per tenant in the direct model ✓ — a restart just means one extra login ✓.
 - The **sandbox and production credentials are separate** ✓ so a test can never touch
   production ✓.
 - In the **intermediary model** ✓ the credentials are **ours** ✓ — the tenant's
@@ -512,17 +757,28 @@ green** ✓.
 - The **hash matches the payload** ✓.
 - The **amount fields are within 26 digits** ✓ and the **PASSPORT identifier within 12
   characters** ✓ (MyInvois's own limits since 24 October 2026 ✓).
-- A **transaction above RM10,000** is never queued for consolidation ✓.
+- A **transaction above RM10,000** is never queued for consolidation ✓ — **unless the
+  outlet is inside its relaxation period** ✓ (§16.2(a) ✓) ✓.
+- The **tax math ties** ✓ — per line: the gross = the taxable base + the tax ✓ (to 2
+  decimals ✓) · per invoice: the categories sum to the tax ✓ and the taxable + the tax =
+  the payable ✓ ✓.
+- The **receipt reference is in the Description** ✓ of every consolidated line ✓ ✓.
 
 ### The tests ✓
 
 | Suite | What it proves |
 |---|---|
-| `test_einvoice_builder.py` | the order → the UBL JSON ✓, **golden files** ✓ — the exact JSON for a normal order ✓, a discounted order ✓, a service-charge order ✓, a delivery order ✓, a credit note ✓, a **consolidated line** ✓ |
+| `test_einvoice_builder.py` | the order → the UBL JSON ✓, **golden files** ✓ — the exact JSON for a normal order ✓, a discounted order ✓, a **service-charge order** ✓ (two tax categories ✓), a delivery order ✓, a credit note ✓, a **consolidated line** ✓, a **split payment** ✓ (two `PaymentMeans` ✓) |
 | `test_einvoice_codes.py` | every code we emit is in the SDK's tables ✓ |
+| `test_einvoice_tax.py` | the tax-inclusive math ✓ — the base = gross / 1.06 ✓ and / 1.05 ✓ · the rounding per line ✓ · the totals tie ✓ · the tax type is read from the seeded table ✓ (never hardcoded ✓) ✓ |
 | `test_einvoice_tenant.py` | tenant A cannot see tenant B's settings or documents ✓; the client secret never leaves the backend ✓ |
-| `test_einvoice_submitter.py` | the token is cached (one login for many calls ✓); a 429 honours `Retry-After` ✓; a retry reuses the code number ✓; a 202 is **not** treated as valid ✓ |
-| `test_einvoice_consolidated.py` | the batch covers exactly the uninvoiced B2C sales of the period ✓, once ✓; it never includes a guest who asked for an individual invoice ✓; it never includes a transaction above RM10,000 ✓; the receipt reference is on every line ✓; it splits when it exceeds 5MB / 100 documents / 300KB ✓ |
+| `test_einvoice_submitter.py` | the token is cached (one login for many calls ✓); a 429 honours `Retry-After` ✓; a retry reuses the code number ✓; a 202 is **not** treated as valid ✓; the fair queue gives every tenant a turn ✓ |
+| `test_einvoice_consolidated.py` | the batch covers exactly the uninvoiced B2C sales of the period ✓, once ✓; it never includes a guest who asked for an individual invoice ✓; it never includes a **known business** buyer ✓; it never includes a transaction above RM10,000 ✓ **unless the outlet is in its relaxation period** ✓; the receipt reference is on every line ✓ **in the Description** ✓; it splits when it exceeds 5MB / 100 documents / 300KB ✓ |
+| `test_einvoice_relaxation.py` | the RM10,000 guard is on after 31 Dec 2027 ✓ and off before it ✓ (§16.2(a) ✓, Table 16.1 ✓); a request is recorded even when we consolidate it ✓ (§16.2(d) ✓) ✓ |
+| `test_einvoice_batch_lock.py` | the batch locks on the 1st ✓; a retro-request **before** the lock leaves the batch ✓; a retro-request **after** the lock is refused with the reason ✓; the request window ends with the month ✓ (§3.6.8 ✓) ✓ |
+| `test_einvoice_correction.py` | a rejected batch is **rebuilt** with a new code number ✓ and the same receipt references ✓; a transient failure is retried with the same payload ✓; an invalid document is never resubmitted unchanged ✓ (the duplicate validator ✓) ✓ |
+| `test_einvoice_rejection.py` | a buyer's rejection (via the notification ✓) raises the alert ✓; the cancel inside 72 hours carries a reason ✓; `OperationPeriodOver` ✓ / `IncorrectState` ✓ / `ActiveReferencingDocuments` ✓ are handled ✓ |
+| `test_einvoice_portal.py` | the portal's retro-request requires the ownership proof ✓ (`table_uuid` ✓ / `dining_customer_id` ✓); another guest's order is refused ✓; the request after the lock is refused ✓ |
 
 ### The live probe (the audit recipe's ✓)
 
@@ -539,28 +795,35 @@ The settings ✓, the credentials ✓, the sandbox connection ✓, the builder �
 tax invoice for one outlet ✓, the receipt's QR ✓.
 
 **Phase 2 — the counter (1 week ✓)**
-The payment panel's toggle ✓, the buyer's fields ✓, the TIN validation ✓, the **RM10,000
-guard** ✓, the orders screen's status column ✓, the retry ✓.
+The payment panel's toggle ✓, the buyer's fields ✓, the TIN resolution ✓ (Validate ✓ +
+Search ✓), the **RM10,000 guard** ✓ (relaxation-aware ✓), the orders screen's status column ✓, the retry ✓.
 
 **Phase 3 — the monthly batch (2 weeks ✓)**
-The monthly consolidated e-Invoice ✓, the three consolidation methods ✓, the scheduled
-submission with the **7th** deadline visible ✓, the **splitting** at the limits ✓, the B2B
-split out of the batch ✓.
+The monthly consolidated e-Invoice ✓, the three consolidation methods ✓, the **batch lock
+on the 1st** ✓, the scheduled submission with the **7th** deadline visible ✓, the
+**splitting** at the limits ✓, the B2B split out of the batch ✓, the **correction
+strategy** ✓ ✓.
 
 **Phase 4 — the group (2 weeks ✓)**
-The **retro-request** ✓ (the order history ✓ + the customer portal ✓), the multi-outlet
-submission ✓, the credit notes ✓, the cancellation inside the 72-hour window ✓, the
+The **retro-request** ✓ (the order history ✓ + the customer portal ✓ with the ownership
+proof ✓), the multi-outlet submission ✓, the credit notes ✓, the cancellation inside the
+72-hour window ✓, the **buyer's rejection** ✓ and the notification reader ✓, the
 self-billed documents ✓, the reports ✓.
 
 **Phase 5 — the SVDP and the signature (later ✓)**
 The **back-file** with the "SVDP 1.2" / "SVDP 1.3" versions ✓ (the relaxed deadline of
 31 December 2027 ✓), then Invoice **v1.1** — the signature ✓.
 
+> **The signing has a lead time we do not control** ✓ — v1.0 *"will be deprecated"* ✓ → the
+> certificate work starts **before** Phase 5 ✓, not in it ✓ ✓.
+
 ## The open questions
 
-1. **The QR code endpoint.** The SDK lists a "Taxpayer's QR Code" API (60 RPM ✓) — the exact
-   path and the payload must be confirmed against the SDK page before the receipt work
-   starts ✓.
+1. ~~**The QR code endpoint**~~ ✓ — **answered** ✓: the "Taxpayer's QR Code" API reads a
+   *business's* QR ✓ (TIN, BRN, SST, MSIC ✓) and is **not** the receipt's QR ✓; the
+   receipt's validation QR is **ours to draw** ✓ from the document's UUID ✓ (General
+   Guideline v4.8 §2.4.4 ✓) ✓. *What remains: the exact MyInvois validation URL format*
+   ✓ — to be read from the SDK's sample ✓ ✓.
 2. **The structure of v1.0 in practice** — the field paths must be taken from
    `Get Document Type` ✓ (the SDK serves the structure definition ✓) rather than guessed
    from the UBL spec ✓.
@@ -568,19 +831,35 @@ The **back-file** with the "SVDP 1.2" / "SVDP 1.3" versions ✓ (the relaxed dea
    portal ✓, and whether the authorisation is per tenant or per document type ✓.
 4. **The VAT** — the VAT regime replaces SST ✓; the tax type codes will change with it ✓ —
    the code tables are seeded ✓, so this is a deploy ✓, not a code change ✓.
-5. **The payment mode for DuitNow by QR** — `03` (bank transfer ✓) or `06` (e-wallet ✓).
+5. **The payment mode for DuitNow by QR** — `03` (bank transfer ✓) or `06` (e-wallet ✓) —
+   the code validator rejects the wrong one ✓, so it must be **seeded, not guessed** ✓.
+6. **The service charge's tax treatment** ✓ — service tax `02` ✓ at 5% ✓ on the service
+   charge, while the food is sales tax `01` ✓ at 6% ✓ — to be confirmed against the
+   seeded code table ✓ and the tenant's own SST registration ✓ ✓.
+7. **The RM1M–5M deferral** ✓ — a secondary source said the RM1M–5M band moves to
+   **1 January 2027** ✓, but **Table 1.1 of the General Guideline v4.8 says 1 January
+   2026** ✓ → the doc follows the guideline ✓, and the deferral must be confirmed ✓ ✓.
 
 ## The sources
 
 - **LHDN's guidelines** ✓ — [e-Invoice Specific Guideline v4.9 (7 Sep 2026)](https://www.hasil.gov.my/wp-content/uploads/IRBM-e-Invoice-Specific-Guideline.pdf) ✓ ·
   [e-Invoice General Guideline v4.8 (30 Aug 2026)](https://www.hasil.gov.my/wp-content/uploads/IRBM-e-Invoice-Guideline.pdf) ✓ ·
   [LHDN's general FAQ (4 Sep 2026)](https://www.hasil.gov.my/wp-content/uploads/lhdnm-e-invoice-general-faqs.pdf) ✓
+  — **the sections v3 leans on** ✓: §3.3 ✓ · §3.5 ✓ · §3.6.2–§3.6.11 ✓ · Table 3.5 ✓ ·
+  Table 3.6 ✓ · §3.7 ✓ · §16.1 ✓ (Table 16.1 ✓) · §16.2 ✓ · §16.3 ✓ · §17 ✓ (the SVDP ✓) ·
+  Appendix 1 ✓ (the General TINs ✓) · and in the General Guideline: Table 1.1 ✓ · §1.6 ✓ ·
+  §2.3.4 ✓ (the notifications ✓) · §2.4.4 ✓ (the QR ✓) ✓
 - **The SDK** ✓ — [Getting started](https://sdk.myinvois.hasil.gov.my/start/) ✓ ·
   [the APIs](https://sdk.myinvois.hasil.gov.my/api/) ✓ ·
   [Submit Documents](https://sdk.myinvois.hasil.gov.my/einvoicingapi/02-submit-documents/) ✓ ·
   [Login as Taxpayer System](https://sdk.myinvois.hasil.gov.my/api/07-login-as-taxpayer-system/) ✓ ·
+  [Login as Intermediary System](https://sdk.myinvois.hasil.gov.my/api/08-login-as-intermediary-system/) ✓ ·
   [Validate Taxpayer's TIN](https://sdk.myinvois.hasil.gov.my/einvoicingapi/01-validate-taxpayer-tin/) ✓ ·
+  [Search Taxpayer's TIN](https://sdk.myinvois.hasil.gov.my/einvoicingapi/10-search-taxpayer-tin/) ✓ ·
   [Cancel Document](https://sdk.myinvois.hasil.gov.my/einvoicingapi/03-cancel-document/) ✓ ·
+  [Reject Document](https://sdk.myinvois.hasil.gov.my/einvoicingapi/04-reject-document/) ✓ ·
+  [Search Documents](https://sdk.myinvois.hasil.gov.my/einvoicingapi/09-search-documents/) ✓ ·
+  [Taxpayer's QR Code](https://sdk.myinvois.hasil.gov.my/einvoicingapi/11-qr-code/) ✓ ·
   [the code tables](https://sdk.myinvois.hasil.gov.my/codes/) ✓ ·
   [the document types](https://sdk.myinvois.hasil.gov.my/types/) ✓ ·
   [the validation rules](https://sdk.myinvois.hasil.gov.my/document-validation-rules/) ✓ ·
