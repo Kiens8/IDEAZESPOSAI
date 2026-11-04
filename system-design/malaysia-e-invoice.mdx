@@ -5,8 +5,8 @@ description: How the POS speaks to LHDN's MyInvois - the tax invoice on demand, 
 
 # Malaysia e-Invoice (MyInvois) Integration
 
-**Document Version:** 3.1  
-**Created:** 2026-11-04 (v1) · **Updated:** 2026-11-04 (v2 — the submission rules were read out of LHDN's own guidelines: **monthly**, not daily ✓ and three findings that change the design ✓) · **v3 (a review against the guidelines and the SDK: six corrections and ten design holes closed ✓)** · **v3.1 (the SDK FAQ read end to end ✓ — the QR link format ✓, the sandbox environments ✓, the TIN rules ✓, the UBL conventions ✓ — and the sandbox spike ✓ written in)**  
+**Document Version:** 3.2  
+**Created:** 2026-11-04 (v1) · **Updated:** 2026-11-04 (v2 — the submission rules were read out of LHDN's own guidelines: **monthly**, not daily ✓ and three findings that change the design ✓) · **v3 (a review against the guidelines and the SDK: six corrections and ten design holes closed ✓)** · **v3.1 (the SDK FAQ read end to end ✓ — the QR link format ✓, the sandbox environments ✓, the TIN rules ✓, the UBL conventions ✓ — and the sandbox spike ✓ written in)** · **v3.2 (the **connection model** decided ✓ — **direct first** ✓, the intermediary as the documented fallback ✓ — and the credential's scope settled ✓)**  
 **Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet  
 **Scope:** the POS backend (the ERP client), the POS frontend (the counter and the settings), the LHDN MyInvois API  
 **Related:** `hitpay-integration.mdx` (the Malaysian payment methods ✓), `multi-currency-money.mdx` (the per-outlet currency ✓ — it decides who may submit ✓), `program-changes/ai-chatbot/ai-chatbot-module.mdx` (the tool layer ✓ — the same read-only discipline ✓), `api-authentication-strategy.mdx` (the tenant rules this feature inherits ✓)
@@ -302,25 +302,69 @@ at LHDN and they validate them ✓.
 
 ### Two ways to be connected — and which one we pick
 
-| | **Direct** (the tenant's own ERP credentials) | **Intermediary** (our platform) |
+**We are a SaaS POS ✓** — the tenant issues **their own** e-Invoices ✓, in **their own**
+name ✓, from **their own** taxpayer profile ✓. So the question is not *"do we need the
+intermediary model?"* ✓ — it is *"whose credential does the POS present?"* ✓.
+
+| | **Direct** ✓ (the tenant's own ERP client) | **Intermediary** ✓ (our platform acts for the tenant) |
 |---|---|---|
-| The credentials | each tenant holds their own `client_id` / `client_secret` ✓ | **we** hold one set ✓ |
-| The onboarding | every tenant registers with LHDN and authorises their ERP ✓ | every tenant authorises **us** as their representative ✓ |
-| Our effort per tenant | high — registration, credentials, testing ✓ | low — one authorisation per tenant ✓ |
-| The risk | the tenant's key sits in our database ✓ | we are on the hook for every tenant's document ✓ |
-| Fits | the big chains with their own ERP ✓ | **the long tail — our customers** ✓ |
+| Whose credential | **the tenant's own** ✓ (their taxpayer profile ✓) ✓ | **ours** ✓ — plus the `onbehalfof` header ✓ ✓ |
+| Who the taxpayer is | the tenant ✓ — LHDN's own rule ✓: *"taxpayers should use the Login as Taxpayer System when submitting their own documents"* ✓ ✓ | the tenant ✓ — but through a third party ✓ |
+| The onboarding | the tenant self-provisions an ERP client ✓ (*"View and Register ERP"* ✓ / the **Register POS** flow ✓ ✓) and pastes **two** secrets ✓ into our settings ✓ ✓ | the tenant must find us in the portal and **authorise us** ✓ — and we must be registered and accepted **first** ✓ ✓ |
+| The rate limits | **per tenant** ✓ — each tenant has its own 12 / 100 / 300 RPM ✓ → **no tenant can starve another** ✓ ✓ | **one bucket for everybody** ✓ → the fair queue ✓ → the shared blast radius ✓ ✓ |
+| The blast radius | one tenant's credential ✓ | **our** credential → every tenant at once ✓ ✓ |
+| Who is on the hook | the tenant's taxpayer profile ✓ — our bug is our bug ✓, but their tax exposure is not amplified by a third-party relationship ✓ ✓ | we are the named party behind every tenant's tax document ✓ ✓ |
+| The buyer's trust | the document sits in the **restaurant's own** MyInvois account ✓ ✓ | the document sits behind our provider ✓ ✓ |
+| Fits | **every tenant** ✓ — the default ✓ ✓ | the tenants who cannot or will not self-provision ✓ ✓ |
+
+#### The decision ✓ — **direct first** ✓
+
+**The direct route is our default** ✓ — the tenant registers their own ERP client ✓ and
+enters the credentials in the **LHDN integration settings** ✓ ✓ (exactly as Kens framed
+it ✓) ✓.
+
+**Why ✓**
+1. **It is the semantically correct route** ✓ — the tenant is the taxpayer ✓, the invoice
+   is theirs ✓, and LHDN's FAQ says the taxpayer uses the **Taxpayer System** login for
+   its own documents ✓ ✓. We are their ERP ✓ — not a party acting for them ✓ ✓.
+2. **The friction is *lower*, not higher** ✓ — direct is **one** human step ✓ (register
+   the ERP client ✓, paste two secrets ✓) ✓; the intermediary is **two** ✓ (we must be
+   registered and accepted first ✓, then every tenant authorises us ✓) ✓.
+3. **The rate limits become the tenant's** ✓ — each tenant's own Client ID ✓ → their own
+   bucket ✓ → the *"one shared bucket"* problem **disappears** ✓ ✓ (and the fair queue
+   becomes politeness ✓, not correctness ✓ ✓).
+4. **No platform-wide single point of failure** ✓ — our credential dying today is not
+   fifty restaurants dying today ✓ ✓.
+5. **Less exposure** ✓ — we are not the named party behind every tenant's filing ✓ ✓.
+6. **The buyer trusts it more** ✓ — the document lands in the **restaurant's own** MyInvois
+   account ✓ ✓, so the guest's validation link resolves against the restaurant's own
+   taxpayer profile ✓ ✓.
+
+**The intermediary stays as the documented fallback** ✓ — for the tenant who cannot get
+into the portal ✓ (a new business ✓, an owner who leaves the registration to an
+accountant ✓) ✓ — and the code is **credential-agnostic** ✓ so it is a **setting**, not a
+rewrite ✓ ✓:
+- the client uses **whose credential the outlet's settings hold** ✓ ✓,
+- the `onbehalfof` header is **present or absent** ✓ ✓ (it is our only intermediary-only
+  piece ✓) ✓,
+- and the token cache is **per credential** ✓ ✓ — one entry per tenant ✓ ✓.
+
+> **The one thing to verify** ✓ (a spike question ✓, not a guess ✓): does the portal let
+> a **third-party-hosted** SaaS register under the taxpayer's own credential ✓ — or does
+> it demand a named intermediary ✓? The sandbox's registration portal carries a
+> **`Register POS`** flow ✓ ✓ (its own config flag ✓) ✓ → **we watch the actual
+> registration screen** ✓ in the spike ✓ ✓ and answer it there ✓ ✓.
 
 > **The intermediary's reach is deliberately narrow** ✓ — an intermediary may only **view
 > and access the e-Invoices it submitted on behalf of a taxpayer** ✓; it cannot open the
-> taxpayer's own invoices ✓, nor the invoices the taxpayer **received** ✓ ✓ → **our
-> documents table is the only place a buyer can find their e-Invoice** ✓ ✓ (that is a
-> product fact, not a limitation ✓ ✓).
+> taxpayer's own invoices ✓, nor the invoices the taxpayer **received** ✓ ✓ → in the
+> **direct** model that restriction does not apply to us ✓ ✓ (we are the taxpayer's ERP ✓)
+> ✓ — but our **documents table** is still the only place a **buyer** can find their
+> e-Invoice ✓ ✓ (a product fact ✓, not a limitation ✓ ✓).
 
-> **We are a "non-Peppol technology provider"** ✓ (General Guideline v4.8 ✓, Table 2.1 ✓) — the model
-> the market's integrators use ✓. **Recommendation: the intermediary model** ✓ — one LHDN
-> credential for the platform ✓, one authorisation per tenant ✓, and the tenant's own
-> credentials stay theirs ✓. The **direct model** is the fallback for a chain that insists
-> on holding its own key ✓ (or for a tenant that runs its own ERP next to our POS ✓).
+> **We are a "non-Peppol technology provider"** ✓ (General Guideline v4.8 ✓, Table 2.1 ✓) ✓
+> — that is the **mechanism** ✓ ✓; whether we play the **direct** or the **intermediary**
+> role in it is the decision above ✓ ✓.
 
 ## The document we build
 
@@ -649,7 +693,8 @@ taxpayer is the outlet's business ✓):
 | `sst_number` / `ttx_number` | the seller's SST / tourism tax numbers ✓ ("NA" if none ✓) ✓ |
 | `msic_code` | the restaurant's MSIC code ✓ |
 | `address` | the seller's registered address ✓ (the lines, the city, the postcode, the state ✓) ✓ |
-| `client_id` / `client_secret` | **the ERP credentials — encrypted at rest** ✓ (ours, in the intermediary model ✓) ✓ |
+| `client_id` / `client_secret` | **the ERP credentials — encrypted at rest** ✓ — **the tenant's own** ✓ (the direct model ✓) ✓ — and **two** secrets ✓ (the redundancy ✓) ✓ |
+| `taxpayer_id` | the **taxpayer** (the SSM entity ✓) the credentials belong to ✓ — **not** the outlet ✓ — see below ✓ |
 | `authorised` | the tenant has authorised our ERP client in the MyInvois portal ✓ |
 | `sandbox` | the credentials point at the sandbox ✓ |
 | `cancel_window_hours` | read from the Get Document Type API ✓, default 72 ✓ |
@@ -659,6 +704,21 @@ taxpayer is the outlet's business ✓):
 | `implement_date` | the tenant's own e-Invoice implementation date ✓ (Table 1.1 ✓) — **declared by the tenant** ✓, we never compute it ✓ |
 | `batch_lock_day` | the day of the month the batch is built and locked ✓ (default the 1st ✓) ✓ |
 | `buyer_tin_cache` | the cached TIN validations ✓ (per tenant ✓, with a TTL ✓) ✓ — not a column but a table beside it ✓ |
+
+#### The credential belongs to the **taxpayer**, not to the outlet ✓
+
+A client id is issued **against a taxpayer profile** ✓ — the SSM entity ✓ — not against
+an outlet ✓. So ✓:
+- a tenant with **three outlets under one SSM registration** ✓ = **one taxpayer** ✓ =
+  **one client id** ✓ → the credential is stored **once** ✓ and **reused** across the
+  tenant's outlets ✓ ✓;
+- an outlet that is **separately registered** (its own SSM ✓) = **its own taxpayer** ✓ =
+  **its own credentials** ✓ ✓.
+
+**So the rule ✓** — the credentials hang off the **taxpayer** ✓, the documents hang off
+the **outlet** ✓ ✓, and an outlet may **override** the tenant's credential ✓ (the rare
+separately-registered outlet ✓) ✓ ✓. *The spike's question:* does LHDN's registration
+expose the taxpayer id ✓ — and is it the same as the `onbehalfof` value ✓? ✓
 
 **`einvoice_documents`** — one row per document we intend to submit ✓:
 
@@ -702,10 +762,12 @@ the poll count ✓, the next poll at ✓.
   own flow validates in under two seconds ✓) up to **30 attempts** ✓ (a minute ✓) — then
   fall back to **Get Notifications** ✓ (the push channel ✓) and **Get Document Details**
   ✓ (the validation result ✓) ✓. Polling is the *fallback*, not the primary ✓ ✓.
-- **The fair queue** ✓ — the rate limit is per Client ID ✓ and in the intermediary model
-  that is **one bucket for every tenant** ✓ → the worker keeps **one in-flight submission
-  per tenant** ✓ and serves the tenants **round-robin** ✓, with a **per-tenant daily cap**
-  ✓ ✓ (a big chain's month-end batch must not eat the API's 100 RPM ✓).
+- **The fair queue** ✓ — the rate limit is per Client ID ✓ and in the **direct** model
+  each tenant has **their own bucket** ✓ → no tenant can starve another ✓ ✓ — so the
+  queue is **politeness, not correctness** ✓ (and it still matters the day we switch a
+  tenant to the intermediary route ✓ ✓). It keeps **one in-flight submission per tenant**
+  ✓ and serves the tenants **round-robin** ✓, with a **per-tenant daily cap** ✓ ✓ (a big
+  chain's month-end batch must not eat its own 100 RPM ✓ ✓).
 - **The reconciliation** ✓ — after a crash we may hold a document with no `submissionUID`
   ✓ (the POST succeeded, the write did not ✓) → we **search** for our own `codeNumber` ✓
   (Search Documents ✓ — **not** Get Recent Documents ✓, which only sees 31 days ✓)
@@ -718,9 +780,12 @@ the poll count ✓, the next poll at ✓.
 - The toggle ✓, the TIN + the id type ✓, the registration number ✓, the SST and TTX
   numbers ✓, the MSIC code ✓, the registered address ✓.
 - The **client id** and the **client secret** — entered once ✓, stored encrypted ✓, **never
-  sent back to the browser** ✓ (the API returns `has_credentials: true` and nothing else ✓).
+  sent back to the browser** ✓ (the API returns `has_credentials: true` and nothing else ✓)
+  — and **two** secrets ✓ (the redundancy the SDK's FAQ describes ✓) ✓.
 - The **"Test connection"** button ✓ that logs in and reports ✓ — the SDK's anti-pattern
-  list warns against pointless login attempts ✓, so this button is the only one ✓.
+  list warns against pointless login attempts ✓, so this button is the only one ✓ — and it
+  is **rate-limited itself** ✓ (a failed login burns the 12-per-minute bucket ✓ — we saw
+  the headers ourselves ✓ ✓).
 - The **sandbox** switch ✓ — the credentials are different on each side ✓, and a restaurant
   must never test against production by accident ✓.
 - The **consolidation method** (§3.6.3 ✓) and the **consolidated toggle** ✓.
@@ -730,6 +795,29 @@ the poll count ✓, the next poll at ✓.
   relaxation period until 31 Dec 2027 ✓") ✓.
 - The **tax profile** ✓ — the SST number ✓, the TTX number ✓, the **service-charge tax
   treatment** ✓ (service tax `02` ✓) and the **tourism tax** ✓ where it applies ✓.
+
+#### The onboarding wizard ✓ — this screen *is* the onboarding ✓
+
+The direct model ✓ (§ the model decision ✓) means the tenant does the portal work ✓ — so
+our settings screen has to **carry them through it** ✓ ✓ (a wall of empty fields is how
+this feature dies ✓ ✓).
+
+**The steps we show ✓**
+1. *"Open the MyInvois portal ✓ and go to **View and Register ERP** ✓"* ✓ — the portal
+   has a dedicated **Register POS** flow ✓ (its own flag ✓) ✓ → our POS is a **POS**, and
+   that is the registration the tenant should pick ✓ ✓.
+2. *"Register **two** secrets ✓ and paste them here ✓"* ✓ — the client id ✓ and the two
+   secrets ✓ — and we keep the second one for the fallback ✓ ✓.
+3. *"Which environment? ✓"* — **sandbox** ✓ first ✓ (the default for a new tenant ✓) →
+   **production** ✓ only after the sandbox is green ✓ ✓.
+4. *"Test connection ✓"* → a green tick ✓ with the **taxpayer's name ✓** and the **TIN ✓**
+   as LHDN sees it ✓ ✓ — that is the moment the tenant trusts the setup ✓ ✓.
+5. *"Which outlets? ✓"* — the credential is the **taxpayer's** ✓ → the tenant ticks the
+   outlets it covers ✓ ✓ (and the rare separately-registered outlet gets its own ✓ ✓).
+
+**And the help we offer** ✓ — a one-page PDF ✓ (or a screen ✓) with the screenshots ✓,
+in **English and Malay** ✓ ✓, because the person doing this is often the owner's
+accountant ✓ ✓ and they are the ones who will hit the wall ✓ ✓.
 
 ### The payment panel ✓
 
@@ -863,15 +951,52 @@ real builder is then written against ✓ ✓.
 | 7 | **Cancel** — inside the 72-hour window ✓ | the cancel path ✓, the `reason` ✓, and the **error states** ✓ ✓ |
 | 8 | **The QR** — build `{envbaseurl}/{uuid}/share/{longid}` ✓ and render the code ✓ | that the **long id** comes back ✓ ✓ and that the link opens the document ✓ |
 
-### The long pole is not technical ✓
+**The questions the spike must answer ✓**
+1. Does the **v1.0 structure** match the field mapping above ✓? ✓ (the `TaxSubtotal` ✓, the
+   `TaxScheme` ✓, the `PaymentMeans` ✓)
+2. Does a **tax-inclusive** document validate ✓ — and does the total **tie** ✓? ✓
+3. Does a **second `TaxSubtotal`** ✓ (the service charge ✓) validate ✓? ✓
+4. Does the **long id** come back with the document ✓ (the QR link ✓)? ✓
+5. Does **cancel** work inside the window ✓ — and what do the error states look like ✓? ✓
+6. **Does the portal accept a third-party-hosted SaaS** ✓ under the taxpayer's **own**
+   credential ✓ — or does it insist on a named intermediary ✓? ✓ *The **Register POS**
+   flow ✓ suggests it does not ✓ ✓ — but we watch it happen ✓ ✓.*
+7. Is **"Ideazes POS"** a registered POS type in the portal ✓ — and if not ✓, can a tenant
+   register a **custom** ERP ✓? ✓
+8. Does the registration expose the **taxpayer id** ✓ — the same value the `onbehalfof`
+   header carries ✓? ✓
+
+#### The direct route can be tested **first** ✓ — and it is the cheaper test ✓
+
+The **direct** route needs **one** thing ✓: a **taxpayer's own** sandbox client id and
+secrets ✓ ✓ — **no intermediary registration ✓, no `onbehalfof` header ✓, no per-tenant
+authorisation ✓** ✓. Our spike script already speaks it ✓ (omit `MYINOIS_ONBEHALLOF` ✓
+→ no header ✓ → the **Taxpayer System** login ✓ ✓).
+
+**So the fastest way to a running spike ✓**
+| The taxpayer | What it gives us | The cost |
+|---|---|---|
+| **An individual taxpayer** ✓ (an `IG…` TIN ✓ and a MyTax account ✓) ✓ | the whole round trip ✓ — the structure ✓, the submit ✓, the poll ✓, the QR ✓, the cancel ✓ — but a **seller with no BRN / SST / MSIC** ✓ | the fastest ✓ — no SSM needed ✓ ✓ |
+| **A tenant that volunteers** ✓ (a real restaurant ✓, or our own demo company ✓) | the **realistic** test ✓ — a BRN ✓, an SST ✓, an MSIC ✓, a real buyer flow ✓ | one email ✓ ✓ |
+| **A company we register** ✓ | the same ✓ | the SSM takes days ✓ — the slowest ✓ ✓ |
+
+**The order to try ✓** — first ask the **sandbox profile portal**
+(`preprod-profile.myinvois.hasil.gov.my` ✓) whether it accepts a **synthetic** taxpayer
+in the sandbox ✓ ✓ → if it does ✓, we can run the **whole spike ourselves** ✓ with no
+human blocker except the portal account ✓ ✓; if it does not ✓, an **individual**
+taxpayer ✓ is the shortest path ✓ ✓.
+
+#### The long pole is not technical ✓
 
 **Registering as an intermediary** ✓ — and having a **test taxpayer** authorise our ERP
-client ✓ in the portal ✓ — is the slow path ✓ ✓. It gates step 2 ✓ (the intermediary
-login ✓) and every step after it ✓. So ✓:
-- **step 1 starts on day 1** ✓ and runs **in parallel** ✓ with everything else ✓,
-- if the intermediary registration is slow ✓ → we fall back to the **direct model** ✓ for
-  the spike ✓ (the taxpayer's own credentials ✓) and the commercial decision moves to the
-  front of the roadmap ✓ ✓.
+client ✓ in the portal ✓ — is the slow path ✓ ✓, and it is now the **fallback** ✓ (the
+direct model is the default ✓) ✓. So ✓:
+- **the spike runs on the direct route** ✓ ✓ — one taxpayer's own credentials ✓ ✓,
+- the intermediary registration is **deferred** ✓ until a tenant actually needs it ✓ ✓
+  (and the code is ready for it ✓ ✓),
+- and the **spike's real question** becomes ✓: *does the portal accept a third-party-hosted
+  SaaS under the taxpayer's own credential ✓?* ✓ — answered by **watching the actual
+  registration screen** ✓ ✓ ✓.
 
 ### The deliverables ✓
 
