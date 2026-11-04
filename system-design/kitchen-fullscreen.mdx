@@ -209,7 +209,7 @@ in `lucide-react` ✓ ✓) ✓.
 
 ## The phased plan ✓
 
-**Phase 1 — the route and the button ✓ (half a day ✓) — BUILT ✓, NOT DEPLOYED ✓**
+**Phase 1 — the route and the button ✓ (half a day ✓) — BUILT ✓ AND DEPLOYED ✓**
 The `App.jsx` branch ✓, the Kitchen's `mode` prop ✓, the kiosk render ✓, the header ✓,
 the **"Full screen"** button ✓, the i18n keys ✓ ✓.
 
@@ -269,11 +269,42 @@ settings line moved into the header ✓, the chips re-skinned ✓ ✓.
 - the **PIN to exit** ✓ — **dropped** ✓ (the login is the gate ✓ ✓) — and the
   **auto-return** ✓ — **dropped** ✓ (consistency with the Staff Order kiosk ✓ ✓) ✓.
 
+**Phase 4 — the phone ✓ (v1.4 ✓ + v1.5 ✓) — DONE ✓ AND DEPLOYED ✓**
+Kens used the Kitchen on a real phone and found the embedded header overflowing ✓ ✓.
+
+**v1.4 — the embedded header overflowed ✓**
+- the header row was **one long line** ✓ (the tile ✓ + a `text-2xl` title ✓ + the active
+  chip ✓ + three **labelled** buttons ✓) → at 390px the **"Full screen"** button was
+  **clipped at the screen edge** ✓ ✓;
+- the **buttons drop their labels** below `sm` ✓ (`hidden sm:inline` ✓ — the same treatment
+  the kiosk already uses ✓ ✓) → the row is icons ✓;
+- the **title shrinks and truncates** ✓ (`text-lg sm:text-2xl` ✓ + `truncate` ✓);
+- the **active-count chip steps aside** on the smallest screens ✓ (`hidden sm:inline-flex` ✓
+  — the status cards carry the counts ✓ ✓);
+- the button group is `shrink-0` ✓ and the title block `min-w-0` ✓ → the buttons are
+  **never clipped** ✓ ✓.
+
+**v1.5 — the Full screen button gets its own row ✓**
+- Kens: *"the full screen button as screenshot not align with other card"* ✓ → on a phone
+  the **Full screen button is now its own full-width row under the header** ✓
+  (`sm:hidden w-full` ✓, the same 16px content margins ✓) → it **lines up with the cards**
+  ✓ ✓; on the desktop it stays **in the header row** ✓ with its label ✓ (unchanged ✓ ✓);
+- the **status cards go 2×2 on a phone** ✓ (`grid-cols-2 sm:grid-cols-4` ✓) — in the
+  4-wide grid at 390px the labels ("Pending" ✓, "Confirmed" ✓, "Preparing" ✓) were
+  **clipped by the card borders** ✓ ✓;
+- the **settings readout wraps** ✓ (`flex-wrap` ✓) instead of one long line ✓ ✓.
+
 **How it was deployed ✓** — `npm run verify` ✓ (the i18n parity ✓, the format test ✓,
 the build ✓) → `rsync -a --delete dist/ /var/www/html/posai-frontend/dist/` ✓ ✓ (the
 live folder ✓ — it is a separate mount ✓, not a symlink ✓) → a **backup of the previous
 live `dist/`** in `/tmp/pos_backups/live-dist-before-kitchen-kiosk-20261104/` ✓ ✓ (a
 rollback ✓) ✓.
+
+> **The rule that came out of Phase 4 ✓** — a deploy is only real when the **live page**
+> proves it ✓: after the write → **read the file back** ✓, after the build → **grep the
+> bundle** ✓, after the deploy → **re-shoot the screen in production** ✓ ✓. (The v1.4
+> source edit never landed in the file ✓ — the bundle had it ✓ but the source did not ✓ —
+> so the next build would have silently dropped it ✓ ✓.)
 
 **The verification ✓ (in production ✓, against `app.ideazes.com` ✓)**
 
@@ -285,6 +316,10 @@ rollback ✓) ✓.
 | the **embedded** screen's order number ✓ | still `text-2xl` ✓ — **untouched** ✓ ✓ |
 | the page scroll ✓ | none ✓ ✓ |
 | the phone ✓ | the **"open it on the display"** hint **shows** ✓ ✓ |
+| the phone ✓ | the **embedded** header fits ✓ — no clipping ✓, no horizontal overflow ✓ (`document.scrollWidth` = `window.innerWidth` = 390 ✓) ✓ ✓ |
+| the phone ✓ | the **Full screen** button is its **own full-width row** ✓ — `left 16` ✓, `right 374` ✓ = the content width ✓ = the cards' edge ✓ ✓ |
+| the phone ✓ | the status cards are **2×2** ✓ and every label readable ✓ ✓ |
+| the desktop ✓ | unchanged ✓ — the three labelled buttons stay in the row ✓, the cards stay 4 across ✓ ✓ |
 | the reconnect banner ✓ | **shows** when the poll is aborted ✓ ✓ — and the board is still there ✓ ✓ |
 
 > The verification **mocks the `/orders/` response** ✓ so the cards render with realistic
