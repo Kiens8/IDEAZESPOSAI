@@ -3,9 +3,9 @@ title: The Kitchen Full Screen (the KDS wall display)
 description: The Kitchen Display gets a full-screen mode, built exactly like the Staff Order kiosk
 ---
 
-**Document Version:** 1.2  
+**Document Version:** 1.3  
 **Created:** 2026-11-04  
-**Status:** **Phase 1 is built ✓** (in the working tree ✓ — **not deployed** ✓) · **v1.1: the two open questions are answered ✓ (no PIN on the Exit ✓, no auto-return ✓)** · **v1.2: Phase 1 landed ✓ and was verified in a browser ✓**  
+**Status:** **BUILT AND DEPLOYED ✓** — Phase 1 ✓, Phase 2 ✓ and Phase 3 ✓ are live on `app.ideazes.com` ✓ ✓ · **v1.1: the two open questions are answered ✓ (no PIN on the Exit ✓, no auto-return ✓)** · **v1.2: Phase 1 landed ✓ and was verified in a browser ✓** · **v1.3: Phases 2 and 3 landed ✓ and were deployed ✓**  
 **Scope:** the POS frontend ✓ (`frontend/src/` ✓) — **no backend change** ✓, **no new endpoint** ✓, **no new plan feature** ✓  
 **Related:** `pos-app/kitchen-kds` (the user-facing Kitchen documentation ✓) · the Staff Order kiosk (`frontend/src/pages/StaffOrder.jsx` ✓) · the app shell (`frontend/src/App.jsx` ✓)
 
@@ -145,7 +145,7 @@ contrast on the screen ✓ — and the kitchen borrows it **as it is** ✓:
 |---|---|
 | `frontend/src/App.jsx` ✓ | the `/kitchen/full` route ✓ (the `isKioskRoute` branch ✓ ✓) |
 | `frontend/src/pages/Kitchen.jsx` ✓ | a `mode` prop ✓ (`'embedded' \| 'kiosk'` ✓), the kiosk render ✓, the **"Full screen"** button ✓ ✓ |
-| `frontend/src/i18n/locales/en/kitchen.json` ✓ | `kiosk.fullScreen` ✓ and `kiosk.exit` ✓ — **only two new keys** ✓ (the sound ✓, the refresh ✓ and the active count **already exist** ✓ in the namespace ✓ — no duplicate translations ✓ ✓) ✓ |
+| `frontend/src/i18n/locales/en/kitchen.json` ✓ | `kiosk.fullScreen` ✓ · `kiosk.exit` ✓ · `kiosk.openOnDisplay` ✓ (the "open it on the display" hint ✓) · `kiosk.connectionLost` ✓ (the reconnect banner ✓) — **four new keys** ✓ (the sound ✓, the refresh ✓ and the active count **already exist** ✓ in the namespace ✓ — no duplicate translations ✓ ✓) ✓ |
 | `frontend/src/i18n/locales/zh/kitchen.json` ✓ | the same keys ✓ ✓ |
 | `frontend/src/i18n/locales/km/kitchen.json` ✓ | the same keys ✓ ✓ |
 
@@ -173,6 +173,10 @@ in `lucide-react` ✓ ✓) ✓.
 - the reminder pulse ✓ and the countdown ✓ still read correctly ✓ at the larger type ✓ ✓;
 - the phone ✓ — the kiosk hides the bottom bar ✓ and the header wraps to the icons only
   ✓ (the same `hidden sm:inline` treatment ✓ ✓) ✓;
+- the **kiosk-only** rule ✓ — the embedded screen keeps its sizes ✓ and its settings line ✓ ✓;
+- the **"open it on the display"** hint ✓ appears on a small screen ✓ and never on a big
+  one ✓ ✓;
+- the **reconnect banner** ✓ appears when the poll fails ✓ and the board survives ✓ ✓;
 - **every new i18n key exists in en, zh and km** ✓ ✓ (the house check ✓ ✓).
 
 ---
@@ -209,20 +213,56 @@ the **"Full screen"** button ✓, the i18n keys ✓ ✓.
 | the phone ✓ | 390×844 ✓ — the title and the labels hide ✓, the icon buttons stay ✓, the board scrolls ✓ ✓ |
 | the console ✓ | only the **pre-existing** dev-server CORS noise ✓ (the features call to `apisite.ideazes.com` ✓ from `127.0.0.1` ✓) ✓ — **nothing from this change** ✓ ✓ |
 
-**Not deployed ✓** — the live `dist/` is still the build of 2 November ✓ ✓. The deployment
-is `npm run build` ✓ → Caddy serves `/var/www/html/posai-frontend/dist` ✓ ✓ — **Kens's
-call** ✓ ✓.
+**Deployed ✓ (this was Phase 1 ✓) — see Phases 2 and 3 below ✓** for the final
+deployment ✓ ✓.
 
-**Phase 2 — the wall polish ✓ (half a day ✓)**
+**Phase 2 — the wall polish ✓ (half a day ✓) — DONE ✓ AND DEPLOYED ✓**
+- the **order number** `text-2xl` → **`text-4xl`** ✓ — the hero of the card ✓ ✓;
+- the **status counts** `text-3xl` → **`text-4xl`** ✓ ✓;
+- the **meta row** (the order type ✓, the time ✓, the countdown ✓) `text-sm` → `text-lg` ✓;
+- the **table line** `text-sm` → `text-lg` ✓;
+- the **item list** `text-sm` → `text-lg` ✓, the quantity badge ✓ bigger ✓, and the list
+  grows `max-h-48` → **`max-h-72`** ✓ (more of the ticket visible ✓ ✓);
+- the **bump button's label** → `text-lg` ✓ (the button was already `py-3` ✓ ✓);
+- the **settings readout** is **gone in the kiosk** ✓ — a wall display does not need it ✓,
+  and the **sound state lives in the header chip** ✓ ✓.
+
+**All of it is the kiosk only ✓** — the embedded screen keeps `text-2xl` ✓ and keeps its
+settings line ✓ ✓ (verified ✓ ✓). `OrderCard` takes a `kiosk` prop ✓ ✓.
+
+**Phase 3 — the niceties ✓ (later ✓) — DONE ✓ AND DEPLOYED ✓**
 The bigger type ✓ (the order number ✓, the counts ✓), the bigger tap targets ✓, the
 settings line moved into the header ✓, the chips re-skinned ✓ ✓.
 
-**Phase 3 — the niceties ✓ (later ✓)**
-A **"cast to a TV"** hint on the screen ✓ (open `/kitchen/full` on the display ✓, not on
-the phone ✓ ✓) · a **reconnect banner** ✓ for the wall when the network drops ✓ (the
-kitchen must never show a stale board ✓ ✓) · the **PIN to exit** ✓ — **dropped** ✓
-(the login is the gate ✓ ✓) — and the **auto-return** ✓ — **dropped** ✓ (consistency
-with the Staff Order kiosk ✓ ✓) ✓.
+- the **"open it on the display"** hint ✓ — on a **small screen** only ✓ (a phone is not
+  the kitchen display ✓): a dismissible amber strip under the header ✓ that says *open
+  this page on the kitchen display* ✓ ✓. On a real screen it never appears ✓ ✓.
+- the **reconnect banner** ✓ — a failed poll sets the flag ✓ → a red strip under the
+  header ✓ — and **the board keeps the last orders it had** ✓ ✓ (a wall display must
+  never look alive when it is not ✓ ✓). The embedded screen is unchanged ✓ ✓.
+- the **PIN to exit** ✓ — **dropped** ✓ (the login is the gate ✓ ✓) — and the
+  **auto-return** ✓ — **dropped** ✓ (consistency with the Staff Order kiosk ✓ ✓) ✓.
+
+**How it was deployed ✓** — `npm run verify` ✓ (the i18n parity ✓, the format test ✓,
+the build ✓) → `rsync -a --delete dist/ /var/www/html/posai-frontend/dist/` ✓ ✓ (the
+live folder ✓ — it is a separate mount ✓, not a symlink ✓) → a **backup of the previous
+live `dist/`** in `/tmp/pos_backups/live-dist-before-kitchen-kiosk-20261104/` ✓ ✓ (a
+rollback ✓) ✓.
+
+**The verification ✓ (in production ✓, against `app.ideazes.com` ✓)**
+
+| Check ✓ | Result ✓ |
+|---|---|
+| the kiosk's order number ✓ | `text-4xl font-bold` ✓ ✓ |
+| the kiosk's header ✓ | `rgb(30, 41, 59)` = slate-800 ✓ ✓ |
+| the kiosk's settings readout ✓ | **absent** ✓ ✓ |
+| the **embedded** screen's order number ✓ | still `text-2xl` ✓ — **untouched** ✓ ✓ |
+| the page scroll ✓ | none ✓ ✓ |
+| the phone ✓ | the **"open it on the display"** hint **shows** ✓ ✓ |
+| the reconnect banner ✓ | **shows** when the poll is aborted ✓ ✓ — and the board is still there ✓ ✓ |
+
+> The verification **mocks the `/orders/` response** ✓ so the cards render with realistic
+> tickets ✓ — **no live order was created** ✓ ✓.
 
 ---
 
