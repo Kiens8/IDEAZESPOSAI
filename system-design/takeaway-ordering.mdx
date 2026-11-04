@@ -1,8 +1,8 @@
 # Takeaway Ordering — the flow, the gap, and the plan
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet · **v1.1: the status-flow decision ✓ — the takeaway rides the dine-in machine ✓, delivery is a separate flow ✓**
+**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet · **v1.1: the status-flow decision ✓ — the takeaway rides the dine-in machine ✓, delivery is a separate flow ✓** · **v1.2: cross-link to the business-type standard ✓ ✓**
 
 ---
 
@@ -72,6 +72,11 @@ pending → confirmed → preparing → ready → served
    "everything served → pay" rule ✓ `OrderQueue.jsx:935` ✓ ✓); a takeaway bills **one order** ✓
    → the payment trigger differs ✓ ✓ → which is exactly why the counter needs its own
    **Takeaway** view ✓ ✓ (Phase 3 ✓ ✓) ✓.
+
+**One machine ✓ ✓ for every business type ✓ ✓** — a cafe ✓, a fast-food stall ✓, a bar ✓ and a
+food court ✓ ride **this same** machine ✓ ✓; only the wording of the last step differs ✓ ✓
+("Served" ✓ / "Collected" ✓ / "Delivered" ✓ ✓) ✓ ✓ — **the full standard is in
+`business-type-standards.mdx` ✓ ✓** ✓ ✓.
 
 **And delivery is a different animal ✓** — it has an **address** ✓, a **fee** ✓, a **driver**
 ✓ and its own status set ✓ ("out for delivery" ✓ → "delivered" ✓ ✓) ✓. **It does not ride the
@@ -193,6 +198,7 @@ no delivery fee and no driver/3PL** ✓ ✗ ✓. And `allow_delivery` is **on by
 | `frontend/src/pages/Kitchen.jsx` ✓ | the name on the ticket ✓ ✓ |
 | the print/receipt template ✓ ✓ | the name on the printed ticket ✓ ✓ (to be located ✓ ✗) ✓ |
 | `frontend/src/pages/Settings.jsx` ✓ | the wording of `table_required` ✓ (the help text ✓) ✓ |
+| **the business-type preset ✓** ✓ | the per-type defaults ✓ (see `business-type-standards.mdx` ✓ ✓) ✓ |
 | `backend/app/routes/order.py` ✓ | **nothing to change ✓** — the rule is already right ✓ ✓ |
 
 **No new tables ✓ ✓, no new permissions ✓ ✓, no new plan feature ✓ ✓.**
@@ -262,6 +268,13 @@ no delivery fee and no driver/3PL** ✓ ✗ ✓. And `allow_delivery` is **on by
 8. **The receipt path ✓** — to be located before Phase 2 promises the name on the printout ✓ ✓.
 
 ---
+
+## The related document ✓
+
+→ **`business-type-standards.mdx` ✓ ✓** — the standard for all the business types ✓ ✓
+(restaurant ✓ / cafe ✓ / fast food ✓ / bar ✓ / food court ✓ / hawker stall ✓ ✓): the shared
+status machine ✓ ✓, the per-type presets ✓ ✓, the **anchor** ✓ (table ✓ / name ✓ / token ✓ ✓)
+and the **stations** ✓ ✓ ✓.
 
 ## The sources ✓
 

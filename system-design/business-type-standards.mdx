@@ -1,0 +1,243 @@
+# Business Type Standards — one machine, per-type presets
+
+**Document Version:** 1.0
+**Owner:** Ideazes POS AI
+**Status:** **Proposal** — the standard, the reasoning and the phases; nothing is built yet
+
+---
+
+## The short answer
+
+**Every business type gets the SAME status machine ✓ ✓ — the differences are settings (a
+preset), not code ✓ ✓ ✓.**
+
+```
+pending → confirmed → preparing → ready → served
+```
+
+A cafe, a fast-food stall, a bar and a hawker at a food court all ride **that** machine ✓ ✓.
+What changes per type ✓ is:
+
+1. **the preset of the existing knobs ✓** (the tables ✓, the order types ✓, the tips ✓, the auto-confirm ✓ ✓);
+2. **the wording of the last step ✓** ("Served" ✓ / "Collected" ✓ / "Delivered" ✓ ✓);
+3. **the anchor** ✓ — *what identifies the order* ✓ ✓ (a table ✓ / a name ✓ / a token ✓ ✓);
+4. **the stations ✓** — where the food is made ✓ ✓ (a kitchen ✓ / a bar ✓ / a stall ✓ ✓).
+
+**The rule to protect ✓:** *no per-type code paths ✓ ✓* — a fork per business type is a
+maintenance trap ✓ ✓ (five types × four surfaces × every new feature ✓ ✗ ✓) ✓ ✓.
+
+---
+
+## What the code says today ✓
+
+**The truth about `business_type` ✓**
+- it is a column on the outlet settings ✓ ✓ (`models.py:385` ✓ — a string ✓, default
+  `"restaurant"` ✓ ✓);
+- the Settings page writes it ✓ ✓ (`Settings.jsx:1190-1200` ✓ ✓);
+- **nothing reads it ✓ ✗** — there is no branch on it anywhere in the backend ✓ ✓ or the
+  frontend ✓ ✓ → **today it is a label ✓ ✓**, a promise we have not kept ✓ ✗ ✓.
+
+**The knobs that already exist ✓** (`OutletSettings` ✓ ✓) — and they are enough for most of
+the presets ✓ ✓:
+
+| Existing ✓ | Meaning ✓ |
+|---|---|
+| `allow_dine_in` ✓ | the dine-in type is offered ✓ ✓ |
+| `allow_takeaway` ✓ | the takeaway type is offered ✓ ✓ |
+| `allow_delivery` ✓ | the delivery type is offered ✓ ✓ (→ **off by default ✓**, per the takeaway doc ✓ ✓) ✓ |
+| `table_required` ✓ | a dine-in order needs a table ✓ ✓ (→ *"dine-in orders need a table"* ✓ ✓) ✓ |
+| `max_orders_per_table` ✓ | how many orders one table may hold ✓ ✓ |
+| `auto_confirm_orders` ✓ | the kitchen accepts without a tap ✓ ✓ |
+| `order_reminder_minutes` ✓ | the "still not served" nag ✓ ✓ |
+| `tips_enabled` ✓ | the tip line ✓ ✓ |
+| `split_bill_enabled` ✓ | the split bill ✓ ✓ |
+| `kitchen_printer_ip` ✓ | the kitchen printer ✓ ✓ (**one only ✓** — a multi-station gap ✓ ✗) ✓ |
+
+**And what is missing ✓ ✗**
+- **no station concept ✓** (a grep for "station" in the models and the routes returns nothing
+  ✓ ✓) → a bar's drinks and a food court's stalls have nowhere to live ✓ ✗ ✓;
+- **no per-type preset ✓** → every tenant tunes the same knobs by hand ✓ ✓ (and gets them
+  wrong ✓ ✓) ✓ ✓;
+- **no anchor concept ✓** → a dine-in has a table ✓, a takeaway has a walk-in ✓, a hawker has
+  nothing ✓ ✗ ✓.
+
+---
+
+## The standard ✓
+
+### 1. The status machine is one ✓
+
+**All five types ✓ ✓ — plus the hawker stall ✓ ✓ — use ✓ ✓:**
+
+```
+pending → confirmed → preparing → ready → served
+```
+
+**Why ✓** — the kitchen ✓, the counter ✓, the reports ✓, the reminder ✓, the cancellation rule
+✓ ✓ (`order.py:969` ✓ — pending/confirmed/preparing ✓ ✓) and the whole ticket pipeline ✓ ✓
+are all written against this machine ✓ ✓. **A per-type status set would fork all of it ✓ ✗**
+✓ — for no gain ✓ ✓, because the *states* are the same ✓ ✓ (the food is made ✓, the food is
+ready ✓, the food leaves ✓ ✓).
+
+**Only the wording of the last step varies ✓ ✓** — and it is a **translation** ✓ ✓:
+
+| Type ✓ | The last step reads ✓ |
+|---|---|
+| Restaurant ✓ | **Served** ✓ ✓ |
+| Cafe ✓ | **Collected** ✓ ✓ |
+| Fast Food ✓ | **Collected** ✓ ✓ |
+| Bar ✓ | **Served** ✓ ✓ (a drink is served to the table ✓ ✓) ✓ |
+| Food Court / Stall ✓ | **Collected** ✓ ✓ |
+
+**No new status value ✓ ✓ — no migration ✓, no data change ✓, no API change ✓** ✓ ✓.
+
+### 2. The preset per type ✓
+
+**`business_type` becomes a preset ✓** — it sets the defaults of the knobs above ✓ ✓, and the
+tenant can override every one of them ✓ ✓ ✓.
+
+| Knob ✓ | Restaurant ✓ | Cafe ✓ | Fast Food ✓ | Bar ✓ | Food Court / Stall ✓ |
+|---|---|---|---|---|---|
+| `table_required` ✓ | **true** ✓ | false ✓ | false ✓ | **true** ✓ | false ✓ |
+| `allow_dine_in` ✓ | true ✓ | true ✓ | false ✓ | true ✓ | false ✓ |
+| `allow_takeaway` ✓ | true ✓ | true ✓ | true ✓ | true ✓ | **true** ✓ |
+| `allow_delivery` ✓ | true ✓ | false ✓ | true ✓ | false ✓ | false ✓ |
+| `auto_confirm_orders` ✓ | false ✓ | **true** ✓ | **true** ✓ | false ✓ | **true** ✓ |
+| `tips_enabled` ✓ | true ✓ | true ✓ | false ✓ | true ✓ | false ✓ |
+| `split_bill_enabled` ✓ | true ✓ | false ✓ | false ✓ | true ✓ | true ✓ |
+| the last status's wording ✓ | Served ✓ | Collected ✓ | Collected ✓ | Served ✓ | Collected ✓ |
+| the stations ✓ | 1 (kitchen ✓) | 2 (kitchen + bar ✓) | 1 ✓ | 1 (bar ✓) | **N (the stalls ✓)** ✓ |
+| the anchor ✓ | table ✓ | table / name ✓ | name / token ✓ | tab / name ✓ | **token ✓** ✓ |
+
+**The fast food's `allow_dine_in = false` ✓** — a fast-food place usually has no seating ✓ ✓;
+a tenant with a small dining area flips it ✓ ✓ (the override ✓ ✓ is the point ✓ ✓) ✓ ✓.
+
+### 3. The anchor — what identifies the order ✓
+
+This is the idea that makes the types coherent ✓ ✓. **Every order needs an anchor ✓ ✓** —
+something the counter, the kitchen and the bill can point at ✓ ✓:
+
+| The order is ✓ | The anchor is ✓ | The bill rolls up ✓ | Why ✓ |
+|---|---|---|---|
+| **dine-in** ✓ | the **table** ✓ ✓ | the table's orders ✓ ✓ | the table is where the guests are ✓ ✓ |
+| **takeaway** ✓ | the **customer name** ✓ ✓ | the one order ✓ ✓ | the name is the takeaway's table ✓ ✓ |
+| **hawker / counter** ✓ | the **token** ✓ ✓ ("A12" ✓ ✓) | the one order ✓ ✓ | a queue number is the identity ✓ ✓ |
+
+→ **The takeaway's missing name ✓** (the takeaway doc ✓ ✓) is not a special case ✓ — it is the
+**same anchor concept** ✓ ✓, and the hawker's token ✓ ✓ is the third form ✓ ✓ ✓.
+
+**The token ✓** is the cheapest one to build ✓ ✓ and the highest-value for a stall ✓ ✓ — the
+order number ✓ ✓, printed on the receipt ✓ ✓ (the receipt printer ✓ exists ✓ ✓) ✓ ✓ and
+called out at the pass ✓ ✓ ("A12!" ✓ ✓) ✓ ✓.
+
+### 4. The stations — where the food is made ✓
+
+**The gap ✓ ✗** — `kitchen_printer_ip` is a **single** printer ✓ ✓ → a cafe's bar ✓, a
+restaurant's grill ✓, a food court's stalls ✓ and a bar's drinks ✓ have nowhere to go ✓ ✗ ✓.
+
+**Two options ✓ ✓**
+- **(a) the category *is* the station ✓** — zero migration ✓ ✓ → the kitchen display filters by
+  category ✓ ✓ → and for a **food court ✓** this is natural ✓ ✓ (the stalls *are* the menu
+  groups ✓ ✓) ✓ ✓ → **the interim answer ✓** ✓ ✓;
+- **(b) a real `stations` table + `menu_items.station_id` ✓** — a nullable column ✓ ✓ (a safe
+  migration ✓ ✓) → a restaurant with a grill ✓, a fryer ✓ and a bar ✓ ✓ → the kitchen display
+  per station ✓ ✓ (and the wall display could run one per station ✓ ✓) ✓ ✓.
+
+**The recommendation ✓** — **(a) now ✓, (b) after ✓** ✓ ✓ — (a) makes the food court work with
+**no migration at all ✓ ✓** ✓ ✓ and (b) is the right long-term model ✓ ✓ ✓.
+
+**The multi-stall order ✓** — a food court order that spans two stalls ✓ ✓ is **one order**
+✓ ✓ but **two tickets** ✓ ✓ → each stall's display shows only its items ✓ ✓ → **the ticket is
+split, the bill is not** ✓ ✓ ✓.
+
+---
+
+## The hawker stall ✓
+
+**The case Kens raised ✓ ✓** — a hawker at a food court ✓, or an outdoor stall ✓ ✓.
+
+**The business type ✓** — a single stall is **not** a food court ✓ ✗ → two honest options ✓ ✓:
+- **add a 6th type `stall` ✓** ✓ (the hawker stall ✓ ✓) → the clearest ✓ ✓;
+- **treat the food court type as "one stall or many" ✓** ✓ → the tenant is one stall ✓ ✓ and the
+  multi-stall split only matters when the tenant has several ✓ ✓ → **zero new types ✓ ✓** ✓ ✓.
+
+**The recommendation ✓** — **add `stall` as a 6th type ✓** ✓ (it is a different service model ✓ ✓:
+counter-only ✓, token-based ✓, pay-immediately ✓ ✓) and keep `food_court` for a tenant that runs
+**several** stalls under one tenant ✓ ✓ ✓.
+
+**A hawker's flow ✓ ✓** — counter-only ✓ ✓, **takeaway only ✓** ✓, **the token ✓** ✓, **the
+payment at the counter ✓** ✓ (no table ✓, no delivery ✓ usually ✓ ✓) ✓ ✓.
+
+---
+
+## The rails ✓ — the rules the preset must not break ✓
+
+1. **The preset never overwrites a tuned tenant ✓** — it is applied **on the type change
+   only ✓** ✓, and **only with a confirmation ✓** ("apply the food-court preset? this changes
+   your order settings ✓" ✓ ✓) ✓ ✓ — **silently changing a live tenant's order behaviour is
+   the worst thing this feature could do ✓ ✗** ✓ ✓.
+2. **The type is a preset, not a mode ✓** — the code must read the **settings** ✓ ✓, never the
+   business type ✓ ✗ (otherwise a tenant that overrides a knob is contradicted by the type ✓ ✗
+   ✓) ✓ ✓. **The type only *seeds* the settings ✓** ✓ ✓.
+3. **No new order status ✓ ✓** — the machine is shared ✓ ✓ (one machine ✓ ✓) ✓ ✓.
+4. **The money path does not move ✓** — the price ✓, the tax ✓, the currency ✓, the tip ✓ and
+   the bill ✓ are identical across the types ✓ ✓ ✓.
+5. **The isolation does not move ✓** — the tenant ✓, the outlet ✓, the table ✓ and the
+   customer ✓ are derived exactly as they are today ✓ ✓ ✓.
+6. **The preset must not create a new plan feature ✓** — every type is available to every plan
+   ✓ ✓ (the type is a *configuration* ✓, not a *product* ✓ ✓) ✓ ✓.
+
+---
+
+## The phases ✓
+
+**Phase 0 — make the field live ✓** *(the smallest honest step ✓ ✓)*
+- the Settings page's business-type card ✓ ✓ → **apply the preset** ✓ ✓ (with the
+  confirmation ✓ ✓) ✓ ✓;
+- the preset table ✓ ✓ in one place ✓ ✓ (`business_presets.py` ✓ ✓ — a dict ✓ ✓) ✓ ✓;
+- the delivery default → off ✓ ✓ (already agreed ✓ ✓) ✓ ✓.
+
+**Phase 1 — the type-aware wording ✓**
+- the last step's label ✓ ✓ ("Served" ✓ / "Collected" ✓) — translation only ✓ ✓ ✓.
+
+**Phase 2 — the anchor ✓**
+- the takeaway's **name** ✓ ✓ (the takeaway doc ✓ ✓) ✓ ✓;
+- the **token** ✓ ✓ for the counter-only types ✓ ✓ (the hawker ✓ ✓) ✓ ✓.
+
+**Phase 3 — the stations ✓**
+- (a) the category as the station ✓ ✓ + the kitchen display's filter ✓ ✓;
+- (b) the real `stations` table ✓ ✓ + `menu_items.station_id` ✓ ✓ + the multi-stall split ✓ ✓.
+
+**Phase 4 — the bar's tab ✓**
+- the open tab ✓ ✓ — a session at the bar ✓ ✓ (reuse the table's bill machinery ✓ ✓ as a
+  pseudo-table ✓ ✓) ✓ ✓.
+
+---
+
+## The open questions ✓
+
+1. **A 6th type `stall` ✓, or is the food court "one stall or many" ✓?** — my pick ✓: **add
+   `stall` ✓** ✓ (a different service model ✓ ✓ — counter-only ✓, token ✓, pay-now ✓ ✓) ✓ ✓.
+2. **Should the preset apply to a tenant's existing settings ✓?** — my pick ✓: **no ✓** ✓ —
+   only on the type change ✓ ✓, with a confirmation ✓ ✓ ✓.
+3. **Is a bar's tab a pseudo-table ✓ or a new entity ✓?** — my pick ✓: **a pseudo-table ✓** ✓
+   (reuse the bill machinery ✓ ✓ = weeks not months ✓ ✓) ✓ ✓.
+4. **Do the reports split by business type ✓?** — they should split by **order type** ✓ ✓
+   (already ✓ ✓ — `Reports.jsx:122` ✓ ✓); the business type is a **setting** ✓, not a report
+   dimension ✓ ✓ ✓.
+5. **Does a hawker's ticket print the token ✓?** — yes ✓ ✓ (the receipt printer ✓ exists ✓ ✓)
+   — and the token should also be **called at the pass ✓** ✓ ✓.
+
+---
+
+## The sources ✓
+
+- `backend/app/models/models.py` ✓ — `business_type` (385 ✓), the order knobs ✓
+  (359-372 ✓), the kitchen display ✓ (356-361 ✓), `Category` ✓ (116-129 ✓), `MenuItem` ✓
+  (132-150 ✓) ✓
+- `backend/app/routes/order.py` ✓ — the status rules ✓ (969 ✓, 1041 ✓) ✓
+- `frontend/src/pages/Settings.jsx` ✓ — the business type card ✓ (1190-1200 ✓) ✓
+- `frontend/src/pages/OrderQueue.jsx` ✓ — the status machine ✓ (132 ✓), the reports split ✓ ✓
+- `frontend/src/pages/Reports.jsx` ✓ — the three order types ✓ (122 ✓) ✓
+- **the takeaway document** ✓ → `takeaway-ordering.mdx` ✓ ✓ (the status flow ✓, the anchor ✓,
+  the delivery decision ✓ ✓) ✓ ✓
