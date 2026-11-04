@@ -1,0 +1,216 @@
+# Takeaway Ordering — the flow, the gap, and the plan
+
+**Document Version:** 1.0
+**Owner:** Ideazes POS AI
+**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet
+
+---
+
+## The short answer
+
+**A takeaway order must be placeable without a table — by the customer (PWA) and by the staff (Staff Order screen) ✓**
+
+Today the staff screen **cannot place a takeaway order at all** ✓ ✗ — the *Place order* button
+is disabled because a table was never picked ✓ ✓. The rule is wrong in one place and right in
+another ✓ ✓, and the two disagree ✓ ✓.
+
+---
+
+## The shape of it ✓
+
+Three ways in, **one set of rules** ✓:
+
+| Path ✓ | Who ✓ | Table needed? ✓ | Today ✓ |
+|---|---|---|---|
+| **Customer PWA** ✓ | the diner ✓ | **no** ✓ (dine-in via the table's QR ✓) | ✓ works ✓ |
+| **Staff Order screen / kiosk ✓** | the staff ✓ | **no** for takeaway ✓ | ✗ **blocked** ✓ |
+| **Delivery ✓** | the staff ✓ | no ✓ | ⚠️ a label, not a flow ✓ ✗ |
+
+**The rule we are proposing ✓**
+
+> **A table is required for a `dine_in` order ✓ and for nothing else ✓ ✓**
+
+That rule already exists ✓ — **in the backend** ✓ ✓ (`backend/app/routes/order.py:303` ✓ —
+*"A table is required for a dine-in order"* ✓ ✓) ✓ and in the **submit handler** ✓
+(`frontend/src/pages/StaffOrder.jsx:259` ✓ ✓). **Only the button's gate disagrees ✓ ✗**
+
+---
+
+## The gap, exactly ✓
+
+**`frontend/src/pages/StaffOrder.jsx:385` ✓**
+
+```jsx
+canSubmit={!!selectedTable && settings?.table_required !== false}
+```
+
+That single expression gates the **Place order** button in `CartPanel.jsx:128` and `:165`
+(`disabled={!canSubmit || submitting}` ✓ ✓) ✓ ✓ — and it is **used by both the embedded staff
+screen and the kiosk** ✓ ✓ (the shared `cartPanel` ✓ ✓) ✓ ✓.
+
+**So today ✓**
+- the staff picks **Takeaway** ✓ ✓ → the table picker is skipped ✓ ✓ → **no table is ever
+  selected** ✓ ✗ → `!!selectedTable` is `false` ✓ ✗ → **the button stays disabled** ✓ ✗ →
+  **the order cannot be placed** ✓ ✗ — even though the *handler* would have accepted it ✓ ✓
+  (line 259 ✓ checks `orderType === 'dine_in'` ✓ ✓) ✓ ✓;
+- the kiosk has the **same block** ✓ ✓ — the chip says "No Table" ✓ ✓ (so the kiosk *looks*
+  ready ✓ ✓) but the button is dead ✓ ✗ ✓ — **the most confusing version of the bug** ✓ ✓.
+
+**The semantic mismatch ✓** — `table_required` reads as *"every order needs a table"* ✓ ✗ but it
+must mean ***"dine-in orders need a table"*** ✓ ✓. The setting already exists ✓ ✓
+(`Settings.jsx` ✓ — `allow_dine_in` ✓ / `allow_takeaway` ✓ / `allow_delivery` ✓ ✓) ✓ ✓ — we do
+not need a new setting ✓ ✓, we need to **read the existing one correctly** ✓ ✓ ✓.
+
+---
+
+## The rails — the rules it must not break ✓
+
+1. **The backend is the authority ✓** — `order.py:303` ✓ requires a table for dine-in ✓ ✓ and
+   allows a null `table_id` otherwise ✓ ✓. **We do not weaken it ✓ ✓** — the frontend simply
+   stops contradicting it ✓ ✓ ✓.
+2. **A takeaway order keeps `table_id = NULL` ✓** — no change to the model ✓ ✓ (`models.py:202`
+   ✓ nullable ✓ ✓) ✓ ✓.
+3. **The money path does not move ✓** — the price ✓, the discount ✓, the tax ✓, the currency ✓
+   are identical for a takeaway ✓ ✓ (the order type is not a price factor ✓ ✓) ✓ ✓.
+4. **The tenant isolation does not move ✓** — the outlet ✓, the table ✓ and the customer are
+   derived exactly as they are today ✓ ✓ ✓.
+5. **The kitchen still sees it ✓** — a takeaway is a kitchen order ✓ ✓ (the orange TAKEAWAY chip
+   ✓ ✓) ✓ — the kitchen is **not** a table-bound surface ✓ ✓ ✓.
+6. **A takeaway is not a "no table dine-in" ✓** — it is its own type ✓ ✓ and it must be
+   *countable* separately ✓ ✓ (the counter's reports ✓ ✓ — `Reports.jsx:122` ✓ already splits
+   the three types ✓ ✓) ✓ ✓.
+
+---
+
+## The design ✓
+
+### 1. One helper, one truth ✓
+
+```jsx
+// frontend/src/pages/StaffOrder.jsx  (or a shared hook)
+// A table is needed for a dine-in order and for nothing else.
+const needsTable = orderType === 'dine_in' && settings?.table_required !== false
+```
+
+Then ✓:
+- the **button** ✓ → `canSubmit={needsTable ? !!selectedTable : cartHasItems}` ✓ ✓;
+- the **handler** ✓ → the existing check ✓ (line 259 ✓ ✓) ✓ ✓;
+- the **table picker** ✓ → **hidden** when `!needsTable` ✓ ✓ (not merely ignored ✓ ✗ — a
+  visible picker for a takeaway is a trap ✓ ✓) ✓ ✓;
+- the **kiosk's table chip** ✓ → hidden (or shown as the type only ✓ ✓) for a takeaway ✓ ✓ ✓.
+
+### 2. The counter screen must see the takeaway orders ✓
+
+`OrderQueue.jsx:185` already computes `takeawayOrders` ✓ ✓ — and **never renders it** ✓ ✗ ✓.
+The counter staff cannot see a pending takeaway ✓ ✗, cannot take payment for it from the queue
+✓ ✗, and do not know it is waiting ✓ ✗.
+
+→ **A third view beside Queue / Tables ✓** — "Takeaway" ✓ ✓ — listing the unpaid takeaway
+orders ✓ ✓ with a **Pay** action ✓ ✓ (the same payment dialog ✓ ✓) ✓ ✓.
+
+### 3. A takeaway needs a name ✓
+
+A dine-in order is anchored to a table ✓ ✓; a takeaway has **no identity** ✓ ✗ — the staff
+flow attaches a generic walk-in customer ✓ (`dining_customer_id: walkinCustomerId` ✓ ✓) ✓ ✓.
+
+→ **Capture a customer name (and optionally a phone) on a takeaway ✓** ✓ → it prints on the
+kitchen ticket ✓ ✓ → the kitchen can call *"John's takeaway is ready"* ✓ ✓ and the counter can
+hand the right bag over ✓ ✓.
+
+> **The caveat ✓** — the **print receipt path** ✓ has not been traced ✓ ✗ (the ticket template
+> ✓ ✓) → the name must reach **that** template ✓ ✓, not only the kitchen chip ✓ ✓ ✓.
+
+### 4. Delivery — finish it or hide it ✓
+
+The type exists ✓ ✓ in the model ✓ and the API ✓ ✓, but the PWA's delivery address is the
+**restaurant's own settings** ✓ ✓ (`restaurant_address` ✓ ✓) → there is **no customer address,
+no delivery fee and no driver/3PL** ✓ ✗ ✓. And `allow_delivery` is **on by default**
+✓ (`order.py:565` ✓ ✓) → a tenant sees a button that leads nowhere ✓ ✗ ✓.
+
+→ **Either finish delivery ✓** (address ✓, fee ✓, driver ✓ ✓) **or turn it off by default ✓**
+✓ — the lever already exists ✓ ✓ ✓.
+
+---
+
+## The files it touches ✓
+
+| File ✓ | What ✓ |
+|---|---|
+| `frontend/src/pages/StaffOrder.jsx` ✓ | the `needsTable` helper ✓, the button gate ✓, the picker ✓, the kiosk chip ✓, the name field ✓ |
+| `frontend/src/pages/OrderQueue.jsx` ✓ | the Takeaway view ✓ (the filter exists ✓ ✓) ✓ |
+| `frontend/src/pages/Kitchen.jsx` ✓ | the name on the ticket ✓ ✓ |
+| the print/receipt template ✓ ✓ | the name on the printed ticket ✓ ✓ (to be located ✓ ✗) ✓ |
+| `frontend/src/pages/Settings.jsx` ✓ | the wording of `table_required` ✓ (the help text ✓) ✓ |
+| `backend/app/routes/order.py` ✓ | **nothing to change ✓** — the rule is already right ✓ ✓ |
+
+**No new tables ✓ ✓, no new permissions ✓ ✓, no new plan feature ✓ ✓.**
+
+---
+
+## The test plan ✓
+
+| Case ✓ | Expected ✓ |
+|---|---|
+| staff ✓ + **Takeaway** ✓ + no table ✓ + items in the cart ✓ | the **Place order** button is **enabled** ✓ ✓ |
+| staff ✓ + **Takeaway** ✓ + the submit ✓ | the order is created ✓, `table_id = NULL` ✓ ✓, `order_type = 'takeaway'` ✓ ✓ |
+| staff ✓ + **Dine In** ✓ + `table_required = true` ✓ + no table ✓ | the button is **disabled** ✓ ✓ |
+| staff ✓ + **Dine In** ✓ + a table ✓ | the button is enabled ✓ ✓ |
+| staff ✓ + **Takeaway** ✓ | the table picker is **not shown** ✓ ✓ |
+| the kiosk ✓ + **Takeaway** ✓ | the button is enabled ✓ ✓ (the bug ✓ ✓) ✓ |
+| the kiosk ✓ + **Dine In** ✓ + no table ✓ | the button is disabled ✓ ✓ |
+| `table_required = false` ✓ + **Dine In** ✓ | the button is enabled ✓ ✓ (no table needed ✓ ✓) ✓ |
+| the PWA ✓ + **Takeaway** ✓ | unchanged ✓ ✓ (it works ✓ ✓) ✓ |
+| the backend ✓ + a **takeaway** without a table ✓ | **201** ✓ ✓ (unchanged ✓ ✓) ✓ |
+| the backend ✓ + a **dine-in** without a table ✓ | **400** ✓ *"A table is required for a dine-in order"* ✓ ✓ (unchanged ✓ ✓) ✓ |
+| the counter ✓ + an unpaid takeaway ✓ | it appears in the **Takeaway** view ✓ ✓ and can be paid ✓ ✓ |
+| the kitchen ✓ + a takeaway ✓ | the ticket shows TAKEAWAY ✓ and the **name** ✓ ✓ |
+| the **money** ✓ | the takeaway total = the dine-in total for the same items ✓ ✓ (the type is not a price factor ✓ ✓) ✓ |
+
+---
+
+## The phased plan ✓
+
+**Phase 1 — unblock the takeaway ✓ (the smallest fix that matters ✓)**
+- the `needsTable` helper ✓ ✓;
+- the button gate ✓ ✓;
+- the table picker hidden for a takeaway ✓ ✓;
+- the kiosk chip ✓ ✓.
+→ **the staff can place a takeaway again ✓ ✓** — this is the bug fix ✓ ✓ ✓
+
+**Phase 2 — the name ✓**
+- the customer-name field for a takeaway ✓ ✓ (and for a delivery ✓ ✓);
+- the name on the kitchen ticket ✓ ✓ and on the printed receipt ✓ ✓ ✓.
+
+**Phase 3 — the counter sees the takeaways ✓**
+- the **Takeaway** view in `OrderQueue` ✓ ✓ (+ the payment action ✓ ✓) ✓ ✓.
+
+**Phase 4 — the delivery decision ✓**
+- finish delivery ✓ (address ✓, fee ✓, driver ✓ ✓) **or** turn `allow_delivery` off by default
+  ✓ ✓ — a decision ✓ ✓, not an accident ✓ ✓.
+
+---
+
+## The open questions ✓
+
+1. **Is a name mandatory for a staff-entered takeaway ✓?** — my recommendation ✓: **yes** ✓
+   (a takeaway with no name is how the wrong bag leaves ✓ ✓) ✓ ✓.
+2. **Does the takeaway need a phone number ✓?** — optional ✓ ✓ (the kitchen can call the name
+   ✓ ✓) ✓ ✓.
+3. **Should the customer PWA's takeaway be **pay-at-the-counter** ✓ or **paid online** ✓?**
+   — both exist in the HitPay design ✓ ✓ ("Pay Later" ✓ ✓) ✓ ✓ — keep both ✓ ✓ ✓.
+4. **Should the counter's Takeaway view be a third tab ✓ or a filter ✓?** — a third tab ✓ ✓
+   (it is a different *job*, not a subset ✓ ✓) ✓ ✓.
+5. **The wording of `table_required` in Settings ✓** — it should say *"dine-in orders require a
+   table"* ✓ ✓ so the setting stops reading as *"every order"* ✓ ✓ ✓.
+6. **The receipt path ✓** — to be located before Phase 2 promises the name on the printout ✓ ✓.
+
+---
+
+## The sources ✓
+
+- `frontend/src/pages/StaffOrder.jsx` ✓ — lines 259 ✓, 385 ✓, 440-462 ✓, 536-560 ✓ ✓
+- `frontend/src/components/pos/CartPanel.jsx` ✓ — lines 128 ✓, 165 ✓ ✓
+- `frontend/src/pages/OrderQueue.jsx` ✓ — lines 184-185 ✓ ✓
+- `backend/app/routes/order.py` ✓ — lines 181 ✓, 303-306 ✓, 565 ✓ ✓
+- `backend/app/models/models.py` ✓ — lines 202 ✓, 216-217 ✓ ✓
+- `frontend/src/pages/Settings.jsx` ✓ — lines 1016-1043 ✓ ✓
