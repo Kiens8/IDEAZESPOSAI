@@ -1,0 +1,206 @@
+---
+title: The Kitchen Full Screen (the KDS wall display)
+description: The Kitchen Display gets a full-screen mode, built exactly like the Staff Order kiosk
+---
+
+**Document Version:** 1.0  
+**Created:** 2026-11-04  
+**Status:** **Proposal** — nothing is built yet ✓  
+**Scope:** the POS frontend ✓ (`frontend/src/` ✓) — **no backend change** ✓, **no new endpoint** ✓, **no new plan feature** ✓  
+**Related:** `pos-app/kitchen-kds` (the user-facing Kitchen documentation ✓) · the Staff Order kiosk (`frontend/src/pages/StaffOrder.jsx` ✓) · the app shell (`frontend/src/App.jsx` ✓)
+
+> **The ask ✓.** The Kitchen screen gets the same **"Full screen"** button the Staff Order
+> screen has ✓ — and the full-screen kitchen is **built like the Staff Order kiosk** ✓:
+> the same dark chrome ✓, the same colours ✓, the same shape ✓ ✓.
+
+---
+
+## The shape of it ✓
+
+- The Kitchen screen (embedded ✓ — the one in the app shell ✓, today ✓) gets a
+  **"Full screen"** button ✓ in its header ✓ — in the top-right group ✓, next to the
+  sound toggle ✓ and the refresh ✓ — exactly where the Staff Order's is ✓ ✓.
+- The button opens **`/kitchen/full`** ✓ — a **kiosk route** ✓ — edge to edge ✓, no
+  sidebar ✓, no app bar ✓, no mobile bottom bar ✓, no page scroll ✓ — the same trick as
+  `/staff-order/full` ✓ ✓.
+- The full-screen kitchen **keeps** ✓: the order grid ✓, the status summary ✓, the sound
+  toggle ✓, the countdown ✓, the reminder pulse ✓, the refresh ✓.
+- The full-screen kitchen **drops** ✓: the sidebar ✓, the app bar ✓, the bottom bar ✓,
+  the **settings readout line** ✓ (the sound / auto-dismiss / reminder / auto-print line ✓
+  — a wall display does not need a settings readout ✓ ✓ — it moves into the header's
+  sound chip instead ✓ ✓).
+
+**It is the same screen, in the same code, in a second mode ✓** — the house pattern ✓:
+`StaffOrder` already does exactly this ✓ (`mode="embedded" | "kiosk"` ✓) → the Kitchen
+becomes `Kitchen({ mode = 'embedded' })` ✓ ✓.
+
+---
+
+## The design — the Staff Order kiosk's chrome ✓
+
+The kiosk header is the dark "chrome" that frames the work area ✓ — the strongest
+contrast on the screen ✓ — and the kitchen borrows it **as it is** ✓:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  [chef tile]  Kitchen Display          12 active   🔊 sound   ⟳  Exit │  ← slate-800, h-16
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                        │
+│   ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐      │  ← slate-100
+│   │  Pending 3 │  │Confirmed 2 │  │Preparing 4 │  │  Ready  2  │      │
+│   └────────────┘  └────────────┘  └────────────┘  └────────────┘      │
+│   ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐      │
+│   │  #1042     │  │  #1043     │  │  #1044     │  │  #1045     │      │
+│   │  2x Mee    │  │  1x Nasi   │  │  3x Teh    │  │  1x Roti   │      │
+│   │  [bump →]  │  │  [bump →]  │  │  [bump →]  │  │  [bump →]  │      │
+│   └────────────┘  └────────────┘  └────────────┘  └────────────┘      │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**The tokens, copied from the kiosk ✓ (no new colours ✓)**
+
+| Where | The classes ✓ |
+|---|---|
+| the shell ✓ | `h-[100dvh] flex flex-col bg-slate-100 overflow-hidden` ✓ |
+| the header ✓ | `h-16 bg-slate-800 shadow-[inset_0_-1px_0_rgba(255,255,255,0.08)] flex items-center gap-3 px-3 sm:px-4` ✓ |
+| the icon tile ✓ | `w-10 h-10 shrink-0 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-xl ring-1 ring-white/10` ✓ (the **ChefHat** ✓, not the cart ✓) |
+| the title ✓ | `text-lg sm:text-xl font-bold text-white` ✓ |
+| a translucent chip ✓ | `bg-white/10 text-slate-300 border border-white/15 hover:bg-white/15` ✓ |
+| a translucent button ✓ | `bg-white/10 hover:bg-white/20 border border-white/10 text-slate-100` ✓ |
+| the **Exit** button ✓ | `bg-white hover:bg-slate-100 text-slate-900 text-sm font-semibold` ✓ |
+| the page ✓ | `bg-slate-100` ✓ — the cards stay white ✓ ✓ |
+
+**The kitchen's own pieces, re-skinned for the wall ✓**
+- the **active count** chip ✓ (today `bg-orange-100 text-orange-700` ✓) → in the kiosk it
+  becomes a **translucent dark chip** ✓ (`bg-white/10 text-slate-100` ✓) so the header
+  stays one language ✓ ✓ — the orange stays on the card ✓ ✓.
+- the **sound toggle** ✓ (today a green/grey pill ✓) → a translucent dark chip ✓ that
+  keeps the **green accent** when the sound is on ✓ (`text-green-300` ✓ / `text-slate-400`
+  when muted ✓) ✓ ✓ — the state must be readable across the room ✓ ✓.
+- the **status summary** ✓ — the same four cards ✓ ✓, but the counts grow ✓
+  (`text-3xl` → `text-4xl` ✓) — a wall display is read from three metres ✓ ✓.
+- the **order cards** ✓ — **exactly as they are** ✓ ✓ (`bg-white rounded-xl shadow-sm
+  border-2` ✓ + the status border ✓ + the red `ring-4 ring-red-500 animate-pulse` on the
+  reminder ✓ ✓) — that card is what the kitchen reads ✓ and it already works ✓ ✓ — with
+  **two small changes** ✓: the order number grows ✓ (`text-2xl` → `text-4xl` ✓) and the
+  action button's **label** grows ✓ (the button is already `py-3` ✓ and
+  `bg-primary-600` ✓ — only the type grows ✓, to `text-lg` ✓) because a wall display may
+  also be a **tablet** that someone taps ✓ ✓.
+
+---
+
+## The rails — the rules it must not break ✓
+
+1. **The route is a kiosk route ✓** — `App.jsx` already has the `isKioskRoute` branch ✓
+   for `/staff-order/full` ✓ → `/kitchen/full` joins it ✓ (one condition, one branch ✓ ✓).
+2. **The role and the plan gate are the Kitchen's own ✓** — `navItems.js` ✓:
+   `{ path: '/kitchen', minRole: 'staff', feature: FEATURES.KITCHEN }` ✓ → the
+   **"Full screen"** button shows **only when the Kitchen itself shows** ✓ ✓ — **no new
+   feature flag** ✓ (it is the same feature ✓, the same way the Staff Order's button
+   reuses the two nav entries ✓ ✓).
+3. **The tenant rules are unchanged ✓** — the Kitchen already resolves the tenant from
+   the **session** ✓ (`useTenant` ✓) and refuses to load without it ✓ → the kiosk
+   inherits that exactly ✓ ✓ — **no `customer_id` from the query string** ✓ ✓.
+4. **Nothing new is fetched ✓** — the full screen calls **the same** `/orders/` endpoint ✓
+   with the same tenant ✓ and the same outlet ✓ → **no backend change at all** ✓ ✓.
+5. **The i18n namespace is `kitchen` ✓** — the new keys land in **en / zh / km** ✓ ✓ (the
+   house rule ✓ — every key in all three ✓ ✓) — and the `kiosk.*` group mirrors the
+   Staff Order's naming ✓ (`kiosk.fullScreen` ✓, `kiosk.exit` ✓) ✓ ✓.
+6. **The audit recipe ✓** — **no new endpoint** ✓ → nothing to gate ✓ → the UI gate is
+   the existing nav item ✓ ✓ and `res.ok` + `Array.isArray(...)` stay as they are ✓ ✓.
+
+---
+
+## The exit ✓
+
+- The **Exit** button returns to **`/kitchen`** ✓ — the Staff Order's returns to
+  `/staff-order` ✓ ✓.
+- **We do not use the browser's Fullscreen API ✓** — the button is a **route** ✓, not
+  `requestFullscreen()` ✓ → the same behaviour as the Staff Order ✓ ✓ → no permission
+  prompt ✓, no confusion with F11 ✓, and it **survives a refresh** ✓ (the URL *is* the
+  mode ✓ ✓).
+- A **wall display** (a TV with a browser, already full-screen ✓) just loses the shell ✓
+  ✓ — nothing else to configure ✓ ✓.
+- **The Escape key** does **not** exit ✓ — the Staff Order kiosk does not do it ✓ ✓, and
+  an accidental keypress on a wall display must not drop the kitchen out of the kiosk ✓
+  ✓.
+
+---
+
+## The files it touches ✓
+
+| File | What ✓ |
+|---|---|
+| `frontend/src/App.jsx` ✓ | the `/kitchen/full` route ✓ (the `isKioskRoute` branch ✓ ✓) |
+| `frontend/src/pages/Kitchen.jsx` ✓ | a `mode` prop ✓ (`'embedded' \| 'kiosk'` ✓), the kiosk render ✓, the **"Full screen"** button ✓ ✓ |
+| `frontend/src/i18n/locales/en/kitchen.json` ✓ | `kiosk.*` ✓ — `fullScreen` ✓, `exit` ✓, `soundOn` ✓, `soundOff` ✓, `refresh` ✓, `activeCount` ✓ ✓ |
+| `frontend/src/i18n/locales/zh/kitchen.json` ✓ | the same keys ✓ ✓ |
+| `frontend/src/i18n/locales/km/kitchen.json` ✓ | the same keys ✓ ✓ |
+
+**Nothing else ✓** — no backend ✓, no database ✓, no migration ✓, no new dependency ✓
+(the icons — `ChefHat` ✓, `Maximize2` ✓, `X` ✓, `Volume2` ✓, `VolumeX` ✓ — are already
+in `lucide-react` ✓ ✓) ✓.
+
+---
+
+## The test plan ✓
+
+- the **"Full screen"** button appears for a staff user with the KITCHEN feature ✓ and
+  **disappears** without it ✓ ✓;
+- clicking it lands on **`/kitchen/full`** ✓ with **no sidebar** ✓, **no app bar** ✓,
+  **no bottom bar** ✓ and **no page scroll** ✓ ✓;
+- the header is the **slate-800 chrome** ✓ with the gradient tile ✓, the translucent chips
+  ✓ and the **white Exit** button ✓ ✓;
+- the order grid still updates ✓ (the same 3-second poll ✓ ✓) and the notification sound
+  still plays ✓ ✓;
+- the **Exit** button returns to `/kitchen` ✓ and the shell comes back ✓ ✓;
+- a **refresh** on `/kitchen/full` keeps the kiosk ✓ (the route decides ✓ ✓) ✓;
+- the reminder pulse ✓ and the countdown ✓ still read correctly ✓ at the larger type ✓ ✓;
+- the phone ✓ — the kiosk hides the bottom bar ✓ and the header wraps to the icons only
+  ✓ (the same `hidden sm:inline` treatment ✓ ✓) ✓;
+- **every new i18n key exists in en, zh and km** ✓ ✓ (the house check ✓ ✓).
+
+---
+
+## The phased plan ✓
+
+**Phase 1 — the route and the button ✓ (half a day ✓)**
+The `App.jsx` branch ✓, the Kitchen's `mode` prop ✓, the kiosk render ✓, the header ✓,
+the **"Full screen"** button ✓, the i18n keys ✓ ✓.
+
+**Phase 2 — the wall polish ✓ (half a day ✓)**
+The bigger type ✓ (the order number ✓, the counts ✓), the bigger tap targets ✓, the
+settings line moved into the header ✓, the chips re-skinned ✓ ✓.
+
+**Phase 3 — the niceties ✓ (later ✓)**
+A **PIN to exit** ✓ (a wall display anyone can walk up to and exit ✓ ✓) · an
+**auto-return** to the embedded kitchen after N idle minutes ✓ · a **"cast to a TV"**
+hint on the screen ✓ (open `/kitchen/full` on the display ✓, not on the phone ✓ ✓) ✓.
+
+---
+
+## The open questions ✓
+
+1. **Should the Exit be PIN-protected ✓?** — a wall display ✓ → probably yes ✓ (Phase 3 ✓) ✓.
+2. **Should the kiosk auto-return after N idle minutes ✓?** — the Staff Order kiosk does
+   **not** ✓ → keep it consistent ✓ (and a kitchen that silently falls back to the shell
+   mid-service is worse ✓ ✓) ✓.
+3. **Should the header show the order type ✓ (Dine In / Takeaway ✓) as a chip ✓**, like
+   the Staff Order's ✓? ✓ — it is already on the card ✓ ✓ → probably not needed ✓ ✓.
+4. **Does the kitchen display need the table number bigger ✓?** — it is already on the
+   card ✓ ✓ → the wall polish answers it ✓ ✓.
+5. **Should the kiosk work for the customer app ✓?** — no ✓ ✓ (a different screen ✓,
+   a different device ✓ ✓).
+
+---
+
+## The sources ✓
+
+- **The code** ✓ — `frontend/src/pages/Kitchen.jsx` ✓ (the screen ✓) ·
+  `frontend/src/pages/StaffOrder.jsx` ✓ (the kiosk ✓ — the chrome ✓, the buttons ✓, the
+  `mode` pattern ✓) · `frontend/src/App.jsx` ✓ (the kiosk route ✓) ·
+  `frontend/src/config/navItems.js` ✓ (the role ✓ and the feature ✓) ·
+  `frontend/src/i18n/locales/{en,zh,km}/kitchen.json` ✓ and `staffOrder.json` ✓ (the
+  keys ✓) ✓
+- **The docs** ✓ — `pos-app/kitchen-kds` ✓ (the user-facing Kitchen documentation ✓ — it
+  should gain a short "Full screen" section ✓ when this ships ✓ ✓) ✓
