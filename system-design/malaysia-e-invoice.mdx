@@ -5,8 +5,8 @@ description: How the POS speaks to LHDN's MyInvois - the tax invoice on demand, 
 
 # Malaysia e-Invoice (MyInvois) Integration
 
-**Document Version:** 3.0  
-**Created:** 2026-11-04 (v1) · **Updated:** 2026-11-04 (v2 — the submission rules were read out of LHDN's own guidelines: **monthly**, not daily ✓ and three findings that change the design ✓) · **v3 (a review against the guidelines and the SDK: six corrections and ten design holes closed ✓)**  
+**Document Version:** 3.1  
+**Created:** 2026-11-04 (v1) · **Updated:** 2026-11-04 (v2 — the submission rules were read out of LHDN's own guidelines: **monthly**, not daily ✓ and three findings that change the design ✓) · **v3 (a review against the guidelines and the SDK: six corrections and ten design holes closed ✓)** · **v3.1 (the SDK FAQ read end to end ✓ — the QR link format ✓, the sandbox environments ✓, the TIN rules ✓, the UBL conventions ✓ — and the sandbox spike ✓ written in)**  
 **Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet  
 **Scope:** the POS backend (the ERP client), the POS frontend (the counter and the settings), the LHDN MyInvois API  
 **Related:** `hitpay-integration.mdx` (the Malaysian payment methods ✓), `multi-currency-money.mdx` (the per-outlet currency ✓ — it decides who may submit ✓), `program-changes/ai-chatbot/ai-chatbot-module.mdx` (the tool layer ✓ — the same read-only discipline ✓), `api-authentication-strategy.mdx` (the tenant rules this feature inherits ✓)
@@ -43,6 +43,44 @@ description: How the POS speaks to LHDN's MyInvois - the tax invoice on demand, 
 > (a service charge is service tax, not sales tax ✓), the tax-inclusive rounding ✓, the
 > split payment ✓, the TIN lookup ✓, the portal's ownership proof ✓, the counter's write
 > permission ✓, and the six missing APIs ✓.
+
+> **v3.1 — what the SDK's FAQ adds ✓** (read end to end ✓):
+> - **The validation link is documented** ✓ — `{envbaseurl}/{uuid}/share/{longid}` ✓ —
+>   and the **long id** comes back with the UUID ✓ (Get Submission ✓ / Get Document ✓ /
+>   Get Document Details ✓) ✓ → the receipt's QR is now **fully specified** ✓ ✓.
+> - **The sandbox's URLs** ✓ — `preprod.myinvois.hasil.gov.my` (the portal ✓) and
+>   `preprod-api.myinvois.hasil.gov.my` (the API **and** the identity service ✓) ✓.
+> - **The document statuses are integers** ✓ — `1` Submitted ✓, `2` Valid ✓, `3` Invalid ✓,
+>   `4` Cancelled ✓ → our status column maps to them ✓ ✓.
+> - **The TIN rules** ✓ — an individual's TIN now carries the prefix **`IG`** ✓ (it replaces
+>   `OG` / `SG` ✓) and is **14 characters** including the prefix ✓; a **non-individual** TIN
+>   must **end in `0`** ✓ (`C123456789` → `C1234567890` ✓) and the zeros after the prefix
+>   are dropped ✓ (`C01234567890` → `C1234567890` ✓) → the counter must **normalise the
+>   TIN** before it validates it ✓ ✓.
+> - **The UBL JSON convention** ✓ — every attribute value is paired with a key **`_`** ✓
+>   (`"InvoiceTypeCode": { "_": "02" }` ✓) → our builder must do that ✓ ✓.
+> - **The escaping** ✓ — XML (`&` `<` `>` `"` `'`) ✓ and JSON (`"` `\` `/` `` `` `
+`
+>   `
+` `	`) ✓ → **our own** escaper, in the builder ✓ ✓ (a menu item called *"A & B"* ✓
+>   must not break the document ✓).
+> - **Over 300KB** → **minify** the document ✓ (strip the whitespace ✓) ✓.
+> - **A credit note may carry several original UUIDs** ✓ — a **new** `BillingReference` line
+>   per UUID ✓ in XML ✓, a **new** `InvoiceDocumentReference` ✓ in JSON ✓ → our credit note
+>   can reverse **a whole table's bill** in one document ✓ ✓.
+> - **API-submitted e-Invoices cannot be printed from the MyInvois Portal** ✓ — only the
+>   portal's own uploads can ✓ → **we render the buyer's copy ourselves** ✓ from the
+>   validated document ✓ ✓ (and the portal's QR does the verification ✓).
+> - **An intermediary may only see the documents it submitted for a taxpayer** ✓ — it cannot
+>   open the taxpayer's own invoices ✓, nor the invoices the taxpayer received ✓ ✓ → our
+>   documents table is the only place a buyer can find their e-Invoice ✓.
+> - **Two client secrets per environment** ✓ (redundancy ✓) ✓, and **different** ones for
+>   sandbox and production ✓ ✓.
+> - **The client id and secret are self-provisioned** ✓ in the MyInvois Portal ✓
+>   (*"View and Register ERP"* ✓) ✓ → that is **day 1 of the spike** ✓ ✓.
+> - **The rate limit arrives as the standard HTTP headers** ✓ → the worker reads them ✓
+>   rather than guessing ✓ ✓.
+> - **Negative values are allowed** ✓ → a credit note's amounts may be negative ✓ ✓.
 
 ## Overview
 
@@ -214,22 +252,28 @@ at LHDN and they validate them ✓.
 
 | API | Method & path | RPM | What it is for |
 |---|---|---|---|
-| Login as Taxpayer System | `POST /connect/token` | **12** | the client credentials → the token (60 min) ✓ |
-| **Login as Intermediary System** | `POST /connect/token` | 12 | **our model** — we act on behalf of a taxpayer ✓ (see below) ✓ |
-| Submit Documents | `POST /api/v1.0/documentsubmissions/` | **100** | the documents ✓ |
+| Login as Taxpayer System | `POST /connect/token` | **12** | the client credentials → the token (60 min) ✓ — the form is `client_id` ✓, `client_secret` ✓, `grant_type=client_credentials` ✓, **`scope=InvoicingAPI`** ✓ ✓ |
+| **Login as Intermediary System** | `POST /connect/token` | 12 | **our model** — we act on behalf of a taxpayer ✓ — the same form ✓ **plus the header `onbehalfof: <the taxpayer's id>`** ✓ ✓ (the SDK's own collection sends it ✓) ✓ — that header is **how we act for a tenant** ✓ ✓ |
+| Submit Documents | `POST /api/v1.0/documentsubmissions` | **100** | the documents ✓ — the body is `{ "documents": [ { "format": "JSON" ✓, "documentHash": "<sha256 of the document>" ✓, "codeNumber": "<ours>" ✓, "document": "<the document, base64>" ✓ } ] }` ✓ (the SDK's sample sends **XML** ✓ — ours is **JSON** ✓, so `format` is `"JSON"` ✓) ✓ |
 | Get Submission | `GET /api/v1.0/documentsubmissions/{uid}` | **300** | the polling ✓ |
-| Get Document | `GET /api/v1.0/documents/{uuid}` | 60 | the detail ✓ |
+| Get Document | `GET /api/v1.0/documents/{uuid}/raw` | 60 | the document **as submitted** ✓ ✓ |
 | Cancel Document | `PUT /api/v1.0/documents/state/{uuid}/state` | 12 | a mistake, within **72 hours** of validation ✓ |
 | Validate Taxpayer's TIN | `GET /api/v1.0/taxpayer/validate/{tin}?idType=&idValue=` | 60 | the buyer's TIN — **validate once, then cache** ✓ |
 | Get Document Type | `GET /api/v1.0/documenttypes/{code}` | — | the structure + the workflow parameters (the cancel window) ✓ |
 | **Get All Document Types** | `GET /api/v1.0/documenttypes` | — | the catalogue of the types + their versions ✓ |
 | **Get Document Type Version** | `GET /api/v1.0/documenttypes/{code}/versions/{version}` | — | the **v1.0 → v1.1** structure ✓ (the migration path ✓) |
-| **Get Notifications** | `GET /api/v1.0/notifications` | — | **the push channel** ✓ — the invoice clearance ✓ and the buyer's rejection ✓ (General Guideline v4.8 §2.3.4 ✓) — it replaces most of the polling ✓ |
+| **Get Notifications** | `GET /api/v1.0/notifications/taxpayer?...` | — | **the push channel** ✓ — the invoice clearance ✓ and the buyer's rejection ✓ (General Guideline v4.8 §2.3.4 ✓) — it replaces most of the polling ✓ |
 | **Get Document Details** | `GET /api/v1.0/documents/{uuid}/details` | — | the **validation result** and the error list ✓ — what the retry screen reads ✓ |
-| **Search Documents** | `GET /api/v1.0/documents` | — | the reconciliation ✓ — find our own document by `codeNumber` after a crash ✓ (the SDK names "Get Recent Documents" as the anti-pattern ✓ — it only sees 31 days ✓) |
+| **Search Documents** | `GET /api/v1.0/documents/search?...` | — | the reconciliation ✓ — find our own document by `codeNumber` after a crash ✓ (the SDK names "Get Recent Documents" as the anti-pattern ✓ — it only sees 31 days ✓) |
 | **Search Taxpayer's TIN** | `GET /api/v1.0/taxpayers/search` | — | **find a TIN by name, or by idType + idValue** ✓ — the counter needs this ✓ (a guest knows their name and IC, **not** their TIN ✓) |
+| **Get Recent Documents** | `GET /api/v1.0/documents/recent?...` | — | **the anti-pattern** ✓ — it only sees 31 days ✓ → we use **Search Documents** ✓ instead ✓ ✓ |
 | **Reject Document** | buyer side | — | the **buyer rejects** our e-Invoice within 72 hours ✓ → we must cancel or credit-note ✓ (General Guideline v4.8 §2.3.6 ✓) |
 | Taxpayer's QR Code | `GET /api/v1.0/taxpayers/qrcodeinfo/{qrCodeText}` | 60 | reads a **business's** QR ✓ (TIN, BRN, SST, MSIC, address ✓) — **it is not the receipt's QR** ✓ |
+
+> **The paths above are the SDK's own** ✓ — read out of the **Postman collection** LHDN
+> ships ✓ (*`EInvoicing SDK.postman_collection.json`* ✓ + the Sandbox and Prod
+> environments ✓) ✓ → the spike's first hour is to **import it and replay the sample
+> calls** ✓ ✓.
 
 > **The rate limit is per Client ID** ✓ — and **in the intermediary model that is one
 > bucket for every tenant** ✓ (we hold one credential ✓). So the claim "a busy tenant
@@ -242,9 +286,19 @@ at LHDN and they validate them ✓.
 > **The receipt's validation QR is ours to draw ✓** — there is **no API** that returns
 > it ✓. The General Guideline v4.8 §2.4.4 ✓ says the *supplier* *"embeds a QR code which
 > contains a **validation link** to the visual representation of the validated e-Invoice"*
-> ✓ — so we build the QR from the document's **UUID** ✓ (a MyInvois validation URL ✓)
-> and print it on the receipt ✓. The SDK's "Taxpayer's QR Code" API ✓ is a different
-> thing entirely ✓ (it reads a business's own QR ✓).
+> ✓ — and the SDK's FAQ ✓ gives the format ✓:
+>
+> ```
+> {envbaseurl}/{uuid-of-document}/share/{longid}
+> ```
+>
+> ✓ — `{envbaseurl}` is the **portal** base URL ✓ (`myinvois.hasil.gov.my` in production ✓,
+> `preprod.myinvois.hasil.gov.my` in the sandbox ✓) ✓, and **both** the **UUID** and the
+> **long id** come back with the document ✓ (Get Submission ✓ / Get Document ✓ / Get
+> Document Details ✓) ✓. Then **any** QR generator turns that link into the code ✓ ✓.
+>
+> The SDK's "Taxpayer's QR Code" API ✓ is a different thing entirely ✓ (it reads a
+> business's own QR ✓).
 
 ### Two ways to be connected — and which one we pick
 
@@ -255,6 +309,12 @@ at LHDN and they validate them ✓.
 | Our effort per tenant | high — registration, credentials, testing ✓ | low — one authorisation per tenant ✓ |
 | The risk | the tenant's key sits in our database ✓ | we are on the hook for every tenant's document ✓ |
 | Fits | the big chains with their own ERP ✓ | **the long tail — our customers** ✓ |
+
+> **The intermediary's reach is deliberately narrow** ✓ — an intermediary may only **view
+> and access the e-Invoices it submitted on behalf of a taxpayer** ✓; it cannot open the
+> taxpayer's own invoices ✓, nor the invoices the taxpayer **received** ✓ ✓ → **our
+> documents table is the only place a buyer can find their e-Invoice** ✓ ✓ (that is a
+> product fact, not a limitation ✓ ✓).
 
 > **We are a "non-Peppol technology provider"** ✓ (General Guideline v4.8 ✓, Table 2.1 ✓) — the model
 > the market's integrators use ✓. **Recommendation: the intermediary model** ✓ — one LHDN
@@ -326,10 +386,24 @@ tax** ✓ (`03` ✓) applies ✓. So the invoice carries **one `TaxSubtotal` per
   tax category ✓ and the categories sum to the invoice total ✓.
 - **The VAT regime replaces SST** ✓ — the tax type codes change with it ✓ → the tax type
   is read from the **seeded table** ✓, never hardcoded ✓ (open question 4 ✓).
+- **Negative values are allowed** ✓ (the SDK's FAQ ✓) → a credit note's amounts may be
+  negative ✓ ✓ — but we still send the credit note as a **positive** document with a
+  credit type ✓ (safer ✓) ✓ — the sign is a decision to confirm in the spike ✓ ✓.
 
 > **The two codes I had wrong** (checked against the SDK's own samples ✓): the country is
 > **`MYS`** with `listID: "ISO3166-1"` ✓ — not `MY` ✓; and the tax scheme is **`OTH`** with
 > `schemeID: "UN/ECE 5153"` ✓ — not `SST` ✓.
+
+#### Three conventions the builder must follow ✓
+
+1. **Every value is paired with a `_` key** ✓ (the SDK's FAQ ✓) — UBL JSON requires it ✓:
+   `"InvoiceTypeCode": { "_": "02" }` ✓ ✓. Get it wrong ✓ and the document is **invalid**
+   ✓ — not a warning ✓.
+2. **We escape the strings ourselves** ✓ — XML (`&` `<` `>` `"` `'`) ✓ and JSON (`"` `\`
+   `/` `\b` `\f` `\n` `\r` `\t`) ✓ → a menu item called **"A & B"** ✓ or a guest
+   named **"Siti "Siti""** ✓ must not break the document ✓ ✓.
+3. **Over 300KB** → **minify** ✓ — strip the whitespace and the indentation ✓ and it
+   fits ✓ ✓ (a big order with long item names ✓).
 
 ### The code tables we must respect
 
@@ -402,6 +476,18 @@ throttled ✓). So ✓
 / MyPR / passport number** ✓. `Validate Taxpayer's TIN` needs a **TIN in the path** ✓, so
 the counter needs **Search Taxpayer's TIN** ✓ (by taxpayer name ✓, or by
 idType + idValue ✓) ✓ — otherwise the flow dies at step two ✓.
+
+**The TIN is normalised before it is validated ✓** (the SDK's FAQ ✓) — otherwise a valid
+TIN looks invalid ✓ and the guest is told their TIN is wrong ✓:
+- an **individual's** TIN carries the prefix **`IG`** ✓ (it replaces `OG` ✓ and `SG` ✓) —
+  `IG123456789` ✓ — and is at most **14 characters** with the prefix ✓ ✓;
+- a **non-individual's** TIN always **ends in `0`** ✓ — `C123456789` → **`C1234567890`** ✓ —
+  and the zeros **after** the prefix are dropped ✓ — `C01234567890` → **`C1234567890`** ✓ ✓;
+- the **maximum length** is 14 including the prefix ✓ ✓.
+
+So the counter's TIN field **normalises as it types** ✓ (prefix ✓, trailing zero ✓, leading
+zeros ✓, length ✓) and shows the guest the **normalised** value ✓ before they submit it
+✓ ✓ — a silent correction is a support call ✓.
 
 **The guest must never be told it is done when it is not** ✓. If the validation is slow or
 LHDN is down ✓, the receipt prints with the reference and the status ✓ and the document
@@ -516,6 +602,11 @@ An order that was already invoiced and must be reversed:
 - **After 72 hours** → a **credit note** (`InvoiceTypeCode 02`) that references the
   original's UUID ✓ (the Referenced Documents Validator checks it ✓ — the reference goes
   in `BillingReference` ✓).
+- **Several originals in one credit note** ✓ — the SDK's FAQ says a second original is a
+  **new `BillingReference` line** in XML ✓ and a **new `InvoiceDocumentReference`** in
+  JSON ✓ (not a second value under the first one ✓) ✓ → one credit note can reverse a
+  **whole table's bill** ✓ ✓ — which is exactly what the counter needs when a table
+  closes ✓ ✓.
 
 **The buyer can reject our e-Invoice ✓** — within 72 hours ✓ — and the rejection arrives
 as a **notification** ✓ (General Guideline v4.8 §2.3.4 ✓) ✓. So the POS needs ✓:
@@ -580,7 +671,7 @@ taxpayer is the outlet's business ✓):
 | `payload` | the exact JSON we submitted (the audit trail ✓) ✓ |
 | `document_hash` | the SHA-256 of the payload ✓ |
 | `receipt_ref` | the receipt reference number — **required on a consolidated line** ✓ ✓ |
-| `status` | `draft` → `queued` → `submitted` → `valid` / `invalid` / `cancelled` ✓ |
+| `status` | `draft` → `queued` → `submitted` → `valid` / `invalid` / `cancelled` ✓ — LHDN's own status values are **`1` Submitted** ✓, **`2` Valid** ✓, **`3` Invalid** ✓, **`4` Cancelled** ✓ → our column maps to them ✓ ✓ |
 | `myinvois_uuid` | the document's UUID ✓ |
 | `submission_uid` | the submission it went in ✓ |
 | `error` | the rejection reason, verbatim ✓ |
@@ -601,7 +692,8 @@ the poll count ✓, the next poll at ✓.
 - The **token is cached** ✓ — **per credential** ✓ (one set in the intermediary model ✓,
   one per tenant in the direct model ✓) — and refreshed at 55 minutes ✓ — **never** a
   token per call ✓ (the SDK names this as the #1 anti-pattern ✓).
-- The **429** answers carry a `Retry-After` ✓ — we honour it ✓.
+- The **429** answers carry a `Retry-After` ✓ — we honour it ✓ (the SDK sends the
+  **standard HTTP rate-limit headers** ✓ → read them, don't guess ✓ ✓).
 - The **backoff** on a failure is exponential ✓.
 - A submission is **never re-sent** because we did not hear back ✓ — the
   duplicate-document validator would reject the second copy ✓ and the API would start
@@ -656,8 +748,12 @@ the poll count ✓, the next poll at ✓.
 
 ### The receipt ✓
 
-- The **validation QR** once the document is valid ✓ — **we draw it** ✓ from the
-  document's UUID ✓ (a MyInvois validation link ✓) ✓.
+- The **validation QR** once the document is valid ✓ — **we draw it** ✓ from
+  `{envbaseurl}/{uuid}/share/{longid}` ✓ ✓.
+- **We render the buyer's copy ourselves** ✓ — the MyInvois Portal **cannot print an
+  API-submitted e-Invoice** ✓ (only its own portal uploads ✓) ✓ → the PDF on the receipt
+  and the PDF we email or push to the portal are **rendered by us** ✓ from the validated
+  document ✓ (the UBL JSON → our template ✓) ✓, and the **QR** is the verification ✓ ✓.
 - The **"e-Invoice submitted, validation pending"** line while it is in flight ✓ — the guest
   must never be told it is done when it is not ✓.
 - The **reprint** from the order ✓.
@@ -736,6 +832,66 @@ The same discipline for the frontend ✓: check `res.ok` **and** `Array.isArray(
   production ✓.
 - In the **intermediary model** ✓ the credentials are **ours** ✓ — the tenant's
   authorisation is a flag ✓, not a secret we hold ✓.
+- **Two client secrets per environment** ✓ (the SDK's FAQ ✓ — redundancy ✓, both expiring
+  together ✓) → the settings store **two** secrets ✓ and fall back to the second when the
+  first is refused ✓ ✓.
+- **The credentials are self-provisioned** ✓ — the taxpayer registers an ERP client in the
+  MyInvois Portal ✓ (*"View and Register ERP"* ✓) ✓ → our onboarding email tells the
+  tenant exactly that ✓ ✓.
+
+## The sandbox spike — prove it before we build it ✓
+
+Everything above is a **design** ✓ — 900 lines of it ✓ — and **zero lines of code** ✓.
+Three of its assumptions can only be tested against the **live API** ✓: the exact v1.0
+JSON shape ✓, the **tax math** ✓, and the **intermediary model** ✓. A **spike** ✓ — a
+time-boxed throwaway ✓ — proves them in days ✓ instead of discovering them in Phase 3 ✓.
+
+**The rule ✓** — the spike **proves** ✓; it does not **build** ✓. Nothing it produces
+becomes production code ✓ — it produces **facts** ✓ and a **golden JSON** ✓ that the
+real builder is then written against ✓ ✓.
+
+### The scope — eight steps ✓
+
+| # | Step | What it proves |
+|---|---|---|
+| 1 | **Onboard** — self-provision a sandbox client id + **two** secrets ✓ in the MyInvois Portal ✓ (*"View and Register ERP"* ✓) | that we *can* get credentials ✓ — **and how long it takes** ✓ |
+| 2 | **Login** — `POST /connect/token` at `preprod-api.myinvois.hasil.gov.my` ✓ | the 60-minute token ✓, the 12 RPM login cap ✓, and the **intermediary** scope ✓ |
+| 3 | **The structure** — `Get Document Type` for Invoice **1.0** ✓ | the real field paths ✓ — from the schema ✓, not from the UBL spec ✓ |
+| 4 | **Submit** — the SDK's **sample payload** first ✓, then ours ✓ | that the round trip works ✓ — a sample failure means *us* ✓, not LHDN ✓ |
+| 5 | **Validate** — 202 ✓ → poll ✓ → `valid` ✓ | the **real** latency ✓ (the guideline says under two seconds ✓) ✓ and the status integers ✓ (`1`/`2`/`3`/`4` ✓) ✓ |
+| 6 | **The money** — a tax-inclusive 6% food line ✓ **and** a 5% service-charge line ✓ → two `TaxSubtotal`s ✓ | that the tax model is right ✓ and that the totals **tie** ✓ — the riskiest assumption in the doc ✓ |
+| 7 | **Cancel** — inside the 72-hour window ✓ | the cancel path ✓, the `reason` ✓, and the **error states** ✓ ✓ |
+| 8 | **The QR** — build `{envbaseurl}/{uuid}/share/{longid}` ✓ and render the code ✓ | that the **long id** comes back ✓ ✓ and that the link opens the document ✓ |
+
+### The long pole is not technical ✓
+
+**Registering as an intermediary** ✓ — and having a **test taxpayer** authorise our ERP
+client ✓ in the portal ✓ — is the slow path ✓ ✓. It gates step 2 ✓ (the intermediary
+login ✓) and every step after it ✓. So ✓:
+- **step 1 starts on day 1** ✓ and runs **in parallel** ✓ with everything else ✓,
+- if the intermediary registration is slow ✓ → we fall back to the **direct model** ✓ for
+  the spike ✓ (the taxpayer's own credentials ✓) and the commercial decision moves to the
+  front of the roadmap ✓ ✓.
+
+### The deliverables ✓
+
+- `backend/spike/einvoice-spike.py` ✓ — **throwaway** ✓: login ✓ → build → submit → poll
+  → print ✓ ✓ — it lives in the **POS backend repo** ✓, not in this docs site ✓ ✓.
+- `backend/spike/golden/` ✓ — the exact JSON that came back **`valid`** ✓ ✓ (the seed for
+  the builder's golden files ✓ ✓).
+- `backend/spike/NOTES.md` ✓ — **every surprise** ✓ (a field the schema wanted that we did
+  not expect ✓, a validator we did not know about ✓, a rate limit that bit us ✓) ✓ → it
+  becomes the corrections list for the real builder ✓ ✓.
+
+### What the spike costs ✓
+
+**3–5 days** ✓ of one engineer's time ✓ + **a sandbox taxpayer profile** ✓ (a test TIN ✓,
+an SST number ✓, a MSIC ✓) ✓ + the **registration** ✓ (the portal ✓, the secret ✓, and
+one human with an SSM account ✓) ✓ ✓. **Nothing else** ✓ — no backend work ✓, no schema
+✓, no frontend ✓ ✓.
+
+> **The sandbox spike is Phase 0** ✓ — it runs **before** Phase 1 ✓, and Phase 1's
+> estimates are only trustworthy **after** it ✓ ✓.
 
 ## The test plan
 
@@ -744,6 +900,20 @@ The same discipline for the frontend ✓: check `res.ok` **and** `Array.isArray(
 LHDN runs a **sandbox** ✓ with its own credentials ✓ (a lower rate limit ✓, and the data
 is deleted after 3 months ✓). **Nothing is written to production until the sandbox is
 green** ✓.
+
+**The environments** ✓ (the SDK's FAQ ✓):
+
+| | The portal | The API **and** the identity service |
+|---|---|---|
+| **Production** | `myinvois.hasil.gov.my` ✓ | `api.myinvois.hasil.gov.my` ✓ |
+| **Sandbox** | `preprod.myinvois.hasil.gov.my` ✓ | `preprod-api.myinvois.hasil.gov.my` ✓ |
+
+✓ — **different client ids and secrets per environment** ✓ ✓.
+
+**And the SDK ships a Postman collection** ✓ (the JSON requests and the sample responses ✓)
+→ the spike's first hour is **import the collection and replay the sample calls** ✓ —
+that alone proves the credentials, the token and the endpoints ✓ ✓ before we write a line
+of our own ✓ ✓.
 
 ### The local checks (before a document ever leaves ✓)
 
@@ -790,6 +960,10 @@ curl -s -b tenantB.jar "https://app.ideazes.com/api/einvoice/settings?customer_i
 
 ## The phased plan
 
+**Phase 0 — the sandbox spike (3–5 days ✓)**
+The registration ✓, the sandbox credentials ✓, the eight steps ✓, the golden JSON ✓,
+the notes ✓ ✓ — **before any backend work** ✓ ✓ (see the spike section ✓) ✓.
+
 **Phase 1 — the taxpayer (2 weeks ✓)**
 The settings ✓, the credentials ✓, the sandbox connection ✓, the builder ✓, the individual
 tax invoice for one outlet ✓, the receipt's QR ✓.
@@ -819,11 +993,11 @@ The **back-file** with the "SVDP 1.2" / "SVDP 1.3" versions ✓ (the relaxed dea
 
 ## The open questions
 
-1. ~~**The QR code endpoint**~~ ✓ — **answered** ✓: the "Taxpayer's QR Code" API reads a
-   *business's* QR ✓ (TIN, BRN, SST, MSIC ✓) and is **not** the receipt's QR ✓; the
-   receipt's validation QR is **ours to draw** ✓ from the document's UUID ✓ (General
-   Guideline v4.8 §2.4.4 ✓) ✓. *What remains: the exact MyInvois validation URL format*
-   ✓ — to be read from the SDK's sample ✓ ✓.
+1. ~~**The QR code endpoint**~~ ✓ — **fully answered** ✓ (the SDK's FAQ ✓): the "Taxpayer's
+   QR Code" API reads a *business's* QR ✓ (TIN, BRN, SST, MSIC ✓) and is **not** the
+   receipt's QR ✓; the receipt's QR is **ours to draw** ✓ from
+   `{envbaseurl}/{uuid}/share/{longid}` ✓ ✓ (the UUID **and** the long id come back with
+   the document ✓ ✓) ✓.
 2. **The structure of v1.0 in practice** — the field paths must be taken from
    `Get Document Type` ✓ (the SDK serves the structure definition ✓) rather than guessed
    from the UBL spec ✓.
