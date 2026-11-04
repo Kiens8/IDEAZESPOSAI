@@ -3,15 +3,18 @@ title: The Kitchen Full Screen (the KDS wall display)
 description: The Kitchen Display gets a full-screen mode, built exactly like the Staff Order kiosk
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 1.1  
 **Created:** 2026-11-04  
-**Status:** **Proposal** — nothing is built yet ✓  
+**Status:** **Proposal** — nothing is built yet ✓ · **v1.1: the two open questions are answered ✓ (no PIN on the Exit ✓, no auto-return ✓)**  
 **Scope:** the POS frontend ✓ (`frontend/src/` ✓) — **no backend change** ✓, **no new endpoint** ✓, **no new plan feature** ✓  
 **Related:** `pos-app/kitchen-kds` (the user-facing Kitchen documentation ✓) · the Staff Order kiosk (`frontend/src/pages/StaffOrder.jsx` ✓) · the app shell (`frontend/src/App.jsx` ✓)
 
 > **The ask ✓.** The Kitchen screen gets the same **"Full screen"** button the Staff Order
 > screen has ✓ — and the full-screen kitchen is **built like the Staff Order kiosk** ✓:
 > the same dark chrome ✓, the same colours ✓, the same shape ✓ ✓.
+>
+> **Decided ✓ (Kens, 4 Nov 2026 ✓)** — the **Exit needs no PIN** ✓ and the kiosk **never
+> auto-returns** ✓ ✓ — both reasons are in **The exit** ✓ ✓.
 
 ---
 
@@ -92,7 +95,9 @@ contrast on the screen ✓ — and the kitchen borrows it **as it is** ✓:
 ## The rails — the rules it must not break ✓
 
 1. **The route is a kiosk route ✓** — `App.jsx` already has the `isKioskRoute` branch ✓
-   for `/staff-order/full` ✓ → `/kitchen/full` joins it ✓ (one condition, one branch ✓ ✓).
+   for `/staff-order/full` ✓ → `/kitchen/full` joins it ✓ (one condition, one branch ✓ ✓)
+   — and it is wrapped in **`ProtectedRoute`** ✓ exactly like the Staff Order kiosk ✓ →
+   **the login is the gate** ✓ ✓ (so the Exit needs no second secret ✓ ✓).
 2. **The role and the plan gate are the Kitchen's own ✓** — `navItems.js` ✓:
    `{ path: '/kitchen', minRole: 'staff', feature: FEATURES.KITCHEN }` ✓ → the
    **"Full screen"** button shows **only when the Kitchen itself shows** ✓ ✓ — **no new
@@ -115,6 +120,13 @@ contrast on the screen ✓ — and the kitchen borrows it **as it is** ✓:
 
 - The **Exit** button returns to **`/kitchen`** ✓ — the Staff Order's returns to
   `/staff-order` ✓ ✓.
+- **No PIN on the Exit ✓** (decided ✓) — the POS **logs in per user** ✓, so the kiosk is
+  already behind a login ✓ (the route is wrapped in `ProtectedRoute` ✓ ✓) → a PIN would
+  add a second secret to a screen that already has one ✓ ✓. **The Exit stays a single
+  tap** ✓ ✓.
+- **No auto-return ✓** (decided ✓) — the kiosk stays until someone leaves it ✓ ✓, the
+  same as the Staff Order kiosk ✓ ✓ (and a kitchen that silently falls back into the
+  shell mid-service is worse ✓ ✓).
 - **We do not use the browser's Fullscreen API ✓** — the button is a **route** ✓, not
   `requestFullscreen()` ✓ → the same behaviour as the Staff Order ✓ ✓ → no permission
   prompt ✓, no confusion with F11 ✓, and it **survives a refresh** ✓ (the URL *is* the
@@ -153,7 +165,10 @@ in `lucide-react` ✓ ✓) ✓.
   ✓ and the **white Exit** button ✓ ✓;
 - the order grid still updates ✓ (the same 3-second poll ✓ ✓) and the notification sound
   still plays ✓ ✓;
-- the **Exit** button returns to `/kitchen` ✓ and the shell comes back ✓ ✓;
+- the **Exit** button returns to `/kitchen` ✓ and the shell comes back ✓ ✓ — one tap ✓,
+  **no PIN** ✓ ✓;
+- the kiosk **requires the session** ✓ (the `ProtectedRoute` ✓ ✓) — a logged-out visitor
+  never reaches `/kitchen/full` ✓ ✓;
 - a **refresh** on `/kitchen/full` keeps the kiosk ✓ (the route decides ✓ ✓) ✓;
 - the reminder pulse ✓ and the countdown ✓ still read correctly ✓ at the larger type ✓ ✓;
 - the phone ✓ — the kiosk hides the bottom bar ✓ and the header wraps to the icons only
@@ -173,18 +188,22 @@ The bigger type ✓ (the order number ✓, the counts ✓), the bigger tap targe
 settings line moved into the header ✓, the chips re-skinned ✓ ✓.
 
 **Phase 3 — the niceties ✓ (later ✓)**
-A **PIN to exit** ✓ (a wall display anyone can walk up to and exit ✓ ✓) · an
-**auto-return** to the embedded kitchen after N idle minutes ✓ · a **"cast to a TV"**
-hint on the screen ✓ (open `/kitchen/full` on the display ✓, not on the phone ✓ ✓) ✓.
+A **"cast to a TV"** hint on the screen ✓ (open `/kitchen/full` on the display ✓, not on
+the phone ✓ ✓) · a **reconnect banner** ✓ for the wall when the network drops ✓ (the
+kitchen must never show a stale board ✓ ✓) · the **PIN to exit** ✓ — **dropped** ✓
+(the login is the gate ✓ ✓) — and the **auto-return** ✓ — **dropped** ✓ (consistency
+with the Staff Order kiosk ✓ ✓) ✓.
 
 ---
 
 ## The open questions ✓
 
-1. **Should the Exit be PIN-protected ✓?** — a wall display ✓ → probably yes ✓ (Phase 3 ✓) ✓.
-2. **Should the kiosk auto-return after N idle minutes ✓?** — the Staff Order kiosk does
-   **not** ✓ → keep it consistent ✓ (and a kitchen that silently falls back to the shell
-   mid-service is worse ✓ ✓) ✓.
+1. ~~**Should the Exit be PIN-protected ✓?**~~ ✓ — **answered ✓: no ✓** (Kens ✓) — the
+   POS **logs in per user** ✓, so the kiosk is already behind a login ✓ → a PIN would be
+   a second secret for nothing ✓ ✓ ✓.
+2. ~~**Should the kiosk auto-return after N idle minutes ✓?**~~ ✓ — **answered ✓: no ✓**
+   (Kens ✓) — **kept consistent** ✓ with the Staff Order kiosk ✓, which never
+   auto-returns ✓ ✓ ✓.
 3. **Should the header show the order type ✓ (Dine In / Takeaway ✓) as a chip ✓**, like
    the Staff Order's ✓? ✓ — it is already on the card ✓ ✓ → probably not needed ✓ ✓.
 4. **Does the kitchen display need the table number bigger ✓?** — it is already on the
