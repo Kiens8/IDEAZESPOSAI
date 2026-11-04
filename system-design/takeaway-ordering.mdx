@@ -1,8 +1,8 @@
 # Takeaway Ordering — the flow, the gap, and the plan
 
-**Document Version:** 1.2
+**Document Version:** 1.3
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet · **v1.1: the status-flow decision ✓ — the takeaway rides the dine-in machine ✓, delivery is a separate flow ✓** · **v1.2: cross-link to the business-type standard ✓ ✓**
+**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet · **v1.1: the status-flow decision ✓ — the takeaway rides the dine-in machine ✓, delivery is a separate flow ✓** · **v1.2: cross-link to the business-type standard ✓ ✓** · **v1.3: the takeaway's payment timing ✓ — prepay ✓ or pay at the counter ✓ ✓**
 
 ---
 
@@ -77,6 +77,17 @@ pending → confirmed → preparing → ready → served
 food court ✓ ride **this same** machine ✓ ✓; only the wording of the last step differs ✓ ✓
 ("Served" ✓ / "Collected" ✓ / "Delivered" ✓ ✓) ✓ ✓ — **the full standard is in
 `business-type-standards.mdx` ✓ ✓** ✓ ✓.
+
+**The payment timing ✓ ✓** — a takeaway can be **prepaid ✓** (the customer scans a DuitNow QR
+✓ ✓ before the food is made ✓ ✓) **or paid at the counter ✓** ✓ — and the choice is a
+**setting ✓ ✓**, never a constant ✓ ✗ ✓ (a stall does both ✓ ✓ and a restaurant does both
+✓ ✓ ✓). **Today the POS is postpay everywhere ✓ ✓** — the PWA creates the order ✓ ✓ → the
+success modal ✓ ✓ → the customer pays at the counter ✓ ✓ (there is no online payment in the
+PWA today ✓ ✓) ✓ ✓.
+→ **prepay** needs the PWA to call `POST /api/orders/{order_id}/payments` ✓ ✓ (the endpoint
+**already exists ✓ ✓** — `order.py:809` ✓ ✓) ✓ ✓ — and the confirmation must be driven by the
+**payment webhook ✓ ✓**, never by the staff ✓ ✗ ✓, so the kitchen never cooks an unpaid order
+✓ ✓ ✓. **The full standard is in `business-type-standards.mdx` ✓ ✓ §2d ✓ ✓** ✓ ✓.
 
 **And delivery is a different animal ✓** — it has an **address** ✓, a **fee** ✓, a **driver**
 ✓ and its own status set ✓ ("out for delivery" ✓ → "delivered" ✓ ✓) ✓. **It does not ride the
@@ -199,6 +210,7 @@ no delivery fee and no driver/3PL** ✓ ✗ ✓. And `allow_delivery` is **on by
 | the print/receipt template ✓ ✓ | the name on the printed ticket ✓ ✓ (to be located ✓ ✗) ✓ |
 | `frontend/src/pages/Settings.jsx` ✓ | the wording of `table_required` ✓ (the help text ✓) ✓ |
 | **the business-type preset ✓** ✓ | the per-type defaults ✓ (see `business-type-standards.mdx` ✓ ✓) ✓ |
+| **the payment timing ✓** ✓ | the per-order-type prepay ✓ / postpay ✓ / either ✓ ✓ (§2d ✓ ✓) ✓ |
 | `backend/app/routes/order.py` ✓ | **nothing to change ✓** — the rule is already right ✓ ✓ |
 
 **No new tables ✓ ✓, no new permissions ✓ ✓, no new plan feature ✓ ✓.**
@@ -235,7 +247,8 @@ no delivery fee and no driver/3PL** ✓ ✗ ✓. And `allow_delivery` is **on by
 - the kiosk chip ✓ ✓.
 → **the staff can place a takeaway again ✓ ✓** — this is the bug fix ✓ ✓ ✓
 
-**Phase 2 — the name + the wording ✓**
+**Phase 2 — the name + the wording ✓** *(the payment timing rides with Phase 2b ✓ ✓ in the
+business-type document ✓ ✓)* ✓
 - the customer-name field for a takeaway ✓ ✓ (the takeaway's anchor ✓ ✓);
 - the name on the kitchen ticket ✓ ✓ and on the printed receipt ✓ ✓ ✓;
 - the **type-aware "served" label** ✓ ✓ ("Served" ✓ / "Collected" ✓) ✓ — translation only ✓ ✓ ✓.

@@ -1,8 +1,8 @@
 # Business Type Standards — one machine, per-type presets
 
-**Document Version:** 1.0
+**Document Version:** 1.2
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the standard, the reasoning and the phases; nothing is built yet
+**Status:** **Proposal** — the standard, the reasoning and the phases; nothing is built yet · **v1.2: the business type does NOT link to the order type ✓ — it links to the order-type MIX ✓; the flow belongs to the order type ✓; and the payment timing is its own setting ✓**
 
 ---
 
@@ -112,6 +112,102 @@ tenant can override every one of them ✓ ✓ ✓.
 **The fast food's `allow_dine_in = false` ✓** — a fast-food place usually has no seating ✓ ✓;
 a tenant with a small dining area flips it ✓ ✓ (the override ✓ ✓ is the point ✓ ✓) ✓ ✓.
 
+### 2b. The business type does **not** link to the order type ✓ — it links to the **mix** ✓
+
+**Kens's question ✓:** *should the business type be linked to the order type ✓ (a restaurant →
+dine-in / takeaway / delivery ✓; a stall → the customer comes to the stall ✓)?* ✓ ✓
+
+**The answer ✓: no — not as a hard link ✓ ✓. It links to the order-type MIX ✓ (which types are
+offered by default ✓ ✓), and the ORDER TYPE drives the flow ✓ ✓ ✓.**
+
+**Why a hard link is wrong ✓ ✓**
+1. **A restaurant must be able to do takeaway ✓ ✓** — every restaurant does ✓ ✓ → a hard link
+   would forbid it ✓ ✗ ✓;
+2. **a food court with shared seating ✓ ✓** — the tables exist ✓ ✓ → a hard link would forbid
+   dine-in there ✓ ✗ ✓;
+3. **a hawker who adds two tables ✓ ✓** — the tenant changes its mind ✓ ✓ → a hard link breaks
+   ✓ ✗ ✓;
+4. **it forks the code ✓ ✗** — the trap this document already rejected ✓ ✓ (five types × four
+   surfaces × every new feature ✓ ✗ ✓) ✓ ✓;
+5. **and it contradicts the preset principle ✓ ✗** — the tenant's override would be ignored ✓ ✗
+   ✓ ✓.
+
+**So the cut is ✓ ✓**
+
+| The business type decides ✓ | The order type decides ✓ |
+|---|---|
+| **which order types are offered ✓** (the mix ✓ ✓) | **the flow ✓** (the screens ✓, the steps ✓ ✓) ✓ |
+| the table rule ✓ ✓ | the anchor ✓ ✓ |
+| the tips ✓, the auto-confirm ✓ ✓ | the **payment timing ✓** ✓ |
+| the stations ✓ ✓ | the wording of the last step ✓ ✓ |
+
+**And the mix is a default ✓ ✓, not a rule ✓** — `allow_dine_in` ✓ / `allow_takeaway` ✓ /
+`allow_delivery` ✓ are the *knobs* ✓ ✓ and the type only *seeds* them ✓ ✓ ✓.
+
+### 2c. The flow belongs to the order type ✓
+
+| Order type ✓ | The flow ✓ | The anchor ✓ | The payment ✓ |
+|---|---|---|---|
+| **dine_in** ✓ | the table service ✓ ✓ | the table ✓ ✓ | the table's bill ✓ ✓ (postpay ✓ ✓) ✓ |
+| **takeaway** ✓ | the counter handover ✓ ✓ | the name ✓ ✓ | prepay ✓ **or** at the counter ✓ ✓ |
+| **delivery** ✓ | dispatched ✓ ✓ | the name + the address ✓ ✓ | prepay ✓ (usually ✓ ✓) ✓ ✓ |
+
+**A hawker's counter is NOT a fourth order type ✓ ✓** — the fulfilment is the same as a
+takeaway ✓ ✓ (the food leaves the counter ✓ ✓); what differs is the **anchor ✓** (the token ✓
+vs the name ✓ ✓) and the **payment timing ✓ ✓** ✓ → **the anchor is a field ✓, not a fork ✓**
+✓ ✓ — which keeps the three order types ✓ ✓ ✓.
+
+### 2d. The payment timing ✓
+
+**Kens's point ✓ ✓:** at a stall the customer **either pays first ✓ or waits for the food and
+then pays ✓ ✓** — both are normal in Malaysia ✓ ✓ (the mamak ✓ → pay first ✓ ✓; the pasar
+malam ✓ → pay when collected ✓ ✓) ✓ ✓.
+
+**So it MUST be a setting ✓ ✓ — never a business-type constant ✓ ✗ ✓** (a stall does both ✓ ✓
+and a restaurant does both ✓ ✓) ✓ ✓.
+
+**Where it lives ✓** — **per order type ✓ ✓**, in the same JSON-map pattern the codebase
+already uses for `payment_methods` ✓ ✓ (a map keyed by the order type ✓ ✓) ✓ ✓:
+
+```json
+// OutletSettings.payment_timing
+{ "dine_in": "postpay", "takeaway": "either", "delivery": "prepay" }
+```
+
+**The three values ✓ ✓**
+- **`prepay` ✓** — the customer pays **before** the food is made ✓ ✓;
+- **`postpay` ✓** — the order is made ✓ → the food is made ✓ → the customer pays ✓ ✓;
+- **`either` ✓** — the staff taps which one at the counter ✓ ✓ (the hawker's default ✓ ✓) ✓ ✓.
+
+**Why prepay matters ✓ ✓ — the operational win ✓ ✓**
+- **the ghost order ✓ ✗** — a hawker takes the order ✓ → the customer walks off ✓ → the food is
+  made ✓ → nobody comes ✓ → **the waste is real ✓ ✓** → prepay ends it ✓ ✓;
+- **the kitchen must not start an unpaid order ✓ ✗** → **the confirmation is driven by the
+  payment webhook ✓ ✓** (not by the staff ✓ ✓) ✓ ✓;
+- **the kitchen's filter today would break it ✓ ✗** — `Kitchen.jsx:545` ✓ shows every order
+  that is not served/cancelled ✓ ✓ → it **would cook an unpaid prepay order ✓ ✗** → **the
+  kitchen must filter on the payment when the type is prepay ✓ ✓** ✓ ✓.
+
+**The rules of a prepay order ✓ ✓**
+1. the order is created with `payment_status = 'pending'` ✓ ✓ and `status = 'pending'` ✓ ✓;
+2. **it stays out of the kitchen ✓ ✓** until the payment lands ✓ ✓ (the filter ✓ ✓);
+3. the **webhook** flips it ✓ → `payment_status = 'paid'` ✓ ✓ and `status = 'confirmed'` ✓ ✓
+   → the kitchen sees it ✓ ✓;
+4. the staff can still force it ✓ ✓ (`auto_confirm_orders` ✓ ✓ — the hawker's "just make it ✓"
+   ✓ ✓) — with a **logged override ✓ ✓** ✓ ✓;
+5. **if the payment never lands ✓ ✗** — the order expires ✓ ✓ (the `order_reminder_minutes` ✓ ✓
+   / a new "expired" ✓ ✗ → **no: reuse the cancellation ✓ ✓** — a timeout cancels it ✓ ✓ ✓).
+
+**And no new order status ✓ ✓** — the prepay wait lives in the **payment_status ✓** ('pending'
+✓ ✓), not in a new status ✓ ✓ → **this document's rail survives ✓ ✓** ✓ ✓.
+
+**Where it is today ✓ ✗** — **the PWA has no online payment at all ✓** (it creates the order ✓
+✓ → the success modal ✓ ✓ → pay at the counter ✓ ✓) → **postpay everywhere ✓ ✓** ✓ ✓.
+→ **prepay needs the PWA to call `POST /api/orders/{order_id}/payments` ✓ ✓** (the endpoint
+**already exists ✓ ✓** — `order.py:809` ✓ ✓) and to render a **DuitNow QR ✓ ✓** ✓ ✓ — the
+HitPay DuitNow QR ✓ ✓ is the **same service the SaaS billing already uses ✓ ✓** → reusable ✓
+✓ ✓.
+
 ### 3. The anchor — what identifies the order ✓
 
 This is the idea that makes the types coherent ✓ ✓. **Every order needs an anchor ✓ ✓** —
@@ -165,8 +261,13 @@ split, the bill is not** ✓ ✓ ✓.
 counter-only ✓, token-based ✓, pay-immediately ✓ ✓) and keep `food_court` for a tenant that runs
 **several** stalls under one tenant ✓ ✓ ✓.
 
-**A hawker's flow ✓ ✓** — counter-only ✓ ✓, **takeaway only ✓** ✓, **the token ✓** ✓, **the
-payment at the counter ✓** ✓ (no table ✓, no delivery ✓ usually ✓ ✓) ✓ ✓.
+**A hawker's flow ✓ ✓** — counter-only ✓ ✓, **takeaway only ✓** ✓, **the token ✓** ✓, and the
+payment **either way ✓** ✓ — pay first ✓ **or** when the food is collected ✓ ✓ ✓.
+
+**The token is nearly free ✓ ✓** — the order number **already exists ✓ ✓** (`order_prefix` ✓ ✓
+— "ORD-00042" ✓ ✓) → the hawker's token is a **short form of it ✓** ("A12" ✓ ✓ — a per-prefix
+sequence ✓ ✓, or the last three digits ✓ ✓) → **no new table ✓, no new field ✓** ✓ ✓ — and it
+prints on the receipt ✓ ✓ (the receipt printer ✓ exists ✓ ✓) ✓ ✓.
 
 ---
 
@@ -186,6 +287,16 @@ payment at the counter ✓** ✓ (no table ✓, no delivery ✓ usually ✓ ✓)
    customer ✓ are derived exactly as they are today ✓ ✓ ✓.
 6. **The preset must not create a new plan feature ✓** — every type is available to every plan
    ✓ ✓ (the type is a *configuration* ✓, not a *product* ✓ ✓) ✓ ✓.
+7. **The business type never links to the order type ✓ ✗** — it seeds the **mix** ✓ ✓ and the
+   knobs ✓ ✓; the **flow comes from the order type ✓ ✓** ✓ ✓.
+8. **The payment timing is a setting ✓ ✓**, never a business-type constant ✓ ✗ ✓ — a stall does
+   both ✓ ✓ and a restaurant does both ✓ ✓ ✓.
+9. **A prepay order must never reach the kitchen unpaid ✓ ✗** — the confirmation is driven by
+   the **payment webhook ✓ ✓** and the kitchen filters on the payment ✓ ✓ — and **no new order
+   status ✓** ✓ (the wait lives in `payment_status` ✓ ✓) ✓ ✓.
+10. **The money path does not fork ✓ ✓** — the price ✓, the tax ✓, the currency ✓ and the
+    receipt ✓ are identical whether the customer prepays ✓ ✓ or pays at the counter ✓ ✓ — only
+    **when** the money lands changes ✓ ✓ ✓.
 
 ---
 
@@ -202,7 +313,14 @@ payment at the counter ✓** ✓ (no table ✓, no delivery ✓ usually ✓ ✓)
 
 **Phase 2 — the anchor ✓**
 - the takeaway's **name** ✓ ✓ (the takeaway doc ✓ ✓) ✓ ✓;
-- the **token** ✓ ✓ for the counter-only types ✓ ✓ (the hawker ✓ ✓) ✓ ✓.
+- the **token** ✓ ✓ for the counter-only types ✓ ✓ (the hawker ✓ ✓) ✓ ✓ — the short order
+  number ✓ ✓, no new field ✓ ✓ ✓.
+
+**Phase 2b — the payment timing ✓**
+- `payment_timing` ✓ ✓ as a per-order-type map ✓ ✓ (the `payment_methods` ✓ ✓ pattern ✓ ✓);
+- the **prepay** path ✓ ✓ — the PWA calls `POST /orders/{id}/payments` ✓ ✓ → the DuitNow QR ✓ ✓
+  → the webhook confirms ✓ ✓;
+- the **kitchen's filter** ✓ ✓ — never cook an unpaid prepay order ✓ ✓ ✓.
 
 **Phase 3 — the stations ✓**
 - (a) the category as the station ✓ ✓ + the kitchen display's filter ✓ ✓;
@@ -227,6 +345,13 @@ payment at the counter ✓** ✓ (no table ✓, no delivery ✓ usually ✓ ✓)
    dimension ✓ ✓ ✓.
 5. **Does a hawker's ticket print the token ✓?** — yes ✓ ✓ (the receipt printer ✓ exists ✓ ✓)
    — and the token should also be **called at the pass ✓** ✓ ✓.
+6. **Is `payment_timing` per order type ✓ or per outlet ✓?** — **per order type ✓** ✓ (a map
+   ✓ ✓) — a tenant can serve dine-in on a tab ✓ and takeaway prepaid ✓ ✓ ✓.
+7. **Should `either` be the default ✓?** — my pick ✓: **yes ✓** ✓ (the staff decides ✓ ✓) —
+   the hawker's natural mode ✓ ✓ ✓.
+8. **Does the prepay order appear on the staff screen before it is paid ✓?** — my pick ✓:
+   **yes ✓, in an "awaiting payment" ✓ group ✓** (it exists ✓ ✓ — it must be visible ✓ ✓, or
+   the staff cannot chase the QR ✓ ✓) ✓ ✓.
 
 ---
 
