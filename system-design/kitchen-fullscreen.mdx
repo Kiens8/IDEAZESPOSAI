@@ -3,9 +3,9 @@ title: The Kitchen Full Screen (the KDS wall display)
 description: The Kitchen Display gets a full-screen mode, built exactly like the Staff Order kiosk
 ---
 
-**Document Version:** 1.1  
+**Document Version:** 1.2  
 **Created:** 2026-11-04  
-**Status:** **Proposal** — nothing is built yet ✓ · **v1.1: the two open questions are answered ✓ (no PIN on the Exit ✓, no auto-return ✓)**  
+**Status:** **Phase 1 is built ✓** (in the working tree ✓ — **not deployed** ✓) · **v1.1: the two open questions are answered ✓ (no PIN on the Exit ✓, no auto-return ✓)** · **v1.2: Phase 1 landed ✓ and was verified in a browser ✓**  
 **Scope:** the POS frontend ✓ (`frontend/src/` ✓) — **no backend change** ✓, **no new endpoint** ✓, **no new plan feature** ✓  
 **Related:** `pos-app/kitchen-kds` (the user-facing Kitchen documentation ✓) · the Staff Order kiosk (`frontend/src/pages/StaffOrder.jsx` ✓) · the app shell (`frontend/src/App.jsx` ✓)
 
@@ -145,7 +145,7 @@ contrast on the screen ✓ — and the kitchen borrows it **as it is** ✓:
 |---|---|
 | `frontend/src/App.jsx` ✓ | the `/kitchen/full` route ✓ (the `isKioskRoute` branch ✓ ✓) |
 | `frontend/src/pages/Kitchen.jsx` ✓ | a `mode` prop ✓ (`'embedded' \| 'kiosk'` ✓), the kiosk render ✓, the **"Full screen"** button ✓ ✓ |
-| `frontend/src/i18n/locales/en/kitchen.json` ✓ | `kiosk.*` ✓ — `fullScreen` ✓, `exit` ✓, `soundOn` ✓, `soundOff` ✓, `refresh` ✓, `activeCount` ✓ ✓ |
+| `frontend/src/i18n/locales/en/kitchen.json` ✓ | `kiosk.fullScreen` ✓ and `kiosk.exit` ✓ — **only two new keys** ✓ (the sound ✓, the refresh ✓ and the active count **already exist** ✓ in the namespace ✓ — no duplicate translations ✓ ✓) ✓ |
 | `frontend/src/i18n/locales/zh/kitchen.json` ✓ | the same keys ✓ ✓ |
 | `frontend/src/i18n/locales/km/kitchen.json` ✓ | the same keys ✓ ✓ |
 
@@ -179,9 +179,39 @@ in `lucide-react` ✓ ✓) ✓.
 
 ## The phased plan ✓
 
-**Phase 1 — the route and the button ✓ (half a day ✓)**
+**Phase 1 — the route and the button ✓ (half a day ✓) — BUILT ✓, NOT DEPLOYED ✓**
 The `App.jsx` branch ✓, the Kitchen's `mode` prop ✓, the kiosk render ✓, the header ✓,
 the **"Full screen"** button ✓, the i18n keys ✓ ✓.
+
+**What was actually written ✓**
+- `frontend/src/App.jsx` ✓ — `isKioskRoute` now matches **`/kitchen/full`** ✓ as well as
+  `/staff-order/full` ✓ → the kiosk branch renders the **`<Kitchen mode="kiosk" />`** ✓
+  route ✓ wrapped in `ProtectedRoute` ✓ ✓ (the login is the gate ✓ ✓).
+- `frontend/src/pages/Kitchen.jsx` ✓ — the `mode` prop ✓ (`'embedded' | 'kiosk'` ✓), the
+  **shared body** ✓ (the status summary ✓, the settings line ✓, the empty state ✓ and the
+  order grid ✓ are now **one** block ✓ rendered by both modes ✓ — no duplication ✓ ✓) —
+  the kiosk header ✓, the **"Full screen"** button ✓, and the error ✓ and the loading
+  spinner ✓ re-skinned for the kiosk ✓ ✓.
+- the three `kitchen.json` locales ✓ — `kiosk.fullScreen` ✓ and `kiosk.exit` ✓ in **en /
+  zh / km** ✓ ✓.
+
+**How it was verified ✓**
+| Check ✓ | Result ✓ |
+|---|---|
+| the build ✓ | `vite build` into a **temp** directory ✓ — **the live `dist/` was NOT touched** ✓ ✓ |
+| the i18n parity ✓ | `npm run i18n:check` ✓ — **passed** ✓ (33 namespaces ✓, 1,828 keys ✓, en/zh/km ✓) ✓ |
+| the **"Full screen"** button ✓ | **present** ✓ on the embedded Kitchen ✓ ✓ |
+| `/kitchen/full` ✓ | renders ✓, the URL survives a refresh ✓ ✓ |
+| the shell ✓ | **gone** ✓ — `nav`/`aside` count = **0** ✓ ✓ |
+| the chrome ✓ | the header background = **`rgb(30, 41, 59)`** = slate-800 ✓, the height = **64px** = `h-16` ✓ ✓ |
+| the page scroll ✓ | **none** ✓ — the body is 900px in a 900px window ✓ and `scrollY` = 0 ✓ → the **board** scrolls, the page does not ✓ ✓ |
+| the **Exit** ✓ | present ✓, one tap ✓, no PIN ✓ ✓ |
+| the phone ✓ | 390×844 ✓ — the title and the labels hide ✓, the icon buttons stay ✓, the board scrolls ✓ ✓ |
+| the console ✓ | only the **pre-existing** dev-server CORS noise ✓ (the features call to `apisite.ideazes.com` ✓ from `127.0.0.1` ✓) ✓ — **nothing from this change** ✓ ✓ |
+
+**Not deployed ✓** — the live `dist/` is still the build of 2 November ✓ ✓. The deployment
+is `npm run build` ✓ → Caddy serves `/var/www/html/posai-frontend/dist` ✓ ✓ — **Kens's
+call** ✓ ✓.
 
 **Phase 2 — the wall polish ✓ (half a day ✓)**
 The bigger type ✓ (the order number ✓, the counts ✓), the bigger tap targets ✓, the
