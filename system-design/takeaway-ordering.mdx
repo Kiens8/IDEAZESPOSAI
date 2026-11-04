@@ -1,8 +1,8 @@
 # Takeaway Ordering — the flow, the gap, and the plan
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet
+**Status:** **Proposal** — the plan, the rails and the phases; nothing is built yet · **v1.1: the status-flow decision ✓ — the takeaway rides the dine-in machine ✓, delivery is a separate flow ✓**
 
 ---
 
@@ -33,6 +33,50 @@ Three ways in, **one set of rules** ✓:
 That rule already exists ✓ — **in the backend** ✓ ✓ (`backend/app/routes/order.py:303` ✓ —
 *"A table is required for a dine-in order"* ✓ ✓) ✓ and in the **submit handler** ✓
 (`frontend/src/pages/StaffOrder.jsx:259` ✓ ✓). **Only the button's gate disagrees ✓ ✗**
+
+---
+
+## The status flow — one machine, two stories ✓
+
+**Kens's call ✓: a takeaway is a dine-in customer who does not sit down ✓** — they walk into
+the restaurant and order ✓ ✓. **So the takeaway uses the current dine-in status flow ✓ ✓** —
+the same statuses ✓, the same transitions ✓, the same kitchen ✓ ✓ ✓.
+
+The machine today ✓ (`OrderQueue.jsx:132` ✓ ✓):
+
+```
+pending → confirmed → preparing → ready → served
+```
+
+**What that means in practice ✓**
+
+| Step ✓ | Dine-in ✓ | Takeaway ✓ | Same? ✓ |
+|---|---|---|---|
+| pending ✓ | the order is in ✓ | the order is in ✓ | ✓ identical ✓ |
+| confirmed ✓ | the kitchen accepted it ✓ | the kitchen accepted it ✓ | ✓ identical ✓ |
+| preparing ✓ | being made ✓ | being made ✓ | ✓ identical ✓ |
+| ready ✓ | on the pass ✓ | on the pass ✓ | ✓ identical ✓ |
+| **served** ✓ | **served to the table** ✓ | **handed over to the customer** ✓ | ✓ **same status, different wording** ✓ |
+| the cancellation rule ✓ | pending/confirmed/preparing ✓ (order.py:969 ✓) | the same ✓ | ✓ identical ✓ |
+
+**So ✓ — one machine ✓ ✓, and only three things differ ✓:**
+
+1. **The last step's wording ✓** — "Served" ✓ reads wrong on a takeaway ✓ ✗ → it should read
+   **"Collected"** ✓ (or "Handed over" ✓) ✓ ✓. **This is a translation change only ✓ ✓** — the
+   stored value stays `served` ✓ ✓ → **no migration ✓, no data change ✓, no API change ✓** ✓ ✓.
+2. **The anchor ✓** — a dine-in order is anchored to a **table** ✓ (the table carries the
+   order's identity ✓ and rolls up its bill ✓ ✓); a takeaway has no table ✓ → its anchor is the
+   **order itself + the customer's name** ✓ ✓ → **the name is not a nicety ✓ — it is the
+   takeaway's table ✓ ✓✓** ✓.
+3. **The bill ✓** — a dine-in bills the **table** ✓ (all of the table's orders ✓ ✓, the
+   "everything served → pay" rule ✓ `OrderQueue.jsx:935` ✓ ✓); a takeaway bills **one order** ✓
+   → the payment trigger differs ✓ ✓ → which is exactly why the counter needs its own
+   **Takeaway** view ✓ ✓ (Phase 3 ✓ ✓) ✓.
+
+**And delivery is a different animal ✓** — it has an **address** ✓, a **fee** ✓, a **driver**
+✓ and its own status set ✓ ("out for delivery" ✓ → "delivered" ✓ ✓) ✓. **It does not ride the
+dine-in machine ✓ ✓** → it stays a **separate flow ✓** ✓ → out of scope here ✓ ✓, and
+`allow_delivery` should be **off by default** ✓ ✓ until it is finished ✓ ✓ ✓.
 
 ---
 
@@ -79,6 +123,9 @@ not need a new setting ✓ ✓, we need to **read the existing one correctly** �
 6. **A takeaway is not a "no table dine-in" ✓** — it is its own type ✓ ✓ and it must be
    *countable* separately ✓ ✓ (the counter's reports ✓ ✓ — `Reports.jsx:122` ✓ already splits
    the three types ✓ ✓) ✓ ✓.
+7. **The status machine is shared ✓ ✓** — the takeaway rides `pending → confirmed → preparing
+   → ready → served` ✓ ✓ unchanged ✓ ✓; only the **label** of the last step differs ✓ ✓
+   (a translation ✓ ✓) ✓ ✓. **No new status ✓, no migration ✓, no API change ✓** ✓ ✓.
 
 ---
 
@@ -115,7 +162,12 @@ flow attaches a generic walk-in customer ✓ (`dining_customer_id: walkinCustome
 
 → **Capture a customer name (and optionally a phone) on a takeaway ✓** ✓ → it prints on the
 kitchen ticket ✓ ✓ → the kitchen can call *"John's takeaway is ready"* ✓ ✓ and the counter can
-hand the right bag over ✓ ✓.
+hand the right bag over ✓ ✓. **The name is the takeaway's anchor ✓ ✓** (there is no table to
+carry the identity ✓ ✗) ✓ ✓ — the same role the table plays in a dine-in ✓ ✓ ✓.
+
+→ **The "served" label becomes type-aware ✓** — "Served" ✓ for a dine-in ✓ ✓, **"Collected" ✓**
+for a takeaway ✓ ✓ (and "Delivered" ✓ for a delivery ✓ ✓ later ✓ ✓) — **a translation-only
+change ✓ ✓** ✓.
 
 > **The caveat ✓** — the **print receipt path** ✓ has not been traced ✓ ✗ (the ticket template
 > ✓ ✓) → the name must reach **that** template ✓ ✓, not only the kitchen chip ✓ ✓ ✓.
@@ -177,9 +229,10 @@ no delivery fee and no driver/3PL** ✓ ✗ ✓. And `allow_delivery` is **on by
 - the kiosk chip ✓ ✓.
 → **the staff can place a takeaway again ✓ ✓** — this is the bug fix ✓ ✓ ✓
 
-**Phase 2 — the name ✓**
-- the customer-name field for a takeaway ✓ ✓ (and for a delivery ✓ ✓);
-- the name on the kitchen ticket ✓ ✓ and on the printed receipt ✓ ✓ ✓.
+**Phase 2 — the name + the wording ✓**
+- the customer-name field for a takeaway ✓ ✓ (the takeaway's anchor ✓ ✓);
+- the name on the kitchen ticket ✓ ✓ and on the printed receipt ✓ ✓ ✓;
+- the **type-aware "served" label** ✓ ✓ ("Served" ✓ / "Collected" ✓) ✓ — translation only ✓ ✓ ✓.
 
 **Phase 3 — the counter sees the takeaways ✓**
 - the **Takeaway** view in `OrderQueue` ✓ ✓ (+ the payment action ✓ ✓) ✓ ✓.
@@ -200,9 +253,13 @@ no delivery fee and no driver/3PL** ✓ ✗ ✓. And `allow_delivery` is **on by
    — both exist in the HitPay design ✓ ✓ ("Pay Later" ✓ ✓) ✓ ✓ — keep both ✓ ✓ ✓.
 4. **Should the counter's Takeaway view be a third tab ✓ or a filter ✓?** — a third tab ✓ ✓
    (it is a different *job*, not a subset ✓ ✓) ✓ ✓.
-5. **The wording of `table_required` in Settings ✓** — it should say *"dine-in orders require a
+5. **The wording of the last status ✓** — "Collected" ✓ ✓ or "Handed over" ✓ ✓? — my pick ✓:
+   **"Collected" ✓** ✓ (it is what the counter says ✓ ✓) ✓ ✓.
+6. **Should a takeaway be able to be *served* before it is *ready* ✓?** — no ✓ ✓ — the kitchen
+   sets ready ✓ ✓ and the counter sets served ✓ ✓ (the same rule as a dine-in ✓ ✓) ✓ ✓.
+7. **The wording of `table_required` in Settings ✓** — it should say *"dine-in orders require a
    table"* ✓ ✓ so the setting stops reading as *"every order"* ✓ ✓ ✓.
-6. **The receipt path ✓** — to be located before Phase 2 promises the name on the printout ✓ ✓.
+8. **The receipt path ✓** — to be located before Phase 2 promises the name on the printout ✓ ✓.
 
 ---
 
