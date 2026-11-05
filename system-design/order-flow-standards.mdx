@@ -530,6 +530,42 @@ for real, in a browser, against **app.ideazes.com** — not against a mock ✓�
 and the staff order screen ("Select Table (optional)", the table chips, the cart as the bottom
 sheet) ✓✓. The console is clean on both (no page errors) ✓✓.
 
+### 4.0d Phase 3 — the wording follows the business type (Nov 5, 2026 ✓✓)
+
+**The last step is "Served" for a restaurant and a bar, and "Collected" for a cafe, a fast
+food and a stall.** The status **value** never changes — it is `served` in the database, in the
+API and in the reports. Only the **word** on the button, on the chip and in the filter changes.
+
+**The rule lives in one place:** `frontend/src/utils/businessType.js`
+→ `LAST_STEP_BY_BUSINESS_TYPE` + `lastStepLabels(t, businessType)`. No component hardcodes
+"Served" or "Collected" for the last step. The business type itself comes from the outlet's
+settings (the backend owns it — `business_presets.py`), so **there is no API change and no
+migration**.
+
+**The i18n** (en/zh/km): `common:status.served` / `collected` / `markServed` / `markCollected`.
+The wording follows the existing translations — zh 已上菜 / 已取餐, km បានបម្អាញ / បានប្រគល់.
+
+**The surfaces that now follow the type:**
+
+| Where | What it shows |
+|---|---|
+| `OrderQueue.jsx` | the advance button ("Mark Served" → "Mark Collected") and the status chip |
+| `OrderHistory.jsx` | the status filter and the row's status chip |
+| `Dashboard.jsx` | the recent orders' status chip |
+| `OrderSearchPanel.jsx` (the kiosk) | the status of a settled order |
+
+**Two holes it closed on the way** (both were showing the raw English status):
+the dashboard's chip and the order history's row → they now use `common:status.*`.
+
+**The dead keys were removed** — `orders.action.markServed`, `orders.action.served`,
+`orders.status.served`, `orderHistory.filter.served`, `staffOrder.status.served` (in all three
+locales) → one wording, one place.
+
+**The test:** `scripts/pos_phase3_test.js` → a "ready" order (the queue's button), a "served" order
+(the chip, the dashboard, the history) → the business type is switched to "cafe" through the API
+→ the same pages must now say "Collected" → and the Chinese must say 标记为已取餐 → then the
+business type, the settings and the orders are restored. **17/17 ✓✓.**
+
 ### 4.1 How the setup happens — the mechanic
 
 1. **Settings → Business** → the tenant picks the business type;
@@ -628,7 +664,7 @@ payment: either**
 |---|---|---|
 | **1 — the takeaway bug** — **DONE(Nov 5, 2026)** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** |
 | **2 — the preset** — **DONE(Nov 5, 2026)** | the business type is live — `backend/app/services/business_presets.py` (the five types, the knobs) · the confirmation in Settings → Business (the frontend reads `GET /api/settings/presets` → **no copy of the rules in the UI**) · the preset applies **on the change**, in the backend, and the request's own values land on top · the `allow_delivery` **column default → False** · the settings routes got their **permission + tenant gate** · `food_court` is dropped, `stall` is in | small |
-| **3 — the wording** | the type-aware last step ("Served" / "Collected") — translation only | tiny |
+| **3 — the wording** — **DONE(Nov 5, 2026)** | the type-aware last step ("Served" / "Collected") — the rule in `utils/businessType.js`, the labels in `common:status.*` (en/zh/km), four surfaces (the queue, the history, the dashboard, the kiosk's search) + the two raw-status holes closed — **no API change, no migration** | tiny |
 | **4 — the anchor** | the takeaway's **name** + the **token** (the short order number) + the name on the kitchen ticket and the printed receipt | medium |
 | **4b — the counter sees the takeaways** | `OrderQueue.jsx:185` already computes `takeawayOrders` and **never renders it** → a **Takeaway view** beside Queue/Tables with the unpaid ones and a **Pay** action | **small** |
 | **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** — **two details verified in the code**: ① `POST /{order_id}/payments` (`order.py:809`) accepts a full payment (`is_split=false` → `payment_type="full"`) and sets `payment_status="paid"` — **but it does NOT move `status` from `pending` to `confirmed`✗ → that transition must be added**; ② **it is a staff route** (`require_staff_permission("staff:orders:write")`) → **the PWA's customer key cannot call it✗ → the PWA needs its own route** (`POST /api/pwa/orders/{id}/pay` — `pwa.py` already has the ownership proof: the `table_uuid` / the `dining_customer_id`) | medium |
