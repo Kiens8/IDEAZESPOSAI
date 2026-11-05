@@ -604,6 +604,21 @@ the order carries it → the queue shows the token and the name → the kitchen 
 the receipt shows both → everything is restored) and `scripts/pos_phase4_pwa_test.js` → **7/7 ✓✓**
 (the PWA's field, the payload, the order).
 
+**The PWA's order types follow the outlet's settings** (a hole Kens found on the screen, Nov 5, 2026) ✓✓.
+`updateOrderTypeVisibility()` handled dine-in and takeaway but **not delivery** → the customer app
+offered a delivery the outlet had switched off. The delivery is a separate app with its own
+storefront (`delivery-app.mdx`), so the customer app must not offer it ✓✓. Three rules now:
+1. a button for a type the outlet does not allow is **hidden** (and the delivery starts hidden in
+   the HTML → no flash before the settings arrive) ✓✓,
+2. the order type **on the screen** is always one the guest can order → if it was just hidden, the
+   first type that is left is selected ✓✓,
+3. `selectOrderType()` **refuses** a type that is not allowed ✓✓ (a stale click cannot sneak it in).
+
+**The assets are version-pinned** (`?v=2.6.14` in `index.html` + the service worker's
+`CACHE_VERSION`) → **a change to the customer app's CSS or JS needs a version bump**, or the
+browser (and the service worker) keeps serving the old file ✓✓. That is what hid this fix from the
+first test run ✓✓ (the file was correct on the server, the browser had the old one) ✓✓.
+
 **The lesson of this phase (a trap for every browser test here):** a **low-stock item asks for a
 confirmation** (`confirm()`) → Playwright **dismisses dialogs by default** → a dismissed confirm
 means the item is **not** added → the cart stays empty → the test fails for a reason that has
