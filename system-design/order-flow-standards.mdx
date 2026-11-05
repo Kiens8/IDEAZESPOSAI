@@ -135,13 +135,17 @@ HitPay DuitNow QR ✓ ✓ is the **same service the SaaS billing already uses �
 | `table_required` ✓ | **true** ✓ | false ✓ | false ✓ | **true** ✓ | false ✓ |
 | `allow_dine_in` ✓ | true ✓ | true ✓ | false ✓ | true ✓ | false ✓ |
 | `allow_takeaway` ✓ | true ✓ | true ✓ | true ✓ | true ✓ | **true** ✓ |
-| `allow_delivery` ✓ | true ✓ | false ✓ | true ✓ | false ✓ | false ✓ |
+| `allow_delivery` ✓ | **false ✓** ✓ | false ✓ | **false ✓** ✓ | false ✓ | false ✓ |
 | `auto_confirm_orders` ✓ | false ✓ | **true** ✓ | **true** ✓ | false ✓ | **true** ✓ |
 | `tips_enabled` ✓ | true ✓ | true ✓ | false ✓ | true ✓ | false ✓ |
 | `split_bill_enabled` ✓ | true ✓ | false ✓ | false ✓ | true ✓ | true ✓ |
 | the last step's wording ✓ | Served ✓ | Collected ✓ | Collected ✓ | Served ✓ | Collected ✓ |
 | the stations ✓ | 1 ✓ | **2** (kitchen + bar ✓) | 1 ✓ | 1 (bar ✓) | 1 ✓ |
 | the anchor ✓ | table ✓ | table / name ✓ | name / token ✓ | table / tab ✓ | **token** ✓ ✓ |
+
+**`allow_delivery` is false everywhere in the presets ✓✓** — the delivery flow is not built
+✓ ✓ (the address ✓, the fee ✓, the driver ✓ ✓) → **the type must not switch it on ✓ ✗ ✓** ✓ ✓
+→ it is switched on **per tenant ✓ ✓**, deliberately ✓ ✓ ✓.
 
 **`business_type` today ✓ ✗** — a column on the outlet settings ✓ ✓ (`models.py:385` ✓ ✓) that
 the Settings page writes ✓ ✓ (`Settings.jsx:1190-1200` ✓ ✓) and **nothing reads ✓ ✗** ✓ — it
@@ -285,7 +289,8 @@ postpay ✓ ✓) ✓ ✓.
 
 **The type ✓** → `fast_food` ✓
 **The settings ✓** → `table_required=false` ✓ · **`allow_dine_in=false` ✓** (no seating ✓ ✓) ·
-`allow_takeaway=true` ✓ · `allow_delivery=true` ✓ · `auto_confirm=true` ✓ · `tips=false` ✓ ·
+`allow_takeaway=true` ✓ · **`allow_delivery=false` ✓** ✓ (the delivery flow is not built yet
+✓ ✓) ✓ · `auto_confirm=true` ✓ · `tips=false` ✓ ·
 `split_bill=false` ✓ · the last step **"Collected" ✓** · 1 station ✓ · the anchor: the name ✓
 · the payment: **postpay ✓** ✓
 
