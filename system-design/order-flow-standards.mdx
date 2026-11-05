@@ -504,6 +504,32 @@ another tenant's outlet → **403** (GET and PUT) · the settings are restored. 
 path (a signed-in session, not an API key) was tested separately ✓✓ — the login, the
 presets read, the type change and the seeded result.
 
+### 4.0c The browser tests — Playwright, against the live site (Nov 5, 2026 ✓✓)
+
+**Playwright 1.64.1 + Chromium is on this box** (`~/.cache/ms-playwright/`) → the UI is tested
+for real, in a browser, against **app.ideazes.com** — not against a mock ✓✓.
+
+| Script | What it proves | Result |
+|---|---|---|
+| `scripts/pos_phases_test.js` | the five types in the picker · `food_court` gone · the confirmation modal shows the diff · **Cancel changes nothing** · Apply seeds the preset · the tabs raise no failed API call · the picker follows the outlet | **27/27** |
+| `scripts/pos_phase1_test.js` | a dine-in without a table → the button is **disabled** · a takeaway without a table → the button is **enabled** · a **real takeaway order is created with no table** (`type=takeaway, table=null`) · a takeaway with a table keeps the table · the order is cancelled after | **11/11** |
+| `scripts/pos_settings_sweep.js` | **every checkbox on every tab** (Tax, Payment, Kitchen, Order, AI, QR, Security) → change → Save → read back from the API → restore | **34/34** |
+| `scripts/pos_settings_inputs_test.js` | **every text and number input** → change → Save → see which field moved → restore (the read-only and the disabled ones are skipped **by design**) | **29/32** → the 3 were a test-index bug, re-proved **12/12** |
+| `scripts/pos_settings_holes.js` | **a failed save must not say "Saved"** · **a failed load must not show an empty form** | **3/3** (after the fix) |
+| `scripts/pos_outlet_switch_test.js` | the outlet switch → the session follows → the settings follow | **5/5** |
+
+**The two holes it found (both fixed ✓✓):**
+1. **The save lied.** `saveSettings` never checked `res.ok` → a **500 still showed "Settings saved"** ✗✗
+   → the PUT and the company-name PUT now check the response, the error is a **banner** (not a
+   whisper in the header) and "Saved" only appears when both writes landed ✓✓.
+2. **A failed load looked like an empty page.** `fetchSettings` swallowed the error and set an
+   empty settings object → the form rendered with no values and no message ✗✗ → now it shows the
+   error with a **Retry** button, and a missing tenant/outlet no longer spins forever ✓✓.
+
+**The mobile view was looked at** ✓✓ — the settings page (the tabs scroll, the helper text wraps)
+and the staff order screen ("Select Table (optional)", the table chips, the cart as the bottom
+sheet) ✓✓. The console is clean on both (no page errors) ✓✓.
+
 ### 4.1 How the setup happens — the mechanic
 
 1. **Settings → Business** → the tenant picks the business type;
