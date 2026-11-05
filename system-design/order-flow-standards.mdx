@@ -130,9 +130,13 @@ counter orders that have no token.
 **A takeaway may carry a table or carry none — the table is a HINT, not the anchor.**
 The guest scans the table QR and then orders a takeaway: the order carries T5, and the
 staff know the food is going to that table. The guest orders from the app: there is no
-table. **Both are valid.** The takeaway is always its own order and its own bill — it
-**never** joins the table's bill (the queue groups the dine-in orders only,
-`OrderQueue.jsx:189`).
+table. **Both are valid.** The staff may attach a table to a takeaway — it is optional,
+never required.
+
+**The takeaway's name lives on the order** (decided Nov 5, 2026): a `customer_name`
+column on `orders`, nullable — a safe migration. The staff type it; the PWA asks for it
+when the guest is not logged in. Not on the dining customer: that would mean creating a
+customer record for every walk-in, which cuts against the walk-in principle.
 
 **The token is nearly free** — the order number already exists (`order_prefix` — "ORD-00042")
 → "A12" is a short form of it → no new table, no new field.
@@ -235,6 +239,50 @@ restaurant you are ordering from"* ✓ ✓) ✓ ✓ → **so a takeaway without 
 **The staff side ✓✓** — the takeaway lands in the staff's OrderQueue ✓ ✓ → **Phase 4b's
 Takeaway view ✓✓** ✓ ✓ (the code already computes `takeawayOrders` ✓ ✓ and never renders it
 ✓ ✓) → **the token identifies it at the counter ✓✓** ✓ ✓ ✓✓ ✓ ✓.
+
+### 2.7 The one bill — the orders stay separate, the settlement is one
+
+**The question (Nov 5, 2026).** The customer sits at T1, orders a dine-in, finishes
+eating, then orders a takeaway. Two bills — is that convenient? The customer may want to
+settle in one.
+
+**The answer: the orders stay separate, the settlement becomes one.**
+
+**Why the orders must not be merged**
+- **two different states** — the dine-in is *served*, the takeaway is *ready* or
+  *collected* — one order cannot be in two states, and the status machine cannot express
+  it;
+- **two different payment rules** — a prepay takeaway is paid before the kitchen starts, a
+  dine-in is settled at the table;
+- **the reports split by order type** — merging loses the dine-in/takeaway split, which
+  is the number the business actually watches;
+- **two different anchors** — the table, and the name or the token;
+- **the industry does the same** — Toast, Square and Clover all keep them as separate
+  checks and orders. What the mature systems offer is *settling them together*, not
+  merging them.
+
+**What the customer actually wants is "pay once", not "one order" — and that we can give.**
+
+The machinery is already there:
+- the staff search a table in the Orders screen → **"settle T5 (2 orders)"** → one payment,
+  one receipt (`OrderSearchPanel.jsx:119` → `usePaymentFlow.js:282` — the bulk loop; the
+  receipt already handles a bulk settlement, `StaffOrder.jsx:358`);
+- the settle list is **served + unpaid + the same table number**, with **no order_type
+  filter** (`OrderSearchPanel.jsx:32` and `:90`) → **a takeaway that carries T5 is already
+  inside that settle action.**
+
+**The two gaps**
+1. **the staff's takeaway has no table** → it sits outside the table's bill → the staff
+   settles it separately. **The fix: the table is optional for a takeaway** — the staff may
+   attach T5, and then the takeaway joins the table's bill and the one settlement covers
+   both. (This adjusts Phase 1: the picker for a takeaway is *optional*, not hidden.)
+2. **two different "table totals"** — the table's bill card in the Orders queue is built
+   from the dine-in orders only (`OrderQueue.jsx:189`), while the search panel's settle
+   action collects every unpaid order with that table number. **They must agree** — the
+   card has to show the same total the settle action will charge.
+
+**The prepaid takeaway** — it is already paid, so it cannot join the table's settlement
+(the money has moved). The customer gets two receipts. That is correct and stays.
 
 ---
 
@@ -552,8 +600,9 @@ payment: either**
  type (§3.2) and any tenant may override → `either` is a choice, not a default.
 9. **Does the prepay order appear on the staff screen before it is paid?** — yes, in an
  "awaiting payment" group — or the staff cannot chase the QR.
-10. **Where does the takeaway's name live** — the order or the dining customer? — my pick:
- **on the order** (the dining customer is the walk-in).
+10. ~~**Where does the takeaway's name live?**~~ — **RESOLVED (Nov 5, 2026) — on the order**
+ (a `customer_name` column, nullable). The dining customer is the walk-in; the order is
+ where the name belongs.
 11. **Should the delivery order carry a separate fee line?** — yes (a delivery-fee line item)
  so the invoice and the e-Invoice stay clean.
 
