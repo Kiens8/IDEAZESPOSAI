@@ -1,8 +1,8 @@
 # Order Flow Standards — the machine, the business types, and the tenant setup
 
-**Document Version:** 2.0
+**Document Version:** 2.1
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the standard, the scenarios and the implementation order; nothing is built yet
+**Status:** **Proposal** — the standard, the scenarios and the implementation order; nothing is built yet · **v2.1: the per-type payment timing ✓✓ (Kens's per-type call ✓ ✓), the market-standard comparison ✓✓, and the delivery PWA ✓✓ ✓**
 
 > **This document consolidates two earlier drafts ✓ ✓** — `takeaway-ordering.mdx` ✓ ✓ and
 > `business-type-standards.mdx` ✓ ✓ — into one standard ✓ ✓. Both are kept as stubs ✓ ✓ so
@@ -147,7 +147,45 @@ HitPay DuitNow QR ✓ ✓ is the **same service the SaaS billing already uses �
 the Settings page writes ✓ ✓ (`Settings.jsx:1190-1200` ✓ ✓) and **nothing reads ✓ ✗** ✓ — it
 is a **label today ✓ ✓** ✓ ✓.
 
-### 3.2 The stations ✓
+### 3.2 The payment timing per type ✓
+
+**Kens's per-type call ✓✓ — approved ✓✓ and it matches the market ✓✓ (§9 ✓ ✓):**
+
+| The type ✓ | dine_in ✓ | takeaway ✓ | delivery ✓ | The daily shape ✓ ✓ |
+|---|---|---|---|---|
+| **Restaurant ✓** | **postpay ✓** ✓ | **postpay ✓** ✓ | postpay ✓ / prepay ✓ | the order ✓ → the kitchen ✓ → the payment at the table ✓ ✓ (**the current flow ✓ — unchanged ✓ ✓**) ✓ ✓ |
+| **Cafe ✓** | postpay ✓ (the table service ✓ ✓) | **prepay ✓** ✓ | prepay ✓ | order at the till ✓ → **pay ✓** → wait ✓ → collect ✓ ✓ (**the Starbucks shape ✓ ✓**) ✓ ✓ |
+| **Fast Food ✓** | — (no seating ✓ ✓) | **prepay ✓** ✓ | **prepay ✓** ✓ | order ✓ → **prepaid ✓** → wait ✓ → collect ✓ ✓ (**the KFC shape ✓ ✓**) ✓ ✓ |
+| **Bar ✓** | **postpay ✓** ✓ | postpay ✓ | — | the order ✓ → the drink ✓ → pay at the end ✓ ✓ ✓ |
+| **Stall ✓** | — | **either ✓** ✓ | — | the token ✓ → **pay first ✓ or when collected ✓ ✓** ✓ ✓ |
+
+**A cafe that takes table orders ✓ ✓** — that is the **dine-in** order type ✓ ✓ → the
+restaurant flow ✓ ✓ → **postpay ✓** ✓ — **the same POS, both flows ✓ ✓**, chosen by the **order
+type ✓ ✓** and not by the business type ✓ ✗ ✓ ✓.
+
+> **Kens's own point 3 ✓✓ is the proof ✓✓** — a cafe has **both** flows ✓✓ (the till ✓ and
+> the table ✓ ✓) → so the business type **cannot** decide the flow ✓ ✗ ✓ → **the order type
+> must ✓ ✓✓** ✓ ✓ — the cut this document already makes ✓ ✓ ✓.
+
+**The sharp distinction ✓✓ — it is not really "prepay vs postpay" ✓ ✗**
+The axis that actually matters ✓ ✓ is **"must the money be in before the kitchen starts?"** ✓ ✓:
+- **money first ✓✓** — the kitchen waits for the payment ✓ ✓ → **no ghost order ✓ ✓** (the
+  cafe ✓, the fast food ✓ ✓);
+- **kitchen first ✓✓** — the food starts immediately ✓ ✓, the money comes after or during ✓
+  ✓ → the restaurant ✓, the bar ✓ ✓.
+
+**Both are the same mechanic ✓✓** — the order is created ✓ ✓ → the payment is a **separate
+event ✓ ✓** → the webhook confirms it ✓ ✓ → **the only difference is whether the kitchen's
+view is gated on the payment ✓ ✓ ✓** ✓ — which is exactly the kitchen-filter rule ✓ ✓ (§2.4
+✓ ✓) ✓ ✓.
+
+**The Malaysian nuance ✓✓** — "postpay" at a stall is usually the customer scanning the
+**merchant's DuitNow QR ✓✓** at the counter ✓ ✓ → the money lands in seconds ✓ ✓ → so it is
+**postpay with a very fast payment ✓✓** ✓ — and **we already default the payment method to
+`duitnow_qr` ✓✓** (`models.py:279` ✓ ✓) ✓ ✓ ✓ — **the local standard is already our default ✓
+✓✓** ✓ ✓.
+
+### 3.3 The stations ✓
 
 **The gap ✓ ✗** — `kitchen_printer_ip` is a **single** printer ✓ ✓ → a cafe's bar ✓, a
 restaurant's grill ✓ and a food court's stalls ✓ have nowhere to live ✓ ✗ ✓.
@@ -162,7 +200,7 @@ restaurant's grill ✓ and a food court's stalls ✓ have nowhere to live ✓ �
 **A multi-stall order ✓** — **one order ✓, two tickets ✓** → each stall's display shows only
 its items ✓ ✓ → **the ticket splits ✓, the bill does not ✓ ✓** ✓ ✓.
 
-### 3.3 The hawker stall ✓
+### 3.4 The hawker stall ✓
 
 **A single stall is not a food court ✓ ✗** → **a 6th type `stall` ✓** ✓ (a different service
 model ✓ ✓: counter-only ✓, token-based ✓, pay-first-or-later ✓ ✓) ✓ ✓, while `food_court`
@@ -288,7 +326,10 @@ fixes the same `table_required` semantics the presets depend on ✓ ✓ ✓.
 7. **the status machine is shared ✓ ✓** — no new status ✓ ✓, no migration ✓ ✓, no API change ✓ ✓;
 8. **the business type never links to the order type ✓ ✗** — it seeds the **mix ✓** and the
    knobs ✓ ✓; the **flow comes from the order type ✓ ✓** ✓ ✓;
-9. **the payment timing is a setting ✓ ✓**, never a business-type constant ✓ ✗ ✓;
+9. **the payment timing is a setting ✓ ✓**, never a business-type constant ✓ ✗ ✓ — and
+   **any tenant may set it for any order type ✓✓**, whatever their business type ✓ ✓ (**the
+   type only seeds it ✓ ✓**) ✓ ✓ — so a cafe can run postpay ✓ and a bar can run prepay ✓ ✓
+   ✓ ✓;
 10. **a prepay order must never reach the kitchen unpaid ✓ ✗** — the webhook confirms it ✓ ✓
     and the kitchen filters on the payment ✓ ✓ — **and no new order status ✓** ✓ ✓;
 11. **the preset never overwrites a tuned tenant ✓ ✗** — only on the type change ✓ ✓, with a
@@ -317,6 +358,63 @@ fixes the same `table_required` semantics the presets depend on ✓ ✓ ✓.
    "awaiting payment" ✓ group ✓** ✓ — or the staff cannot chase the QR ✓ ✓ ✓.
 9. **Where does the takeaway's name live ✓** — the order ✓ or the dining customer ✓? — my pick ✓:
    **on the order ✓** ✓ (the dining customer is the walk-in ✓ ✓) ✓ ✓.
+
+---
+
+## 8. The delivery PWA ✓
+
+**Kens's plan ✓✓: a separate PWA for the delivery business ✓✓.** ✓ **Approved ✓✓ — with one
+condition ✓✓: one API ✓✓, two PWAs ✓ ✓ — not two systems ✓ ✗ ✓ ✓.**
+
+**Why a second PWA is right ✓ ✓**
+- the delivery customer is **not at the venue ✓ ✗** → the surface is different ✓ ✓ (the
+  address ✓, the delivery fee ✓, the driver ✓, the live tracking ✓ ✓) ✓ ✓;
+- the **in-venue PWA ✓** (the QR table ordering ✓ ✓) stays exactly what it is ✓ ✓ — a
+  restaurant's dine-in + takeaway ✓ ✓ (**the current flow ✓ — unchanged ✓ ✓**) ✓ ✓;
+- the **delivery PWA ✓** is **prepay-only ✓✓** (the money must land before the kitchen starts
+  ✓ ✓ — otherwise a delivery order is a ghost order with a courier attached ✓ ✗ ✓) ✓ ✓.
+
+**The condition ✓✓ — one backend ✓✓**
+- the same menu ✓ ✓, the same prices ✓ ✓, the same orders ✓ ✓, the same kitchen ✓ ✓, the same
+  tenant ✓ ✓ → **the delivery PWA is a second *client* of the same API ✓ ✓** ✓ — **a fork
+  here would duplicate the whole system ✓ ✗ ✗** ✓ ✓;
+- the delivery order type's rules ✓ ✓ (the address ✓ ✓, the fee ✓ ✓, the prepay ✓ ✓) belong
+  in the **core** ✓ ✓ — not in the PWA ✓ ✗ ✓ ✓.
+
+**A delivery-only tenant ✓✓ (a ghost kitchen ✓✓)** — **no new business type ✓✓** ✓: it is a
+restaurant whose preset has `allow_dine_in=false` ✓ ✓, `allow_takeaway=false` ✓ ✓ and
+`allow_delivery=true` ✓ ✓ — the preset machinery already covers it ✓ ✓✓ ✓.
+
+---
+
+## 9. The market standard ✓ — how the mature POS do it ✓
+
+**The comparison ✓✓ (Kens's question ✓ — is this the standard way ✓? ✓)** ✓ ✓
+
+| System ✓ | The order types ✓ | The payment timing ✓ | The payment object ✓ |
+|---|---|---|---|
+| **Toast ✓** | Dine In ✓ / Takeout ✓ / Delivery ✓ / Kiosk ✓ | **a setting ✓✓** (Pay Ahead ✓ or pay at the counter ✓ ✓) ✓ ✓ | separate ✓ ✓ |
+| **Square ✓** | none ✓ (the fulfilment sits on the customer ✓ ✓) ✓ | **native ✓✓** — pay later ✓, split tender ✓, pay at the table ✓ ✓ | separate ✓ ✓ |
+| **Clover ✓** | none ✓ | **native ✓✓** (Pay Now ✓ / Pay Later ✓ ✓) ✓ ✓ | separate ✓ ✓ |
+| **Lightspeed ✓** | Dine In ✓ / Takeaway ✓ | **a setting ✓✓** (Pay Now ✓ / Pay Later ✓ ✓) ✓ ✓ | separate ✓ ✓ |
+| **Ours ✓✓** | dine_in ✓ / takeaway ✓ / delivery ✓ | **a setting ✓✓, per order type ✓ ✓** | **separate ✓✓** ✓ ✓ |
+
+**Three conclusions ✓ ✓✓**
+1. **The payment is a separate object ✓✓ — in every mature POS ✓✓** and **we already are ✓✓**
+   ✓ — `Payment` ✓ ✓ (`models.py:273` ✓ ✓ — the amount ✓, the method ✓, the status ✓, the
+   transaction id ✓, the paid-at ✓ ✓) and `OrderPayment` ✓ ✓ for the split bill ✓ ✓ (the
+   `payment_status` on the order ✓ ✓ is only a **summary** ✓ ✓) ✓ ✓✓ — **so the architecture
+   is already standard ✓✓ and needs no rework ✓✓** ✓ ✓;
+2. **the payment timing is a setting ✓✓ in every one of them ✓✓** — **never a business-type
+   constant ✓ ✗ ✓** → **Kens's per-type values are presets ✓✓ and every tenant can override
+   them ✓✓ ✓** ✓ ✓;
+3. **the payment method defaults to `duitnow_qr` ✓✓** (`models.py:279` ✓ ✓) → the Malaysian
+   standard is already our default ✓ ✓✓ ✓ — **the local market's norm, not a Western import
+   ✓ ✓** ✓ ✓.
+
+**One cleanup note ✓** — there are **two payment tables ✓ ✗** (`Payment` ✓ and `OrderPayment`
+✓ ✓) → they should be **one ✓ ✓** (one with a `payment_type` ✓ ✓) → a cleanup ✓ ✓, not a
+rebuild ✓ ✓ ✓.
 
 ---
 
