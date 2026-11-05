@@ -408,7 +408,7 @@ fixes the same `table_required` semantics the presets depend on ✓ ✓ ✓.
 
 ---
 
-## 8. The delivery PWA ✓
+## 8. The delivery PWA ✓ → **the full design is in `delivery-app.mdx` ✓ ✓** ✓ ✓
 
 **Kens's plan ✓✓: a separate PWA for the delivery business ✓✓.** ✓ **Approved ✓✓ — with one
 condition ✓✓: one API ✓✓, two PWAs ✓ ✓ — not two systems ✓ ✗ ✓ ✓.**
@@ -431,6 +431,17 @@ condition ✓✓: one API ✓✓, two PWAs ✓ ✓ — not two systems ✓ ✗ �
 **A delivery-only tenant ✓✓ (a ghost kitchen ✓✓)** — **no new business type ✓✓** ✓: it is a
 restaurant whose preset has `allow_dine_in=false` ✓ ✓, `allow_takeaway=false` ✓ ✓ and
 `allow_delivery=true` ✓ ✓ — the preset machinery already covers it ✓ ✓✓ ✓.
+
+**→ the full design ✓✓** → **`delivery-app.mdx` ✓ ✓** ✓ — the white-label storefront ✓ ✓ (one
+codebase ✓✓, one deployment ✓✓, one API ✓✓, **one branded PWA per tenant ✓✓ ✓**) ✓ ✓, the
+scope boundary ✓✓ (**the tenant owns its delivery operation ✓✓; we own the commerce ✓✓** —
+no marketplace ✓ ✗, no driver app ✓ ✗, no GPS ✓ ✗, no commission ✓ ✗ ✓ ✓), the fee settings ✓ ✓
+(one nullable JSON column ✓ ✓), the **driver assignment ✓ ✓** (a name ✓ + a phone ✓ ✓ — the
+whole "tracking" for the price of a phone number ✓ ✓✓), the **one delivery-specific status ✓✓**
+(`out_for_delivery` ✓ ✓ — the shared machine stays shared ✓ ✓ ✓), the plan gating ✓✓ (**the
+core in every plan ✓✓; the zones ✓, the scheduling ✓ and the analytics ✓ = "Delivery Ops" ✓✓**
+— the adoption argument wins ✓ ✓: a tenant who switches to us *for* the delivery must not be
+charged for it ✓ ✓ ✓✓), and the four audit gates ✓✓ for the PWA's public routes ✓ ✓ ✓ ✓.
 
 ---
 
