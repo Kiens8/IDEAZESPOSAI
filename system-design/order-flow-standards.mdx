@@ -1,8 +1,8 @@
 # Order Flow Standards — the machine, the business types, and the tenant setup
 
-**Document Version:** 2.1
+**Document Version:** 2.2
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the standard, the scenarios and the implementation order; nothing is built yet · **v2.1: the per-type payment timing ✓✓ (Kens's per-type call ✓ ✓), the market-standard comparison ✓✓, and the delivery PWA ✓✓ ✓**
+**Status:** **Proposal** — the standard, the scenarios and the implementation order; nothing is built yet · **v2.1: the per-type payment timing ✓✓ (Kens's per-type call ✓ ✓), the market-standard comparison ✓✓, and the delivery PWA ✓✓ ✓** · **v2.2: the food court is a set of INDEPENDENT stalls ✓✓ — each stall is an outlet ✓, so no multi-stall order exists ✓ and the stations work is deferred ✓✓ ✓**
 
 > **This document consolidates two earlier drafts ✓ ✓** — `takeaway-ordering.mdx` ✓ ✓ and
 > `business-type-standards.mdx` ✓ ✓ — into one standard ✓ ✓. Both are kept as stubs ✓ ✓ so
@@ -185,26 +185,57 @@ view is gated on the payment ✓ ✓ ✓** ✓ — which is exactly the kitchen-
 `duitnow_qr` ✓✓** (`models.py:279` ✓ ✓) ✓ ✓ ✓ — **the local standard is already our default ✓
 ✓✓** ✓ ✓.
 
-### 3.3 The stations ✓
+### 3.3 The food court ✓ — a set of independent stalls ✓✓
 
-**The gap ✓ ✗** — `kitchen_printer_ip` is a **single** printer ✓ ✓ → a cafe's bar ✓, a
-restaurant's grill ✓ and a food court's stalls ✓ have nowhere to live ✓ ✗ ✓.
+**Kens's call ✓✓: the food court is calculated as ONE STALL ✓✓.** ✓ A food court sells drinks
+and its own food ✓ ✓, and **every other stall has its own payment ✓ ✓✓** ✓ → **the stalls are
+independent businesses ✓ ✓** ✓ ✓.
+
+**In our model that needs NOTHING new ✓✓** ✓ ✓:
+
+| The food court's ✓ | In the model ✓ |
+|---|---|
+| a stall ✓ | **an outlet ✓ ✓** (the menu ✓, the tables ✓, the orders ✓, the takings ✓ are all per-outlet ✓ ✓✓) ✓ |
+| a stall's payment ✓ | the payment sits on the **order ✓** → the order carries `outlet_id` ✓ → **the takings per stall ✓ ✓** (the `payment-stats/{outlet_id}` ✓ ✓ report already exists ✓ ✓✓) ✓ ✓ |
+| the stall's kitchen ✓ | the kitchen display **already filters by outlet ✓ ✓** (`Kitchen.jsx:103-105` ✓ ✓) ✓ ✓ |
+| the stalls' owners ✓ | **either their own tenant ✓✓** (independent businesses ✓ ✓ → their own login ✓, their own DuitNow ✓ ✓) **or an outlet of the operator's tenant ✓✓** (if the operator owns them ✓ ✓ → one account ✓, the internal split is the operator's commercial business ✓ ✓ ✓) ✓ ✓ |
+
+**Both arrangements work today ✓✓ — no new concept ✓✓** ✓ ✓✓✓ ✓ ✓.
+
+**And the big scope saving ✓✓ — the multi-stall split ticket is NOT needed ✓ ✗** ✓ ✓
+- an order belongs to exactly **one outlet ✓ ✓** → **one stall ✓ ✓** → **one ticket ✓ ✓** ✓ ✓;
+- → the "**one order, two tickets ✓**" idea in the earlier drafts ✓ ✗ is **dropped ✓✓** ✓ ✓;
+- → the **stations work is deferred ✓✓** ✓ ✓ (it was a food-court requirement ✓ ✗; it remains
+  a real need for a **single outlet with a grill and a bar ✓ ✓** — the cafe ✓ — but it is not
+  a food-court need ✓ ✓) ✓ ✓.
+
+### 3.4 The stations ✓ — deferred ✓
+
+**The gap ✓ ✗** — `kitchen_printer_ip` is a **single** printer ✓ ✓ → a cafe's bar ✓ and a
+restaurant's grill ✓ have nowhere to live ✓ ✗ ✓.
 
 - **(a) the category *is* the station ✓** — zero migration ✓ ✓ → the kitchen display filters by
-  category ✓ ✓ → natural for a food court ✓ ✓ → **the interim answer ✓** ✓ ✓;
+  category ✓ ✓ → **the interim answer ✓** ✓ ✓;
 - **(b) a real `stations` table ✓ + `menu_items.station_id` ✓** — a nullable column ✓ ✓ (a safe
   migration ✓ ✓) → the grill ✓, the fryer ✓, the bar ✓ ✓ → the kitchen display per station ✓
   ✓ ✓.
 
-**The recommendation ✓** — **(a) now ✓, (b) after ✓** ✓ ✓.
-**A multi-stall order ✓** — **one order ✓, two tickets ✓** → each stall's display shows only
-its items ✓ ✓ → **the ticket splits ✓, the bill does not ✓ ✓** ✓ ✓.
+**Deferred ✓✓** — it is **not** a food-court requirement any more ✓ ✓ (§3.3 ✓ ✓) ✓ ✓ → it
+drops to the **end of the queue ✓✓** ✓ ✓ ✓.
 
-### 3.4 The hawker stall ✓
+### 3.5 The stall type ✓ — the hawker ✓
 
-**A single stall is not a food court ✓ ✗** → **a 6th type `stall` ✓** ✓ (a different service
-model ✓ ✓: counter-only ✓, token-based ✓, pay-first-or-later ✓ ✓) ✓ ✓, while `food_court`
-stays for a tenant running **several** stalls under one tenant ✓ ✓ ✓.
+**A single stall is not a food court ✓ ✗** ✓ → **the business type is `stall` ✓ ✓** ✓ — a
+different service model ✓ ✓: **counter-only ✓, token-based ✓, pay-first-or-later ✓ ✓** ✓ ✓.
+
+**→ the five business types ✓✓** — `restaurant` ✓ · `cafe` ✓ · `fast_food` ✓ · `bar` ✓ ·
+**`stall` ✓ ✓** ✓ ✓ — and **`food_court` is dropped ✓✓** ✓ (a food court is not a business
+type ✓ — it is **a set of independent stall outlets ✓✓** ✓ ✓) ✓ ✓ → the Settings dropdown
+becomes **five** entries ✓ ✓ ✓.
+
+> **Kens's scenario ✓✓:** the food court operator sells the drinks and their own food ✓ ✓ →
+> that is **one stall tenant ✓✓** (or one outlet of the operator's tenant ✓ ✓) ✓ ✓ → the other
+> stalls are **separate tenants ✓✓ with their own payments ✓ ✓✓** ✓ ✓ ✓.
 
 ---
 
@@ -276,7 +307,8 @@ station (the bar ✓)** ✓ · the anchor: the table ✓ **or the tab ✓** ✓ 
 
 ### 4.6 A food-court stall ✓ (the hawker ✓)
 
-**The type ✓** → **`stall` ✓** ✓
+**The type ✓** → **`stall` ✓** ✓ — **each stall is its own tenant ✓✓ (or its own outlet ✓✓)
+with its own payment ✓ ✓✓** ✓ ✓
 **The settings ✓** → `table_required=false` ✓ · **`allow_dine_in=false` ✓** · `allow_takeaway=true`
 ✓ · `allow_delivery=false` ✓ · `auto_confirm=true` ✓ · `tips=false` ✓ · `split_bill=true` ✓ ·
 the last step **"Collected" ✓** · 1 station (the stall's own ✓) ✓ · **the anchor: the token ✓✓**
@@ -306,7 +338,7 @@ fixes the same `table_required` semantics the presets depend on ✓ ✓ ✓.
 | **4 — the anchor ✓** | the takeaway's **name** ✓ ✓ + the **token** ✓ ✓ (the short order number ✓ ✓) + the name on the kitchen ticket ✓ ✓ and the printed receipt ✓ ✓ | medium ✓ ✓ |
 | **4b — the counter sees the takeaways ✓✓** | `OrderQueue.jsx:185` ✓ ✓ already computes `takeawayOrders` ✓ ✓ and **never renders it ✓ ✗** ✓ → a **Takeaway view ✓** beside Queue/Tables ✓ ✓ with the unpaid ones ✓ ✓ and a **Pay** action ✓ ✓ | **small ✓✓** |
 | **5 — the payment timing ✓** | the per-order-type map ✓ ✓ + the PWA's **prepay** ✓ ✓ (`POST /orders/{id}/payments` ✓ ✓ + the DuitNow QR ✓ ✓) + **the kitchen's filter ✓ ✓** (never cook an unpaid order ✓ ✓) + the staff's payment screen ✓ ✓ | medium ✓ ✓ |
-| **6 — the stations ✓** | (a) the category as the station ✓ ✓ + the kitchen display's filter ✓ ✓ → (b) the `stations` table ✓ ✓ + `menu_items.station_id` ✓ ✓ | medium → large ✓ ✓ |
+| **6 — the stations ✓** **(deferred ✓✓)** | **not a food-court need any more ✓ ✓** (§3.3 ✓ ✓) → a cafe's bar ✓ and a restaurant's grill ✓ ✓ → (a) the category as the station ✓ ✓ + the kitchen display's filter ✓ ✓ → (b) the `stations` table ✓ ✓ + `menu_items.station_id` ✓ ✓ | medium → large ✓ ✓ |
 | **7 — the bar's tab ✓** | the open tab ✓ ✓ — a pseudo-table ✓ ✓ reusing the table's bill machinery ✓ ✓ | medium ✓ ✓ |
 
 ---
@@ -336,13 +368,19 @@ fixes the same `table_required` semantics the presets depend on ✓ ✓ ✓.
     confirmation ✓ ✓ ✓;
 12. **every type stays available to every plan ✓** — the type is a *configuration* ✓, not a
     *product* ✓ ✓ ✓.
+13. **a stall is an outlet ✓ ✓ and its payment is its own ✓ ✓✓** — the payment sits on the
+    order ✓ ✓ → the order carries the outlet ✓ ✓ → the takings split per stall ✓ ✓ ✓
+    (**no multi-stall order ✓ ✗** ✓ — the split-ticket idea is dropped ✓ ✓) ✓ ✓.
 
 ---
 
 ## 7. The open questions ✓
 
-1. **A 6th type `stall` ✓, or is the food court "one stall or many" ✓?** — my pick ✓: **add
-   `stall` ✓** ✓ ✓.
+1. ~~**A 6th type `stall` ✓, or is the food court "one stall or many" ✓?**~~ ✓ **RESOLVED ✓✓**
+   — **the food court is one stall ✓✓ (Kens ✓ ✓) → the types are five ✓✓** (restaurant ✓ · cafe
+   ✓ · fast food ✓ · bar ✓ · **stall ✓ ✓**) and **`food_court` is dropped ✓✓** ✓ ✓ — a food
+   court is **not a business type ✓**, it is **a set of independent stall outlets ✓✓** ✓ ✓
+   (§3.3 ✓ ✓) ✓ ✓.
 2. **Should the preset apply to an existing tenant's settings ✓?** — **no ✓** ✓ — only on the
    type change ✓ ✓, with a confirmation ✓ ✓ ✓.
 3. **Is a bar's tab a pseudo-table ✓ or a new entity ✓?** — **a pseudo-table ✓** ✓ (reuse the
@@ -351,6 +389,10 @@ fixes the same `table_required` semantics the presets depend on ✓ ✓ ✓.
    (already ✓ ✓); the business type is a **setting ✓**, not a report dimension ✓ ✓ ✓.
 5. **Does a hawker's ticket print the token ✓?** — **yes ✓ ✓** ✓ ✓ (the receipt printer ✓
    exists ✓ ✓) — and it is **called at the pass ✓** ✓ ✓.
+5b. **Does the food court operator need a consignment report ✓ (the takings per stall ✓)?** —
+   the **`payment-stats/{outlet_id}` ✓ ✓ report already exists ✓ ✓** ✓ → so the per-stall
+   takings ✓ ✓ are available ✓ ✓ → **the split between the operator and the stall owners is
+   their commercial arrangement ✓ ✓, not a POS feature ✓ ✓✓** ✓ ✓.
 6. **Is `payment_timing` per order type ✓ or per outlet ✓?** — **per order type ✓** ✓ (a map ✓
    ✓) ✓ ✓.
 7. **Should `either` be the default ✓?** — **yes ✓** ✓ ✓ (the staff decides ✓ ✓) ✓ ✓.
