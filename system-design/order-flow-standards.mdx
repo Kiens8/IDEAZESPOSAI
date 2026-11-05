@@ -1,0 +1,339 @@
+# Order Flow Standards — the machine, the business types, and the tenant setup
+
+**Document Version:** 2.0
+**Owner:** Ideazes POS AI
+**Status:** **Proposal** — the standard, the scenarios and the implementation order; nothing is built yet
+
+> **This document consolidates two earlier drafts ✓ ✓** — `takeaway-ordering.mdx` ✓ ✓ and
+> `business-type-standards.mdx` ✓ ✓ — into one standard ✓ ✓. Both are kept as stubs ✓ ✓ so
+> old links still land somewhere sensible ✓ ✓ ✓.
+> **The design did not change ✓ ✓ — it was reorganised ✓** ✓, the duplicate content was cut ✓
+> ✓, and the **tenant scenarios ✓ ✓** and the **implementation order ✓ ✓** were added ✓ ✓ ✓.
+
+---
+
+## 1. The summary ✓ — the whole thing on one page ✓
+
+**One status machine for every business type ✓ ✓ and every order type ✓ ✓:**
+
+```
+pending → confirmed → preparing → ready → served
+```
+
+**Three things vary ✓ ✓**
+
+| What ✓ | The options ✓ | Decided by ✓ |
+|---|---|---|
+| **The order type ✓** | dine_in ✓ / takeaway ✓ / delivery ✓ | the tenant's **mix ✓** (offered ✓) ✓ — the **flow** comes from the type ✓ ✓ |
+| **The anchor ✓** | the table ✓ / the customer name ✓ / the token ✓ ✓ | the order type + the business type ✓ ✓ |
+| **The payment timing ✓** | prepay ✓ / postpay ✓ / either ✓ ✓ | the tenant's setting ✓ (per order type ✓ ✓) ✓ ✓ |
+
+**One thing never varies ✓ ✓:** the price ✓, the tax ✓, the currency ✓, the receipt ✓, the
+tenant isolation ✓ ✓ ✓.
+
+**And the business type ✓ is a PRESET ✓** — it *seeds* the settings ✓ ✓; it is never a branch
+in the code ✓ ✗ ✓ ✓.
+
+---
+
+## 2. The shapes ✓
+
+### 2.1 The order types ✓
+
+| Order type ✓ | The flow ✓ | The anchor ✓ | The bill ✓ |
+|---|---|---|---|
+| **dine_in** ✓ | the table service ✓ ✓ | the table ✓ ✓ | the table's orders ✓ ✓ |
+| **takeaway** ✓ | the counter handover ✓ ✓ | the customer name ✓ ✓ | the one order ✓ ✓ |
+| **delivery** ✓ | dispatched ✓ ✓ | the name + the address ✓ ✓ | the one order ✓ ✓ |
+
+**A hawker's counter is NOT a fourth order type ✓ ✓** — the fulfilment is the same as a
+takeaway ✓ ✓ (the food leaves the counter ✓ ✓); what differs is the **anchor ✓** (the token ✓
+vs the name ✓ ✓) and the **payment timing ✓ ✓** → **the anchor is a field ✓, not a fork ✓** ✓ ✓.
+
+### 2.2 The status machine ✓ — one for all ✓
+
+```
+pending → confirmed → preparing → ready → served
+```
+
+- **The cancellation rule ✓** — pending / confirmed / preparing ✓ ✓ (`order.py:969` ✓ ✓);
+- **the kitchen's filter ✓** — everything that is not served/cancelled ✓ ✓ (`Kitchen.jsx:545`
+  ✓ ✓);
+- **the reports ✓** — the three types are already split ✓ ✓ (`Reports.jsx:122` ✓ ✓);
+- **the reminder ✓** — `order_reminder_minutes` ✓ ✓.
+
+**Only the wording of the last step varies ✓ ✓** — and it is a **translation ✓**:
+
+| The business ✓ | The last step reads ✓ |
+|---|---|
+| Restaurant ✓ | **Served** ✓ ✓ |
+| Cafe ✓ | **Collected** ✓ ✓ |
+| Fast Food ✓ | **Collected** ✓ ✓ |
+| Bar ✓ | **Served** ✓ ✓ |
+| Food Court / Stall ✓ | **Collected** ✓ ✓ |
+
+→ **no new status value ✓ ✓ — no migration ✓, no data change ✓, no API change ✓** ✓ ✓.
+
+### 2.3 The anchor ✓ — what identifies the order ✓
+
+**Every order needs something to point at ✓ ✓** — the counter ✓, the kitchen ✓ and the bill ✓:
+
+| The order is ✓ | The anchor is ✓ | The bill rolls up ✓ |
+|---|---|---|
+| **dine-in** ✓ | the **table** ✓ ✓ | the table's orders ✓ ✓ |
+| **takeaway** ✓ | the **customer name** ✓ ✓ | the one order ✓ ✓ |
+| **counter / stall** ✓ | the **token** ✓ ("A12" ✓ ✓) | the one order ✓ ✓ |
+
+**The takeaway's missing name ✓** is not a special case ✓ — it is this same concept ✓ ✓.
+**The token ✓** is nearly free ✓ ✓ — the **order number already exists ✓** (`order_prefix` ✓ ✓ —
+"ORD-00042" ✓ ✓) → "A12" ✓ ✓ is a short form of it ✓ ✓ → **no new table ✓, no new field ✓** ✓ ✓.
+
+### 2.4 The payment timing ✓
+
+**`prepay` ✓ / `postpay` ✓ / `either` ✓ ✓** — a **setting ✓**, never a business-type constant
+✓ ✗ ✓ (a stall does both ✓ ✓ and a restaurant does both ✓ ✓) ✓ ✓.
+
+**Where it lives ✓** — **per order type ✓**, in the same JSON-map pattern the codebase already
+uses for `payment_methods` ✓ ✓:
+
+```json
+// OutletSettings.payment_timing
+{ "dine_in": "postpay", "takeaway": "either", "delivery": "prepay" }
+```
+
+**The rules of a prepay order ✓ ✓**
+1. it is created with `payment_status = 'pending'` ✓ ✓ and `status = 'pending'` ✓ ✓;
+2. **it stays out of the kitchen ✓ ✓** until the money lands ✓ ✓;
+3. **the payment webhook confirms it ✓ ✓** → `payment_status = 'paid'` ✓ ✓ and
+   `status = 'confirmed'` ✓ ✓ → the kitchen sees it ✓ ✓;
+4. the staff can still force it ✓ ✓ (`auto_confirm_orders` ✓ ✓) — **with a logged override ✓
+   ✓** ✓ ✓;
+5. **if the payment never lands ✓ ✗** — the order is **cancelled ✓ ✓** by the timeout ✓ ✓
+   (**no new status ✓** ✓ — the wait lives in `payment_status` ✓ ✓) ✓ ✓.
+
+**Why prepay matters ✓ ✓ — the ghost order ✓ ✗:** a hawker takes the order ✓ → the customer
+walks off ✓ → the food is made ✓ → nobody comes ✓ → **the waste is real ✓ ✓** → prepay ends it
+✓ ✓.
+
+**Where it is today ✓ ✗** — **the PWA has no online payment at all ✓** (it creates the order ✓
+✓ → the success modal ✓ ✓ → the customer pays at the counter ✓ ✓) → **postpay everywhere ✓
+✓** ✓ ✓.
+→ **prepay needs the PWA to call `POST /api/orders/{order_id}/payments` ✓ ✓** (the endpoint
+**already exists ✓ ✓** — `order.py:809` ✓ ✓) ✓ ✓ and to render a **DuitNow QR ✓ ✓** ✓ ✓ — the
+HitPay DuitNow QR ✓ ✓ is the **same service the SaaS billing already uses ✓ ✓** ✓ ✓.
+
+---
+
+## 3. The business types ✓
+
+### 3.1 The presets ✓
+
+**`business_type` seeds these ✓ ✓ — and the tenant can override every one ✓ ✓ ✓:**
+
+| Knob ✓ | Restaurant ✓ | Cafe ✓ | Fast Food ✓ | Bar ✓ | Stall ✓ |
+|---|---|---|---|---|---|
+| `table_required` ✓ | **true** ✓ | false ✓ | false ✓ | **true** ✓ | false ✓ |
+| `allow_dine_in` ✓ | true ✓ | true ✓ | false ✓ | true ✓ | false ✓ |
+| `allow_takeaway` ✓ | true ✓ | true ✓ | true ✓ | true ✓ | **true** ✓ |
+| `allow_delivery` ✓ | true ✓ | false ✓ | true ✓ | false ✓ | false ✓ |
+| `auto_confirm_orders` ✓ | false ✓ | **true** ✓ | **true** ✓ | false ✓ | **true** ✓ |
+| `tips_enabled` ✓ | true ✓ | true ✓ | false ✓ | true ✓ | false ✓ |
+| `split_bill_enabled` ✓ | true ✓ | false ✓ | false ✓ | true ✓ | true ✓ |
+| the last step's wording ✓ | Served ✓ | Collected ✓ | Collected ✓ | Served ✓ | Collected ✓ |
+| the stations ✓ | 1 ✓ | **2** (kitchen + bar ✓) | 1 ✓ | 1 (bar ✓) | 1 ✓ |
+| the anchor ✓ | table ✓ | table / name ✓ | name / token ✓ | table / tab ✓ | **token** ✓ ✓ |
+
+**`business_type` today ✓ ✗** — a column on the outlet settings ✓ ✓ (`models.py:385` ✓ ✓) that
+the Settings page writes ✓ ✓ (`Settings.jsx:1190-1200` ✓ ✓) and **nothing reads ✓ ✗** ✓ — it
+is a **label today ✓ ✓** ✓ ✓.
+
+### 3.2 The stations ✓
+
+**The gap ✓ ✗** — `kitchen_printer_ip` is a **single** printer ✓ ✓ → a cafe's bar ✓, a
+restaurant's grill ✓ and a food court's stalls ✓ have nowhere to live ✓ ✗ ✓.
+
+- **(a) the category *is* the station ✓** — zero migration ✓ ✓ → the kitchen display filters by
+  category ✓ ✓ → natural for a food court ✓ ✓ → **the interim answer ✓** ✓ ✓;
+- **(b) a real `stations` table ✓ + `menu_items.station_id` ✓** — a nullable column ✓ ✓ (a safe
+  migration ✓ ✓) → the grill ✓, the fryer ✓, the bar ✓ ✓ → the kitchen display per station ✓
+  ✓ ✓.
+
+**The recommendation ✓** — **(a) now ✓, (b) after ✓** ✓ ✓.
+**A multi-stall order ✓** — **one order ✓, two tickets ✓** → each stall's display shows only
+its items ✓ ✓ → **the ticket splits ✓, the bill does not ✓ ✓** ✓ ✓.
+
+### 3.3 The hawker stall ✓
+
+**A single stall is not a food court ✓ ✗** → **a 6th type `stall` ✓** ✓ (a different service
+model ✓ ✓: counter-only ✓, token-based ✓, pay-first-or-later ✓ ✓) ✓ ✓, while `food_court`
+stays for a tenant running **several** stalls under one tenant ✓ ✓ ✓.
+
+---
+
+## 4. The tenant setup ✓ — the scenarios ✓
+
+### 4.1 How the setup happens ✓ — the mechanic ✓
+
+1. **Settings → Business ✓** → the tenant picks the business type ✓ ✓;
+2. **a confirmation appears ✓ ✓** — *"Apply the food-court preset ✓? This changes your order
+   settings ✓"* ✓ ✓ → **the preset never silently overwrites a tuned tenant ✓ ✗** ✓ ✓;
+3. **the preset seeds the knobs ✓ ✓** — the table ✓, the order types ✓, the tips ✓, the
+   auto-confirm ✓, the split bill ✓, the payment timing ✓ ✓;
+4. **the tenant then tweaks anything ✓ ✓** — the settings are always the source of truth ✓ ✓
+   (**the code reads the settings ✓ ✓, never the business type ✓ ✗ ✓**) ✓ ✓;
+5. **the staff sees the effect immediately ✓ ✓** — the type chips ✓, the table picker ✓, the
+   station ✓, the wording ✓ ✓ ✓.
+
+### 4.2 A restaurant ✓ (the SS17 demo ✓)
+
+**The type ✓** → `restaurant` ✓
+**The settings it gets ✓** → `table_required=true` ✓ · `allow_dine_in/takeaway/delivery=true` ✓
+· `auto_confirm=false` ✓ · `tips=true` ✓ · `split_bill=true` ✓ · the last step **"Served" ✓**
+· 1 station ✓ · the anchor: the table ✓ · the payment: dine-in postpay ✓, takeaway either ✓ ✓
+
+**A day ✓**
+- a guest walks in ✓ → the staff opens the **Staff Order screen ✓** ✓ → the type chips ✓ →
+  **Dine In ✓** → the table picker ✓ → **T5** ✓ → the order ✓ → the kitchen ✓ → the status
+  flow ✓ → **the table's bill ✓** → the payment ✓ ✓;
+- a takeaway ✓ → **Takeaway ✓** → **the table picker disappears ✓** → **the customer's name ✓**
+  → the kitchen ✓ → **"Collected" ✓** → the customer pays at the counter ✓ (or prepays ✓ ✓) ✓ ✓.
+
+### 4.3 A cafe ✓
+
+**The type ✓** → `cafe` ✓
+**The settings ✓** → `table_required=false` ✓ (the tables are optional ✓) · `allow_dine_in=true`
+✓ (a few tables ✓) · `allow_takeaway=true` ✓ · `allow_delivery=false` ✓ ·
+`auto_confirm=true` ✓ (the drinks flow ✓) · `tips=true` ✓ · `split_bill=false` ✓ · the last
+step **"Collected" ✓** · **2 stations ✓ (the bar ✓ + the kitchen ✓)** ✓ · the anchor: the table
+✓ or the name ✓ · the payment: **either ✓** ✓
+
+**A day ✓** — the customer orders at the counter ✓ → the **coffee goes to the bar station ✓** ✓
+and the pastry to the kitchen ✓ ✓ → the bar's display shows only the drinks ✓ ✓ → **"Collected"
+✓** → the customer picks it up ✓ ✓ (and pays at the counter ✓ ✓ — the Malaysian cafe is
+postpay ✓ ✓) ✓ ✓.
+
+### 4.4 A fast-food outlet ✓
+
+**The type ✓** → `fast_food` ✓
+**The settings ✓** → `table_required=false` ✓ · **`allow_dine_in=false` ✓** (no seating ✓ ✓) ·
+`allow_takeaway=true` ✓ · `allow_delivery=true` ✓ · `auto_confirm=true` ✓ · `tips=false` ✓ ·
+`split_bill=false` ✓ · the last step **"Collected" ✓** · 1 station ✓ · the anchor: the name ✓
+· the payment: **postpay ✓** ✓
+
+**A day ✓** — the order ✓ → **the payment at the counter ✓** (postpay ✓ ✓) → the kitchen ✓ → the
+handover window ✓ → **"Collected" ✓** ✓ ✓ — and a **delivery run ✓** on the side ✓ ✓ (the
+address ✓, the fee ✓, the driver ✓ — a separate flow ✓ ✓) ✓ ✓.
+
+### 4.5 A bar ✓
+
+**The type ✓** → `bar` ✓
+**The settings ✓** → `table_required=true` ✓ · `allow_dine_in=true` ✓ · `allow_takeaway=true`
+✓ (a bottle to go ✓ ✓) · `allow_delivery=false` ✓ · `auto_confirm=false` ✓ (a bartender
+confirms ✓ ✓) · `tips=true` ✓ · `split_bill=true` ✓ · the last step **"Served" ✓** · **1
+station (the bar ✓)** ✓ · the anchor: the table ✓ **or the tab ✓** ✓ · the payment: **postpay ✓**
+✓
+
+**A day ✓** — the guest sits ✓ → the **table ✓** (or a **tab ✓** — the running bill ✓, Phase 7
+✓ ✓) → the drinks ✓ → the bar station ✓ → **"Served" ✓** → the bill ✓ ✓.
+
+### 4.6 A food-court stall ✓ (the hawker ✓)
+
+**The type ✓** → **`stall` ✓** ✓
+**The settings ✓** → `table_required=false` ✓ · **`allow_dine_in=false` ✓** · `allow_takeaway=true`
+✓ · `allow_delivery=false` ✓ · `auto_confirm=true` ✓ · `tips=false` ✓ · `split_bill=true` ✓ ·
+the last step **"Collected" ✓** · 1 station (the stall's own ✓) ✓ · **the anchor: the token ✓✓**
+· the payment: **either ✓** ✓
+
+**A day ✓**
+- the customer comes to the stall ✓ → the staff takes the order ✓ → **the token "A12" ✓** ✓
+  (the short order number ✓ ✓) → the customer waits ✓ ✓;
+- **the payment ✓ — pay first ✓ or when collected ✓** ✓ → *"either" ✓* ✓ → for **pay first ✓**
+  the customer scans the DuitNow QR ✓ ✓ → the webhook confirms ✓ ✓ → **the kitchen starts ✓**
+  ✓ ✓ → **no ghost order ✓ ✓** ✓ ✓;
+- the food is ready ✓ → **"A12!" ✓** is called ✓ ✓ → **"Collected" ✓** → the customer pays (if
+  they did not already ✓ ✓) ✓ ✓ ✓.
+
+---
+
+## 5. The implementation order ✓
+
+**Which first ✓ → Phase 1 ✓ ✓** — it is **broken today ✓ ✓**, it is **~10 lines ✓ ✓**, and it
+fixes the same `table_required` semantics the presets depend on ✓ ✓ ✓.
+
+| Phase ✓ | What ✓ | Size ✓ |
+|---|---|---|
+| **1 — the takeaway bug ✓✓** | the **Place order** button is gated on a table regardless of the order type ✓ ✓ (`StaffOrder.jsx:385` ✓ ✓) → the staff and the kiosk **cannot place a takeaway at all ✓ ✗** ✓ ✓; the handler ✓ (259 ✓) and the backend ✓ (`order.py:303` ✓) are already right ✓ ✓ → **one `needsTable` helper ✓ ✓** drives the button ✓, the picker ✓ (hidden for a takeaway ✓ ✓) and the kiosk chip ✓ ✓ | **small ✓✓** |
+| **2 — the preset ✓** | the business type becomes live ✓ ✓ — the confirmation ✓ ✓, the preset table ✓ ✓, `business_presets.py` ✓ ✓, the delivery default → off ✓ ✓ | small ✓ ✓ |
+| **3 — the wording ✓** | the type-aware last step ✓ ✓ ("Served" ✓ / "Collected" ✓) — **translation only ✓ ✓** ✓ ✓ | tiny ✓ ✓ |
+| **4 — the anchor ✓** | the takeaway's **name** ✓ ✓ + the **token** ✓ ✓ (the short order number ✓ ✓) + the name on the kitchen ticket ✓ ✓ and the printed receipt ✓ ✓ | medium ✓ ✓ |
+| **4b — the counter sees the takeaways ✓✓** | `OrderQueue.jsx:185` ✓ ✓ already computes `takeawayOrders` ✓ ✓ and **never renders it ✓ ✗** ✓ → a **Takeaway view ✓** beside Queue/Tables ✓ ✓ with the unpaid ones ✓ ✓ and a **Pay** action ✓ ✓ | **small ✓✓** |
+| **5 — the payment timing ✓** | the per-order-type map ✓ ✓ + the PWA's **prepay** ✓ ✓ (`POST /orders/{id}/payments` ✓ ✓ + the DuitNow QR ✓ ✓) + **the kitchen's filter ✓ ✓** (never cook an unpaid order ✓ ✓) + the staff's payment screen ✓ ✓ | medium ✓ ✓ |
+| **6 — the stations ✓** | (a) the category as the station ✓ ✓ + the kitchen display's filter ✓ ✓ → (b) the `stations` table ✓ ✓ + `menu_items.station_id` ✓ ✓ | medium → large ✓ ✓ |
+| **7 — the bar's tab ✓** | the open tab ✓ ✓ — a pseudo-table ✓ ✓ reusing the table's bill machinery ✓ ✓ | medium ✓ ✓ |
+
+---
+
+## 6. The rails ✓
+
+1. **The backend is the authority ✓** — `order.py:303` ✓ requires a table for a dine-in order ✓
+   ✓ and allows a null `table_id` otherwise ✓ ✓ → **the frontend stops contradicting it ✓ ✓** ✓ ✓;
+2. **a takeaway keeps `table_id = NULL` ✓** ✓ — no model change ✓ ✓ (`models.py:202` ✓ ✓) ✓ ✓;
+3. **the money path does not move ✓** — the price ✓, the discount ✓, the tax ✓, the currency ✓
+   are identical for every type ✓ ✓ ✓;
+4. **the isolation does not move ✓** — the tenant ✓, the outlet ✓, the table ✓ and the customer
+   are derived exactly as today ✓ ✓ ✓;
+5. **the kitchen is not a table-bound surface ✓ ✓** ✓ ✓;
+6. **a takeaway is not a "no-table dine-in" ✓** — it is its own type ✓ ✓ and it is countable
+   separately ✓ ✓ (`Reports.jsx:122` ✓ ✓) ✓ ✓;
+7. **the status machine is shared ✓ ✓** — no new status ✓ ✓, no migration ✓ ✓, no API change ✓ ✓;
+8. **the business type never links to the order type ✓ ✗** — it seeds the **mix ✓** and the
+   knobs ✓ ✓; the **flow comes from the order type ✓ ✓** ✓ ✓;
+9. **the payment timing is a setting ✓ ✓**, never a business-type constant ✓ ✗ ✓;
+10. **a prepay order must never reach the kitchen unpaid ✓ ✗** — the webhook confirms it ✓ ✓
+    and the kitchen filters on the payment ✓ ✓ — **and no new order status ✓** ✓ ✓;
+11. **the preset never overwrites a tuned tenant ✓ ✗** — only on the type change ✓ ✓, with a
+    confirmation ✓ ✓ ✓;
+12. **every type stays available to every plan ✓** — the type is a *configuration* ✓, not a
+    *product* ✓ ✓ ✓.
+
+---
+
+## 7. The open questions ✓
+
+1. **A 6th type `stall` ✓, or is the food court "one stall or many" ✓?** — my pick ✓: **add
+   `stall` ✓** ✓ ✓.
+2. **Should the preset apply to an existing tenant's settings ✓?** — **no ✓** ✓ — only on the
+   type change ✓ ✓, with a confirmation ✓ ✓ ✓.
+3. **Is a bar's tab a pseudo-table ✓ or a new entity ✓?** — **a pseudo-table ✓** ✓ (reuse the
+   bill machinery ✓ ✓ = weeks not months ✓ ✓) ✓ ✓.
+4. **Do the reports split by business type ✓?** — no ✓ ✓ — they split by **order type ✓ ✓**
+   (already ✓ ✓); the business type is a **setting ✓**, not a report dimension ✓ ✓ ✓.
+5. **Does a hawker's ticket print the token ✓?** — **yes ✓ ✓** ✓ ✓ (the receipt printer ✓
+   exists ✓ ✓) — and it is **called at the pass ✓** ✓ ✓.
+6. **Is `payment_timing` per order type ✓ or per outlet ✓?** — **per order type ✓** ✓ (a map ✓
+   ✓) ✓ ✓.
+7. **Should `either` be the default ✓?** — **yes ✓** ✓ ✓ (the staff decides ✓ ✓) ✓ ✓.
+8. **Does the prepay order appear on the staff screen before it is paid ✓?** — **yes ✓, in an
+   "awaiting payment" ✓ group ✓** ✓ — or the staff cannot chase the QR ✓ ✓ ✓.
+9. **Where does the takeaway's name live ✓** — the order ✓ or the dining customer ✓? — my pick ✓:
+   **on the order ✓** ✓ (the dining customer is the walk-in ✓ ✓) ✓ ✓.
+
+---
+
+## The sources ✓
+
+- `backend/app/models/models.py` ✓ — `business_type` (385 ✓), the order knobs ✓ (359-372 ✓),
+  the kitchen display ✓ (356-361 ✓), `payment_status` ✓ (223 ✓), `Category` ✓ (116-129 ✓),
+  `MenuItem` ✓ (132-150 ✓) ✓
+- `backend/app/routes/order.py` ✓ — the table rule ✓ (303-306 ✓), the cancellation ✓ (969 ✓),
+  the payments endpoint ✓ (809 ✓), `allow_delivery` ✓ (565 ✓) ✓
+- `frontend/src/pages/StaffOrder.jsx` ✓ — the submit gate ✓ (385 ✓), the handler ✓ (259 ✓),
+  the kiosk chip ✓ (440-462 ✓), the mobile picker ✓ (536-560 ✓) ✓
+- `frontend/src/components/pos/CartPanel.jsx` ✓ — the disabled button ✓ (128 ✓, 165 ✓) ✓
+- `frontend/src/pages/Kitchen.jsx` ✓ — the filter ✓ (545 ✓), the type chip ✓ (824 ✓) ✓
+- `frontend/src/pages/OrderQueue.jsx` ✓ — the status machine ✓ (132 ✓), the served-but-unpaid
+  ✓ (180 ✓), the all-served rule ✓ (935 ✓), the unused takeaway filter ✓ (185 ✓) ✓
+- `frontend/src/pages/Settings.jsx` ✓ — the business type ✓ (1190-1200 ✓), the order types ✓
+  (1016-1043 ✓) ✓
+- `frontend/src/pages/Reports.jsx` ✓ — the three order types ✓ (122 ✓) ✓
+- `customer-app/js/app.js` ✓ — the order create ✓ (1517-1545 ✓), the success modal ✓ (1574 ✓) ✓
