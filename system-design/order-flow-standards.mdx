@@ -180,6 +180,55 @@ PWA to call `POST /api/orders/{order_id}/payments` (the endpoint already exists 
 `order.py:809`) and to render a **DuitNow QR** — the HitPay DuitNow QR is the same service
 the SaaS billing already uses.
 
+### 2.6 The PWA's takeaway — the outlet is the venue, the table is only the dine-in anchor
+
+**The principle ✓✓**
+> **A takeaway needs the OUTLET ✓✓ — only a dine-in needs the TABLE ✓✓.** The table is
+> the dine-in anchor ✓ ✓; the outlet is the tenant's identity ✓ ✓ ✓✓ ✓ ✓.
+
+**How the customer arrives ✓✓**
+
+| How they arrive | The venue | The table | The state |
+|---|---|---|---|
+| **the table QR ✓✓** | from the uuid ✓ ✓ | known ✓ ✓ | **works today ✓✓** → they switch to Takeaway ✓ ✓ → **the table is dropped ✓✓** (Phase 1 ✓ ✓) ✓ ✓ |
+| **a deep link ✓✓** (`?outlet=<id>&type=takeaway` ✓ ✓) | from the link ✓ ✓ | **none ✓✓** | **broken today ✗✗ ✓✓** → `tableNumber = tableParam || 'T1'` invents a table ✓ ✗ ✓ → the uuid lookup fails ✓ ✗ ✓ → `venueResolved` is false ✓ ✗ ✓ → the venue picker opens on a takeaway order ✓ ✗ ✓ ✓ ✓ |
+| **the installed app ✓✓** (no QR ✓ ✓) | the picker ✓ ✓ | **mandatory ✗✗ ✓✓** | **broken today ✗✗ ✓✓** → the picker is group → outlet → **table ✓✓** ✓ ✓ → a counter-only outlet (a fast food ✓ ✓, a stall ✓ ✓) has **no tables ✓✓** → *"No tables available" ✓ ✗ ✓* ✓ ✓ ✓ ✓ |
+
+**The three fixes ✓✓ (small ✓✓)**
+1. **the picker must offer "Takeaway — no table" ✓✓** at the outlet step ✓ ✓ → the venue is
+   then resolved with **an outlet and no table ✓✓** ✓ ✓ → `/pwa/venues` already returns the
+   groups + the outlets + the address ✓✓ (`pwa.py:51` ✓ ✓) — **no table needed ✓✓** ✓ ✓;
+2. **the deep link must not invent a table ✓✓** → `tableNumber = tableParam || null` ✓ ✓ →
+   and `venueResolved` is true when the outlet is known ✓ ✓ ✓✓ ✓ ✓;
+3. **the link carries the type ✓✓** → `?type=takeaway` ✓ ✓ → the PWA's `orderType` starts as
+   `dine_in` ✓ ✗ ✓ → it must respect the link ✓ ✓ ✓✓ ✓ ✓.
+
+**The login changes two things and nothing else ✓✓**
+- **the `dining_customer_id` ✓✓** → the customer ✓ ✓ (logged in ✓ ✓) or the **walk-in
+  placeholder ✓✓** (not logged in ✓ ✓) → **the order is identical either way ✓✓** ✓ ✓ (the
+  placeholder exists precisely so a walk-in still has an id ✓ ✓) ✓ ✓✓ ✓ ✓;
+- **the name ✓✓** → a logged-in customer already has a name ✓ ✓ and a phone ✓ ✓ → **the
+  takeaway's anchor can come from the account ✓✓** ✓ ✓; **not logged in ✓✓** → the PWA must
+  ask for the name ✓ ✓ (and the phone ✓ ✓ for the "your order is ready" ✓ ✓) ✓ ✓;
+- **the login must never gate the takeaway ✓✗ ✓✓** → a takeaway customer is a **walk-in ✓✓**
+  (the walk-in principle ✓ ✓) → **no login, no problem ✓✓** ✓ ✓ ✓✓ ✓ ✓.
+
+**The gap that matters most ✓✓**
+> **There is no customer-name field on the order ✓✗ ✓✓** — neither the model ✓ ✓ nor the
+> PWA ✓ ✓ → **a PWA takeaway is anonymous ✓✓** ✓ ✓ → the kitchen sees an order with **no
+> identifier ✓ ✗ ✓ ✓** ✓ ✓ → **that is exactly what Phase 4's token ✓✓ fixes ✓✓** ✓ ✓
+> ✓✓ ✓ ✓.
+
+**The safety ✓✓** — the PWA's `table_uuid` is the venue trust boundary ✓ ✓ → a takeaway has
+**no uuid ✓✓** → **the outlet becomes the anchor ✓✓** → the backend verifies that the outlet
+belongs to the claimed tenant ✓✓ (`order.py:340` ✓ ✓ — *"This customer does not belong to the
+restaurant you are ordering from"* ✓ ✓) ✓ ✓ → **so a takeaway without a uuid is safe ✓✓** ✓ ✓
+✓✓ ✓ ✓.
+
+**The staff side ✓✓** — the takeaway lands in the staff's OrderQueue ✓ ✓ → **Phase 4b's
+Takeaway view ✓✓** ✓ ✓ (the code already computes `takeawayOrders` ✓ ✓ and never renders it
+✓ ✓) → **the token identifies it at the counter ✓✓** ✓ ✓ ✓✓ ✓ ✓.
+
 ---
 
 ## 3. The business types
