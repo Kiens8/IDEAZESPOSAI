@@ -1,13 +1,22 @@
 # Order Flow Standards — the machine, the business types, and the tenant setup
 
-**Document Version:** 3.0 (the clean rewrite)
+**Document Version:** 5.0 (the implemented state — the audit of Nov 6, 2026)
 **Owner:** Ideazes POS AI
-**Status:** Proposal — the standard, the scenarios and the implementation order. Nothing is built yet.
+**Status:** **Implemented — Phases 1 to 7 are built, live and verified.** What is still
+open is listed in §5: the **stations** (deferred) and the **delivery PWA** (a separate
+design, `delivery-app.mdx`, nothing built). The **bar's tab** is closed (Kens, Nov 6,
+2026) — it is not built and it is not planned.
 
 > This document consolidates the earlier drafts (`takeaway-ordering.mdx`,
 > `business-type-standards.mdx`) — both remain as stubs so old links still land somewhere
 > sensible. The design has not changed; it has been reorganised, the duplication cut, and
 > the tenant scenarios and the implementation order added.
+>
+> **v5.0 (Nov 6, 2026) — the audit.** Every phase was re-verified against the **live
+> site** with the browser suite, not against the notes. The result: Phases 1 to 7 are
+> implemented and working. Two of the *test scripts* were flaky (a stale locator and the
+> AI upsell popup) — the features behind them are fine. §5.1 carries the evidence; §5.2
+> carries what is still open.
 
 ---
 
@@ -176,10 +185,11 @@ for `payment_methods`:
 3. **the payment webhook confirms it** → `payment_status = 'paid'` and `status = 'confirmed'`
  → the kitchen sees it;
 4. the staff can still force it (`auto_confirm_orders`) — with a logged override;
-5. **if the payment never lands** — **there is no auto-cancel today** (the
- `order_reminder_minutes` is a reminder, not a cancellation) → **an explicit expiry rule is
- needed**: the staff cancels it, or a scheduled cleanup does it. No new status — the wait
- lives in `payment_status`.
+5. **if the payment never lands** — the expiry rule is **built** ✓✓ → a prepay order whose
+ money never arrives is **cancelled after 10 minutes** ✓✓ → a background sweep in the
+ backend's lifespan ✓✓ (one worker → one sweep ✓✓) → the staff-entered orders are the
+ cashier's to manage (no auto-expiry ✗✗) → **no new status** — the wait lives in
+ `payment_status` ✓✓.
 
 **Why prepay matters — the ghost order:** a hawker takes the order → the customer walks off
 → the food is made → nobody comes. The waste is real; prepay ends it.
@@ -188,19 +198,21 @@ for `payment_methods`:
 delivery app's own tenant setting (`prepaid_only` — prepay or cash on delivery), not to the
 business type. The fast food's delivery, for example, is **not** prepay: the driver collects.
 
-**Where it is today** — the PWA has no online payment at all (it creates the order → the
-success modal → the customer pays at the counter) → **postpay everywhere**. Prepay needs the
-PWA to call `POST /api/orders/{order_id}/payments` (the endpoint already exists —
-`order.py:809`) and to render a **DuitNow QR** — the HitPay DuitNow QR is the same service
-the SaaS billing already uses.
+**Where it is today** — the customer app's **default** is postpay (it creates the order → the
+success modal → the customer pays at the counter) → **postpay everywhere** by default ✓✓. The
+**online payment is built** (Phase 7 ✓✓) → the customer app renders a **DuitNow QR** when the
+outlet's order type is set to `prepay_online` ✓✓ → the HitPay DuitNow QR is the same service
+the SaaS billing already uses ✓✓ → it is a **tenant's choice, per order type** ✓✓, not the
+default ✓✓.
 
-> **Kens's call (Nov 6, 2026) — the customer app stays POSTPAY.** "Mostly is for postpay which
-> customer goto cashier counter to pay the money. This is standard for restaurant. So not
-> recommend implement prepay into Customer order PWA." → **the customer app's prepay (the DuitNow
-> QR and the customer app's own pay route) is not built** ✗ → the map is postpay for both types
-> ✓✓ → **the prepay machinery that is built (the map, the kitchen's gate, the payment's
-> transition) is there for the delivery app and for a tenant that wants it later** ✓✓ → see
-> Phase 5 above ✓✓.
+> **Kens's call (Nov 6, 2026) — the customer app stays POSTPAY BY DEFAULT.** "Mostly is for
+> postpay which customer goto cashier counter to pay the money. This is standard for
+> restaurant." → the map is postpay for both types ✓✓ → **the prepay machinery that is built
+> (the map, the kitchen's gate, the payment's transition, the expiry) is there for the
+> delivery app and for a tenant that wants it later** ✓✓ → see Phase 5 above ✓✓ → and Phase 7
+> for the online payment ✓✓ (the DuitNow QR in the customer app → the guest scans → the money
+> lands → the reconciliation confirms it and pushes to the POS → the order is **paid +
+> confirmed** → the kitchen sees it ✓✓).
 
 ### 2.6 The PWA's takeaway — the outlet is the venue, the table is only the dine-in anchor
 
@@ -216,14 +228,20 @@ the SaaS billing already uses.
 | **a deep link** (`?outlet=<id>&type=takeaway`) | from the link | **none** | **broken today ✗✗** → `tableNumber = tableParam || 'T1'` invents a table ✗ → the uuid lookup fails ✗ → `venueResolved` is false ✗ → the venue picker opens on a takeaway order ✗ |
 | **the installed app** (no QR) | the picker | **mandatory ✗✗** | **broken today ✗✗** → the picker is group → outlet → **table** → a counter-only outlet (a fast food, a stall) has **no tables** → *"No tables available" ✗* |
 
-**The three fixes(small)**
+**The three fixes(small) — NOT DONE (still open, the audit of Nov 6, 2026 ✗✗)**
 1. **the picker must offer "Takeaway — no table"** at the outlet step → the venue is
  then resolved with **an outlet and no table** → `/pwa/venues` already returns the
- groups + the outlets + the address(`pwa.py:51`) — **no table needed**;
+ groups + the outlets + the address(`pwa.py:51`) — **no table needed** → **the picker still
+ ends at the table and shows "No tables available" for a counter-only outlet** ✗✗
+ (`customer-app/js/venue.js:110`);
 2. **the deep link must not invent a table** → `tableNumber = tableParam || null` →
- and `venueResolved` is true when the outlet is known;
+ and `venueResolved` is true when the outlet is known → **the deep link still invents "T1"**
+ ✗✗ (`customer-app/js/app.js:572`);
 3. **the link carries the type** → `?type=takeaway` → the PWA's `orderType` starts as
  `dine_in` ✗ → it must respect the link.
+
+> These three are **not part of Phases 1 to 7** → they were never in the phase table, so
+> they never got built → they are the **PWA's own gaps** and they are listed in §5.2.
 
 **The login changes two things and nothing else**
 - **the `dining_customer_id`** → the customer (logged in) or the **walk-in
@@ -235,11 +253,12 @@ the SaaS billing already uses.
 - **the login must never gate the takeaway✗** → a takeaway customer is a **walk-in**
  (the walk-in principle) → **no login, no problem**.
 
-**The gap that matters most**
-> **There is no customer-name field on the order✗** — neither the model nor the
+**The gap that mattered most — FIXED by Phase 4 ✓✓**
+> **There is no customer-name field on the order ✗✗** — neither the model nor the
 > PWA → **a PWA takeaway is anonymous** → the kitchen sees an order with **no
-> identifier ✗** → **that is exactly what Phase 4's tokenfixes**
->.
+> identifier ✗✗** → **Phase 4 fixed it** ✓✓ → `orders.customer_name` exists ✓✓ and the PWA
+> sends it ✓✓ (the test: `scripts/pos_phase4_pwa_test.js` → the payload carries the name
+> ✓✓).
 
 **The safety** — the PWA's `table_uuid` is the venue trust boundary → a takeaway has
 **no uuid** → **the outlet becomes the anchor** → the backend verifies that the outlet
@@ -248,8 +267,8 @@ restaurant you are ordering from"*) → **so a takeaway without a uuid is safe**
 .
 
 **The staff side** — the takeaway lands in the staff's OrderQueue → **Phase 4b's
-Takeaway view** (the code already computes `takeawayOrders` and never renders it
-) → **the token identifies it at the counter**.
+Takeaway view** ✓✓ (it is built: the view sits beside Queue/Tables → the token identifies
+the order at the counter ✓✓).
 
 ### 2.7 The one bill — the orders stay separate, the settlement is one
 
@@ -313,7 +332,7 @@ The machinery is already there:
 | `tips_enabled` | true | true | false | true | false |
 | `split_bill_enabled` | true | false | false | true | true |
 | the last step's wording | Served | Collected | Collected | Served | Collected |
-| the anchor | table | table / name | **token** | table / tab | **token** |
+| the anchor | table | table / name | **token** | table | **token** |
 | the stations (deferred — §3.5) | 1 | 2 (kitchen + bar) | 1 | 1 (bar) | 1 |
 
 **`allow_delivery` is false everywhere in the presets.** The delivery flow is not built (the
@@ -405,7 +424,9 @@ have nowhere to live.
  migration) → the grill, the fryer, the bar → the kitchen display per station.
 
 **Deferred** — it is not a food-court requirement any more → it drops to the end of the
-queue.
+queue → **no code, no migration, nothing in the presets** (the audit of Nov 6, 2026: the
+`stations` key does not exist in `backend/app/services/business_presets.py` ✗✗) → it is
+**Phase 8** and it is not started ✗✗.
 
 ---
 
@@ -652,6 +673,13 @@ questions ✓✓.
 (`data-testid="takeaway-row" / "takeaway-advance" / "takeaway-pay"`) → the tests address the row
 by the hook, not by the wording (the wording follows the business type ✗✗) ✓✓.
 
+**The audit found the script is stale (Nov 6, 2026) ✗✗** → the pay button is located with
+`.first()`, so a **leftover takeaway row from an earlier run** (the counter's view holds the
+unsettled ones ✗✗) takes the click → the payment lands on **the wrong order** ✗✗ → the script
+reports two failures that have nothing to do with the feature ✓✓ → with the locator scoped
+to the row, the payment works (the order → paid + completed ✓✓) → **the fix is in the
+script, not in the code** ✓✓ (§5.1).
+
 **The trap the test found: the demo's stock is real.** Every test order **eats the ingredients**
 (the recipe's stock is deducted ✓✓) → after a few runs the "Spring Roll Wrapper" was at **0** →
 the next order was refused with *"Cannot add to cart due to stock issues"* ✗✗ → the test failed
@@ -665,18 +693,22 @@ data after the test runs (the orders, the stock, the printer settings) ✓✓.
 > goto cashier counter to pay the money. This is standard for restaurant. So not recommend
 > implement prepay into Customer order PWA."
 
-→ the **customer app is postpay** ✓✓ → the prepay flow (the customer app's DuitNow QR, the
-customer app's own pay route) is **not built** ✗✓ → the map is **postpay for both** types ✓✓ →
-**prepay belongs to the delivery app** (it has its own checkout and its own `prepaid_only`
-setting ✓✓) ✓✓.
+→ the **customer app is postpay by default** ✓✓ → the map is **postpay for both** types ✓✓ →
+**the prepay flow (the customer app's DuitNow QR and its own pay route) was NOT part of this
+phase** ✗✗ → **it was built the next hour, as Phase 7** ✓✓ (the QR → the guest scans → the
+money lands → the order is paid + confirmed → the kitchen sees it ✓✓) → **the mode is the
+tenant's choice, per order type** ✓✓ → the default is still postpay ✓✓ → **the delivery app
+has its own checkout and its own `prepaid_only` setting** ✓✓.
 
 **What is built anyway** ✓✓ — the machinery, so the day a tenant wants a prepay type it is one
 setting away ✓✓:
 
 1. **The map** — `outlet_settings.payment_timing` (a JSON column, the same pattern as
    `payment_methods` ✓✓): `{"dine_in": "postpay", "takeaway": "postpay"}` ✓✓ → the **backend owns
-   it** ✓✓ → the settings screen **shows** it (read-only ✓✓ — offering "prepay" for a type the
-   customer app cannot prepay would be a promise the code cannot keep ✗✗) ✓✓.
+   it** ✓✓ → the settings screen **shows** it ✓✓ (in this phase it was read-only ✓✓ — offering
+   "prepay" for a type the customer app cannot prepay would be a promise the code cannot keep
+   ✗✗ → **Phase 6 made it the tenant's own choice, per order type** ✓✓ → see Phase 6 below
+   ✓✓).
 2. **The kitchen's gate** — an order whose type is `prepay` and that is **not paid** stays out of
    the kitchen ✓✓ → the money has to land before the food starts, or the kitchen makes a meal
    nobody pays for (the ghost order ✓✓) ✓✓. Quiet for a postpay order ✓✓.
@@ -687,7 +719,7 @@ setting away ✓✓:
    cashier counter when you collect your order."* ✓✓ → the postpay flow only works if the guest
    knows it ✓✓.
 
-**The test:** `scripts/pos_phase5_test.js` → **15/15 ✓✓** — the map, the settings screen, the
+**The test:** `scripts/pos_phase5_test.js` → **15/15 ✓✓** (re-run in the audit: **18/18 ✓✓**) — the map, the settings screen, the
 gate (a prepay order is invisible in the kitchen), the payment (paid + confirmed), the paid
 order appearing in the kitchen, the customer app's line and the restore ✓✓.
 
@@ -959,11 +991,14 @@ bar station** and the pastry to the kitchen → the bar's display shows only the
 **The type:** `bar`
 **The settings:** `table_required=true` · `allow_dine_in=true` · `allow_takeaway=true` (a
 bottle to go) · `allow_delivery=false` · `auto_confirm=false` (a bartender confirms) ·
-`tips=true` · `split_bill=true` · the last step **"Served"** · 1 station (the bar) · the
-anchor: the table **or the tab** · **the payment: postpay**
+`tips=true` · `split_bill=true` · the last step **"Served"** · 1 station (the bar — deferred,
+§3.5) · the anchor: the table · **the payment: postpay**
 
-**A day** — the guest sits → the **table** (or a **tab** — the running bill, Phase 7) → the
+**A day** — the guest sits → the **table** → the
 drinks → the bar station → **"Served"** → the bill.
+
+> **The tab is closed** (Kens, Nov 6, 2026) — the running bill for the bar is **not
+> planned** → the bar's anchor is the table, like everyone else's.
 
 ### 4.6 A food-court stall (the hawker)
 
@@ -986,21 +1021,69 @@ payment: either**
 
 ## 5. The implementation order
 
-**Which first → Phase 1** — it is broken today, it is about ten lines, and it fixes the same
-`table_required` semantics the presets depend on.
+**The order it was built in** → Phase 1 first — it was broken, it was about ten lines, and it
+fixed the same `table_required` semantics the presets depend on.
 
-| Phase | What | Size |
-|---|---|---|
-| **1 — the takeaway bug** — **DONE(Nov 5, 2026)** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** |
-| **2 — the preset** — **DONE(Nov 5, 2026)** | the business type is live — `backend/app/services/business_presets.py` (the five types, the knobs) · the confirmation in Settings → Business (the frontend reads `GET /api/settings/presets` → **no copy of the rules in the UI**) · the preset applies **on the change**, in the backend, and the request's own values land on top · the `allow_delivery` **column default → False** · the settings routes got their **permission + tenant gate** · `food_court` is dropped, `stall` is in | small |
-| **3 — the wording** — **DONE(Nov 5, 2026)** | the type-aware last step ("Served" / "Collected") — the rule in `utils/businessType.js`, the labels in `common:status.*` (en/zh/km), four surfaces (the queue, the history, the dashboard, the kiosk's search) + the two raw-status holes closed — **no API change, no migration** | tiny |
-| **4 — the anchor** — **DONE(Nov 5, 2026)** | the takeaway's **name** (`orders.customer_name`, nullable) + the **token** (derived from the order number — no column) + the name and the token on the kitchen ticket, the receipt, the queue card and the PWA | medium |
-| **4b — the counter sees the takeaways** — **DONE(Nov 5, 2026)** | the **Takeaway view** beside Queue/Tables — the takeaways that are not settled yet, the oldest first, the **token** as the headline, the name, the items, the status and a **Pay** action (only a served order can be paid for) | small |
-| **6 — the payment timing, per order type** — **DONE(Nov 6, 2026)** | the **per-order-type mode map** (the tenant sets it ✓✓) + the **snapshot on the order** ✓✓ + the **kitchen's gate** (enforced by the backend too ✓✓) + the **counter's Collect action** ✓✓ + the **customer app's token & wording** ✓✓ + the **expiry** ✓✓ → see Phase 6 below ✓✓ | medium |
-| **5 — the payment timing** — **DONE(Nov 6, 2026, re-scoped by Kens)** | the **per-order-type map** (`outlet_settings.payment_timing`) + the **kitchen's gate** (an order that waits for its money stays out of the kitchen) + the **payment's transition** (the money lands → the order goes to "confirmed" → the kitchen sees it) + the **customer app tells the guest to pay at the counter**. **Kens's decision: the customer app is POSTPAY by default** (the guest orders and pays at the cashier counter — the standard restaurant shape) → the map is postpay for both types ✓✓ → **the online payment (the DuitNow QR in the customer app) is Phase 7** ✓✓ → it is the tenant's choice, per order type ✓✓ → the delivery app has its own checkout ✓✓ | medium |
-| **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
-| **7 — pay online** — **DONE(Nov 6, 2026)** | the **DuitNow QR in the customer app** ✓✓ → the guest scans, the money lands, the reconciliation confirms it and pushes to the POS, and the order goes **paid + confirmed** ✓✓ → the kitchen sees it ✓✓ → see Phase 7 below ✓✓ | medium |
-| **8 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
+**The state (the audit of Nov 6, 2026) — Phases 1 to 7 are DONE and verified against the
+live site.** The two open items are the **stations** (deferred) and the **delivery PWA**
+(a separate design). The **bar's tab** is closed.
+
+| Phase | What | Size | State |
+|---|---|---|---|
+| **1 — the takeaway bug** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** | **DONE(Nov 5)** ✓✓ |
+| **2 — the preset** | the business type is live — `backend/app/services/business_presets.py` (the five types, the knobs) · the confirmation in Settings → Business (the frontend reads `GET /api/settings/presets` → **no copy of the rules in the UI**) · the preset applies **on the change**, in the backend, and the request's own values land on top · the `allow_delivery` **column default → False** · the settings routes got their **permission + tenant gate** · `food_court` is dropped, `stall` is in | small | **DONE(Nov 5)** ✓✓ |
+| **3 — the wording** | the type-aware last step ("Served" / "Collected") — the rule in `utils/businessType.js`, the labels in `common:status.*` (en/zh/km), four surfaces (the queue, the history, the dashboard, the kiosk's search) + the two raw-status holes closed — **no API change, no migration** | tiny | **DONE(Nov 5)** ✓✓ |
+| **4 — the anchor** | the takeaway's **name** (`orders.customer_name`, nullable) + the **token** (derived from the order number — no column) + the name and the token on the kitchen ticket, the receipt, the queue card and the PWA | medium | **DONE(Nov 5)** ✓✓ |
+| **4b — the counter sees the takeaways** | the **Takeaway view** beside Queue/Tables — the takeaways that are not settled yet, the oldest first, the **token** as the headline, the name, the items, the status and a **Pay** action (only a served order can be paid for) | small | **DONE(Nov 5)** ✓✓ |
+| **5 — the payment timing** | the **per-order-type map** (`outlet_settings.payment_timing`) + the **kitchen's gate** (an order that waits for its money stays out of the kitchen) + the **payment's transition** (the money lands → the order goes to "confirmed" → the kitchen sees it) + the **customer app tells the guest to pay at the counter**. **Kens's decision: the customer app is POSTPAY by default** (the guest orders and pays at the cashier counter — the standard restaurant shape) → the map is postpay for both types ✓✓ → **the online payment (the DuitNow QR in the customer app) is Phase 7** ✓✓ → it is the tenant's choice, per order type ✓✓ → the delivery app has its own checkout ✓✓ | medium | **DONE(Nov 6, re-scoped by Kens)** ✓✓ |
+| **6 — the payment timing, per order type** | the **per-order-type mode map** (the tenant sets it ✓✓) + the **snapshot on the order** ✓✓ + the **kitchen's gate** (enforced by the backend too ✓✓) + the **counter's Collect action** ✓✓ + the **customer app's token & wording** ✓✓ + the **expiry** ✓✓ → see Phase 6 below ✓✓ | medium | **DONE(Nov 6)** ✓✓ |
+| **7 — pay online** | the **DuitNow QR in the customer app** ✓✓ → the guest scans, the money lands, the reconciliation confirms it and pushes to the POS, and the order goes **paid + confirmed** ✓✓ → the kitchen sees it ✓✓ → see Phase 7 below ✓✓ | medium | **DONE(Nov 6)** ✓✓ |
+| **8 — the stations** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large | **DEFERRED** — not started, no code |
+| **9 — the delivery PWA** | the whole delivery business — a separate design (`delivery-app.mdx`), its own app, its own checkout | large | **NOT BUILT** — the design is a proposal |
+| **— the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium | **CLOSED** — Kens, Nov 6, 2026: **not planned** |
+
+> **The numbering note.** Phase 5 and Phase 6 were both "the payment timing" — Phase 5 was
+> Kens's first scope (the map, the gate, the payment's transition) and Phase 6 widened it
+> (the snapshot, the backend's enforcement, the counter's Collect, the expiry). They are
+> **one body of work**, split across two days. Phase 6 appeared twice in the old table
+> (once for the payment timing, once for the stations) → the stations are Phase 8 now.
+> The bar's tab was Phase 8 → it is closed.
+
+### 5.1 The audit (Nov 6, 2026) — the evidence
+
+**Every phase was re-verified against the live site** (`app.ideazes.com`) with the browser
+suite, not against the notes. The script, the result and the verdict:
+
+| Phase | The script | Result | The verdict |
+|---|---|---|---|
+| 1 | `scripts/pos_phase1_test.js` | the script **crashed** | the **feature works** — the script clicks through the AI upsell popup, which intercepts the click. A manual replay: a takeaway with no table places fine (order_type `takeaway`, table null, 200) → the phase is done, the script is stale |
+| 2 | (the shell flow test) | 23/23 | ✓✓ |
+| 3 | `scripts/pos_phase3_test.js` | **17/17** | ✓✓ |
+| 4 | `scripts/pos_phase4_test.js` | **14/14** · `pos_phase4_pwa_test.js` **7/7** | ✓✓ |
+| 4b | `scripts/pos_phase4b_test.js` | 14 pass, **2 fail** | the **feature works** — the script locates the pay button with `.first()`, and the stale takeaway rows from earlier runs sit above ours → the payment landed on **order 13**, not on the test's own order. With a row-scoped locator the payment works (order 21 → paid + completed) → the phase is done, the script is stale |
+| 5 | `scripts/pos_phase5_test.js` | **18/18** | ✓✓ |
+| 6 | `scripts/pos_phase6_test.js` | **33/33** | ✓✓ |
+| 7 | `scripts/pos_phase7_test.js` | **23/23** | ✓✓ — the QR, the sandbox payment, the reconciliation, the push, the PAID badge in the kitchen |
+| — | `scripts/pos_pwa_order_types_test.js` | **12/12** | ✓✓ — the customer app's order types follow the outlet's settings |
+
+**The two failures were TEST bugs, not product bugs** — and both have the same root cause:
+**the leftover test data.** Every run leaves a takeaway order behind (the counter's view
+holds the unsettled ones) → they pile up in the counter's list → a `.first()` locator
+picks somebody else's row. The fix is a cleanup step in the scripts, not a code change.
+
+**The one product observation from the audit** — a takeaway created **without** a table
+comes back with `outlet_id: null` (the table is the anchor, and there is none) → the
+counter's view still reads it correctly (the outlet comes from the tenant), but a
+cleanup that filters on the outlet must not filter on the order's `outlet_id` ✗✗.
+
+### 5.2 What is still open
+
+1. **The stations** — deferred, not started (a cafe's bar, a restaurant's grill).
+2. **The delivery PWA** — the whole delivery business, a separate app with its own
+   checkout (`delivery-app.mdx`, still a proposal).
+3. **The bar's tab** — **closed** (Kens, Nov 6, 2026). Not planned.
+4. **The two stale test scripts** — Phase 1's (the AI upsell popup) and Phase 4b's (the
+   `.first()` locator) → a patch + a leftover cleanup.
 
 ---
 
@@ -1031,7 +1114,9 @@ payment: either**
  a staff route; the PWA's prepay needs the ownership proof, not a staff session;
 11. **a prepay order must never reach the kitchen unpaid** — the webhook confirms it and the
  kitchen filters on the payment — no new order status — **and it needs an expiry rule**
- (there is no auto-cancel today);
+ (there is no auto-cancel today) → **the expiry is built** ✓✓ (Phase 6: a prepay order
+ whose money never arrives is cancelled after **10 minutes** ✓✓, by a background sweep in
+ the backend's lifespan ✓✓ — the staff-entered orders stay the cashier's to manage ✗✗);
 12. **the preset never overwrites a tuned tenant** — only on the type change, with a
  confirmation;
 13. **every type stays available to every plan** — the type is a configuration, not a product;
@@ -1049,8 +1134,9 @@ payment: either**
  `food_court` is dropped (§3.3).
 2. **Should the preset apply to an existing tenant's settings?** — **no** — only on the type
  change, with a confirmation.
-3. **Is a bar's tab a pseudo-table or a new entity?** — a pseudo-table (reuse the bill
- machinery = weeks not months).
+3. ~~**Is a bar's tab a pseudo-table or a new entity?**~~ — **CLOSED** — the bar's tab is
+ **not planned** (Kens, Nov 6, 2026) → the bar's anchor is the table, like every other
+ business → the question is moot.
 4. **Do the reports split by business type?** — no — they split by order type (already); the
  business type is a setting, not a report dimension.
 5. **Does a hawker's ticket print the token?** — yes (the receipt printer exists) — and it is
@@ -1058,11 +1144,15 @@ payment: either**
 6. **Does the food court operator need a consignment report (the takings per stall)?** — the
  `payment-stats/{outlet_id}` report already exists → the split between the operator and the
  stall owners is their commercial arrangement, not a POS feature.
-7. **Is `payment_timing` per order type or per outlet?** — per order type (a map).
+7. ~~**Is `payment_timing` per order type or per outlet?**~~ — **RESOLVED** — per order
+ type (a map) → **per outlet** (each tenant's own) → **built** ✓✓ (Phase 5/6: the map is
+ `outlet_settings.payment_timing` ✓✓ and the tenant sets it in Settings ✓✓).
 8. ~~Should `either` be the default?~~ **SUPERSEDED** — the default is now per the business
  type (§3.2) and any tenant may override → `either` is a choice, not a default.
-9. **Does the prepay order appear on the staff screen before it is paid?** — yes, in an
- "awaiting payment" group — or the staff cannot chase the QR.
+9. ~~**Does the prepay order appear on the staff screen before it is paid?**~~ — **BUILT
+ (Nov 6, 2026) ✓✓** — yes, in an "awaiting payment" group — the counter's row carries the
+ **"Awaiting payment"** badge and a **Collect** action ✓✓ → or the staff cannot chase the
+ QR ✓✓.
 10. ~~**Where does the takeaway's name live?**~~ — **RESOLVED (Nov 5, 2026) — on the order**
  (a `customer_name` column, nullable). The dining customer is the walk-in; the order is
  where the name belongs.
@@ -1093,6 +1183,10 @@ PWAs — not two systems.**
 **A delivery-only tenant (a ghost kitchen)** — no new business type: it is a restaurant whose
 preset has `allow_dine_in=false`, `allow_takeaway=false` and `allow_delivery=true` — the
 preset machinery already covers it.
+
+**The state (Nov 6, 2026): NOT BUILT ✗✗** — the design is approved, the code does not
+exist (`out_for_delivery` is not in the backend ✗✗, the delivery PWA is not deployed ✗✗)
+→ it is **Phase 9** in §5 ✗✗.
 
 **→ the full design:** `delivery-app.mdx` — the white-label storefront (one codebase, one
 deployment, one API, one branded PWA per tenant), the scope boundary (**the tenant owns its
