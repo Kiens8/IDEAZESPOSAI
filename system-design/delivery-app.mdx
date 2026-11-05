@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; nothing is built yet · **v1.1: the plan gating mapped onto the REAL plans ✓✓ (Starter ✓ / Basic ✓ / Pro ✓ / Enterprise ✓ ✓) with the feature rows ✓✓ ✓**
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; nothing is built yet · **v1.1: the plan gating mapped onto the REAL plans ✓✓ (Starter ✓ / Basic ✓ / Pro ✓ / Enterprise ✓ ✓) with the feature rows ✓✓ ✓** · **v1.2: the prices removed ✓✓ — the catalogue is DATA ✓✓ (the website API ✓✓) and the Starter is free ✓✓ ✓**
 
 > **Related ✓** → `order-flow-standards.mdx` ✓ ✓ §8 (the delivery PWA ✓ ✓ — this document
 > expands it into the full design ✓ ✓) ✓ ✓.
@@ -26,12 +26,23 @@ no commission ✓✓, no driver marketplace ✓✓, no GPS ✓✓** ✓ ✓ — 
 
 **And the plan gating ✓✓ (the question ✓) — mapped onto our REAL plans ✓✓:**
 
-| Plan ✓ | Price ✓ | The delivery features ✓ |
+| Plan ✓ | The shape ✓ | The delivery features ✓ |
 |---|---|---|
-| **Starter ✓** ✓ | RM99/mo ✓ ✓ | **Delivery ✓** — the order type ✓, the storefront ✓, the flat fee ✓, the driver assignment ✓ ✓ |
-| **Basic ✓** ✓ | RM199/mo ✓ ✓ | **Delivery ✓** (+ the outlets ✓ ✓) ✓ ✓ |
-| **Pro ✓** ✓ | RM399/mo ✓ ✓ | **Delivery ✓** + **Delivery Zones ✓** (the postcode pricing ✓ ✓) ✓ ✓ |
-| **Enterprise ✓** ✓ | RM799/mo ✓ ✓ | **Delivery ✓** + **Delivery Zones ✓** + **Delivery Scheduling ✓** + **Delivery Analytics ✓** ✓ ✓ |
+| **Starter ✓** ✓ | 1 outlet ✓ · 3 staff ✓ ✓ | **Delivery ✓** — the order type ✓, the storefront ✓, the flat fee ✓, the driver assignment ✓ ✓ |
+| **Basic ✓** ✓ | 3 outlets ✓ · 10 staff ✓ ✓ | **Delivery ✓** (+ the outlets ✓ ✓) ✓ ✓ |
+| **Pro ✓** ✓ | 5 outlets ✓ · 25 staff ✓ ✓ | **Delivery ✓** + **Delivery Zones ✓** (the postcode pricing ✓ ✓) ✓ ✓ |
+| **Enterprise ✓** ✓ | unlimited ✓ ✓ | **Delivery ✓** + **Delivery Zones ✓** + **Delivery Scheduling ✓** + **Delivery Analytics ✓** ✓ ✓ |
+
+> **The prices are NOT in this document ✓✓ — they are data ✓✓.** The catalogue lives in the
+> **website API ✓✓** (`plan_prices` ✓ ✓ — per currency ✓ ✓, per billing cycle ✓ ✓, with the
+> promotions ✓ ✓ and their end dates ✓ ✓) and it **changes ✓ ✓** → **a design document must
+> never quote a price ✓ ✗ ✓** ✓ ✓. The **source of truth ✓✓** is
+> `GET /api/plans/published` ✓ ✓ ✓ ✓.
+>
+> **The snapshot ✓✓ (for the reasoning below only ✓✓ — Nov 5 2026 ✓ ✓):** the **Starter is
+> free ✓✓** (USD 0 ✓ / MYR 0 ✓ ✓) · Basic USD 10 ✓ / MYR 40 ✓ ✓ · Pro USD 20 ✓ / MYR 80 ✓ ✓
+> · Enterprise USD 50 ✓ / MYR 200 ✓ ✓ ✓ ✓ — **so the delivery on the Starter costs us
+> nothing ✓✓ and the free plan is the hook ✓✓ ✓** ✓ ✓✓✓ ✓ ✓.
 
 **The split ✓✓ — what is in the core ✓ ("Delivery" ✓ ✓) ✓ ✓**
 - the delivery **order type ✓** ✓ — just another order type ✓ ✓ (the address ✓, the fee ✓,
@@ -53,11 +64,13 @@ delivery ✓** but has to pay for it ✓ ✗ loses the switch ✓ ✓ → **the 
 ✓ ✓ → **the paid tier is the sophistication ✓✓** (the zones ✓, the scheduling ✓, the
 analytics ✓ ✓) ✓ ✓✓✓ ✓ ✓.
 
-**And the Starter argument ✓✓** — the delivery costs us **almost nothing on Starter ✓✓** ✓ ✓
-(one JSON column ✓ ✓, the storefront reads the existing menu ✓ ✓) → it is a **customer-acquisition
-feature ✓✓** ✓ ✓: the tenant tries the delivery free ✓ ✓, it works ✓ ✓, and the zones ✓, the
-scheduling ✓ and the analytics ✓ are the **upgrade path ✓✓** ✓ ✓ — **the delivery is the
-Starter's hook ✓✓** ✓ ✓✓✓ ✓ ✓.
+**And the Starter argument ✓✓ — strengthened by the free Starter ✓✓** ✓ ✓ — the delivery
+costs us **almost nothing on Starter ✓✓** ✓ ✓ (one JSON column ✓ ✓, the storefront reads the
+existing menu ✓ ✓) → and the Starter is **free ✓✓** ✓ ✓ → so the delivery is a
+**customer-acquisition feature ✓✓** ✓ ✓ **and a viral loop ✓✓** ✓ ✓: the tenant's own
+customers order delivery ✓ ✓ → the tenant sees the orders arriving ✓ ✓ → the upgrade ✓ ✓ →
+**the zones ✓, the scheduling ✓ and the analytics ✓ are the upgrade path ✓✓** ✓ ✓ — **the
+delivery is the Starter's hook ✓✓** ✓ ✓✓✓ ✓ ✓ ✓✓✓ ✓ ✓.
 
 **The feature rows ✓✓ (the house shape ✓✓ — `website_api/app/core/seed_features.py` ✓ ✓):**
 
@@ -89,6 +102,12 @@ Starter's hook ✓✓** ✓ ✓✓✓ ✓ ✓.
 > — `require_plan_feature("Delivery")` ✓ ✓ ✓✓ ✓ ✓.
 
 **A new category ✓✓** — `delivery` ✓ ✓ — so the admin's feature screen groups them ✓ ✓ ✓.
+
+**Two different feature lists ✓✓ — do not confuse them ✓ ✗ ✓**
+- the **marketing list ✓** — the `bullets` / `features` / `feature_tags` ✓ ✓ on the published
+  endpoint ✓ ✓ (the site's plan cards ✓ ✓) ✓ ✓;
+- the **gate list ✓✓** — the `plan_features` ✓ ✓ rows ✓ ✓ → **this is what
+  `require_plan_feature()` reads ✓✓** ✓ ✓ → **only this one gates the code ✓ ✓** ✓ ✓✓✓ ✓ ✓.
 
 ---
 
