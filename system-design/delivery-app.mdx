@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; nothing is built yet
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; nothing is built yet · **v1.1: the plan gating mapped onto the REAL plans ✓✓ (Starter ✓ / Basic ✓ / Pro ✓ / Enterprise ✓ ✓) with the feature rows ✓✓ ✓**
 
 > **Related ✓** → `order-flow-standards.mdx` ✓ ✓ §8 (the delivery PWA ✓ ✓ — this document
 > expands it into the full design ✓ ✓) ✓ ✓.
@@ -24,25 +24,71 @@ carries the courier network ✓✓ → **our pitch is the same job at a fraction
 no commission ✓✓, no driver marketplace ✓✓, no GPS ✓✓** ✓ ✓ — and the tenant's own drivers
 ✓✓ are a **feature for them ✓✓** (they know their customers ✓✓) ✓ ✓✓✓ ✓ ✓.
 
-**And the plan gating ✓✓ (the question ✓):**
+**And the plan gating ✓✓ (the question ✓) — mapped onto our REAL plans ✓✓:**
 
-| What ✓ | Which plan ✓ | Why ✓ |
+| Plan ✓ | Price ✓ | The delivery features ✓ |
 |---|---|---|
-| The **delivery order type ✓** ✓ | **every plan ✓✓** ✓ | it is just another order type ✓ ✓ (the address ✓, the fee ✓, the driver ✓ ✓) — and delivery is what brings a tenant to us ✓ ✓ ✓ |
-| The **white-label storefront ✓** ✓ | **every plan ✓✓** ✓ | the branding fields **already exist ✓✓** (`restaurant_name` ✓, `restaurant_logo` ✓, `brand_color` ✓ ✓) → it costs us almost nothing ✓ ✓ → charging for it would fight the adoption ✓ ✗ ✓ ✓ |
-| The **tenant's own fee settings ✓** ✓ | **every plan ✓✓** ✓ | the whole value is "no commission ✓✓" ✓ ✓ — charging for the fee settings would contradict the pitch ✓ ✗ ✓ ✓ |
-| The **driver assignment ✓** ✓ (a name + a phone ✓ ✓) | **every plan ✓✓** ✓ | it is two fields ✓ ✓ ✓ |
-| The **delivery zones ✓** (the postcode pricing ✓ ✓) | **a paid feature ✓✓** ✓ | the ops depth ✓ ✓ — the zones ✓, the scheduling ✓, the analytics ✓ ✓ |
-| The **delivery analytics ✓** (the delivery revenue ✓, the fee per order ✓ ✓) | **a paid feature ✓✓** ✓ | it is the reporting layer ✓ ✓ |
+| **Starter ✓** ✓ | RM99/mo ✓ ✓ | **Delivery ✓** — the order type ✓, the storefront ✓, the flat fee ✓, the driver assignment ✓ ✓ |
+| **Basic ✓** ✓ | RM199/mo ✓ ✓ | **Delivery ✓** (+ the outlets ✓ ✓) ✓ ✓ |
+| **Pro ✓** ✓ | RM399/mo ✓ ✓ | **Delivery ✓** + **Delivery Zones ✓** (the postcode pricing ✓ ✓) ✓ ✓ |
+| **Enterprise ✓** ✓ | RM799/mo ✓ ✓ | **Delivery ✓** + **Delivery Zones ✓** + **Delivery Scheduling ✓** + **Delivery Analytics ✓** ✓ ✓ |
 
-→ **the feature name ✓** would follow the house pattern ✓ ✓ — `require_plan_feature("Delivery")`
-✓ ✓ for the core ✓ ✓ and `require_plan_feature("Delivery Ops")` ✓ ✓ for the zones ✓, the
-scheduling ✓ and the analytics ✓ ✓ ✓.
+**The split ✓✓ — what is in the core ✓ ("Delivery" ✓ ✓) ✓ ✓**
+- the delivery **order type ✓** ✓ — just another order type ✓ ✓ (the address ✓, the fee ✓,
+  the driver ✓ ✓) ✓ ✓;
+- the **white-label storefront ✓** ✓ — the branding fields **already exist ✓✓**
+  (`restaurant_name` ✓, `restaurant_logo` ✓, `brand_color` ✓ ✓) → it costs us almost nothing
+  ✓ ✓ → **charging for it would fight the adoption ✓ ✗ ✓ ✓** ✓ ✓;
+- the tenant's **own fee settings ✓** ✓ — the whole value is **"no commission ✓✓"** ✓ ✓ →
+  charging for the fee settings would contradict the pitch ✓ ✗ ✓ ✓ ✓;
+- the **driver assignment ✓** ✓ — it is two fields ✓ ✓ ✓✓ ✓ ✓.
+
+**What is paid ✓✓ (the ops depth ✓ ✓)**
+- **Delivery Zones ✓** — the postcode pricing ✓ ✓ → **Pro ✓✓** ✓ ✓;
+- **Delivery Scheduling ✓** — the promised windows ✓ ✓ → **Enterprise ✓✓** ✓ ✓;
+- **Delivery Analytics ✓** — the delivery revenue ✓, the fee per order ✓ ✓ → **Enterprise ✓✓** ✓ ✓.
 
 **The adoption argument ✓✓ — the decisive one ✓** — a tenant that switches to us **for the
 delivery ✓** but has to pay for it ✓ ✗ loses the switch ✓ ✓ → **the basics must be free ✓✓**
 ✓ ✓ → **the paid tier is the sophistication ✓✓** (the zones ✓, the scheduling ✓, the
 analytics ✓ ✓) ✓ ✓✓✓ ✓ ✓.
+
+**And the Starter argument ✓✓** — the delivery costs us **almost nothing on Starter ✓✓** ✓ ✓
+(one JSON column ✓ ✓, the storefront reads the existing menu ✓ ✓) → it is a **customer-acquisition
+feature ✓✓** ✓ ✓: the tenant tries the delivery free ✓ ✓, it works ✓ ✓, and the zones ✓, the
+scheduling ✓ and the analytics ✓ are the **upgrade path ✓✓** ✓ ✓ — **the delivery is the
+Starter's hook ✓✓** ✓ ✓✓✓ ✓ ✓.
+
+**The feature rows ✓✓ (the house shape ✓✓ — `website_api/app/core/seed_features.py` ✓ ✓):**
+
+```python
+{"name": "delivery", "display_name": "Delivery",
+ "description": "Delivery orders, branded storefront and own delivery charges",
+ "category": "delivery", "icon": "🛵", "tab_name": "Delivery", "sort_order": 21},
+{"name": "delivery_zones", "display_name": "Delivery Zones",
+ "description": "Postcode-based delivery pricing and zones",
+ "category": "delivery", "icon": "🗺️", "tab_name": "Delivery Zones", "sort_order": 22},
+{"name": "delivery_scheduling", "display_name": "Delivery Scheduling",
+ "description": "Delivery time windows and scheduling",
+ "category": "delivery", "icon": "📅", "tab_name": "Delivery Scheduling", "sort_order": 23},
+{"name": "delivery_analytics", "display_name": "Delivery Analytics",
+ "description": "Delivery revenue, fees and order analytics",
+ "category": "delivery", "icon": "📊", "tab_name": "Delivery Analytics", "sort_order": 24},
+```
+
+→ **the plan assignments ✓✓** — `delivery` → **all four plans ✓✓** ✓ ✓ · `delivery_zones` →
+**pro ✓, enterprise ✓** ✓ ✓ · `delivery_scheduling` → **enterprise ✓** ✓ ✓ ·
+`delivery_analytics` → **enterprise ✓** ✓ ✓ ✓.
+
+> **The implementation trap ✓✓** — the **seed file is stale ✓ ✗** ✓ (it still says "AI
+> Customer Insights ✓" while the backend calls `require_plan_feature("AI Insights")` ✓ ✓ — the
+> DB was edited directly ✓ ✓) **and it only runs on an empty database ✓ ✓** ✓ → **re-seeding
+> will NOT add the delivery features ✓ ✗ ✓** → they must be **inserted into the live DB ✓✓**
+> (the admin's feature editor ✓ ✓ — `routes/features.py` ✓ ✓ — or a one-off script ✓ ✓) with
+> their `plan_features` rows ✓ ✓ ✓✓ ✓ ✓. And the gate is called with the **display_name ✓ ✓**
+> — `require_plan_feature("Delivery")` ✓ ✓ ✓✓ ✓ ✓.
+
+**A new category ✓✓** — `delivery` ✓ ✓ — so the admin's feature screen groups them ✓ ✓ ✓.
 
 ---
 
