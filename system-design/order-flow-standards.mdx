@@ -54,36 +54,36 @@ app and are the same for everyone.
 
 ### 2.1a What already exists — the order type column
 
-**The `orders` table already carries the order type ✓✓:**
+**The `orders` table already carries the order type:**
 
 ```python
 # Order type: dine_in, takeaway, delivery
-order_type = Column(String(20), default="dine_in")   # models.py:216-217
+order_type = Column(String(20), default="dine_in") # models.py:216-217
 ```
 
 **It is a plain `String(20)` — not an enum, not a CHECK constraint — so a new value needs no
-migration ✓✓.** The same is true of `status` (a `String(20)`) → the delivery's
-`out_for_delivery` also needs no migration ✓✓.
+migration.** The same is true of `status` (a `String(20)`) → the delivery's
+`out_for_delivery` also needs no migration.
 
 | The piece | Where | The state |
 |---|---|---|
 | the column | `models.py:217` | `String(20)`, default `dine_in` |
-| the create | `order.py:181` (`order_type: str = "dine_in"`) | **no whitelist — any string is accepted ✓✗** |
+| the create | `order.py:181` (`order_type: str = "dine_in"`) | **no whitelist — any string is accepted✗** |
 | the dine-in table rule | `order.py:303` | a table is required for a dine-in, not for the others |
 | the staff chips | `StaffOrder.jsx:359-362` + the kiosk `790-792` | the three chips exist and honour `allow_dine_in / allow_takeaway / allow_delivery` |
 | the reports | `reportsConfig.js:233-235` | the three types are already split |
-| the PWA | `customer-app/js/app.js:1518` | it sends `order_type` — **and it has a delivery chip (`app.js:1144`) that must go ✓✓** (the delivery is a separate app; a chip with no address and no fee is a broken flow) |
-| `delivery_address` | `models.py:239` | **the column exists and is plumbed ✓✓** (the create, the read, six response sites) |
+| the PWA | `customer-app/js/app.js:1518` | it sends `order_type` — **and it has a delivery chip (`app.js:1144`) that must go** (the delivery is a separate app; a chip with no address and no fee is a broken flow) |
+| `delivery_address` | `models.py:239` | **the column exists and is plumbed** (the create, the read, six response sites) |
 
 **The three gaps this leaves**
-1. **no whitelist ✓✗** → a typo ("takeway") is stored silently → add
-   `Literal["dine_in", "takeaway", "delivery"]` to the schema (tiny);
+1. **no whitelist✗** → a typo ("takeway") is stored silently → add
+ `Literal["dine_in", "takeaway", "delivery"]` to the schema (tiny);
 2. **the delivery's fee and driver are missing** — the address is there, the fee and the
-   driver need a column (a `delivery` JSON on the order, or the tenant's JSON in the
-   settings);
-3. **the in-venue PWA must lose its delivery chip ✓✓** — the delivery belongs to the
-   delivery app. **DONE ✓✓ (Nov 5, 2026 ✓✓)** — the chip, the visibility rule and the
-   "no type at all" rule are gone from `customer-app/js/app.js` ✓ ✓ ✓✓ ✓ ✓.
+ driver need a column (a `delivery` JSON on the order, or the tenant's JSON in the
+ settings);
+3. **the in-venue PWA must lose its delivery chip** — the delivery belongs to the
+ delivery app. **DONE(Nov 5, 2026)** — the chip, the visibility rule and the
+ "no type at all" rule are gone from `customer-app/js/app.js`.
 
 **A hawker's counter is not a fourth order type** — the fulfilment is the same as a
 takeaway; what differs is the anchor and the payment timing.
@@ -107,7 +107,7 @@ takeaway; what differs is the anchor and the payment timing.
 
 → **No new status value for the dine-in or the takeaway** — no migration, no data change, no
 API change. **The one exception:** the delivery adds `out_for_delivery` — and because
-`status` is a plain `String(20)`, **that needs no migration either ✓✓**; it costs **about
+`status` is a plain `String(20)`, **that needs no migration either**; it costs **about
 seven places** in the frontend: the queue's flow array (`OrderQueue.jsx:132`), its icon
 switch (`125`), its labels (`944`), the "all served" rule (`935` — a dispatched order is not
 served), the kitchen's filter (`Kitchen.jsx:545` — an out-for-delivery order must leave the
@@ -130,8 +130,11 @@ counter orders that have no token.
 **A takeaway may carry a table or carry none — the table is a HINT, not the anchor.**
 The guest scans the table QR and then orders a takeaway: the order carries T5, and the
 staff know the food is going to that table. The guest orders from the app: there is no
-table. **Both are valid.** The staff may attach a table to a takeaway — it is optional,
-never required.
+table. **Both are valid.** The staff may attach a table to a takeaway. **All of these are
+valid** — the table is optional, never required.
+
+**What an attached table does** — it puts the takeaway in the table's bill, so the
+customer settles the table and the takeaway **in one payment** (§2.7).
 
 **The takeaway's name lives on the order** (decided Nov 5, 2026): a `customer_name`
 column on `orders`, nullable — a safe migration. The staff type it; the PWA asks for it
@@ -193,52 +196,52 @@ the SaaS billing already uses.
 
 ### 2.6 The PWA's takeaway — the outlet is the venue, the table is only the dine-in anchor
 
-**The principle ✓✓**
-> **A takeaway needs the OUTLET ✓✓ — only a dine-in needs the TABLE ✓✓.** The table is
-> the dine-in anchor ✓ ✓; the outlet is the tenant's identity ✓ ✓ ✓✓ ✓ ✓.
+**The principle**
+> **A takeaway needs the OUTLET— only a dine-in needs the TABLE.** The table is
+> the dine-in anchor; the outlet is the tenant's identity.
 
-**How the customer arrives ✓✓**
+**How the customer arrives**
 
 | How they arrive | The venue | The table | The state |
 |---|---|---|---|
-| **the table QR ✓✓** | from the uuid ✓ ✓ | known ✓ ✓ | **works today ✓✓** → they switch to Takeaway ✓ ✓ → **the table comes along as a hint ✓✓** (the takeaway is its own order ✓ ✓) ✓ ✓ |
-| **a deep link ✓✓** (`?outlet=<id>&type=takeaway` ✓ ✓) | from the link ✓ ✓ | **none ✓✓** | **broken today ✗✗ ✓✓** → `tableNumber = tableParam || 'T1'` invents a table ✓ ✗ ✓ → the uuid lookup fails ✓ ✗ ✓ → `venueResolved` is false ✓ ✗ ✓ → the venue picker opens on a takeaway order ✓ ✗ ✓ ✓ ✓ |
-| **the installed app ✓✓** (no QR ✓ ✓) | the picker ✓ ✓ | **mandatory ✗✗ ✓✓** | **broken today ✗✗ ✓✓** → the picker is group → outlet → **table ✓✓** ✓ ✓ → a counter-only outlet (a fast food ✓ ✓, a stall ✓ ✓) has **no tables ✓✓** → *"No tables available" ✓ ✗ ✓* ✓ ✓ ✓ ✓ |
+| **the table QR** | from the uuid | known | **works today** → they switch to Takeaway → **the table comes along as a hint** (the takeaway is its own order) |
+| **a deep link** (`?outlet=<id>&type=takeaway`) | from the link | **none** | **broken today ✗✗** → `tableNumber = tableParam || 'T1'` invents a table ✗ → the uuid lookup fails ✗ → `venueResolved` is false ✗ → the venue picker opens on a takeaway order ✗ |
+| **the installed app** (no QR) | the picker | **mandatory ✗✗** | **broken today ✗✗** → the picker is group → outlet → **table** → a counter-only outlet (a fast food, a stall) has **no tables** → *"No tables available" ✗* |
 
-**The three fixes ✓✓ (small ✓✓)**
-1. **the picker must offer "Takeaway — no table" ✓✓** at the outlet step ✓ ✓ → the venue is
-   then resolved with **an outlet and no table ✓✓** ✓ ✓ → `/pwa/venues` already returns the
-   groups + the outlets + the address ✓✓ (`pwa.py:51` ✓ ✓) — **no table needed ✓✓** ✓ ✓;
-2. **the deep link must not invent a table ✓✓** → `tableNumber = tableParam || null` ✓ ✓ →
-   and `venueResolved` is true when the outlet is known ✓ ✓ ✓✓ ✓ ✓;
-3. **the link carries the type ✓✓** → `?type=takeaway` ✓ ✓ → the PWA's `orderType` starts as
-   `dine_in` ✓ ✗ ✓ → it must respect the link ✓ ✓ ✓✓ ✓ ✓.
+**The three fixes(small)**
+1. **the picker must offer "Takeaway — no table"** at the outlet step → the venue is
+ then resolved with **an outlet and no table** → `/pwa/venues` already returns the
+ groups + the outlets + the address(`pwa.py:51`) — **no table needed**;
+2. **the deep link must not invent a table** → `tableNumber = tableParam || null` →
+ and `venueResolved` is true when the outlet is known;
+3. **the link carries the type** → `?type=takeaway` → the PWA's `orderType` starts as
+ `dine_in` ✗ → it must respect the link.
 
-**The login changes two things and nothing else ✓✓**
-- **the `dining_customer_id` ✓✓** → the customer ✓ ✓ (logged in ✓ ✓) or the **walk-in
-  placeholder ✓✓** (not logged in ✓ ✓) → **the order is identical either way ✓✓** ✓ ✓ (the
-  placeholder exists precisely so a walk-in still has an id ✓ ✓) ✓ ✓✓ ✓ ✓;
-- **the name ✓✓** → a logged-in customer already has a name ✓ ✓ and a phone ✓ ✓ → **the
-  takeaway's anchor can come from the account ✓✓** ✓ ✓; **not logged in ✓✓** → the PWA must
-  ask for the name ✓ ✓ (and the phone ✓ ✓ for the "your order is ready" ✓ ✓) ✓ ✓;
-- **the login must never gate the takeaway ✓✗ ✓✓** → a takeaway customer is a **walk-in ✓✓**
-  (the walk-in principle ✓ ✓) → **no login, no problem ✓✓** ✓ ✓ ✓✓ ✓ ✓.
+**The login changes two things and nothing else**
+- **the `dining_customer_id`** → the customer (logged in) or the **walk-in
+ placeholder** (not logged in) → **the order is identical either way** (the
+ placeholder exists precisely so a walk-in still has an id);
+- **the name** → a logged-in customer already has a name and a phone → **the
+ takeaway's anchor can come from the account**; **not logged in** → the PWA must
+ ask for the name (and the phone for the "your order is ready");
+- **the login must never gate the takeaway✗** → a takeaway customer is a **walk-in**
+ (the walk-in principle) → **no login, no problem**.
 
-**The gap that matters most ✓✓**
-> **There is no customer-name field on the order ✓✗ ✓✓** — neither the model ✓ ✓ nor the
-> PWA ✓ ✓ → **a PWA takeaway is anonymous ✓✓** ✓ ✓ → the kitchen sees an order with **no
-> identifier ✓ ✗ ✓ ✓** ✓ ✓ → **that is exactly what Phase 4's token ✓✓ fixes ✓✓** ✓ ✓
-> ✓✓ ✓ ✓.
+**The gap that matters most**
+> **There is no customer-name field on the order✗** — neither the model nor the
+> PWA → **a PWA takeaway is anonymous** → the kitchen sees an order with **no
+> identifier ✗** → **that is exactly what Phase 4's tokenfixes**
+>.
 
-**The safety ✓✓** — the PWA's `table_uuid` is the venue trust boundary ✓ ✓ → a takeaway has
-**no uuid ✓✓** → **the outlet becomes the anchor ✓✓** → the backend verifies that the outlet
-belongs to the claimed tenant ✓✓ (`order.py:340` ✓ ✓ — *"This customer does not belong to the
-restaurant you are ordering from"* ✓ ✓) ✓ ✓ → **so a takeaway without a uuid is safe ✓✓** ✓ ✓
-✓✓ ✓ ✓.
+**The safety** — the PWA's `table_uuid` is the venue trust boundary → a takeaway has
+**no uuid** → **the outlet becomes the anchor** → the backend verifies that the outlet
+belongs to the claimed tenant(`order.py:340` — *"This customer does not belong to the
+restaurant you are ordering from"*) → **so a takeaway without a uuid is safe**
+.
 
-**The staff side ✓✓** — the takeaway lands in the staff's OrderQueue ✓ ✓ → **Phase 4b's
-Takeaway view ✓✓** ✓ ✓ (the code already computes `takeawayOrders` ✓ ✓ and never renders it
-✓ ✓) → **the token identifies it at the counter ✓✓** ✓ ✓ ✓✓ ✓ ✓.
+**The staff side** — the takeaway lands in the staff's OrderQueue → **Phase 4b's
+Takeaway view** (the code already computes `takeawayOrders` and never renders it
+) → **the token identifies it at the counter**.
 
 ### 2.7 The one bill — the orders stay separate, the settlement is one
 
@@ -250,36 +253,36 @@ settle in one.
 
 **Why the orders must not be merged**
 - **two different states** — the dine-in is *served*, the takeaway is *ready* or
-  *collected* — one order cannot be in two states, and the status machine cannot express
-  it;
+ *collected* — one order cannot be in two states, and the status machine cannot express
+ it;
 - **two different payment rules** — a prepay takeaway is paid before the kitchen starts, a
-  dine-in is settled at the table;
+ dine-in is settled at the table;
 - **the reports split by order type** — merging loses the dine-in/takeaway split, which
-  is the number the business actually watches;
+ is the number the business actually watches;
 - **two different anchors** — the table, and the name or the token;
 - **the industry does the same** — Toast, Square and Clover all keep them as separate
-  checks and orders. What the mature systems offer is *settling them together*, not
-  merging them.
+ checks and orders. What the mature systems offer is *settling them together*, not
+ merging them.
 
 **What the customer actually wants is "pay once", not "one order" — and that we can give.**
 
 The machinery is already there:
 - the staff search a table in the Orders screen → **"settle T5 (2 orders)"** → one payment,
-  one receipt (`OrderSearchPanel.jsx:119` → `usePaymentFlow.js:282` — the bulk loop; the
-  receipt already handles a bulk settlement, `StaffOrder.jsx:358`);
+ one receipt (`OrderSearchPanel.jsx:119` → `usePaymentFlow.js:282` — the bulk loop; the
+ receipt already handles a bulk settlement, `StaffOrder.jsx:358`);
 - the settle list is **served + unpaid + the same table number**, with **no order_type
-  filter** (`OrderSearchPanel.jsx:32` and `:90`) → **a takeaway that carries T5 is already
-  inside that settle action.**
+ filter** (`OrderSearchPanel.jsx:32` and `:90`) → **a takeaway that carries T5 is already
+ inside that settle action.**
 
-**The two gaps**
-1. **the staff's takeaway has no table** → it sits outside the table's bill → the staff
-   settles it separately. **The fix: the table is optional for a takeaway** — the staff may
-   attach T5, and then the takeaway joins the table's bill and the one settlement covers
-   both. (This adjusts Phase 1: the picker for a takeaway is *optional*, not hidden.)
-2. **two different "table totals"** — the table's bill card in the Orders queue is built
-   from the dine-in orders only (`OrderQueue.jsx:189`), while the search panel's settle
-   action collects every unpaid order with that table number. **They must agree** — the
-   card has to show the same total the settle action will charge.
+**The two gaps — both closed (Nov 5, 2026)**
+1. **the table is now OPTIONAL for a takeaway** — the staff may attach T5, and then the
+ takeaway joins the table's bill and the one settlement covers both. The Phase 1 rule
+ changed from "the picker is hidden for a takeaway" to "the picker is there, the table is
+ optional" — the button was already enabled without a table.
+2. **the two totals now agree** — the table's bill card in the Orders queue holds the
+ dine-in orders **and** the takeaways attached to that table, which is exactly the set
+ the search panel settles (the payable orders with that table number, no order_type
+ filter). The card's total and the settlement can no longer disagree.
 
 **The prepaid takeaway** — it is already paid, so it cannot join the table's settlement
 (the money has moved). The customer gets two receipts. That is correct and stays.
@@ -400,39 +403,54 @@ queue.
 
 ## 4. The tenant setup — the scenarios
 
-### 4.0 Phase 1 — what was implemented (Nov 5, 2026 ✓✓)
+### 4.0 Phase 1 — what was implemented (Nov 5, 2026)
 
-**The bug ✓✗ ✓** — the staff screen's **Place order** button was disabled without a table
-**whatever the order type was** ✓ ✗ ✓ (`canSubmit={!!selectedTable && settings?.table_required !== false}`)
-✓ ✓ → **a takeaway could not be rung up at all ✓ ✗ ✓** ✓ ✓ (the handler and the backend
-were already correct ✓ ✓) ✓ ✓.
+**The bug✗** — the staff screen's **Place order** button was disabled without a table
+**whatever the order type was** ✗ (`canSubmit={!!selectedTable && settings?.table_required !== false}`)
+→ **a takeaway could not be rung up at all ✗** (the handler and the backend
+were already correct).
 
-**The rule ✓✓ — one place ✓✓:**
+**The rule— one place:**
 
 ```jsx
 // A table is the anchor of a DINE-IN order only.
 const needsTable = orderType === 'dine_in' && settings?.table_required !== false
 ```
 
-**What it changed ✓✓**
-- `canSubmit` → `!needsTable || !!selectedTable` ✓ ✓ (the desktop button and the kiosk's
-  two buttons — `CartPanel.jsx:128` and `:165` ✓ ✓);
-- the submit guard → the same rule ✓ ✓;
-- **the table picker is hidden for a takeaway ✓✓** — the desktop card ✓ ✓, the mobile row ✓ ✓
-  and the kiosk's chip ✓ ✓ → **the kiosk's modal too ✓ ✓**;
-- **switching the type away from a dine-in drops the table ✓✓** (`changeOrderType` ✓ ✓) → **a
-  takeaway carries no table ✓✓** (rail 2 ✓ ✓);
-- **the type falls back ✓✓** — if the tenant switches a type off, the screen does not stay on
-  a type that no longer exists ✓ ✓ (a `useEffect` on the settings ✓ ✓);
-- **the PWA ✓✓** — the delivery chip is gone ✓ ✓; **the takeaway keeps its table ✓✓** (a
-  guest who scanned the QR carries T5 ✓ ✓ — the table is a hint ✓ ✓, not the anchor ✓ ✓) ✓✓;
-- **the PWA's delivery chip is gone ✓✓** — the delivery is a separate app ✓ ✓ ✓ ✓.
+**What it changed**
+- `canSubmit` → `!needsTable || !!selectedTable` (the desktop button and the kiosk's
+ two buttons — `CartPanel.jsx:128` and `:165`);
+- the submit guard → the same rule;
+- **the table picker is hidden for a takeaway** — the desktop card, the mobile row
+ and the kiosk's chip → **the kiosk's modal too** *(corrected below)*;
+- **the type falls back** — if the tenant switches a type off, the screen does not stay on
+ a type that no longer exists (a `useEffect` on the settings);
+- **the PWA** — the delivery chip is gone; **the takeaway keeps its table** (a
+ guest who scanned the QR carries T5 — the table is a hint, not the anchor);
+- **the PWA's delivery chip is gone** — the delivery is a separate app.
 
-**The flow test ✓✓** — `/tmp/phase1_takeaway_test.sh` ✓✓ → **14/14 ✓✓**:
-a takeaway with no table → **200** ✓ ✓ with no table ✓ ✓ · a dine-in with no table → **400
-"A table is required for a dine-in order" ✓✓** · a dine-in with a table → **200** with the
-table ✓ ✓ · the cleanup cancels the test orders ✓ ✓ (there is no DELETE `/orders/{id}` ✓✓ —
-the API's own way is `PATCH /{id}/cancel` ✓ ✓) ✓ ✓ ✓✓ ✓ ✓.
+**The correction (Nov 5, 2026) — the table is optional, not hidden**
+Kens: *"for takeaway allow table no or don't have also can — using pwa can have table
+no, if using staff order then no need table number, can input name."* The first cut hid
+the picker for a takeaway, which was wrong: **the table may be attached or left empty.**
+
+- the picker is always there — the desktop card, the mobile row, the kiosk's chip and the
+ kiosk's modal;
+- the heading says **"Select Table (optional)"** when the table is not required (a new
+ i18n key in en/zh/km);
+- **switching the type keeps the table** (`changeOrderType`) → a takeaway with an attached
+ table settles with the table's bill, in one payment;
+- the order's `table_id` / `table_number` are sent as they are — the takeaway carries the
+ table when there is one.
+
+**And the totals reconciled** — the table's bill card holds the dine-in orders *and* the
+takeaways attached to that table, so it matches the set the search panel settles.
+
+**The flow test** — `/tmp/phase1_takeaway_test.sh`→ **14/14**:
+a takeaway with no table → **200** with no table · a dine-in with no table → **400
+"A table is required for a dine-in order"** · a dine-in with a table → **200** with the
+table · the cleanup cancels the test orders (there is no DELETE `/orders/{id}`—
+the API's own way is `PATCH /{id}/cancel`).
 
 ### 4.1 How the setup happens — the mechanic
 
@@ -530,12 +548,12 @@ payment: either**
 
 | Phase | What | Size |
 |---|---|---|
-| **1 — the takeaway bug** — **DONE ✓✓ (Nov 5, 2026 ✓✓)** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** ✓ |
+| **1 — the takeaway bug** — **DONE(Nov 5, 2026)** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** |
 | **2 — the preset** | the business type becomes live — the confirmation, the preset table, `business_presets.py` · the `allow_delivery` **column default → False** (it is True today, `models.py:366`) → the existing tenants keep their own value (the column default only affects a new outlet) | small |
 | **3 — the wording** | the type-aware last step ("Served" / "Collected") — translation only | tiny |
 | **4 — the anchor** | the takeaway's **name** + the **token** (the short order number) + the name on the kitchen ticket and the printed receipt | medium |
 | **4b — the counter sees the takeaways** | `OrderQueue.jsx:185` already computes `takeawayOrders` and **never renders it** → a **Takeaway view** beside Queue/Tables with the unpaid ones and a **Pay** action | **small** |
-| **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** — **two details verified in the code ✓✓**: ① `POST /{order_id}/payments` (`order.py:809`) accepts a full payment (`is_split=false` → `payment_type="full"`) and sets `payment_status="paid"` — **but it does NOT move `status` from `pending` to `confirmed` ✓✗ → that transition must be added ✓✓**; ② **it is a staff route** (`require_staff_permission("staff:orders:write")`) → **the PWA's customer key cannot call it ✓✗ → the PWA needs its own route ✓✓** (`POST /api/pwa/orders/{id}/pay` — `pwa.py` already has the ownership proof: the `table_uuid` / the `dining_customer_id`) | medium |
+| **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** — **two details verified in the code**: ① `POST /{order_id}/payments` (`order.py:809`) accepts a full payment (`is_split=false` → `payment_type="full"`) and sets `payment_status="paid"` — **but it does NOT move `status` from `pending` to `confirmed`✗ → that transition must be added**; ② **it is a staff route** (`require_staff_permission("staff:orders:write")`) → **the PWA's customer key cannot call it✗ → the PWA needs its own route** (`POST /api/pwa/orders/{id}/pay` — `pwa.py` already has the ownership proof: the `table_uuid` / the `dining_customer_id`) | medium |
 | **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
 | **7 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
 
@@ -546,8 +564,8 @@ payment: either**
 1. **The backend is the authority** — `order.py:303` requires a table for a dine-in order and
  allows a null `table_id` otherwise → the frontend stops contradicting it;
 2. **a takeaway may carry a table, or none** — the PWA's guest has one (they scanned the
-   QR), the staff's takeaway does not (the staff enter a **name** instead). No model
-   change (`models.py:202`); the takeaway never joins the table's bill;
+ QR), the staff's takeaway does not (the staff enter a **name** instead). No model
+ change (`models.py:202`); the takeaway never joins the table's bill;
 3. **the money path does not move** — the price, the discount, the tax and the currency are
  identical for every type;
 4. **the isolation does not move** — the tenant, the outlet, the table and the customer are
@@ -564,8 +582,8 @@ payment: either**
  cafe can run postpay and a bar can run prepay;
 10. **the delivery's timing belongs to the delivery app's own tenant setting** — not to the
  business type;
-10b. **a customer-facing payment route is its own route ✓✓** — the staff payment endpoint is
- a staff route; the PWA's prepay needs the ownership proof, not a staff session ✓ ✓;
+10b. **a customer-facing payment route is its own route** — the staff payment endpoint is
+ a staff route; the PWA's prepay needs the ownership proof, not a staff session;
 11. **a prepay order must never reach the kitchen unpaid** — the webhook confirms it and the
  kitchen filters on the payment — no new order status — **and it needs an expiry rule**
  (there is no auto-cancel today);
