@@ -194,6 +194,14 @@ PWA to call `POST /api/orders/{order_id}/payments` (the endpoint already exists 
 `order.py:809`) and to render a **DuitNow QR** — the HitPay DuitNow QR is the same service
 the SaaS billing already uses.
 
+> **Kens's call (Nov 6, 2026) — the customer app stays POSTPAY.** "Mostly is for postpay which
+> customer goto cashier counter to pay the money. This is standard for restaurant. So not
+> recommend implement prepay into Customer order PWA." → **the customer app's prepay (the DuitNow
+> QR and the customer app's own pay route) is not built** ✗ → the map is postpay for both types
+> ✓✓ → **the prepay machinery that is built (the map, the kitchen's gate, the payment's
+> transition) is there for the delivery app and for a tenant that wants it later** ✓✓ → see
+> Phase 5 above ✓✓.
+
 ### 2.6 The PWA's takeaway — the outlet is the venue, the table is only the dine-in anchor
 
 **The principle**
@@ -650,6 +658,39 @@ the next order was refused with *"Cannot add to cart due to stock issues"* ✗�
 on the STOCK instead of on the code ✗✗. `scripts/pos_cleanup_test_data.py` now restores the demo
 data after the test runs (the orders, the stock, the printer settings) ✓✓.
 
+**Phase 5 — WHEN the money is taken** (Nov 6, 2026 ✓✓).
+
+**Kens's decision (the scope of this phase)**
+> "Currently Customer order pwa is dine in or take away. Mostly is for postpay which customer
+> goto cashier counter to pay the money. This is standard for restaurant. So not recommend
+> implement prepay into Customer order PWA."
+
+→ the **customer app is postpay** ✓✓ → the prepay flow (the customer app's DuitNow QR, the
+customer app's own pay route) is **not built** ✗✓ → the map is **postpay for both** types ✓✓ →
+**prepay belongs to the delivery app** (it has its own checkout and its own `prepaid_only`
+setting ✓✓) ✓✓.
+
+**What is built anyway** ✓✓ — the machinery, so the day a tenant wants a prepay type it is one
+setting away ✓✓:
+
+1. **The map** — `outlet_settings.payment_timing` (a JSON column, the same pattern as
+   `payment_methods` ✓✓): `{"dine_in": "postpay", "takeaway": "postpay"}` ✓✓ → the **backend owns
+   it** ✓✓ → the settings screen **shows** it (read-only ✓✓ — offering "prepay" for a type the
+   customer app cannot prepay would be a promise the code cannot keep ✗✗) ✓✓.
+2. **The kitchen's gate** — an order whose type is `prepay` and that is **not paid** stays out of
+   the kitchen ✓✓ → the money has to land before the food starts, or the kitchen makes a meal
+   nobody pays for (the ghost order ✓✓) ✓✓. Quiet for a postpay order ✓✓.
+3. **The payment's transition** — `POST /{order_id}/payments` (a full payment) sets
+   `payment_status = "paid"` **and** moves a `pending` order to `confirmed` ✓✓ → **that was the
+   missing piece ✓✓**: without it a paid order would stay invisible to the kitchen forever ✗✗.
+4. **The customer app tells the guest** — the order modal carries a line: *"Please pay at the
+   cashier counter when you collect your order."* ✓✓ → the postpay flow only works if the guest
+   knows it ✓✓.
+
+**The test:** `scripts/pos_phase5_test.js` → **15/15 ✓✓** — the map, the settings screen, the
+gate (a prepay order is invisible in the kitchen), the payment (paid + confirmed), the paid
+order appearing in the kitchen, the customer app's line and the restore ✓✓.
+
 **The lesson of this phase (a trap for every browser test here):** a **low-stock item asks for a
 confirmation** (`confirm()`) → Playwright **dismisses dialogs by default** → a dismissed confirm
 means the item is **not** added → the cart stays empty → the test fails for a reason that has
@@ -757,7 +798,7 @@ payment: either**
 | **3 — the wording** — **DONE(Nov 5, 2026)** | the type-aware last step ("Served" / "Collected") — the rule in `utils/businessType.js`, the labels in `common:status.*` (en/zh/km), four surfaces (the queue, the history, the dashboard, the kiosk's search) + the two raw-status holes closed — **no API change, no migration** | tiny |
 | **4 — the anchor** — **DONE(Nov 5, 2026)** | the takeaway's **name** (`orders.customer_name`, nullable) + the **token** (derived from the order number — no column) + the name and the token on the kitchen ticket, the receipt, the queue card and the PWA | medium |
 | **4b — the counter sees the takeaways** — **DONE(Nov 5, 2026)** | the **Takeaway view** beside Queue/Tables — the takeaways that are not settled yet, the oldest first, the **token** as the headline, the name, the items, the status and a **Pay** action (only a served order can be paid for) | small |
-| **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** — **two details verified in the code**: ① `POST /{order_id}/payments` (`order.py:809`) accepts a full payment (`is_split=false` → `payment_type="full"`) and sets `payment_status="paid"` — **but it does NOT move `status` from `pending` to `confirmed`✗ → that transition must be added**; ② **it is a staff route** (`require_staff_permission("staff:orders:write")`) → **the PWA's customer key cannot call it✗ → the PWA needs its own route** (`POST /api/pwa/orders/{id}/pay` — `pwa.py` already has the ownership proof: the `table_uuid` / the `dining_customer_id`) | medium |
+| **5 — the payment timing** — **DONE(Nov 6, 2026, re-scoped by Kens)** | the **per-order-type map** (`outlet_settings.payment_timing`) + the **kitchen's gate** (an order that waits for its money stays out of the kitchen) + the **payment's transition** (the money lands → the order goes to "confirmed" → the kitchen sees it) + the **customer app tells the guest to pay at the counter**. **Kens's decision: the customer app is POSTPAY** (the guest orders and pays at the cashier counter — the standard restaurant shape) → **the prepay flow (the DuitNow QR in the customer app) is NOT built** ✗ → the map is postpay for both types → **prepay belongs to the delivery app** (it has its own checkout) | medium |
 | **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
 | **7 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
 
