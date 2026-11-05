@@ -691,6 +691,67 @@ setting away ✓✓:
 gate (a prepay order is invisible in the kitchen), the payment (paid + confirmed), the paid
 order appearing in the kitchen, the customer app's line and the restore ✓✓.
 
+**Phase 6 — WHEN the money is taken, per order type, set by the tenant** (Nov 6, 2026 ✓✓).
+
+**Kens's model**
+> "Prepay mode can be online or offline. Prepay Online means need to integrate payment
+> method at pwa whether customer order or delivery app. Prepay offline means customer
+> have to go cashier counter to pay the money first. Cashier will using the staff order
+> full screen to record payment."
+
+→ **three modes, per order type** ✓✓:
+
+| mode | the money | who takes it |
+|---|---|---|
+| `postpay` | at the table, or when the guest collects | the cashier, after the food ✓✓ |
+| `prepay_at_counter` | **before** the kitchen starts | the cashier, at the counter ✓✓ |
+| `prepay_online` | **before** the kitchen starts | a gateway, in the customer app — **LOCKED** ✗✗ |
+
+→ **not one switch for the outlet** ✗✗ → a **map, one entry per order type** ✓✓:
+```json
+{"dine_in": "postpay", "takeaway": "prepay_at_counter", "delivery": "postpay"}
+```
+→ per outlet ✓✓ (each tenant's own ✓✓).
+
+**The five rules of the phase** ✓✓:
+
+1. **The mode is a SNAPSHOT on the order** ✓✓ → `orders.payment_mode` ✓✓ → stamped by
+   `OrderService.create_order` ✓✓ → the kitchen's gate, the PWA's wording and the expiry
+   all read the **ORDER's** mode ✓✓ → **a tenant who changes the setting mid-service never
+   moves the orders already in flight** ✓✓✓✓ (the price does the same ✓✓).
+2. **The kitchen's gate** ✓✓ → an order that waits for its money stays out of the kitchen
+   ✓✓ → the money lands before the food starts ✓✓ (the ghost order ✓✓) → **enforced by the
+   backend too** ✓✓ (`PATCH /orders/{id}/status` refuses to advance an unpaid prepay order
+   ✓✓ → 400 with a clear reason ✓✓) → not only a filter in the kitchen's screen ✓✓.
+3. **The counter's row** ✓✓ → the **"Awaiting payment"** badge ✓✓ → the **Collect** button
+   is there from the moment the order appears ✓✓ → the **advance button is hidden** ✓✓ →
+   one tap to collect ✓✓ (the token is the headline ✓✓ → the guest reads it off their
+   phone ✓✓ → the cashier taps the row ✓✓).
+4. **The customer app tells the guest** ✓✓ → the **token** is in the order modal ✓✓ (the
+   cashier's lookup key ✓✓ — it used to show only the long order number ✗✗) → the
+   sentence follows the mode ✓✓ → *"Please pay at the cashier counter **before we start
+   preparing** your order."* ✓✓ vs *"…when you collect your order."* ✓✓ → the status says
+   **"Awaiting payment"** ✓✓.
+5. **The expiry** ✓✓ → a prepay order whose money never arrives is **cancelled after 10
+   minutes** ✓✓ → a background sweep in the backend's lifespan ✓✓ (one worker ✓✓ → one
+   sweep ✓✓) → the staff-entered orders are the cashier's to manage (no auto-expiry ✗✗).
+
+**The locked mode** ✓✓ → `prepay_online` is wired into the model but **refused** ✓✓:
+the backend raises a 400 with the reason ✓✓ and the settings screen shows the option
+**disabled** ✓✓ → it needs three things that do not exist yet ✗✗: a customer-app checkout
+(the DuitNow QR ✗✗), a **per-tenant merchant account** (today only the *platform's* SaaS
+billing has a gateway ✗✗), and the plan feature ✓✓ → offering it would be a promise the
+product cannot keep ✓✓.
+
+**The presets seed it** ✓✓ → a cafe, a fast food and a stall take the money **at the
+counter** ✓✓ (the guest orders on their phone and pays when they come for it ✓✓) → a
+restaurant and a bar take it at the table ✓✓ → the preset is only the **starting point**
+✓✓ → the tenant changes it ✓✓.
+
+**The test:** `scripts/pos_phase6_test.js` → **33/33 ✓✓** — the dropdowns, the refusals,
+the snapshot, the gate, the counter row, the backend's refusal, the payment, the kitchen's
+"PAID" badge, the customer app's token + wording + status, and the restore ✓✓.
+
 **The lesson of this phase (a trap for every browser test here):** a **low-stock item asks for a
 confirmation** (`confirm()`) → Playwright **dismisses dialogs by default** → a dismissed confirm
 means the item is **not** added → the cart stays empty → the test fails for a reason that has
@@ -798,6 +859,7 @@ payment: either**
 | **3 — the wording** — **DONE(Nov 5, 2026)** | the type-aware last step ("Served" / "Collected") — the rule in `utils/businessType.js`, the labels in `common:status.*` (en/zh/km), four surfaces (the queue, the history, the dashboard, the kiosk's search) + the two raw-status holes closed — **no API change, no migration** | tiny |
 | **4 — the anchor** — **DONE(Nov 5, 2026)** | the takeaway's **name** (`orders.customer_name`, nullable) + the **token** (derived from the order number — no column) + the name and the token on the kitchen ticket, the receipt, the queue card and the PWA | medium |
 | **4b — the counter sees the takeaways** — **DONE(Nov 5, 2026)** | the **Takeaway view** beside Queue/Tables — the takeaways that are not settled yet, the oldest first, the **token** as the headline, the name, the items, the status and a **Pay** action (only a served order can be paid for) | small |
+| **6 — the payment timing, per order type** — **DONE(Nov 6, 2026)** | the **per-order-type mode map** (the tenant sets it ✓✓) + the **snapshot on the order** ✓✓ + the **kitchen's gate** (enforced by the backend too ✓✓) + the **counter's Collect action** ✓✓ + the **customer app's token & wording** ✓✓ + the **expiry** ✓✓ → see Phase 6 below ✓✓ | medium |
 | **5 — the payment timing** — **DONE(Nov 6, 2026, re-scoped by Kens)** | the **per-order-type map** (`outlet_settings.payment_timing`) + the **kitchen's gate** (an order that waits for its money stays out of the kitchen) + the **payment's transition** (the money lands → the order goes to "confirmed" → the kitchen sees it) + the **customer app tells the guest to pay at the counter**. **Kens's decision: the customer app is POSTPAY** (the guest orders and pays at the cashier counter — the standard restaurant shape) → **the prepay flow (the DuitNow QR in the customer app) is NOT built** ✗ → the map is postpay for both types → **prepay belongs to the delivery app** (it has its own checkout) | medium |
 | **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
 | **7 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
