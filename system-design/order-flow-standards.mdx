@@ -452,6 +452,58 @@ a takeaway with no table → **200** with no table · a dine-in with no table �
 table · the cleanup cancels the test orders (there is no DELETE `/orders/{id}`—
 the API's own way is `PATCH /{id}/cancel`).
 
+### 4.0b Phase 2 — the presets (Nov 5, 2026 ✓✓)
+
+**The business type is a PRESET, and it is a PRESET in the code** — one module,
+`backend/app/services/business_presets.py`, holds the five types and the knobs each one
+seeds. **The code never branches on the business type** — the settings are read, always.
+
+**The knobs** — exactly the table in §3.1:
+
+| Knob | Restaurant | Cafe | Fast Food | Bar | Stall |
+|---|---|---|---|---|---|
+| `table_required` | true | false | false | true | false |
+| `allow_dine_in` | true | true | false | true | false |
+| `allow_takeaway` | true | true | true | true | true |
+| `allow_delivery` | false | false | false | false | false |
+| `auto_confirm_orders` | false | true | true | false | true |
+| `tips_enabled` | true | true | false | true | false |
+| `split_bill_enabled` | true | false | false | true | true |
+
+**Where the preset applies — on the CHANGE, in the backend, in one place:**
+`PUT /api/settings/{outlet_id}` → when `business_type` differs from the stored one,
+`apply_preset()` seeds the knobs → **then the request's own values land on top of the
+preset** (the tenant's explicit word beats the preset's default) → **saving anything else
+never re-applies it** (a tuned tenant keeps its tuning ✓✓).
+
+**The confirmation (§4.1 step 2)** — the frontend asks the backend what the type would
+change (`GET /api/settings/presets`) and shows it: *"Apply the cafe setup? This changes
+your order settings"* → the list, knob by knob, old → new → **the UI carries no copy of
+the rules** (one source of truth: the backend) ✓✓. The type change is **sent alone**; the
+backend seeds and the frontend reads the seeded settings back ✓✓.
+
+**The route got its gates (the audit recipe)** — the settings routes had **no
+permission and no tenant check** ✗ → now:
+- `GET /api/settings/{outlet_id}` → `require_permission("settings:read")` +
+ `require_outlet_access` (the outlet's tenant must be the caller's);
+- `PUT /api/settings/{outlet_id}` → `require_permission("settings:write")` +
+ `require_outlet_access` — **the PUT had no permission at all** ✗✗ → a manager can
+ write the settings again (`ROLE_PERMISSIONS` → `settings:write`).
+
+**The delivery is off everywhere** — `allow_delivery` is **false in every preset** ✓ and
+the column's default is now **false** too (the delivery flow is not built → the type must
+never switch it on).
+
+**The five types, not six** — the picker offers restaurant / cafe / fast food / bar /
+**stall** → **`food_court` is dropped** (a food court is a set of stalls → §3.3). A tenant
+that still carries the old value keeps it visible (it is not silently changed) ✓.
+
+**The flow test** — `/tmp/phase2_preset_test.sh` → **23/23**: the preset seeds on the
+change · **a tuned value survives a second save** ✓ · an unknown type changes nothing ·
+another tenant's outlet → **403** (GET and PUT) · the settings are restored. The browser
+path (a signed-in session, not an API key) was tested separately ✓✓ — the login, the
+presets read, the type change and the seeded result.
+
 ### 4.1 How the setup happens — the mechanic
 
 1. **Settings → Business** → the tenant picks the business type;
@@ -549,7 +601,7 @@ payment: either**
 | Phase | What | Size |
 |---|---|---|
 | **1 — the takeaway bug** — **DONE(Nov 5, 2026)** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** |
-| **2 — the preset** | the business type becomes live — the confirmation, the preset table, `business_presets.py` · the `allow_delivery` **column default → False** (it is True today, `models.py:366`) → the existing tenants keep their own value (the column default only affects a new outlet) | small |
+| **2 — the preset** — **DONE(Nov 5, 2026)** | the business type is live — `backend/app/services/business_presets.py` (the five types, the knobs) · the confirmation in Settings → Business (the frontend reads `GET /api/settings/presets` → **no copy of the rules in the UI**) · the preset applies **on the change**, in the backend, and the request's own values land on top · the `allow_delivery` **column default → False** · the settings routes got their **permission + tenant gate** · `food_court` is dropped, `stall` is in | small |
 | **3 — the wording** | the type-aware last step ("Served" / "Collected") — translation only | tiny |
 | **4 — the anchor** | the takeaway's **name** + the **token** (the short order number) + the name on the kitchen ticket and the printed receipt | medium |
 | **4b — the counter sees the takeaways** | `OrderQueue.jsx:185` already computes `takeawayOrders` and **never renders it** → a **Takeaway view** beside Queue/Tables with the unpaid ones and a **Pay** action | **small** |
