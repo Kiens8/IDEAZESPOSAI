@@ -82,7 +82,8 @@ migration ✓✓.** The same is true of `status` (a `String(20)`) → the delive
    driver need a column (a `delivery` JSON on the order, or the tenant's JSON in the
    settings);
 3. **the in-venue PWA must lose its delivery chip ✓✓** — the delivery belongs to the
-   delivery app.
+   delivery app. **DONE ✓✓ (Nov 5, 2026 ✓✓)** — the chip, the visibility rule and the
+   "no type at all" rule are gone from `customer-app/js/app.js` ✓ ✓ ✓✓ ✓ ✓.
 
 **A hawker's counter is not a fourth order type** — the fulfilment is the same as a
 takeaway; what differs is the anchor and the payment timing.
@@ -295,6 +296,40 @@ queue.
 
 ## 4. The tenant setup — the scenarios
 
+### 4.0 Phase 1 — what was implemented (Nov 5, 2026 ✓✓)
+
+**The bug ✓✗ ✓** — the staff screen's **Place order** button was disabled without a table
+**whatever the order type was** ✓ ✗ ✓ (`canSubmit={!!selectedTable && settings?.table_required !== false}`)
+✓ ✓ → **a takeaway could not be rung up at all ✓ ✗ ✓** ✓ ✓ (the handler and the backend
+were already correct ✓ ✓) ✓ ✓.
+
+**The rule ✓✓ — one place ✓✓:**
+
+```jsx
+// A table is the anchor of a DINE-IN order only.
+const needsTable = orderType === 'dine_in' && settings?.table_required !== false
+```
+
+**What it changed ✓✓**
+- `canSubmit` → `!needsTable || !!selectedTable` ✓ ✓ (the desktop button and the kiosk's
+  two buttons — `CartPanel.jsx:128` and `:165` ✓ ✓);
+- the submit guard → the same rule ✓ ✓;
+- **the table picker is hidden for a takeaway ✓✓** — the desktop card ✓ ✓, the mobile row ✓ ✓
+  and the kiosk's chip ✓ ✓ → **the kiosk's modal too ✓ ✓**;
+- **switching the type away from a dine-in drops the table ✓✓** (`changeOrderType` ✓ ✓) → **a
+  takeaway carries no table ✓✓** (rail 2 ✓ ✓);
+- **the type falls back ✓✓** — if the tenant switches a type off, the screen does not stay on
+  a type that no longer exists ✓ ✓ (a `useEffect` on the settings ✓ ✓);
+- **the PWA ✓✓** — the takeaway order carries **no table and no uuid** ✓ ✓ (`table_number` and
+  `table_uuid` are null for a non-dine-in ✓ ✓) → the venue still comes from the outlet ✓ ✓ ✓✓;
+- **the PWA's delivery chip is gone ✓✓** — the delivery is a separate app ✓ ✓ ✓ ✓.
+
+**The flow test ✓✓** — `/tmp/phase1_takeaway_test.sh` ✓✓ → **14/14 ✓✓**:
+a takeaway with no table → **200** ✓ ✓ with no table ✓ ✓ · a dine-in with no table → **400
+"A table is required for a dine-in order" ✓✓** · a dine-in with a table → **200** with the
+table ✓ ✓ · the cleanup cancels the test orders ✓ ✓ (there is no DELETE `/orders/{id}` ✓✓ —
+the API's own way is `PATCH /{id}/cancel` ✓ ✓) ✓ ✓ ✓✓ ✓ ✓.
+
 ### 4.1 How the setup happens — the mechanic
 
 1. **Settings → Business** → the tenant picks the business type;
@@ -391,7 +426,7 @@ payment: either**
 
 | Phase | What | Size |
 |---|---|---|
-| **1 — the takeaway bug** | the **Place order** button is gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **cannot place a takeaway at all**; the handler (259) and the backend (`order.py:303`) are already right → **one `needsTable` helper** drives the button, the picker (hidden for a takeaway) and the kiosk chip | **small** |
+| **1 — the takeaway bug** — **DONE ✓✓ (Nov 5, 2026 ✓✓)** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** ✓ |
 | **2 — the preset** | the business type becomes live — the confirmation, the preset table, `business_presets.py` · the `allow_delivery` **column default → False** (it is True today, `models.py:366`) → the existing tenants keep their own value (the column default only affects a new outlet) | small |
 | **3 — the wording** | the type-aware last step ("Served" / "Collected") — translation only | tiny |
 | **4 — the anchor** | the takeaway's **name** + the **token** (the short order number) + the name on the kitchen ticket and the printed receipt | medium |
