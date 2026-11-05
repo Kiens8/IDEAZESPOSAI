@@ -705,7 +705,7 @@ order appearing in the kitchen, the customer app's line and the restore ✓✓.
 |---|---|---|
 | `postpay` | at the table, or when the guest collects | the cashier, after the food ✓✓ |
 | `prepay_at_counter` | **before** the kitchen starts | the cashier, at the counter ✓✓ |
-| `prepay_online` | **before** the kitchen starts | a gateway, in the customer app — **LOCKED** ✗✗ |
+| `prepay_online` | **before** the kitchen starts | a gateway, in the customer app ✓✓ (Phase 7 ✓✓) |
 
 → **not one switch for the outlet** ✗✗ → a **map, one entry per order type** ✓✓:
 ```json
@@ -736,11 +736,11 @@ order appearing in the kitchen, the customer app's line and the restore ✓✓.
    minutes** ✓✓ → a background sweep in the backend's lifespan ✓✓ (one worker ✓✓ → one
    sweep ✓✓) → the staff-entered orders are the cashier's to manage (no auto-expiry ✗✗).
 
-**The locked mode** ✓✓ → `prepay_online` is wired into the model but **refused** ✓✓:
-the backend raises a 400 with the reason ✓✓ and the settings screen shows the option
-**disabled** ✓✓ → it needs three things that do not exist yet ✗✗: a customer-app checkout
-(the DuitNow QR ✗✗), a **per-tenant merchant account** (today only the *platform's* SaaS
-billing has a gateway ✗✗), and the plan feature ✓✓ → offering it would be a promise the
+**The locked mode** ✓✓ → `prepay_online` was wired into the model but **refused** ✓✓ →
+**it is UNLOCKED now** ✓✓ (Phase 7 below ✓✓) → the backend raises a 400 with the reason
+when the tenant has **no payment account** ✓✓ and the settings screen shows the option
+**disabled** with that reason ✓✓ → it needs a customer-app checkout (the DuitNow QR ✓✓)
+and a **per-tenant merchant account** ✓✓ → offering it without them would be a promise the
 product cannot keep ✓✓.
 
 **The presets seed it** ✓✓ → a cafe, a fast food and a stall take the money **at the
@@ -757,6 +757,79 @@ confirmation** (`confirm()`) → Playwright **dismisses dialogs by default** →
 means the item is **not** added → the cart stays empty → the test fails for a reason that has
 nothing to do with the code under test. Every script now accepts the dialogs
 (`page.on('dialog', d => d.accept())`).
+
+**Phase 7 — PAY ONLINE: the DuitNow QR in the customer app** (Nov 6, 2026 ✓✓).
+
+**Kens's ask**
+> "Prepay Online means need to integrate payment method at pwa whether customer order or
+> delivery app."
+
+→ the guest pays **in the customer app**, before the kitchen starts ✓✓.
+
+**The chain, end to end** ✓✓:
+
+```
+the tenant's payment account (the website API)
+  → the customer app shows the QR + the amount
+  → the guest scans it and pays
+  → the gateway says "completed"
+  → the website API confirms it and PUSHES to the POS backend
+  → the order is PAID and CONFIRMED
+  → the kitchen sees it (with the PAID badge)
+```
+
+**The six rules of the phase** ✓✓:
+
+1. **The account gate** ✓✓ → "pay online" needs a **connected payment account** ✓✓ →
+   `backend/app/core/payment_account_cache.py` reads the website API **live** (cached 5
+   minutes ✓✓) → no account → the backend **refuses** the mode with the reason ✓✓ and the
+   settings screen shows the option **disabled** ✓✓ → the customer app would show a QR
+   that nobody can pay ✗✗ → the mode is never offered ✓✓.
+2. **The QR is fetched WITH the key** ✓✓ → an `<img src>` cannot carry the API-key header
+   ✗✗ → the QR endpoint is protected ✗✗ → so the customer app **fetches** it with the
+   header and shows it from a **blob URL** ✓✓ → a plain `<img src>` would come back 401
+   and the guest would stare at a broken image ✗✗.
+3. **The currency is the outlet's** ✓✓ → the payment is created in the **outlet's price
+   currency** ✓✓ (`orders.currency` — the snapshot, like the mode ✓✓) → the guest is
+   charged the amount they were quoted ✓✓ → the gateway converts to the currency it
+   settles in (MYR for DuitNow ✓✓) and **echoes back the currency we asked for** ✓✓.
+4. **The reconciliation compares LIKE FOR LIKE** ✓✓ → the amount ✓✓ **and the currency**
+   ✓✓ → 3.50 USD is not 3.50 MYR ✗✗ → a mismatch is an **alert, not a payment** ✓✓ (the
+   same rule the amount already had ✓✓) → on the POS side too ✓✓
+   (`POST /internal/order-paid` → the order's own currency snapshot ✓✓).
+5. **The push is the truth** ✓✓ → the website API confirms the payment and pushes to the
+   POS backend ✓✓ → the order becomes **paid + confirmed** ✓✓ → the kitchen's gate opens
+   ✓✓ → the order appears with its **PAID** badge ✓✓.
+6. **The guest sees it happen** ✓✓ → the customer app **polls** the order ✓✓ → when the
+   money lands the note changes to *"Payment received — the kitchen has your order."* ✓✓.
+
+**The safety net** ✓✓ → the gateway's webhook is the fast path ✓✓ → but in the sandbox
+the mock sends its webhooks to webhook.site ✗✗ → so the **reconciliation poll** is the
+only path that confirms the money ✓✓ → `website_api/scripts/reconcile_pos_payments.py`
+✓✓ → it is also part of the notification cron ✓✓.
+
+**The test:** `scripts/pos_phase7_test.js` → **23/23 ✓✓** — the account gate ✓✓, the
+settings screen ✓✓, the switch to prepay_online ✓✓, the QR in the customer app ✓✓ (the
+blob URL ✓✓, the amount ✓✓, the wording ✓✓), the sandbox payment ✓✓, the reconciliation
+✓✓, the push ✓✓, the order paid + confirmed ✓✓, the kitchen ✓✓, the restore ✓✓.
+
+**The two bugs this phase found** ✓✓ (both would have cost money):
+
+1. **The QR was broken for the guest** ✗✗ → the URL was relative ✗✗ → it resolved against
+   the wrong origin (the customer app runs on `order.ideazes.com`, the API on
+   `app.ideazes.com` ✗✗) → and even fixed, an `<img src>` cannot send the API key ✗✗ →
+   the guest would have seen a 401 ✗✗ → now: fetched with the header, shown from a blob
+   ✓✓.
+2. **The currency was not checked** ✗✗ → the amount check compared 3.50 with 3.50 without
+   asking **which** currency ✗✗ → the same number in another currency is a different
+   amount of money ✗✗ → now: the currency is checked on both sides ✓✓ and the order
+   carries its own snapshot ✓✓.
+
+**The lesson (a Cloudflare trap, worth remembering):** the customer app's assets are
+**version-pinned in the URL** (`js/app.js?v=2.6.19` ✓✓) and **Cloudflare caches them for
+4 hours** ✓✓ (`max-age=14400` ✓✓) → **a change to the customer app is invisible until the
+version is bumped** ✗✗ → the debug log was not in the file the browser ran ✗✗ → the
+version bump is part of the deploy ✓✓ (the SW cache version too ✓✓).
 
 ### 4.1 How the setup happens — the mechanic
 
@@ -860,9 +933,10 @@ payment: either**
 | **4 — the anchor** — **DONE(Nov 5, 2026)** | the takeaway's **name** (`orders.customer_name`, nullable) + the **token** (derived from the order number — no column) + the name and the token on the kitchen ticket, the receipt, the queue card and the PWA | medium |
 | **4b — the counter sees the takeaways** — **DONE(Nov 5, 2026)** | the **Takeaway view** beside Queue/Tables — the takeaways that are not settled yet, the oldest first, the **token** as the headline, the name, the items, the status and a **Pay** action (only a served order can be paid for) | small |
 | **6 — the payment timing, per order type** — **DONE(Nov 6, 2026)** | the **per-order-type mode map** (the tenant sets it ✓✓) + the **snapshot on the order** ✓✓ + the **kitchen's gate** (enforced by the backend too ✓✓) + the **counter's Collect action** ✓✓ + the **customer app's token & wording** ✓✓ + the **expiry** ✓✓ → see Phase 6 below ✓✓ | medium |
-| **5 — the payment timing** — **DONE(Nov 6, 2026, re-scoped by Kens)** | the **per-order-type map** (`outlet_settings.payment_timing`) + the **kitchen's gate** (an order that waits for its money stays out of the kitchen) + the **payment's transition** (the money lands → the order goes to "confirmed" → the kitchen sees it) + the **customer app tells the guest to pay at the counter**. **Kens's decision: the customer app is POSTPAY** (the guest orders and pays at the cashier counter — the standard restaurant shape) → **the prepay flow (the DuitNow QR in the customer app) is NOT built** ✗ → the map is postpay for both types → **prepay belongs to the delivery app** (it has its own checkout) | medium |
+| **5 — the payment timing** — **DONE(Nov 6, 2026, re-scoped by Kens)** | the **per-order-type map** (`outlet_settings.payment_timing`) + the **kitchen's gate** (an order that waits for its money stays out of the kitchen) + the **payment's transition** (the money lands → the order goes to "confirmed" → the kitchen sees it) + the **customer app tells the guest to pay at the counter**. **Kens's decision: the customer app is POSTPAY by default** (the guest orders and pays at the cashier counter — the standard restaurant shape) → the map is postpay for both types ✓✓ → **the online payment (the DuitNow QR in the customer app) is Phase 7** ✓✓ → it is the tenant's choice, per order type ✓✓ → the delivery app has its own checkout ✓✓ | medium |
 | **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
-| **7 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
+| **7 — pay online** — **DONE(Nov 6, 2026)** | the **DuitNow QR in the customer app** ✓✓ → the guest scans, the money lands, the reconciliation confirms it and pushes to the POS, and the order goes **paid + confirmed** ✓✓ → the kitchen sees it ✓✓ → see Phase 7 below ✓✓ | medium |
+| **8 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
 
 ---
 
