@@ -831,6 +831,70 @@ blob URL ✓✓, the amount ✓✓, the wording ✓✓), the sandbox payment ✓
 version is bumped** ✗✗ → the debug log was not in the file the browser ran ✗✗ → the
 version bump is part of the deploy ✓✓ (the SW cache version too ✓✓).
 
+### 4.0f The two holes the browser found — the menu and the receipt printer (Nov 6, 2026 ✓✓)
+
+Two things a manager could not do, found by driving the real browser (not by reading the
+code). Both are now fixed, both are regression-tested.
+
+**1. A menu item could not be added ✗✗ → the outlet comes from the parent ✗✗**
+
+The insert failed with `NOT NULL constraint failed: menu_items.outlet_id` — the route never
+derived the outlet from the **category** the item belongs to. The rule (the audit recipe,
+gate 2) is unchanged and now holds everywhere in `menu.py`:
+
+> **The tenant of a resource is always DERIVED from the resource** — the client never
+> chooses it. A menu item's outlet is its category's outlet; a category's outlet is the one
+> in the URL, and that outlet must belong to the caller's tenant.
+
+| Route | The tenant comes from | Before |
+|---|---|---|
+| `GET /api/menu/categories?outlet_id=` | the outlet ✓✓ | any outlet could be read ✗✗ |
+| `POST /api/menu/categories?outlet_id=` | the outlet ✓✓ | any outlet could be written ✗✗ |
+| `PUT`/`DELETE /api/menu/categories/{id}` | the category's outlet ✓✓ | any category ✗✗ |
+| `GET /api/menu/items?outlet_id=` | the outlet ✓✓ | any outlet could be read ✗✗ |
+| `GET`/`PUT`/`DELETE /api/menu/items/{id}` | the item's outlet ✓✓ | any item ✗✗ |
+| `POST /api/menu/items` | the **category's** outlet ✓✓ | **the insert failed** ✗✗ |
+
+The old check read `category.customer_id` — a column the `Category` model does not have →
+an `AttributeError` → a **500** instead of a refusal. It now calls the shared helper
+`require_outlet_access(db, request, key_info, outlet_id)` (`backend/app/core/tenant.py`),
+the same one the settings routes use → **a cross-tenant read or write is a 403** ✓✓.
+
+**2. The receipt printer showed NOTHING ticked ✗✗ → the type is normalized ✗✗**
+
+The settings screen ticks the radio whose value equals `receipt_printer_type`. The demo row
+held **`browser`** — the value the *old* hook used for the browser print. No radio matches
+it → **not one of the five was ticked** → the section looked broken (and it really was).
+
+- the canonical types are **`none` · `quick` · `network` · `bluetooth` · `pdf`** ✗✗;
+- `browser` is the legacy name for **`quick`** → it is folded into it **on read and on
+  write** ✓✓, and the stored rows are migrated ✓✓;
+- a value outside the list is **not** stored as a mystery value → it normalizes to `none`
+  ✓✓ (so the "no printer" radio is the one that ticks) ✓✓.
+
+**Which printer types can actually print ✗✗** — the browser does the printing, so:
+
+| Type | How | Can it work? |
+|---|---|---|
+| `quick` | `window.open` + `print()` → the cashier's own printer ✓✓ | **yes** ✓✓ — the cashier picks the printer in the dialog |
+| `pdf` | the browser makes a PDF ✓✓ | **yes** ✓✓ — no printer needed ✗✗ |
+| `bluetooth` | Web Bluetooth ✗✗ | only in Chrome/Edge, after the user pairs the device ✗✗ |
+| `network` | the ESC/POS bytes to the printer's IP ✗✗ | **NO ✗✗ — always fails from a browser** |
+
+The `network` type is the trap: it needs the **Browser Print Server** bridge (a native
+helper ✗✗) — the fallback (an HTTP POST to `http://<printer>:9100/print` ✗✗) cannot work,
+because a thermal printer on port 9100 speaks raw ESC/POS, not HTTP ✗✗ → the request is
+answered with garbage or nothing ✗✗ → **the receipt never appears** ✗✗. A tenant who needs
+a network printer needs the bridge (or the `quick` type, which prints through the browser
+dialog ✓✓).
+
+**The lesson (a test helper is production ✗✗):** the regression's cleanup script reset the
+printer type to `browser` after every run ✗✗ — so the fix looked broken again the moment
+the suite ran ✗✗ → the cleanup script is part of the product's behaviour, not just a
+convenience ✗✗ → it now resets to `quick` ✓✓ and it also removes the orders with **no
+customer name** ✗✗ (the kiosk creates them without one ✗✗ → 293 stale orders had piled up
+and they broke the takeaway empty-state test ✗✗).
+
 ### 4.1 How the setup happens — the mechanic
 
 1. **Settings → Business** → the tenant picks the business type;

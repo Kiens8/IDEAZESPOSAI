@@ -422,6 +422,29 @@ X-Internal-Service: backend-pos
 | `/api/vouchers/*` | GET/POST | API Key | Vouchers |
 | `/api/ai/*` | GET/POST | API Key | AI features |
 
+#### The menu routes — the tenant gate (added Nov 6, 2026 ✓✓)
+
+`/api/menu/*` was the one group of write routes that had **no tenant check at all** — a
+signed-in manager could read and write **another restaurant's** menu by changing the
+`outlet_id` in the URL ✗✗. It is now gated like every other route:
+
+| The rule | How it is enforced |
+|---|---|
+| **Who may call it?** | the existing `require_permission("menu:read" / "menu:write")` ✓✓ (the customer app's public key carries `menu:read` only ✗✗ — it can never write a menu ✓✓) |
+| **Whose data may it touch?** | `require_outlet_access(db, request, key_info, outlet_id)` — `backend/app/core/tenant.py` ✓✓ → the outlet's tenant is derived from **`outlets.customer_id`** ✓✓, never from the client ✗✗ |
+| **Which outlet?** | the one in the URL (the categories) or the one **derived from the parent** (a menu item → its category; an item → its outlet) ✓✓ |
+| **When it does not match** | **403** ✗✗ — `This outlet does not belong to the restaurant you are ordering from` ✓✓ |
+
+**The client never chooses the tenant ✗✗** — a menu item's outlet comes from its
+**category** ✓✓ (the parent resource), and that is also what fixed the insert that used
+to fail with `NOT NULL constraint failed: menu_items.outlet_id` ✗✗ → see
+`order-flow-standards.mdx` §4.0f ✓✓.
+
+**The lesson ✗✗:** a check that reads a column the model does not have (`category.customer_id`
+✗✗) does not refuse — it **raises an AttributeError** → a 500 ✗✗ → and a check that is
+skipped when the claim is missing ✗✗ does not protect anything ✗✗ → the gate must be the
+**shared helper** ✗✗, so there is one implementation and one error string ✓✓.
+
 #### External Endpoints (Full Hybrid Auth - Future)
 
 | Endpoint | Method | Auth | Description |
