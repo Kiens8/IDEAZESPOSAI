@@ -541,7 +541,7 @@ for real, in a browser, against **app.ideazes.com** — not against a mock ✓�
 | Script | What it proves | Result |
 |---|---|---|
 | `scripts/pos_phases_test.js` | the five types in the picker · `food_court` gone · the confirmation modal shows the diff · **Cancel changes nothing** · Apply seeds the preset · the tabs raise no failed API call · the picker follows the outlet | **27/27** |
-| `scripts/pos_phase1_test.js` | a dine-in without a table → the button is **disabled** · a takeaway without a table → the button is **enabled** · a **real takeaway order is created with no table** (`type=takeaway, table=null`) · a takeaway with a table keeps the table · the order is cancelled after | **11/11** |
+| `scripts/pos_phase1_test.js` | a dine-in without a table → the button is **disabled** · a takeaway without a table → the button is **enabled** · a **real takeaway order is created with no table** (`type=takeaway, table=null`) · a takeaway with a table keeps the table · the order is cancelled after | **11/11** → **stale in the audit (Nov 6) ✗✗**: the script clicks the order-type chip while the **AI upsell popup** is open → the popup intercepts the click → it crashes. The **feature** is fine (a manual replay places the takeaway) → the script needs the popup closed first (§5.1) |
 | `scripts/pos_settings_sweep.js` | **every checkbox on every tab** (Tax, Payment, Kitchen, Order, AI, QR, Security) → change → Save → read back from the API → restore | **34/34** |
 | `scripts/pos_settings_inputs_test.js` | **every text and number input** → change → Save → see which field moved → restore (the read-only and the disabled ones are skipped **by design**) | **29/32** → the 3 were a test-index bug, re-proved **12/12** |
 | `scripts/pos_settings_holes.js` | **a failed save must not say "Saved"** · **a failed load must not show an empty form** | **3/3** (after the fix) |
@@ -669,7 +669,8 @@ the counter ✓✓.
 table, one payment) and the counter's list (the token identifies it) ✓✓ — the same order, two
 questions ✓✓.
 
-**The test:** `scripts/pos_phase4b_test.js` → **17/17 ✓✓**. The row carries stable test hooks
+**The test:** `scripts/pos_phase4b_test.js` → **17/17 ✓✓** (the audit re-run: **14 pass, 2
+fail** — a stale locator, not a broken feature ✗✗ → see below ✓✓). The row carries stable test hooks
 (`data-testid="takeaway-row" / "takeaway-advance" / "takeaway-pay"`) → the tests address the row
 by the hook, not by the wording (the wording follows the business type ✗✗) ✓✓.
 
