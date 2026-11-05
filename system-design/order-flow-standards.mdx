@@ -127,6 +127,13 @@ Every order needs something to point at: the counter, the kitchen and the bill.
 **The anchor priority: the table → the token → the name.** The name is the fallback for the
 counter orders that have no token.
 
+**A takeaway may carry a table or carry none — the table is a HINT, not the anchor.**
+The guest scans the table QR and then orders a takeaway: the order carries T5, and the
+staff know the food is going to that table. The guest orders from the app: there is no
+table. **Both are valid.** The takeaway is always its own order and its own bill — it
+**never** joins the table's bill (the queue groups the dine-in orders only,
+`OrderQueue.jsx:189`).
+
 **The token is nearly free** — the order number already exists (`order_prefix` — "ORD-00042")
 → "A12" is a short form of it → no new table, no new field.
 
@@ -190,7 +197,7 @@ the SaaS billing already uses.
 
 | How they arrive | The venue | The table | The state |
 |---|---|---|---|
-| **the table QR ✓✓** | from the uuid ✓ ✓ | known ✓ ✓ | **works today ✓✓** → they switch to Takeaway ✓ ✓ → **the table is dropped ✓✓** (Phase 1 ✓ ✓) ✓ ✓ |
+| **the table QR ✓✓** | from the uuid ✓ ✓ | known ✓ ✓ | **works today ✓✓** → they switch to Takeaway ✓ ✓ → **the table comes along as a hint ✓✓** (the takeaway is its own order ✓ ✓) ✓ ✓ |
 | **a deep link ✓✓** (`?outlet=<id>&type=takeaway` ✓ ✓) | from the link ✓ ✓ | **none ✓✓** | **broken today ✗✗ ✓✓** → `tableNumber = tableParam || 'T1'` invents a table ✓ ✗ ✓ → the uuid lookup fails ✓ ✗ ✓ → `venueResolved` is false ✓ ✗ ✓ → the venue picker opens on a takeaway order ✓ ✗ ✓ ✓ ✓ |
 | **the installed app ✓✓** (no QR ✓ ✓) | the picker ✓ ✓ | **mandatory ✗✗ ✓✓** | **broken today ✗✗ ✓✓** → the picker is group → outlet → **table ✓✓** ✓ ✓ → a counter-only outlet (a fast food ✓ ✓, a stall ✓ ✓) has **no tables ✓✓** → *"No tables available" ✓ ✗ ✓* ✓ ✓ ✓ ✓ |
 
@@ -369,8 +376,8 @@ const needsTable = orderType === 'dine_in' && settings?.table_required !== false
   takeaway carries no table ✓✓** (rail 2 ✓ ✓);
 - **the type falls back ✓✓** — if the tenant switches a type off, the screen does not stay on
   a type that no longer exists ✓ ✓ (a `useEffect` on the settings ✓ ✓);
-- **the PWA ✓✓** — the takeaway order carries **no table and no uuid** ✓ ✓ (`table_number` and
-  `table_uuid` are null for a non-dine-in ✓ ✓) → the venue still comes from the outlet ✓ ✓ ✓✓;
+- **the PWA ✓✓** — the delivery chip is gone ✓ ✓; **the takeaway keeps its table ✓✓** (a
+  guest who scanned the QR carries T5 ✓ ✓ — the table is a hint ✓ ✓, not the anchor ✓ ✓) ✓✓;
 - **the PWA's delivery chip is gone ✓✓** — the delivery is a separate app ✓ ✓ ✓ ✓.
 
 **The flow test ✓✓** — `/tmp/phase1_takeaway_test.sh` ✓✓ → **14/14 ✓✓**:
@@ -490,7 +497,9 @@ payment: either**
 
 1. **The backend is the authority** — `order.py:303` requires a table for a dine-in order and
  allows a null `table_id` otherwise → the frontend stops contradicting it;
-2. **a takeaway keeps `table_id = NULL`** — no model change (`models.py:202`);
+2. **a takeaway may carry a table, or none** — the PWA's guest has one (they scanned the
+   QR), the staff's takeaway does not (the staff enter a **name** instead). No model
+   change (`models.py:202`); the takeaway never joins the table's bill;
 3. **the money path does not move** — the price, the discount, the tax and the currency are
  identical for every type;
 4. **the isolation does not move** — the tenant, the outlet, the table and the customer are
