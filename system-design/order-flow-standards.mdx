@@ -619,6 +619,37 @@ storefront (`delivery-app.mdx`), so the customer app must not offer it ✓✓. T
 browser (and the service worker) keeps serving the old file ✓✓. That is what hid this fix from the
 first test run ✓✓ (the file was correct on the server, the browser had the old one) ✓✓.
 
+**Phase 4b — the counter's view** (Nov 5, 2026 ✓✓). The Queue view answers "what is the kitchen
+working on"; the **Takeaway view** answers "what is the counter waiting for". One flat list of
+the **unpaid** takeaways, the **oldest first** (the one that waits the longest is called first).
+
+- the **token** is the headline — that is what the guest is called by ✓✓,
+- the **name** the guest gave sits beside it ("No name given" when there is none) ✓✓,
+- the items, the time, the status and the total ✓✓,
+- the **advance** button (the same status machine as the queue card) ✓✓ and
+- the **Pay** action — **only a served order can be paid for** (the same rule as the queue card:
+  the food has to be out of the kitchen first, and the order has to still have something on it) ✓✓.
+- the tab **counts** the takeaways that are waiting ✓✓.
+
+**Why the tab is not a section of the Queue view** — the queue is the kitchen's list (it holds
+the dine-ins and the takeaways); the counter's list is a different question, and a cafe that only
+does takeaways must not have to hunt through five status sections to find the guest waiting at
+the counter ✓✓.
+
+**A takeaway that carries a table is in BOTH lists** — the table's bill (it settles with the
+table, one payment) and the counter's list (the token identifies it) ✓✓ — the same order, two
+questions ✓✓.
+
+**The test:** `scripts/pos_phase4b_test.js` → **17/17 ✓✓**. The row carries stable test hooks
+(`data-testid="takeaway-row" / "takeaway-advance" / "takeaway-pay"`) → the tests address the row
+by the hook, not by the wording (the wording follows the business type ✗✗) ✓✓.
+
+**The trap the test found: the demo's stock is real.** Every test order **eats the ingredients**
+(the recipe's stock is deducted ✓✓) → after a few runs the "Spring Roll Wrapper" was at **0** →
+the next order was refused with *"Cannot add to cart due to stock issues"* ✗✗ → the test failed
+on the STOCK instead of on the code ✗✗. `scripts/pos_cleanup_test_data.py` now restores the demo
+data after the test runs (the orders, the stock, the printer settings) ✓✓.
+
 **The lesson of this phase (a trap for every browser test here):** a **low-stock item asks for a
 confirmation** (`confirm()`) → Playwright **dismisses dialogs by default** → a dismissed confirm
 means the item is **not** added → the cart stays empty → the test fails for a reason that has
@@ -725,7 +756,7 @@ payment: either**
 | **2 — the preset** — **DONE(Nov 5, 2026)** | the business type is live — `backend/app/services/business_presets.py` (the five types, the knobs) · the confirmation in Settings → Business (the frontend reads `GET /api/settings/presets` → **no copy of the rules in the UI**) · the preset applies **on the change**, in the backend, and the request's own values land on top · the `allow_delivery` **column default → False** · the settings routes got their **permission + tenant gate** · `food_court` is dropped, `stall` is in | small |
 | **3 — the wording** — **DONE(Nov 5, 2026)** | the type-aware last step ("Served" / "Collected") — the rule in `utils/businessType.js`, the labels in `common:status.*` (en/zh/km), four surfaces (the queue, the history, the dashboard, the kiosk's search) + the two raw-status holes closed — **no API change, no migration** | tiny |
 | **4 — the anchor** — **DONE(Nov 5, 2026)** | the takeaway's **name** (`orders.customer_name`, nullable) + the **token** (derived from the order number — no column) + the name and the token on the kitchen ticket, the receipt, the queue card and the PWA | medium |
-| **4b — the counter sees the takeaways** | `OrderQueue.jsx:185` already computes `takeawayOrders` and **never renders it** → a **Takeaway view** beside Queue/Tables with the unpaid ones and a **Pay** action | **small** |
+| **4b — the counter sees the takeaways** — **DONE(Nov 5, 2026)** | the **Takeaway view** beside Queue/Tables — the takeaways that are not settled yet, the oldest first, the **token** as the headline, the name, the items, the status and a **Pay** action (only a served order can be paid for) | small |
 | **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** — **two details verified in the code**: ① `POST /{order_id}/payments` (`order.py:809`) accepts a full payment (`is_split=false` → `payment_type="full"`) and sets `payment_status="paid"` — **but it does NOT move `status` from `pending` to `confirmed`✗ → that transition must be added**; ② **it is a staff route** (`require_staff_permission("staff:orders:write")`) → **the PWA's customer key cannot call it✗ → the PWA needs its own route** (`POST /api/pwa/orders/{id}/pay` — `pwa.py` already has the ownership proof: the `table_uuid` / the `dining_customer_id`) | medium |
 | **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
 | **7 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
