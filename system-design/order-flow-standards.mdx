@@ -396,7 +396,7 @@ payment: either**
 | **3 — the wording** | the type-aware last step ("Served" / "Collected") — translation only | tiny |
 | **4 — the anchor** | the takeaway's **name** + the **token** (the short order number) + the name on the kitchen ticket and the printed receipt | medium |
 | **4b — the counter sees the takeaways** | `OrderQueue.jsx:185` already computes `takeawayOrders` and **never renders it** → a **Takeaway view** beside Queue/Tables with the unpaid ones and a **Pay** action | **small** |
-| **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (`POST /orders/{id}/payments` + the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** | medium |
+| **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** — **two details verified in the code ✓✓**: ① `POST /{order_id}/payments` (`order.py:809`) accepts a full payment (`is_split=false` → `payment_type="full"`) and sets `payment_status="paid"` — **but it does NOT move `status` from `pending` to `confirmed` ✓✗ → that transition must be added ✓✓**; ② **it is a staff route** (`require_staff_permission("staff:orders:write")`) → **the PWA's customer key cannot call it ✓✗ → the PWA needs its own route ✓✓** (`POST /api/pwa/orders/{id}/pay` — `pwa.py` already has the ownership proof: the `table_uuid` / the `dining_customer_id`) | medium |
 | **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
 | **7 — the bar's tab** | the open tab — a pseudo-table reusing the table's bill machinery | medium |
 
@@ -423,6 +423,8 @@ payment: either**
  cafe can run postpay and a bar can run prepay;
 10. **the delivery's timing belongs to the delivery app's own tenant setting** — not to the
  business type;
+10b. **a customer-facing payment route is its own route ✓✓** — the staff payment endpoint is
+ a staff route; the PWA's prepay needs the ownership proof, not a staff session ✓ ✓;
 11. **a prepay order must never reach the kitchen unpaid** — the webhook confirms it and the
  kitchen filters on the payment — no new order status — **and it needs an expiry rule**
  (there is no auto-cancel today);
