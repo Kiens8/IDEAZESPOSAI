@@ -52,6 +52,38 @@ isolation.
 type's flow. Its rules (the address, the fee, the driver, the payment) live in the delivery
 app and are the same for everyone.
 
+### 2.1a What already exists — the order type column
+
+**The `orders` table already carries the order type ✓✓:**
+
+```python
+# Order type: dine_in, takeaway, delivery
+order_type = Column(String(20), default="dine_in")   # models.py:216-217
+```
+
+**It is a plain `String(20)` — not an enum, not a CHECK constraint — so a new value needs no
+migration ✓✓.** The same is true of `status` (a `String(20)`) → the delivery's
+`out_for_delivery` also needs no migration ✓✓.
+
+| The piece | Where | The state |
+|---|---|---|
+| the column | `models.py:217` | `String(20)`, default `dine_in` |
+| the create | `order.py:181` (`order_type: str = "dine_in"`) | **no whitelist — any string is accepted ✓✗** |
+| the dine-in table rule | `order.py:303` | a table is required for a dine-in, not for the others |
+| the staff chips | `StaffOrder.jsx:359-362` + the kiosk `790-792` | the three chips exist and honour `allow_dine_in / allow_takeaway / allow_delivery` |
+| the reports | `reportsConfig.js:233-235` | the three types are already split |
+| the PWA | `customer-app/js/app.js:1518` | it sends `order_type` — **and it has a delivery chip (`app.js:1144`) that must go ✓✓** (the delivery is a separate app; a chip with no address and no fee is a broken flow) |
+| `delivery_address` | `models.py:239` | **the column exists and is plumbed ✓✓** (the create, the read, six response sites) |
+
+**The three gaps this leaves**
+1. **no whitelist ✓✗** → a typo ("takeway") is stored silently → add
+   `Literal["dine_in", "takeaway", "delivery"]` to the schema (tiny);
+2. **the delivery's fee and driver are missing** — the address is there, the fee and the
+   driver need a column (a `delivery` JSON on the order, or the tenant's JSON in the
+   settings);
+3. **the in-venue PWA must lose its delivery chip ✓✓** — the delivery belongs to the
+   delivery app.
+
 **A hawker's counter is not a fourth order type** — the fulfilment is the same as a
 takeaway; what differs is the anchor and the payment timing.
 
@@ -73,7 +105,12 @@ takeaway; what differs is the anchor and the payment timing.
 | Stall | **Collected** |
 
 → **No new status value for the dine-in or the takeaway** — no migration, no data change, no
-API change. **The one exception:** the delivery adds `out_for_delivery`.
+API change. **The one exception:** the delivery adds `out_for_delivery` — and because
+`status` is a plain `String(20)`, **that needs no migration either ✓✓**; it costs **about
+seven places** in the frontend: the queue's flow array (`OrderQueue.jsx:132`), its icon
+switch (`125`), its labels (`944`), the "all served" rule (`935` — a dispatched order is not
+served), the kitchen's filter (`Kitchen.jsx:545` — an out-for-delivery order must leave the
+kitchen), the unpaid-served list (`OrderSearchPanel.jsx:34`) and the report's status counts.
 
 ### 2.3 The anchor — what identifies the order
 
