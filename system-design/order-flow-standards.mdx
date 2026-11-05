@@ -566,6 +566,50 @@ locales) → one wording, one place.
 → the same pages must now say "Collected" → and the Chinese must say 标记为已取餐 → then the
 business type, the settings and the orders are restored. **17/17 ✓✓.**
 
+### 4.0e Phase 4 — the anchor: the name and the token (Nov 5, 2026 ✓✓)
+
+A takeaway at the counter is identified by a **TOKEN** ("A4821") and, when the guest gives a
+name, by that **NAME**. The status value never changes; the anchor is what the staff calls out.
+
+**The name — on the order, not on the customer.** `orders.customer_name` (a nullable column).
+It is **not** put on the dining customer: that would create a customer record for every walk-in,
+which cuts against the walk-in principle (§2.3).
+
+**The token — derived, never stored.** The order number already exists
+(`ORD-20261105-4821`) → the token is its short form → **no new column for the token, no
+migration for it**. The rule lives in **one place**: `frontend/src/utils/orderToken.js`
+→ `orderToken(order)`. The order number's last segment is unique within the day (the database
+enforces the order number's uniqueness), so the token is unique within the day too — exactly the
+window a counter token lives in.
+
+**Where the anchor shows up**
+
+| Where | What it shows |
+|---|---|
+| The kiosk (`StaffOrder.jsx`) | a **name field** for the order types without a table (a dine-in is anchored by the table) — the embedded screen *and* the full-screen kiosk |
+| The queue (`OrderQueue.jsx`) | the card's headline is the **token** (the full number stays in the tooltip) and the name sits beside it |
+| The kitchen (`Kitchen.jsx`) | the card shows the token + the name; the **ticket** shows the token big and the name in bold |
+| The **receipt** (`useReceiptPrinter.js`) | the token (a settlement of a whole table has many orders and its anchor is the table → no token there) and the name |
+| The **customer app (PWA)** | a name field on the menu page for a counter order; the name goes out with the order |
+
+**The backend**
+- `models.py` → `orders.customer_name` (nullable) + an **idempotent** column check in `main.py`
+  (`_ensure_added_columns()` — `create_all` only creates a missing table, it never adds a column).
+- `routes/order.py` → `OrderCreate.customer_name`, `OrderResponse.customer_name` and the five
+  manual `OrderResponse(...)` constructions that build the answers by hand.
+- `services/order_service.py` → it takes the name and stores it (trimmed; an empty name is `None`).
+
+**The test:** `scripts/pos_phase4_test.js` → **14/14 ✓✓** (the staff types a name on a takeaway →
+the order carries it → the queue shows the token and the name → the kitchen ticket shows both →
+the receipt shows both → everything is restored) and `scripts/pos_phase4_pwa_test.js` → **7/7 ✓✓**
+(the PWA's field, the payload, the order).
+
+**The lesson of this phase (a trap for every browser test here):** a **low-stock item asks for a
+confirmation** (`confirm()`) → Playwright **dismisses dialogs by default** → a dismissed confirm
+means the item is **not** added → the cart stays empty → the test fails for a reason that has
+nothing to do with the code under test. Every script now accepts the dialogs
+(`page.on('dialog', d => d.accept())`).
+
 ### 4.1 How the setup happens — the mechanic
 
 1. **Settings → Business** → the tenant picks the business type;
@@ -665,7 +709,7 @@ payment: either**
 | **1 — the takeaway bug** — **DONE(Nov 5, 2026)** | the **Place order** button was gated on a table regardless of the order type (`StaffOrder.jsx:385`) → the staff and the kiosk **could not place a takeaway at all**; the handler (259) and the backend (`order.py:303`) were already right → **one `needsTable` rule** now drives the button, the picker and the kiosk chip | **small** |
 | **2 — the preset** — **DONE(Nov 5, 2026)** | the business type is live — `backend/app/services/business_presets.py` (the five types, the knobs) · the confirmation in Settings → Business (the frontend reads `GET /api/settings/presets` → **no copy of the rules in the UI**) · the preset applies **on the change**, in the backend, and the request's own values land on top · the `allow_delivery` **column default → False** · the settings routes got their **permission + tenant gate** · `food_court` is dropped, `stall` is in | small |
 | **3 — the wording** — **DONE(Nov 5, 2026)** | the type-aware last step ("Served" / "Collected") — the rule in `utils/businessType.js`, the labels in `common:status.*` (en/zh/km), four surfaces (the queue, the history, the dashboard, the kiosk's search) + the two raw-status holes closed — **no API change, no migration** | tiny |
-| **4 — the anchor** | the takeaway's **name** + the **token** (the short order number) + the name on the kitchen ticket and the printed receipt | medium |
+| **4 — the anchor** — **DONE(Nov 5, 2026)** | the takeaway's **name** (`orders.customer_name`, nullable) + the **token** (derived from the order number — no column) + the name and the token on the kitchen ticket, the receipt, the queue card and the PWA | medium |
 | **4b — the counter sees the takeaways** | `OrderQueue.jsx:185` already computes `takeawayOrders` and **never renders it** → a **Takeaway view** beside Queue/Tables with the unpaid ones and a **Pay** action | **small** |
 | **5 — the payment timing** | the per-order-type map + the PWA's **prepay** (the DuitNow QR) + **the kitchen's filter** (never cook an unpaid order) + the staff's payment screen + **the prepay expiry rule** — **two details verified in the code**: ① `POST /{order_id}/payments` (`order.py:809`) accepts a full payment (`is_split=false` → `payment_type="full"`) and sets `payment_status="paid"` — **but it does NOT move `status` from `pending` to `confirmed`✗ → that transition must be added**; ② **it is a staff route** (`require_staff_permission("staff:orders:write")`) → **the PWA's customer key cannot call it✗ → the PWA needs its own route** (`POST /api/pwa/orders/{id}/pay` — `pwa.py` already has the ownership proof: the `table_uuid` / the `dining_customer_id`) | medium |
 | **6 — the stations (deferred)** | not a food-court need any more → a cafe's bar and a restaurant's grill → (a) the category as the station + the kitchen display's filter → (b) the `stations` table + `menu_items.station_id` | medium → large |
