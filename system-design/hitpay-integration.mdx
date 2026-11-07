@@ -5,9 +5,9 @@ description: How the Malaysian payment methods get into the customer portal, wha
 
 # HitPay Integration — Malaysia (DuitNow, Touch 'n Go)
 
-**Document Version:** 5.0  
-**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike · **v4** — how the webhook proves the payment, both billing cycles allowed, and the sole-proprietor onboarding · **v4.1** — what was built, and the bugs the build found · **v5** — **the actual changes**: every file, the real code, the database, the cron and the verification  
-**Status:** **Built and tested (sandbox)** — the backend, the cron and the site are in; the production account is the next step  
+**Document Version:** 6.0  
+**Created:** 2026-11-02 (v1) · **Updated:** 2026-11-02 (v2 — Touch 'n Go is no longer a recurring method; the price converts to MYR) · **v3** — the method is locked per subscription; the Pay now button on every unpaid invoice · **v3.1** — the QR is generated at the click (never before), for DuitNow and Touch 'n Go alike · **v4** — how the webhook proves the payment, both billing cycles allowed, and the sole-proprietor onboarding · **v4.1** — what was built, and the bugs the build found · **v5** — **the actual changes**: every file, the real code, the database, the cron and the verification  · **v6** — §18 the POS layer: the tenant's own HitPay account, the country rule, the tenant-signed webhook · §19 **the deployment**: what is live, what is not, and the files the production website API still needs  
+**Status:** **Built and tested (sandbox)** — the website API is built and tested (22/22); **the production website API (45.79.203.53) is not deployed yet** → §19. The POS backend and the frontend are live  
 **Scope:** the website API (the billing system), the site (the customer portal), the renewal cron  
 **Related:** `payway-integration.mdx` (Cambodia), `program-changes/subscription-lifecycle/subscription-lifecycle.mdx` (the access rules we just built), `program-changes/customer-portal/subscription-wizard-proposal.mdx` (the wizard UI this plugs into)
 
@@ -1604,3 +1604,241 @@ All read on **November 2, 2026**:
 `website_api/.env` (`HITPAY_API_KEY`, `HITPAY_SALT`) and are **not** in this
 repository, not in git, and not in the browser. The sandbox key is a test
 key; the production account is a **separate** account with its own keys.
+
+---
+
+## 18. The POS layer — the tenant's own account (November 7, 2026)
+
+Everything above is the **platform's own billing** (Kens's HitPay account,
+the SaaS subscriptions). This section is the other side: the **money a
+guest pays for a meal** in a restaurant that uses the POS.
+
+Three holes brought it here (Kens, November 7, 2026):
+
+1. **DuitNow and Touch 'n Go are Malaysian methods** — an outlet outside
+   Malaysia cannot offer them.
+2. **There was no way for a tenant to enter their own HitPay key and salt** —
+   the customer app fell back to the platform's account.
+3. **The staff order did not use the tenant's account** — the staff recorded
+   a DuitNow payment by hand.
+
+### 18.1 The rule that decides everything
+
+> **The credentials live in the website API. The POS backend never stores
+> them, and the browser never sees them.**
+
+The POS backend asks the website API (over the internal channel) whether the
+tenant has an account, and it forwards a change of credentials — but it
+**stores nothing**. The answer the browser gets is the **masked view**:
+
+```json
+{"connected": true, "provider": "hitpay", "currency": "MYR",
+ "merchant_id": "H12345", "key_hint": "...5678", "updated_at": "2026-11-07 04:00:00"}
+```
+
+The secret (the salt) never comes back — only the last four characters of the
+key, so the staff can recognise which key is configured.
+
+The table is `tenant_payment_accounts` (the website API's database). There is
+**one active account per tenant**: a new set of credentials **updates** the
+row, it never piles up rows (a second active row would make "the account"
+ambiguous). Disconnecting sets `is_active = False` — the row is kept, because
+the payments need it.
+
+### 18.2 The country rule — per OUTLET, not per tenant
+
+`outlet_settings.country` (ISO-2, the column's default is `MY`) decides:
+
+```python
+ONLINE_COUNTRIES = ("MY",)
+def country_supports_online(settings_row) -> bool
+def online_locked_reason(settings_row) -> str | None
+```
+
+The reason is one fixed sentence, everywhere it is refused — in the settings
+screen, in the customer app and in the API:
+
+> "Paying online is only available for outlets in Malaysia - DuitNow and
+> Touch 'n Go are Malaysian payment methods."
+
+**Per outlet, not per tenant**: one restaurant group may own a Malaysian
+outlet and another one somewhere else — the rule follows the outlet, because
+the guest pays in the country the food is in.
+
+The demo outlet of the demo tenant is `KH` / `USD`: it may never offer
+DuitNow, Touch 'n Go or the `prepay_online` mode.
+
+### 18.3 The staff order
+
+When the tenant **has** an account **and** the outlet is in Malaysia, the
+methods `duitnow` and `touch_n_go` in the payment panel become **gateway
+methods**: choosing one creates a real payment request, shows the QR and
+**waits** for the money (the backend polls the gateway, the webhook is the
+fast path). When the tenant has **no** account, **nothing changes** — the
+method records the payment exactly as it did before.
+
+The three refusals are honest 4xx answers, never a silent failure:
+
+| The refusal | The message |
+|---|---|
+| the outlet is not in Malaysia | the country reason above |
+| the tenant has no account | "This restaurant has no online payment account yet - add the HitPay API key and salt in the settings." |
+| the order is already paid or cancelled | the ordinary refusals |
+
+### 18.4 The webhook of a tenant's own account
+
+A tenant that connects **its own** HitPay account posts its events to the
+**same** webhook URL, signed with **the tenant's** salt. The platform's
+signature check would refuse it — so the webhook routes by the payment
+request id:
+
+1. the event is parsed (untrusted — nothing is done with it yet);
+2. the payment request id is looked up: a `TenantPayment` row means the
+   event belongs to a **tenant** → the signature is verified with **that
+   account's** salt; no row → the platform's salt and the SaaS invoice path
+   exactly as before;
+3. a verified tenant event marks the payment paid and pushes the POS backend
+   (`/internal/order-paid`) — the order is released to the kitchen
+   (design doc §2.5: **the money wins over any switch**).
+
+The amount and the currency are checked against the order — a different
+amount is an **alert**, not a payment (the same rule the SaaS billing
+follows).
+
+### 18.5 The lost-webhook repair
+
+The webhook can be lost. The staff order polls
+`POST /api/internal/pos/customer/{id}/payments/{payment_id}/confirm`, which
+asks the gateway whether the money is in and — when it is — does exactly what
+the webhook would have done.
+
+### 18.6 The files
+
+| The file | What is in it |
+|---|---|
+| `website_api/app/routes/pos_payments.py` | the account endpoints (GET / PUT / DELETE), the masked view, the confirm endpoint |
+| `website_api/app/routes/webhooks.py` | the tenant branch of the HitPay webhook (the tenant's salt) |
+| `website_api/app/services/tenant_payments.py` | `account_for`, `create_payment`, `confirm_if_paid`, `notify_pos_order_paid` |
+| `backend/app/services/payment_modes.py` | the country rule (`ONLINE_COUNTRIES`, `country_supports_online`) |
+| `backend/app/routes/outlet_settings.py` | the settings routes of the payment account |
+| `backend/app/routes/order.py` | the staff order's gateway routes (`pay-online`) |
+| `backend/app/routes/pwa.py` | the customer app's online payment (the country refusal) |
+| `frontend/src/pages/Settings.jsx` | the "Online payments" section |
+| `frontend/src/hooks/usePaymentFlow.js` | the gateway payment in the staff order |
+
+### 18.7 The tests
+
+| The test | What it proves |
+|---|---|
+| `website_api/scripts/test_tenant_payment_account.py` | the account CRUD, the masked view (the secret never leaves), the tenant's webhook (the platform's salt is refused, the tenant's salt works), the amount alert |
+| `backend/scripts/test_online_prepay_gates.py` | the country rule, the tenant gates of the settings route, that no secret is stored in the POS database |
+| `scripts/pos_payment_account_test.js` | **not written yet** - the browser test for the settings section (save → the masked state → disconnect). It waits for the production deploy, because the save step needs the new website API. The API behind it is proven by `scripts/pos_online_prepay_test.js` (13/13) and `scripts/pos_gateway_payment_test.js` (14/14). |
+
+---
+
+### 18.8 The tenant's onboarding step: the webhook URL
+
+**A tenant that connects its OWN HitPay account must add our webhook URL to
+their HitPay dashboard.** HitPay posts to the merchant account's own
+configuration — our URL is registered on **our** platform account, not on
+theirs. Without it:
+
+- HitPay never tells us the money arrived → the order only settles through
+  the **polling fallback** (the staff order's `GET /pay-online`, which asks
+  the website API's confirm endpoint → HitPay with the tenant's credentials);
+- the customer app shows "waiting for your payment" until that poll lands.
+
+The URL to add (on the tenant's account):
+
+```
+https://apisite.ideazes.com/api/webhooks/hitpay/
+```
+
+For **sandbox** credentials it is the **sandbox** dashboard that carries it.
+This is a tenant-side step, so it belongs in the onboarding notes (and in
+the email that asks a restaurant for its HitPay key and salt).
+
+### 18.9 What the first live test found (November 7, 2026)
+
+The AES Branch account (tenant 3) took the first real payment (sandbox):
+
+| The finding | The fix |
+|---|---|
+| the payment panel's close button threw **"T is not a function"** — the flow never exposed `setBulkOrderIds`, so the Orders screen's dialog could not be closed | `usePaymentFlow` now returns `setBulkOrderIds` |
+| the staff screen showed **no "paid" message and no receipt** — the banner was gated on a receipt printer being configured, and the outlet had none | the banner shows whenever a payment was recorded; **the print button** is the only part that needs a printer |
+| the paid state was wiped at once — the confirmation path called the full reset, so the "paid" text was gone before it could be read | the window closes, the "paid" state stays |
+| the customer app **hardcoded DuitNow** — the guest could not choose Touch 'n Go | the guest picks the method (the outlet's `payment_methods` decides which are offered); the labels exist in en/zh/km |
+| the customer app's success message was **overwritten by the i18n pass** (the note carries `data-i18n`, so every language pass put "waiting for your payment" back) | the paid message removes the `data-i18n` attribute — the good news wins |
+| the online payment is a **Malaysian** thing, so the test that switches a demo outlet (Cambodia) to `prepay_online` was refused by the new rule | the test puts the outlet in Malaysia and gives the tenant its own country back (phase 7: **24/24**) |
+
+## 19. The deployment — where it runs, and the two traps (November 7, 2026)
+
+**Everything is on ONE machine.** The website API is **not** a separate
+server: `apisite.ideazes.com` → Cloudflare → **Caddy on this box** →
+`127.0.0.1:9000` → the pm2 process **`website-api`** (the cwd is
+`mydoc/Projects/POS_AI/website_api`). The POS backend calls the same
+process directly: `backend/app/services/pos_payments.py` →
+`WEBSITE_API_INTERNAL_URL = "http://127.0.0.1:9000"`.
+
+So a `vite build` + `pm2 restart` **is** the deploy for all three layers.
+(The older `WEBSITE_API_URL = "https://apisite.ideazes.com"` in
+`backend/app/core/config.py` is the *public* URL — it is not what the
+payment routes use.)
+
+| The layer | The process | The state on Nov 7 |
+|---|---|---|
+| the POS backend | pm2 `pos-backend` (port 8000) | **live** |
+| the frontend | the built bundle (`frontend/dist` → `/var/www/html/posai-frontend/dist`) | **live** |
+| the website API | pm2 `website-api` (port 9000) | **live** |
+
+### 19.1 Trap one — a curl probe answers 403, and it means nothing
+
+`website_api/app/core/tier1_security.py` blocks a request whose **User-Agent**
+looks like a tool (curl, postman, …) — with **"API testing tools are not
+allowed."** A public probe therefore returns **403** even when the endpoint
+exists and works. The proof that the request really landed is in the pm2 log:
+
+```
+website-api | INFO: 172.70.246.228:0 - "GET /api/internal/pos/customer/1/payment-account HTTP/1.1" 403 Forbidden
+```
+
+**Read the log, not the status code.** A request from `127.0.0.1` (the POS
+backend) is never blocked — the block is on the User-Agent, not the origin.
+Use the internal key + a browser User-Agent for a manual probe.
+
+### 19.2 Trap two — the cache must not rebuild the answer
+
+`backend/app/core/payment_account_cache.py` used to **rebuild** the cached
+dict with three fields (`connected`, `provider`, `currency`) — so the
+settings screen showed a connected account with **no key hint and no
+"last updated"**, and nothing said why. The cache now keeps the **whole**
+answer (`dict(fetched or {})`).
+
+**The lesson:** a cache that normalises an answer must keep every field the
+caller needs. When a masked detail goes missing, look at the cache before
+you look at the gateway.
+
+### 19.3 How to prove the account flow works, end to end
+
+```bash
+# the masked view (from inside the box - no User-Agent block)
+curl -s -H "X-Internal-Key: $WEBSITE_API_INTERNAL_KEY" \
+  http://127.0.0.1:9000/api/internal/pos/customer/1/payment-account
+# → {"connected":true,"provider":"hitpay","currency":"MYR",
+#    "merchant_id":null,"key_hint":"...1802","updated_at":"..."}
+```
+
+The suites that cover the whole chain: `website_api/scripts/test_tenant_payment_account.py`
+(22/22), `backend/scripts/test_online_prepay_gates.py` (20/20),
+`scripts/pos_online_prepay_test.js` (13/13, live),
+`scripts/pos_gateway_payment_test.js` (14/14, live: the settings write, the
+payment request, the status, the QR PNG).
+
+### 19.4 What is not proven yet
+
+The **staff order's QR in a browser**: the API path is proven (the payment
+request, the status, a real QR PNG), but no browser walk-through exists — the
+demo outlet is Cambodian (the country rule refuses it there) and the
+Malaysian outlet (*Kens SS17*) has **no menu items**, so the kiosk cannot run
+there. `scripts/pos_payment_account_test.js` (the browser test for the
+Settings section) is **not written yet** either.

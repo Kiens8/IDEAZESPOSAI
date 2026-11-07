@@ -214,6 +214,34 @@ default ✓✓.
 > lands → the reconciliation confirms it and pushes to the POS → the order is **paid +
 > confirmed** → the kitchen sees it ✓✓).
 
+**The online payment has two extra rules (Nov 7, 2026)** — Kens found the holes
+while the prepay fix was landing:
+
+1. **The country rule — per OUTLET.** DuitNow and Touch 'n Go are Malaysian
+   methods: an outlet outside Malaysia may not offer them, and the
+   `prepay_online` mode is refused for it. `outlet_settings.country` (the
+   column's default is `MY`) decides; the reason is one fixed sentence
+   everywhere it is refused: "Paying online is only available for outlets in
+   Malaysia - DuitNow and Touch 'n Go are Malaysian payment methods." → see
+   `hitpay-integration.mdx` §18.2.
+2. **The tenant's own account.** The `prepay_online` mode and the staff
+   order's gateway methods need a payment account **of the tenant's own** —
+   its HitPay API key and salt, written in the settings screen. The
+   credentials live in the **website API**; the POS backend stores nothing and
+   the browser only ever sees the **masked** view (the provider, the
+   currency, the merchant id and the last four characters of the key) →
+   `hitpay-integration.mdx` §18.1.
+3. **The deployment is a second machine.** The website API runs on
+   **45.79.203.53** (`apisite.ideazes.com`), not on the POS box — so the
+   account's save and the tenant's webhook only work after that API is
+   updated and restarted there → `hitpay-integration.mdx` §19.
+
+**And the end state of a paid prepay order** (Nov 7, 2026): it stays **live
+and visible** on the POS screens until it is **handed over** (`served`) — the
+money is already in, so the payment state must never hide it. A postpay order
+lives until it is paid and then ends `completed`. → `MEMORY.md` (the standing
+rule "a paid prepay order stays LIVE until the handover").
+
 ### 2.6 The PWA's takeaway — the outlet is the venue, the table is only the dine-in anchor
 
 **The principle**
@@ -510,6 +538,43 @@ change (`GET /api/settings/presets`) and shows it: *"Apply the cafe setup? This 
 your order settings"* → the list, knob by knob, old → new → **the UI carries no copy of
 the rules** (one source of truth: the backend) ✓✓. The type change is **sent alone**; the
 backend seeds and the frontend reads the seeded settings back ✓✓.
+
+**A MAP knob is compared per order type** (`payment_timing`) — the modal used to render
+every knob as a switch ✗ → the payment timing is a **map**, so `settings[key] !== value`
+compared two different objects and reported a change on **every** open, and the switch
+renderer turned the map into **"On → On"** ✗✗ → now:
+- the **diff** lives in `frontend/src/utils/presetDiff.js` → a row **per order type the
+  preset names**, and **nothing** for the types it leaves alone (the modal must not
+  invent rows);
+- a **missing** mode means `postpay` (the same fallback the backend and the order
+  snapshot use);
+- the rows carry the **real mode labels** (`order.paymentModes.*`) and the **order type
+  labels** (`order.dineIn` / `.takeaway` / `.delivery`) — the same words the settings
+  screen uses;
+- the i18n key `business.preset.knobs.payment_timing` now exists in **all three**
+  locales (before: i18next printed the raw key path).
+
+**The backend MERGES the payment timing, it does not replace it** — `apply_preset` wrote
+the preset's whole dict over the tenant's ✗✗ → the tenant's own **`delivery`** entry was
+dropped (delivery is off in every preset and the tenant switches it on **deliberately**),
+a hand-tuned mode was overwritten, and the map **bypassed `normalize_map`** entirely →
+now `apply_preset` calls `merge_map()`:
+- the **seed** is validated with the same rules as a write (`normalize_map`): an unknown
+  mode is refused, a locked mode is refused unless the product can honour it;
+- the **current** map is taken as it is — a mode the tenant already has (even a locked
+  one) must not block a business-type change;
+- the **result** is the current map with the clean seed laid over it → the tenant's
+  entries for the order types the preset does not name **survive** ✓✓.
+
+**An unknown type changes NOTHING** — a request with a type we do not know used to
+**write it into the label column** ✗ (the knobs were untouched, but the column said
+"ghost") → now the type is ignored and the tenant's own type stays visible ✓ (a legacy
+value such as `food_court` is kept visible, not silently replaced).
+
+**The diff and the merge agree** — the backend rewrites the order types the preset
+names; the modal shows exactly those → one source of truth for both ✓✓. Tests:
+`backend/scripts/test_preset_payment_timing.py` (the merge) and
+`frontend/scripts/test-preset-diff.mjs` (the diff).
 
 **The route got its gates (the audit recipe)** — the settings routes had **no
 permission and no tenant check** ✗ → now:

@@ -5,7 +5,7 @@ description: How a manager exports the order list to CSV, and how a paid order's
 
 # Order Export & Receipt Reprint
 
-**Document Version:** 1.0
+**Document Version:** 1.1 (v1.1 — the reprint role is decided: the staff role may reprint)
 **Created:** 2026-11-08
 **Status:** **Design approved (Kens, Nov 8, 2026) — NOT built.** No code has been written.
 **Owner:** Ideazes POS AI
@@ -26,12 +26,14 @@ loaded and filtered on that screen. No new backend endpoint in phase 1.
 **B. Reprint a receipt of an existing order.**
 The printing engine already exists (`frontend/src/hooks/useReceiptPrinter.js`) — it is
 just wired to "the order I just paid". We wire it to the Order History screen too.
-**Three rules:**
+**The rules:**
 1. **Only a paid order can be reprinted.**
 2. **The receipt is the same receipt** — the same template, the same layout, the same
    numbers — with **one wording change**: it is marked as a **REPRINT**.
 3. **Every reprint is written to an audit log** — who, when, which printer, how many
    copies, whether the pickup token was on it.
+4. **Any signed-in staff may reprint** (the export is manager + admin; the reprint is
+   open to the floor — the log is the control).
 
 Both features answer the standing audit recipe in §6 — who may call it, whose data,
 did the tenant buy it, does the UI agree.
@@ -100,6 +102,7 @@ may need re-pairing.
 | D3 | The reprint has an **audit log** |
 | D4 | **Only a paid order** can be reprinted |
 | D5 | The reprinted receipt is **the same receipt** as the original, with a **REPRINT wording** on it |
+| D6 | **The staff role may reprint.** The export is manager + admin; the reprint is open to the floor, because a reprint of a paid receipt is an ordinary thing to need. The **audit log** is the control that comes with it, not the role |
 
 D2 is a **UI gate**, not a security boundary — §4.4 says what that means and what the
 server-enforced version would cost.
@@ -220,6 +223,9 @@ can then be reused by the Reports screen later, and it can be tested on its own.
 2. **The receipt is the same receipt** — the same template, the same header/footer/
    terms/policy from the outlet settings, the same items, the same totals.
 3. **One wording change:** the paper is marked as a reprint.
+4. **Any signed-in staff may reprint** — the `staff` role, the `manager` and the
+   `admin`. The reprint is an ordinary floor need; the **audit log** is the control
+   that comes with it, not the role. (The **export** is manager + admin.)
 
 ### 5.2 What the reprinted paper says
 
@@ -425,10 +431,11 @@ Phase 1 and Phase 2 are independent — they can ship in either order.
 
 ## 8. The open questions
 
-1. **Who may reprint?** The design lets the **staff** role reprint (a floor reprint of a
-   paid receipt is an ordinary thing to need) and relies on the **log** as the control.
-   If Kens prefers the print button to be manager + admin like the export, it is one
-   line in `ROLE_PERMISSIONS`.
+1. ~~**Who may reprint?**~~ **Decided (Kens, Nov 8, 2026): the staff role may reprint.**
+   A floor reprint of a paid receipt is an ordinary thing to need, so the button is open
+   to the floor and the **audit log** is the control that comes with it. The `staff`
+   role gets `staff:orders:reprint` explicitly in `ROLE_PERMISSIONS`; `manager` and
+   `admin` already hold it through `staff:*`. The **export** stays manager + admin.
 2. **The token default.** Takeaway → include the token by default; dine-in → exclude it
    by default. Both are visible in the dialog and recorded in the log.
 3. **Is the export worth a plan feature?** Right now the export rides on the
