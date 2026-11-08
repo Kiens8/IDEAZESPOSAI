@@ -52,8 +52,9 @@ layer, not to the orders:
   bare numbers with the outlet's `decimal_places`.
 - `frontend/src/pages/Inventory/Reports.jsx` — a second, similar exporter.
 
-There is **no export on the Order History screen**. The file even imports a `Download`
-icon from `lucide-react` and never uses it.
+There was **no export on the Order History screen** (when this document was
+written — it is built now, §7.1). The file even imported a `Download` icon from
+`lucide-react` and never used it — which is exactly what the button is now.
 
 **How the Order History screen gets its data today:**
 `GET /api/orders/?outlet_id=&customer_id=` → `backend/app/routes/order.py::get_orders`
