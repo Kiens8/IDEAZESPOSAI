@@ -5,9 +5,9 @@ description: How a manager exports the order list to CSV, and how a paid order's
 
 # Order Export & Receipt Reprint
 
-**Document Version:** 1.2 (v1.2 — **BOTH PHASES ARE BUILT**, Nov 8, 2026; the review of v1.1 is in §10)
+**Document Version:** 1.3 (v1.3 — **phase 3 is built too**: the export is now enforced by the server, Nov 8, 2026)
 **Created:** 2026-11-08
-**Status:** **Built and live** (the export and the reprint, Nov 8, 2026). The design below is what was implemented — §10 records what the review changed.
+**Status:** **Built and live** — the export and the reprint (Nov 8, 2026), and the server-enforced export (phase 3) the same day. The design below is what was implemented — §10 records what the review changed.
 **Owner:** Ideazes POS AI
 **Scope:** the POS frontend (`frontend/src/`), the POS backend (`backend/app/`)
 **Related:** `order-flow-standards.mdx` (the order machine and the payment timing) · `hitpay-integration.mdx` §18 (the POS payment layer) · `program-changes/ai-feature-gating/ai-feature-gating.mdx` (the plan gate) · the user-facing `pos-app/receipt-printing.mdx`
@@ -106,8 +106,9 @@ may need re-pairing.
 | D5 | The reprinted receipt is **the same receipt** as the original, with a **REPRINT wording** on it |
 | D6 | **The staff role may reprint.** The export is manager + admin; the reprint is open to the floor, because a reprint of a paid receipt is an ordinary thing to need. The **audit log** is the control that comes with it, not the role |
 
-D2 is a **UI gate**, not a security boundary — §4.4 says what that means and what the
-server-enforced version would cost.
+D2 is a **UI gate** — and since phase 3 (§7.2) the export rows also come from a
+route that carries **its own permission** (`orders:export`: the manager and the
+admin). §4.4 says what the difference is.
 
 ---
 
@@ -169,23 +170,30 @@ The Reports exporter is the base, but the new code fixes three things it does no
 The button is hidden unless `session.role` is `manager` or `admin`
 (`frontend/src/hooks/useSession.js` → the signed session).
 
-**The honest part:** the data behind it comes from `GET /api/orders/`, which the `staff`
-role may already read (`ROLE_PERMISSIONS` in `backend/app/middleware/auth.py` gives the
-staff role `staff:orders:read`). So the gate stops the *accident* (a waiter exporting
-the day's takings by muscle memory) — it does not stop a determined waiter who opens
-the network tab and reads the API.
+**The honest part:** the order list on that screen comes from `GET /api/orders/`,
+which the `staff` role may already read (`ROLE_PERMISSIONS` in
+`backend/app/middleware/auth.py` gives the staff role `staff:orders:read`). So the
+hidden button stops the *accident* (a waiter exporting the day's takings by muscle
+memory) — it does not stop a determined waiter who opens the network tab.
 
-**That is acceptable for phase 1** and it is stated here so nobody believes the gate is
-a security control. If Kens ever wants it enforced, the shape is a small server route:
+**Phase 3 closed the part that can be closed.** The **export rows** now come from
+`GET /api/orders/export`, which carries **its own permission** — `orders:export`,
+held by the **manager and the admin** only. A staff member gets a **403** on that
+route, so the bulk dump of the tenant's history is closed to them.
+
+What stays open, and cannot be closed without breaking the POS: the **queue** is
+readable by the staff role — that is what a waiter does all day, and the order
+list of their own outlet is not a secret. The export is a *bulk dump of the whole
+history of the tenant*; that is what the permission now guards.
 
 ```
-GET /api/orders/export?outlet_id=&from=&to=&status=&type=   ->  text/csv (streamed)
+GET /api/orders/export?outlet_id=&date_from=&date_to=&status=&order_type=&search=
+-> { "count": N, "timezone": "...", "orders": [ ... ] }
 ```
 
-gated with `require_permission("orders:export")` — a permission granted to `manager`
-and `admin` only — plus `require_outlet_access` and the date window computed **in the
-outlet's timezone, server-side**. Streaming, so 50k rows never sit in memory. That is
-phase 3, and only when a tenant's history makes the browser approach hurt.
+gated with `require_permission("orders:export")`, the tenant of the session, the
+outlet's timezone for the window — and the CSV is written in the browser, because
+the headers are translated there (§7.2).
 
 ### 4.5 The files
 
@@ -427,13 +435,44 @@ curl -s -b tenantB.jar "https://app.ideazes.com/api/orders/340/reprints"        
 
 | Phase | What | Backend | State |
 |---|---|---|---|
-| 1 | The export (client-side CSV in `OrderHistory.jsx`, manager + admin) | none | **built, Nov 8, 2026** |
+| 1 | The export (client-side CSV in `OrderHistory.jsx`, manager + admin) | none | **built, Nov 8, 2026** (replaced by phase 3) |
 | 2 | The reprint: the engine corrections, the REPRINT wording, the button + dialog, the audit log + the two routes | 2 routes, 1 table, 1 permission | **built, Nov 8, 2026** |
-| 3 | The server-enforced export (only if a tenant's history makes the browser approach hurt) | 1 route | **not built** — on hold |
+| 3 | The server-enforced export | 1 route | **built, Nov 8, 2026** |
 
 Phase 1 and Phase 2 are independent — they can ship in either order.
 
-### 7.1 What was built (Nov 8, 2026)
+### 7.2 Phase 3 — the export, enforced by the server
+
+Phase 1 hid the button. That is a **UI gate**, not a security boundary: the order
+list behind it is readable by the staff role (the queue needs it). Phase 3 closes
+the part that can be closed — the **bulk dump** — with a permission of its own.
+
+```
+GET /api/orders/export?outlet_id=&date_from=&date_to=&status=&order_type=&search=
+-> { "count": N, "timezone": "Asia/Phnom_Penh", "orders": [ ... ] }
+```
+
+- **The permission:** `orders:export`, granted to the **manager and the admin**
+  only (it is listed explicitly in `ROLE_PERMISSIONS`, so the intent survives a
+  change of the wildcards). The **staff role gets a 403** — reading the queue is
+  what a waiter does all day; an export is a spreadsheet that leaves the building.
+- **The scope:** the rows are filtered **in SQL** by the tenant of the session
+  (`caller_tenant`) and by the outlets of that tenant. With an `outlet_id` in the
+  query it has to belong to that tenant (a foreign outlet is a **403**).
+- **The day:** the window is computed in the **outlet's** timezone
+  (`outlet_settings.timezone`), so "today" is the day the screen shows and not
+  the server's day.
+- **The CSV is still written in the browser** — the column headers are translated
+  there, and the backend carries no translations. The route hands over the rows;
+  the browser writes the file (the BOM, the CRLF, the formula guard — §4.3).
+- **The export is logged** in the application log (who, how many rows, which
+  outlet, which window).
+
+**Why the rows and not a streamed CSV:** the headers are translated in the
+browser, and a CSV built by the backend would carry English headers no matter
+which language the manager reads. The rows are the part that needs a permission.
+
+### 7.3 What was built (Nov 8, 2026)
 
 **The export**
 - `frontend/src/utils/orderExport.js` — `csvCell` (the formula guard, the
