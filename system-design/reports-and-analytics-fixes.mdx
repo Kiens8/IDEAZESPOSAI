@@ -5,11 +5,12 @@ description: The review of the POS Reports screen (six tabs, the date filter, th
 
 # Reports & Analytics — the fixes, the trust, and what to add next
 
-**Document Version:** 1.1 (v1.1 — **phase 1 is built and live**, Nov 8, 2026)
+**Document Version:** 1.2 (v1.2 — **phases 1 and 1b are built and live**, Nov 8, 2026)
 **Created:** 2026-11-08
-**Status:** **Phase 1 is built** (the tenancy gate on the loyalty routes, Nov 8, 2026 —
-§5.1 says what was built and §5.8 what is still open). The rest of the phases are still
-the proposal. The review was done against the live screen and the live data on Nov 8,
+**Status:** **Phases 1 and 1b are built** (the tenancy gate on the loyalty routes and on
+the vouchers, plus the server taking the money of a guest order — Nov 8, 2026. §5.1
+says what was built on the loyalty routes, §5.8 on the vouchers and §5.9 on the money).
+The rest of the phases are still the proposal. The review was done against the live screen and the live data on Nov 8,
 2026; every finding in §3 was measured, not guessed.
 **Owner:** Ideazes POS AI
 **Scope:** the POS frontend (`frontend/src/pages/Reports.jsx`,
@@ -40,7 +41,7 @@ hand another tenant's loyalty data to anyone who asks.**
 | A1 | `GET /api/loyalty/report/{customer_id}` has **no guard** and trusts the path | the admin of tenant 1 read tenant 3's report (200) — **FIXED** |
 | A2 | `GET /api/loyalty/customers/{customer_id}` has **no guard** | the public PWA key listed any tenant's customers (names, phones) — **FIXED** |
 | A3 | `GET /api/loyalty/stats/{customer_id}` uses `optional_permission` | the public PWA key read any tenant's aggregates — **FIXED** |
-| A4 | **The vouchers router has the same shape** (unguarded tenant routes + unguarded writes) | `GET /api/vouchers/all/{customer_id}` with the public key returns any tenant's voucher codes — **still open, phase 1b** |
+| A4 | **The vouchers router has the same shape** (unguarded tenant routes + unguarded writes) | `GET /api/vouchers/all/{customer_id}` with the public key returned any tenant's voucher codes — **FIXED** (§5.8) |
 | B1 | The walk-in tab hardcodes the walk-in customer id **7** | tenant 3: 46 orders → **46 "registered", 0 walk-in** (the truth is the reverse) |
 | B2 | The date filter is **UTC**, the Order History screen is the outlet's time | 6 of 16 orders sit on a different local day in Phnom Penh |
 | B3 | The chart is always **the last 7 days** | "Today" shows 6 empty days; "All Time" shows one week |
@@ -62,7 +63,9 @@ hand another tenant's loyalty data to anyone who asks.**
 **The order of the work:** the three tenancy holes (§5.1) first — they are a data leak,
 not a polish item. **They are closed** (Nov 8, 2026): the gate is live, the probes pass
 (33 of them, `scripts/pos_loyalty_gate_test.sh`) and the guest app still works. The
-**vouchers** carry the same hole (A4) and are the next thing. Then the accuracy fixes
+**vouchers** carried the same hole (A4) — **they are closed too** (§5.8, the same day).
+While the vouchers were being closed, a bigger hole came with them: **a guest could
+post its own price and its own discount** (§5.9). Both are closed. Then the accuracy fixes
 (§5.2–§5.5), because a report that is wrong is worse than no report. Then the export
 and the print (§5.6–§5.7), which are already solved on the Order History screen and
 can be reused.
@@ -522,38 +525,77 @@ A `@media print` block for the screen:
   row on every page;
 - a footer with the page number.
 
-### 5.8 What phase 1 did NOT close: the vouchers
+### 5.8 Phase 1b: the vouchers (built, Nov 8, 2026)
 
 The loyalty router was not the only file with the same shape. **`routes/vouchers.py`**
-has it too, and worse — some of its routes are **writes**:
+had it too, and worse — some of its routes are **writes**:
 
-| Route | Guard today | What it does |
+| Route | Guard before | The gate now |
 |---|---|---|
-| `GET /vouchers/all/{customer_id}` | **none** | every voucher of a restaurant group — **the codes are redeemable** |
-| `GET /vouchers/stats/{customer_id}` | **none** | the voucher statistics of any group |
-| `GET/POST /vouchers/templates/{customer_id}` | **none** | the voucher templates of any group |
-| `PUT /vouchers/templates/{template_id}` | **none** | rewrites a template of any group |
-| `POST /vouchers/issue` | **none** | issues a voucher **to any member** |
-| `POST /vouchers/issue-bulk` | **none** | issues vouchers in bulk, to any group |
-| `GET /vouchers/my-vouchers/{dining_customer_id}` | **none** | the member's vouchers (the guest app's own) |
-| `POST /vouchers/redeem` | **none** | redeems a voucher against an order |
-| `GET /vouchers/validate/{code}` | **none** | **has to stay public** — the cart validates the code |
+| `GET /vouchers/all/{customer_id}` | **none** | `require_staff_permission("staff:vouchers:read")` + the tenant from the session |
+| `GET /vouchers/stats/{customer_id}` | **none** | the same |
+| `GET/POST /vouchers/templates/{customer_id}` | **none** | read / write + the tenant from the session |
+| `PUT/DELETE /vouchers/templates/{template_id}` | **none** | write + **the template's own** tenant (the url's id is only a claim) |
+| `POST /vouchers/issue` | **none** | the guest token (**its own member only**) or the staff (its own group) |
+| `POST /vouchers/issue-bulk` | **none** | write + the tenant from the session |
+| `GET /vouchers/my-vouchers/{dining_customer_id}` | **none** | the guest token (**its own member**) or the staff (its own group) |
+| `POST /vouchers/redeem` | **none** | the guest token or the staff — the member's group has to match |
+| `DELETE /vouchers/{voucher_id}` | **none** | write + the tenant of the **member** the voucher belongs to |
+| `GET /vouchers/validate/{code}` | **none** | read + the tenant of the member the voucher belongs to |
 
-The shape of the fix is the same as the loyalty one:
+Three things are worth naming:
 
-- the **group routes** (`all`, `stats`, `templates`, `issue-bulk`) become staff routes
-  with the tenant from the session;
-- the **member routes** (`my-vouchers`, `issue`) take the guest token — the guest app
-  already keeps it now;
-- the **redeem** needs the order's tenant to match the voucher's tenant (the code
-  alone must not work against another group's order);
-- the **validate** stays public — it answers "is this code real?" and nothing more,
-  but it should be scoped to the venue (a code of another restaurant group must not
-  be valid at this table).
+- **the staff namespace.** The gate is `staff:vouchers:read`, not `vouchers:read`. The
+  customer app's key **carries** `vouchers:read` (it ships in the PWA bundle), so the
+  plain permission would have stopped nothing. The `staff:` namespace is what the
+  customer key cannot satisfy.
+- **the voucher's tenant comes from the voucher's member**, not from the url. A
+  voucher has no tenant of its own — it belongs to a member, and the member belongs
+  to a restaurant group.
+- **the guest app's two routes take the guest token** (`my-vouchers`, `issue`). The
+  token is what proves the device is that member; the API key alone is public.
 
-**This is phase 1b and it is not done.** It is called out here so it is not forgotten:
-a voucher code is a **redeemable secret**, and right now the public key can list the
-codes of any restaurant group.
+**The probes:** `scripts/pos_voucher_gate_test.sh` — 23 of them, all passing (the
+cross-tenant reads, the guest's own member, the guest's price and discount, and the
+staff at the till).
+
+### 5.9 The hole that came with them: the money of a guest order (built, Nov 8, 2026)
+
+While the vouchers were being closed, the order route was read again — and the same
+question was asked of it: **who owns the money of this order?**
+
+The answer was: **the client**. A guest could post an order with
+
+```json
+{"items": [{"menu_item_id": 2, "quantity": 1, "unit_price": 0.01}], "discount": 50}
+```
+
+and the server took it. The probe order came out at **-53.99** — the restaurant owes
+the guest 53.99. The voucher was applied the same way: the client sent the discount
+it liked.
+
+**The rule now:** the server owns the money of a **guest's** order.
+
+- **the price** is the menu's price (`OrderService.create_order(..., trust_client_money=False)`);
+- **the discount** is 0 unless a voucher is applied — and then it is the **validated**
+  voucher's discount (the code is checked against the member, the group, the expiry
+  and the minimum spend) or, without a voucher, the **promotions engine's** best
+  discount (a bundle is a promotion, and the app shows the bundle price in the cart);
+- **the redemption** happens in the same transaction as the order (the order route
+  marks the voucher used and tells the campaign behind it), so the app no longer
+  redeems the voucher itself after the order.
+
+**The staff at the till keep their power:** a manual price and a manual discount are
+normal things at a counter, so the staff's order is still theirs (`trust_client_money`
+stays on). The two are one parameter, and the probes prove both sides.
+
+The **percentage bug** in the guest app went with it: the cart computed a 10% voucher
+as `subtotal * 10 / 100` and then **threw the result away** and used the percentage as
+an amount (10% became 10). Two places, both fixed.
+
+The promotions engine moved out of the route into
+`backend/app/services/promotion_service.py`, because the order needs it now. Its
+answer does not change.
 
 ---
 
@@ -580,7 +622,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | Phase | What | Backend | Risk |
 |---|---|---|---|
 | 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 14 routes | low — a gate — **BUILT Nov 8, 2026** |
-| 1b | **The same gate on the vouchers** (§5.8) | 9 routes | low — a gate — **still open** |
+| 1b | **The same gate on the vouchers** (§5.8) + the server taking the money of a guest order (§5.9) | 10 routes + the order service | low — a gate — **BUILT Nov 8, 2026** |
 | 2 | **The walk-in rule** (§5.2) | the order response | low |
 | 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move |
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move |
