@@ -5,9 +5,9 @@ description: How a manager exports the order list to CSV, and how a paid order's
 
 # Order Export & Receipt Reprint
 
-**Document Version:** 1.1 (v1.1 — the reprint role is decided: the staff role may reprint)
+**Document Version:** 1.2 (v1.2 — **BOTH PHASES ARE BUILT**, Nov 8, 2026; the review of v1.1 is in §10)
 **Created:** 2026-11-08
-**Status:** **Design approved (Kens, Nov 8, 2026) — NOT built.** No code has been written.
+**Status:** **Built and live** (the export and the reprint, Nov 8, 2026). The design below is what was implemented — §10 records what the review changed.
 **Owner:** Ideazes POS AI
 **Scope:** the POS frontend (`frontend/src/`), the POS backend (`backend/app/`)
 **Related:** `order-flow-standards.mdx` (the order machine and the payment timing) · `hitpay-integration.mdx` §18 (the POS payment layer) · `program-changes/ai-feature-gating/ai-feature-gating.mdx` (the plan gate) · the user-facing `pos-app/receipt-printing.mdx`
@@ -75,15 +75,16 @@ The printer engine is ready and reusable — it is just never pointed at an old 
   (`backend/app/routes/outlet_settings.py`): `none`, `quick`, `network`, `bluetooth`,
   `pdf`, plus `receipt_copies`, `receipt_header/footer/terms/policy`.
 
-**What the engine does not know about a historical order** (all four are real gaps, and
-all four are fixed in §4):
+**What the engine did not know about a historical order** — two of the four gaps are
+already closed (the tax work of Nov 8, 2026, §10), two are what the reprint still
+has to do:
 
-| Gap | What it means on the paper |
-|---|---|
-| It stamps `new Date()` | A reprint of last week's order is dated today |
-| It prints every item | A voided line still appears, and the total does not match the money taken |
-| It prints one payment line | An order paid in two parts shows one method, not the two amounts |
-| It prints no discount | A discounted order shows subtotal + tax ≠ total |
+| Gap | What it means on the paper | State |
+|---|---|---|
+| It stamps `new Date()` | A reprint of last week's order is dated today | **open** — the reprint keeps the order's own time and adds the reprint moment |
+| It prints every item | A voided line still appears, and the total does not match the money taken | **open** — the reprint marks the voided lines `VOID` |
+| It prints one payment line | An order paid in two parts shows one method, not the two amounts | **open** — the reprint lists the payments |
+| ~~It prints no discount~~ | ~~A discounted order shows subtotal + tax ≠ total~~ | **closed** (Nov 8) — the receipt prints the discount line and the tax with its component and its rate (`VAT 8%: $ 0.24`) |
 
 **The `network` printer type cannot work from a browser.** It needs the *Browser Print
 Server* bridge — the HTTP fallback to `http://<printer>:9100/print` fails, because a
@@ -132,7 +133,7 @@ Reports rule — no currency symbol, no thousands separator, so a spreadsheet ca
 | Column | Source |
 |---|---|
 | Order number | `order_number` |
-| Date | `created_at`, in the outlet's timezone, `date_format` + `time_format` from the settings |
+| Date | `created_at`, in the outlet's timezone: `formatDate` + `formatTime` from `utils/format` (the outlet's `date_format` and its `timezone` — there is **no** `time_format` setting, the time format lives in the formatter) |
 | Order type | `order_type` (`dine_in` / `takeaway` / `delivery`) |
 | Table | `table_number` (empty for takeaway) |
 | Customer | `customer_name` (the counter anchor) |
@@ -259,9 +260,9 @@ These are the reasons the reprint cannot just be "the hook, pointed at an old or
    were sold. (Silently dropping them would make the paper disagree with the money;
    printing them as sold would be a lie. Marking them is the honest option, and it is
    also what the kitchen needs to see.)
-2. **The discount.** The order carries `discount` and `voucher_code`; the receipt prints
-   neither. A discounted order currently reprints with subtotal + tax ≠ total. The
-   discount line goes between the subtotal and the tax.
+2. **The discount.** ~~The order carries `discount` and `voucher_code`; the receipt
+   prints neither.~~ **Closed on Nov 8, 2026** — the receipt prints the discount
+   line, so a discounted order adds up on the paper. The reprint inherits it.
 3. **Split payments.** An order can be paid in several parts
    (`POST /api/orders/{order_id}/payments`, `GET /api/orders/{order_id}/payments`). The
    receipt prints one payment line today. When the order has more than one payment, the
@@ -362,12 +363,12 @@ POST /api/orders/{order_id}/reprint
 |---|---|
 | `frontend/src/hooks/useReceiptPrinter.js` | the reprint options, the REPRINT line, the voided items, the discount, the payments |
 | `frontend/src/pages/OrderHistory.jsx` | the reprint button + dialog, the audit count |
-| `frontend/src/components/orders/ReprintDialog.jsx` (new) | the dialog |
+| `frontend/src/components/pos/ReprintDialog.jsx` (new) | the dialog |
 | `backend/app/routes/order.py` | `POST /{order_id}/reprint`, `GET /{order_id}/reprints` |
-| `backend/app/models/models.py` | the `OrderReprint` model |
+| `backend/app/models/models.py` | the `OrderReprint` model (the table is created by `create_all` — `app.routes.order` imports the models module before `main.py` runs `create_all`, so **no** change to `main.py` is needed) |
 | `backend/app/middleware/auth.py` | `staff:orders:reprint` in `ROLE_PERMISSIONS` |
-| `backend/app/main.py` | the model import (so `create_all` sees the table) |
-| `frontend/src/i18n/locales/{en,km,zh}/orders.json` | `receipt.reprint` and the dialog labels |
+| `frontend/src/i18n/locales/{en,km,zh}/orders.json` | `receipt.reprint` and the paper wording |
+| `frontend/src/i18n/locales/{en,km,zh}/orderHistory.json` | the export and the dialog labels |
 
 ### 5.8 The tests
 
@@ -399,7 +400,11 @@ moment there is a route:
    screen already needs — **no new plan feature, no new price**. §8 says what would
    change that.
 4. **Does the UI agree?** The nav's `minRole` and the `FEATURES` map in
-   `frontend/src/hooks/useFeatures.jsx` must match the backend. The frontend also
+   `frontend/src/hooks/useFeatures.jsx` must match the backend. **The export is
+   the one exception, and it is deliberate:** the SCREEN (`/order-history`) is
+   for every role (`minRole: staff`), and the **button** on it is for the
+   manager and the admin — the check is `session.role` inside the screen, not
+   the nav. The frontend also
    checks `res.ok` **and** `Array.isArray(data)` before it maps, and it hides the
    button entirely when the role or the plan says no — it never calls and catches a 403.
 
@@ -419,13 +424,46 @@ curl -s -b tenantB.jar "https://app.ideazes.com/api/orders/340/reprints"        
 
 ## 7. The phases
 
-| Phase | What | Backend |
-|---|---|---|
-| 1 | The export (client-side CSV in `OrderHistory.jsx`, manager + admin) | none |
-| 2 | The reprint: the engine corrections, the REPRINT wording, the button + dialog, the audit log + the two routes | 2 routes, 1 table, 1 permission |
-| 3 | The server-enforced export (only if a tenant's history makes the browser approach hurt) | 1 route |
+| Phase | What | Backend | State |
+|---|---|---|---|
+| 1 | The export (client-side CSV in `OrderHistory.jsx`, manager + admin) | none | **built, Nov 8, 2026** |
+| 2 | The reprint: the engine corrections, the REPRINT wording, the button + dialog, the audit log + the two routes | 2 routes, 1 table, 1 permission | **built, Nov 8, 2026** |
+| 3 | The server-enforced export (only if a tenant's history makes the browser approach hurt) | 1 route | **not built** — on hold |
 
 Phase 1 and Phase 2 are independent — they can ship in either order.
+
+### 7.1 What was built (Nov 8, 2026)
+
+**The export**
+- `frontend/src/utils/orderExport.js` — `csvCell` (the formula guard, the
+  quoting), `csvMoney` (a bare number with the outlet's precision),
+  `itemsToCell` (`2x Iced Latte, 1x Nasi Lemak`), `buildCsv` (the BOM, CRLF),
+  `downloadCsv` (the Blob + the hidden link).
+- `frontend/src/pages/OrderHistory.jsx` — the **Export CSV** button (the
+  manager and the admin), the fourteen columns, the file name
+  `orders_<outlet>_<range>_<date>.csv`.
+- The i18n in `orderHistory.json` (en, km, zh).
+
+**The reprint**
+- `backend/app/models/models.py` — the `OrderReprint` table.
+- `backend/app/routes/order.py` — `POST /api/orders/{order_id}/reprint` and
+  `GET /api/orders/{order_id}/reprints`.
+- `backend/app/middleware/auth.py` — `staff:orders:reprint` for the staff role.
+- `frontend/src/hooks/useReceiptPrinter.js` — `handlePrintReceipt(order, opts)`
+  with the reprint options: the original order time, the REPRINT wording, the
+  reason, the voided items marked `VOID`, the payments, and the token on or
+  off.
+- `frontend/src/components/pos/ReprintDialog.jsx` — the dialog (the copies,
+  the token, the reason, the reprint history of that order).
+- `frontend/src/pages/OrderHistory.jsx` — the printer button on every **paid**
+  row, the dialog, the flow (the log first, the paper second).
+
+**The tests** — `scripts/pos_export_reprint_test.js`: 23 checks — the role
+gates (the admin exports, the staff does not; the staff may reprint), the CSV
+(the BOM, the CRLF, the header, the bare money), the paper (the REPRINT line,
+the reason, the original order time), the audit log (who, when, why) and the
+cross-tenant probes (404), the unpaid order (409) and the public customer key
+(403).
 
 ---
 
@@ -438,6 +476,8 @@ Phase 1 and Phase 2 are independent — they can ship in either order.
    `admin` already hold it through `staff:*`. The **export** stays manager + admin.
 2. **The token default.** Takeaway → include the token by default; dine-in → exclude it
    by default. Both are visible in the dialog and recorded in the log.
+   **Built exactly that way** (the dialog opens with the token ticked for a
+   takeaway and unticked for a dine-in).
 3. **Is the export worth a plan feature?** Right now the export rides on the
    **Order History** feature and costs nothing extra. If it should be an add-on (a
    "Data Export" feature in the plan catalogue), it needs a `FEATURES.EXPORT` constant,
@@ -458,3 +498,75 @@ Phase 1 and Phase 2 are independent — they can ship in either order.
   flow.
 - No change to the `network` printer path (the Browser Print Server bridge is a
   separate project; the button only warns).
+
+---
+
+## 10. The review of v1.1 (Nov 8, 2026) — what it found and what changed
+
+The document was read again against the code before anything was written. Nine
+things came out of it — five of them would have been wrong in the build.
+
+### 10.1 The document was out of date
+
+The tax work (Nov 8, 2026, the same day) had changed the receipt **after** the
+document was written:
+
+- the receipt now prints the **discount line** and the **tax with its component
+  and its rate** (`VAT 8%: $ 0.24`) — so §5.3's "the receipt prints no
+  discount" was no longer true and that correction is no longer a reprint
+  change (the reprint inherits it);
+- §2.2's baseline table was corrected accordingly.
+
+### 10.2 Five things the document had wrong
+
+| # | What the document said | What the code says | What was done |
+|---|---|---|---|
+| 1 | the date column uses `date_format` **+ `time_format`** | there is **no** `time_format` setting — the time format lives in `utils/format`'s `formatTime` | the document corrected; the export uses `formatDate` + `formatTime` |
+| 2 | the dialog goes into `components/orders/` | the components live in `components/pos/` | `frontend/src/components/pos/ReprintDialog.jsx` |
+| 3 | `backend/app/main.py` needs the model import | `app.routes.order` imports the models module **before** `main.py` runs `create_all` — the table is created without any change there | no change to `main.py`; the document corrected |
+| 4 | the reprint's gate is `require_order_tenant(db, order_id, tenant_id)` | the tenant has to come from the **session** (`caller_tenant`), not from the `customer_id` claim | the route uses `caller_tenant(request, key_info)` |
+| 5 | the payment method on the paper comes from `orderDetails.paymentMethod` | the API returns `payment_method` (snake_case) — a reprint would have printed **N/A** | the receipt hook now reads both (`paymentMethod` for the settlement path, `payment_method` for the order path) |
+
+### 10.3 Two things the build found
+
+- **The export printed the RAW KEY** for the payment method
+  (`payment.method.khqr`) — the labels live in the **orders** namespace and the
+  screen's translator only had `common` and `orderHistory`. The screen now has
+  its own `useTranslation('orders')` for those labels.
+- **The reason field was the search box.** In the test the reason went into
+  the screen's search field — a reminder that the dialog's fields have to be
+  addressed inside the dialog, and that a test that passes for the wrong reason
+  is worse than no test.
+
+### 10.4 The standing rules, applied while building
+
+- **The audit recipe:** the two new routes run through
+  `require_staff_permission("staff:orders:reprint")` (the staff role; the
+  manager and the admin hold it through `staff:*`), `caller_tenant` +
+  `require_order_tenant` (a foreign order is a **404**), `require_plan_feature("Order History")`
+  (the feature the screen already needs — the display name in the plan
+  catalogue), and the paid check (a **409**).
+- **The log before the paper:** the frontend writes the audit log **first**. If
+  the log cannot be written, **nothing is printed** — over-logging is safer
+  than under-logging.
+- **The frontend discipline:** the dialog reads the log with `res.ok` **and**
+  `Array.isArray(...)` before it maps; the export button never appears for a
+  role that may not use it; the reprint button only appears on a **paid** row.
+- **The tax stays in one place:** the reprint prints the tax the order already
+  carries — the same `splitOrderTax` the receipt uses — so the paper of a
+  reprint says exactly what the original said.
+
+### 10.5 The probes (all green)
+
+```bash
+# the tenant's own paid order -> 200
+curl -s -b tenantB.jar -X POST ".../api/orders/361/reprint" -H 'Content-Type: application/json' -d '{"copies":1}'
+# another tenant's order -> 404 (never a 403 that confirms it exists)
+curl -s -b tenantA.jar -X POST ".../api/orders/361/reprint" -H 'Content-Type: application/json' -d '{"copies":1}'
+# an unpaid order -> 409
+curl -s -b tenantA.jar -X POST ".../api/orders/362/reprint" -H 'Content-Type: application/json' -d '{"copies":1}'
+# the customer app's public key -> 403
+curl -s -H "X-API-Key: customer_app_key" ".../api/orders/363/reprints"
+# no key at all -> 401
+curl -s ".../api/orders/363/reprints"
+```
