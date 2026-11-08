@@ -1,0 +1,536 @@
+---
+title: Reports & Analytics — the fixes, the trust, and what to add next
+description: The review of the POS Reports screen (six tabs, the date filter, the CSV export, the print) — the defects that make the numbers untrustworthy, the design of the fixes, and the additions worth building
+---
+
+# Reports & Analytics — the fixes, the trust, and what to add next
+
+**Document Version:** 1.0 (the review of Nov 8, 2026 — **nothing is built yet**)
+**Created:** 2026-11-08
+**Status:** **Design only.** The review was done against the live screen and the live
+data on Nov 8, 2026; every finding in §3 was measured, not guessed. **No code has been
+changed** — the fixes in §5 are the proposal, not the implementation.
+**Owner:** Ideazes POS AI
+**Scope:** the POS frontend (`frontend/src/pages/Reports.jsx`,
+`frontend/src/components/reports/`), the POS backend (`backend/app/routes/loyalty.py`,
+`backend/app/routes/order.py`)
+**Related:** `order-export-and-reprint.mdx` (the CSV rules and the export route — this
+document reuses them) · `order-flow-standards.mdx` (the order machine and the payment
+timing) · `program-changes/ai-feature-gating/ai-feature-gating.mdx` (the plan gate) ·
+the audit recipe in `MEMORY.md` (every new endpoint is gated before it ships)
+
+---
+
+## 1. The summary — one page
+
+The **Reports & Analytics** screen (`/reports`, `frontend/src/pages/Reports.jsx`) has
+**six tabs** — Sales, Orders, Walk-in vs Registered, Items, Payments, Loyalty — one
+shared date filter, a CSV export and a print button.
+
+The review (Nov 8, 2026) drove the live screen in a browser, read every line behind it
+and measured the numbers against the database. The result:
+
+**The screen looks right. Three of the six tabs quietly ignore the date filter, one of
+them is arithmetically wrong for every tenant but the demo, and three backend routes
+hand another tenant's loyalty data to anyone who asks.**
+
+| # | The finding | The measure |
+|---|---|---|
+| A1 | `GET /api/loyalty/report/{customer_id}` has **no guard** and trusts the path | the admin of tenant 1 read tenant 3's report (200) |
+| A2 | `GET /api/loyalty/customers/{customer_id}` has **no guard** | the public PWA key listed any tenant's customers (names, phones) |
+| A3 | `GET /api/loyalty/stats/{customer_id}` uses `optional_permission` | the public PWA key read any tenant's aggregates |
+| B1 | The walk-in tab hardcodes the walk-in customer id **7** | tenant 3: 46 orders → **46 "registered", 0 walk-in** (the truth is the reverse) |
+| B2 | The date filter is **UTC**, the Order History screen is the outlet's time | 6 of 16 orders sit on a different local day in Phnom Penh |
+| B3 | The chart is always **the last 7 days** | "Today" shows 6 empty days; "All Time" shows one week |
+| B4 | The Payments tab has **no date filter** and is built on the tender rows | $5,393.61 for every range; the Sales tab says $5,049.82 (a $343.79 gap) |
+| B5 | The Loyalty tab has **no date filter** | all-time $2,367.73 next to a Sales tab that says $14.24 for today |
+| B6 | The "Pending Payment" KPI is **hardcoded to 0** | always $0.00 |
+| B7 | "Items Sold" counts **line items**, the Items tab counts **quantities** | equal today by luck |
+| B8 | The payment methods show as **raw keys** | `card`, `khqr`, `duitnow_qr` — the app has real labels |
+| C1 | The **Sales tab has no export and no print button** | 0 buttons on the most important tab |
+| C2 | The CSV headers are **English** (`col.label`, not `labelKey`) | the cells are translated, the headers are not |
+| C3 | The CSV has **no BOM and no CRLF** | Khmer/Chinese headers break in Excel |
+| C4 | The CSV has **no formula guard** | a name starting with `=` runs as a formula |
+| C5 | The CSV has **no report header** | the file does not say which outlet, which period, when |
+| D1 | `window.print()` prints **the whole app** | the sidebar, the header, the tabs, the buttons — no print CSS |
+| D2 | The print has **no title, outlet, period or timestamp** | a printed sheet that cannot be filed |
+| E1 | The order list is capped at **10,000** with no notice | a busy tenant's All Time is silently short |
+| E2 | The whole order list travels to the browser | it should be server-side aggregations |
+
+**The order of the work:** the three tenancy holes (§5.1) first — they are a data leak,
+not a polish item. Then the accuracy fixes (§5.2–§5.5), because a report that is
+wrong is worse than no report. Then the export and the print (§5.6–§5.7), which are
+already solved on the Order History screen and can be reused.
+
+**The additions** (§6) are the value on top: the comparison against the previous
+period, today's pace, the busiest hour, the gross margin, the void report, and a daily
+takings sheet that arrives by itself.
+
+---
+
+## 2. What exists today (the honest baseline)
+
+### 2.1 The shape of the screen
+
+```
+frontend/src/pages/Reports.jsx              the screen: the range, the tabs, the KPIs
+frontend/src/components/reports/
+  reportsConfig.js                          the six reports, the date ranges, ALL the maths
+  ReportTabs.jsx  KPICard.jsx  ReportTable.jsx  ExportButtons.jsx
+frontend/src/utils/orderExport.js           the CSV rules (built for the order export)
+```
+
+**The data flow:** the screen fetches the **whole order list** once
+(`GET /api/orders/?outlet_id=…`) and does **all** the maths in the browser
+(`calculateReportStats` in `reportsConfig.js`). Two tabs fetch their own data:
+Payments (`GET /api/orders/payment-stats/{outlet_id}`) and Loyalty
+(`GET /api/loyalty/report/{customer_id}`).
+
+**The four gates** (from the audit recipe) on the screen itself:
+
+| Gate | The call | Where |
+|---|---|---|
+| Who may call it | `minRole: 'manager'` + `FEATURES.REPORTS` | `frontend/src/config/navItems.js` |
+| Whose data | the tenant of the session, the outlets of that tenant | `backend/app/routes/order.py` (`get_orders`) |
+| Did the tenant buy it | the plan's `REPORTS` feature | the nav's `feature` gate |
+| Does the UI agree | the nav's `minRole` + the feature map | `frontend/src/hooks/useFeatures.jsx` |
+
+The **order list route itself is properly scoped** (`require_tenant_claim` +
+`require_outlet_tenant`, filtered in SQL before the limit) — the findings below are
+not about that route.
+
+### 2.2 The six tabs and where their numbers come from
+
+| Tab | The source | Honours the date range? |
+|---|---|---|
+| Sales | the order list (paid only) | the KPIs yes, the **chart no** |
+| Orders | the order list (all orders) | yes |
+| Walk-in vs Registered | the order list + the hardcoded walk-in id | yes, but the split is **wrong** (B1) |
+| Items | the order list (paid only) | yes |
+| Payments | `/orders/payment-stats/{outlet}` | **no** |
+| Loyalty | `/loyalty/report/{customer_id}` | **no** |
+
+---
+
+## 3. The findings, with the evidence
+
+### A. The tenancy holes (the serious ones)
+
+Three routes in `backend/app/routes/loyalty.py` take the tenant as a **path parameter**
+and never check the session. The audit recipe says the tenant comes from the session
+and the parameter is only a claim — these three are the claim.
+
+```
+GET /api/loyalty/report/{customer_id}      no dependency at all
+GET /api/loyalty/customers/{customer_id}    no dependency at all
+GET /api/loyalty/stats/{customer_id}        optional_permission("loyalty:read")
+```
+
+Measured on the live site:
+
+```
+$ curl -b adminOfTenant1.jar  .../api/loyalty/report/3        -> 200   (tenant 3's data)
+$ curl -H "X-API-Key: customer_app_key" .../api/loyalty/report/1
+  -> {"total_customers":7, "total_revenue":2367.7268,
+      "top_customers":[{"name":"Cust 1","phone":"60161234567","loyalty_points":540, ...}]}
+$ curl -H "X-API-Key: customer_app_key" .../api/loyalty/customers/1
+  -> [{"name":"Cust 1","phone":"6060161234567", ...}]
+```
+
+The **customer app key is public** — it ships in the PWA bundle, so anyone can extract
+it. With it, a reader gets any tenant's customer names, phone numbers, revenue and
+loyalty balances.
+
+**The sibling routes** in the same file deserve the same pass: `/customer/{id}`,
+`/customer/{id}/points`, `/customer/{id}/transactions`, `/walkin-customer/{id}`.
+
+### B. The accuracy defects
+
+**B1 — the walk-in tab is wrong for every tenant but the demo.**
+`Reports.jsx` calls `calculateReportStats(filteredOrders, activeReport, 7, …)` — the
+walk-in customer id **7**, hardcoded. The walk-in row is id 7 **only for tenant 1**;
+for tenant 3 (AES Restaurant) it is id **9**, and 31–37 for tenants 4–10. Measured on
+the last 7 days of tenant 3:
+
+```
+with the id 7 (today)  ->  46 registered /  0 walk-in
+with the id 9 (truth)  ->   0 registered / 46 walk-in
+```
+
+So the AES account would report *"Good news! Registered customers account for 100.00%
+of orders"* — for a restaurant where **every** order was a walk-in. The insight box
+below the table flips with it.
+
+**The house convention is already written down**: the walk-in customer is the row with
+the phone `'WALKIN'` — the backend uses it in this very report and in `vouchers.py`.
+The id is not stable, so it must not be hardcoded.
+
+**B2 — the date filter is UTC; the Order History screen is the outlet's time.**
+`filterOrdersByDate` compares `now.toISOString()` (UTC) against the order's UTC date.
+The `created_at` is stored naive-UTC, so the filter is *self-consistent* — but it is
+**not the outlet's day**, and the Order History screen (`OrderHistory.jsx`) *is* the
+outlet's day. For the demo outlet (Asia/Phnom_Penh, UTC+7), six of the sixteen orders
+in the last 7 days fall on a different local day:
+
+```
+ORD-20261108-3683   2026-11-07 21:48 UTC  =  2026-11-08 04:48 in Phnom Penh
+ORD-20261107-4964   2026-11-06 19:08 UTC  =  2026-11-07 02:08 in Phnom Penh
+```
+
+So **"today's takings" differ between two screens of the same app.** The Inventory
+Reports screen (`pages/Inventory/Reports.jsx`) has its own from/to picker and a
+timezone helper — the main Reports screen is the odd one out.
+
+**B3 — the chart ignores the range.** `calculateSalesStats` always builds the last
+seven days from `now`. The title says "Revenue (Last 7 Days)" whatever the range is.
+
+**B4 — the Payments tab: no range, and a different source from the Sales tab.**
+
+```
+range          Sales tab        Payments tab
+Today          $14.24           $5,393.61
+Last 30 days   $487.24          $5,393.61
+All time       $5,049.82        $5,393.61      <- a $343.79 gap
+```
+
+Two faults. The payments route has **no date filter** (identical numbers for every
+range). And it is built on the **tender rows** (`order_payments`) while the Sales tab
+sums the **order totals**. Those tender rows are not clean: twenty orders carry a row
+of **3.50** against totals of 20.03 / 13.67 / 8.90, and one order carries **two** rows
+of 3.50 (a retried payment counted twice).
+
+**The rule that fixes it:** the **order total is the ledger** and the tender rows are
+the **split of that ledger**. The total comes from the order; the shares come from the
+tender rows. Then the Payments tab and the Sales tab must agree — to the cent.
+
+**B5 — the Loyalty tab ignores the range** as well: always all-time, sitting next to a
+Sales tab that follows the range, both labelled "Total Revenue" ($2,367.73 vs $14.24).
+
+**B6 — the pending-payment KPI is hardcoded to 0** in the branch that uses the server
+stats (`pendingPayment: 0`), so it always reads $0.00.
+
+**B7 — "Items Sold" counts line items, not quantities.** The Sales KPI sums
+`items.filter(...).length`; the Items tab sums `item.quantity`. They agree today only
+because every demo order has one item of quantity one.
+
+**B8 — the payment methods are raw keys** (`card`, `khqr`, `cash`, `duitnow_qr`,
+`duitnow`). The app already has the mapping — `paymentMethodLabel(method, t)` in
+`frontend/src/utils/paymentMethods.js` (`duitnow_qr` → the DuitNow label, and so on) —
+and the KPI cards only cover Cash / Card / KHQR, so the DuitNow money is in the table
+but in no KPI.
+
+### C. The export
+
+`components/reports/ExportButtons.jsx` builds the CSV by hand:
+
+```js
+const headers = columns.map(col => col.label).join(',')   // the ENGLISH label
+const rows = data.map(row => columns.map(col => { ... }).join(',')).join('\n')
+const csv = `${headers}\n${rows}`
+const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+```
+
+- **C1** the buttons are rendered **inside the `currentReport.table` block** — the
+  Sales report has no table, so **the Sales tab has no export and no print button**
+  (measured: 0 and 0).
+- **C2** `col.label` is the English fallback, not `col.labelKey` → the headers stay
+  English in Khmer and Chinese while the cells are translated.
+- **C3** no BOM, no CRLF → Excel mangles the non-ASCII headers. The order export
+  (`utils/orderExport.js`) has had both since Nov 8.
+- **C4** no formula guard → a guest or item name starting with `=`, `+`, `-` or `@`
+  runs as a formula when the file is opened.
+- **C5** no report header block — the file does not say which outlet, which period, or
+  when it was generated.
+
+### D. The print
+
+`handlePrint` is `window.print()`. There is **no `@media print` rule for this screen**
+(the only one in the app is in `pages/Inventory/PurchaseOrders.jsx`), so the printed
+page keeps the **sidebar, the header, the tab row, and both buttons — including the
+Print button itself**. Measured in print media: the nav, the header, the six tab
+buttons, "Download CSV" and "Print" are all still visible; the output is two A4 pages
+with the navigation down the left.
+
+### E. The quiet ones
+
+- **E1** `GET /api/orders/` has `limit: int = 10000` and the screen shows no notice if
+  it was truncated — a busy tenant's "All Time" would be silently short.
+- **E2** the whole order list travels to the browser to be filtered there. The screen
+  should ask for aggregations, the way the export route does.
+
+---
+
+## 4. The decisions (for Kens)
+
+These are the choices the fixes turn on. Each one has a recommendation.
+
+1. **The day is the outlet's day, everywhere.** Every report, every screen, the export
+   and the print use the **outlet's timezone**. *Recommendation: yes — one rule, one
+   helper.* The alternative (UTC everywhere) means the manager's "today" never matches
+   the till's "today".
+2. **The ledger is the order total.** The Payments tab is built from the paid order
+   totals; the tender rows only decide **how to split** a total, never how much it is.
+   *Recommendation: yes — then the Sales tab and the Payments tab must agree to the
+   cent, and a test asserts it.*
+3. **The date filter either works or it is not shown.** A tab that cannot honour the
+   range must **hide the range control** (and say "all time" in its title) rather than
+   show a control that does nothing. *Recommendation: make them honour it — the loyalty
+   and payments data are cheap to re-aggregate per range.*
+4. **The walk-in is the `WALKIN` phone, decided by the backend.** The frontend must
+   not know an id. *Recommendation: the backend returns `is_walkin` on the order rows
+   (and on the export rows).*
+5. **Which role may read the loyalty report?** It carries the customers' names, phones
+   and balances. *Recommendation: `loyalty:read` with the **manager** and **admin**
+   (the same roles the Reports screen itself is for) — not the floor, and never the
+   public PWA key.*
+6. **The comparison period.** *Recommendation: every KPI gets a **"vs the previous
+   period"** line — the same length, immediately before. It is the single most
+   requested number in a restaurant report and it needs no new data.*
+
+---
+
+## 5. The fix designs
+
+### 5.1 The tenancy gate on the loyalty routes
+
+The shape every route follows (the audit recipe):
+
+```python
+from app.core.tenant import caller_tenant, require_tenant_claim
+
+@router.get("/report/{customer_id}")
+def get_loyalty_report(
+    customer_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    key_info: dict = Depends(require_permission("loyalty:read")),
+):
+    tenant_id = caller_tenant(request, key_info)      # the tenant of the SESSION
+    if customer_id != tenant_id:
+        raise HTTPException(status_code=403, detail="This restaurant group is not yours")
+    ...
+```
+
+- **the tenant comes from the session**, never from the path parameter;
+- the parameter is only a **claim**, and a mismatch is a **403**;
+- the permission is **required**, not optional — the customer app key must not pass;
+- the same treatment for `/customers/{id}`, `/stats/{id}`, `/customer/{id}`,
+  `/customer/{id}/points`, `/customer/{id}/transactions`, `/walkin-customer/{id}`.
+
+**The probe** (log in as two tenants):
+
+```bash
+curl -s -b tenantA.jar "…/api/loyalty/report/<B>"      # must be 403
+curl -s -H "X-API-Key: customer_app_key" "…/api/loyalty/report/1"   # must be 403
+curl -s -b tenantB.jar "…/api/loyalty/report/<B>"      # must be 200
+```
+
+### 5.2 One walk-in rule
+
+The backend already knows the tenant's walk-in row (the one with the phone `WALKIN`).
+The order rows carry the flag:
+
+```python
+# backend/app/routes/order.py — OrderResponse
+is_walkin: Optional[bool] = None
+```
+
+computed from the tenant's walk-in customer id (never a constant), and the frontend
+uses it instead of the number 7:
+
+```js
+// frontend/src/components/reports/reportsConfig.js
+const registered = orders.filter(o => !o.is_walkin)
+const walkin     = orders.filter(o =>  o.is_walkin)
+```
+
+### 5.3 One date rule, one helper
+
+```js
+// frontend/src/utils/dateRange.js
+export const RANGE_DAYS = { today: 1, week: 7, month: 30, all: null }
+
+/** The window of a range, as the LOCAL dates of the outlet (YYYY-MM-DD). */
+export function rangeWindow(dateRange, tz, now = new Date()) {
+  const today = now.toLocaleDateString('en-CA', { timeZone: tz })
+  const shift = (d, days) => {
+    const dt = new Date(`${d}T00:00:00Z`)
+    dt.setUTCDate(dt.getUTCDate() + days)
+    return dt.toISOString().slice(0, 10)
+  }
+  if (dateRange === 'today') return { from: today, to: today }
+  if (dateRange === 'week')  return { from: shift(today, -6), to: today }   // 7 days
+  if (dateRange === 'month') return { from: shift(today, -29), to: today }  // 30 days
+  return { from: null, to: null }                                          // all
+}
+
+/** Is an order inside the window, in the outlet's day? */
+export function inWindow(createdAt, tz, from, to) {
+  if (!from && !to) return true
+  const local = new Date(createdAt).toLocaleDateString('en-CA', { timeZone: tz })
+  if (from && local < from) return false
+  if (to && local > to) return false
+  return true
+}
+```
+
+The window is then sent to the server (`date_from`, `date_to`) for the tabs that are
+aggregated there — **the same parameters the export route already takes**
+(`GET /api/orders/export`), so the report and the file always cover the same period.
+
+**The "week" range is seven days** (today and the six before). The old code used
+`now - 7 days`, which is **eight** calendar days — the label said seven.
+
+### 5.4 The Payments tab on the ledger
+
+The total comes from the order; the tender rows only split it:
+
+```sql
+SELECT o.payment_method, COUNT(*) AS count, SUM(o.total) AS revenue
+FROM orders o
+WHERE o.customer_id = :tenant AND o.outlet_id = :outlet
+  AND o.payment_status = 'paid'
+  AND o.created_at >= :from AND o.created_at < :to
+GROUP BY o.payment_method
+```
+
+For a **split** order the tender rows give the **shares**, and the order's total is
+split by those shares (so the parts still add up to the total):
+
+```
+order 42.00, tender rows 30.00 card + 12.00 cash
+-> card 28.00, cash 14.00   (the shares, scaled to the order total)
+```
+
+**The rule to test:** the Payments tab's total **equals** the Sales tab's total for the
+same range, to the cent. One assertion, and it catches every future drift.
+
+### 5.5 The chart follows the range
+
+The chart's series is built **for the selected window**: today → the hours so far,
+7 days → seven daily bars, 30 days → thirty daily bars, all time → the months. The
+day labels come from the outlet's timezone and are translated like the rest.
+
+### 5.6 The export, on every tab
+
+The order export already solved the file rules (`utils/orderExport.js`: the BOM, the
+CRLF, the formula guard, the bare money cells). The reports exporter should **reuse
+them**, not re-implement them:
+
+```js
+import { buildCsv, downloadCsv, csvMoney } from '../../utils/orderExport'
+
+const csv = buildCsv(columns, rows)   // the columns carry the TRANSLATED labels
+downloadCsv(csv, `report_${reportId}_${from || 'all'}_${to || 'all'}.csv`)
+```
+
+And every tab gets the buttons — including the Sales tab, which needs **a table**
+(the daily series) to export, not just a chart. That table is also what makes the
+chart readable: a chart cannot be summed in a spreadsheet.
+
+The file gets a **header block**: the outlet, the period, the report, and the moment
+it was generated — the three lines an accountant asks for first.
+
+### 5.7 The print
+
+A `@media print` block for the screen:
+
+- the sidebar, the header, the tab row and the buttons are **hidden**;
+- a **report header** appears: the outlet, the report, the period, the generated-at,
+  and who printed it;
+- the table keeps its rows whole (no row split across a page) and repeats its header
+  row on every page;
+- a footer with the page number.
+
+---
+
+## 6. What to add next (the value on top of the fixes)
+
+The fixes make the screen trustworthy. These make it **worth opening**.
+
+| The addition | What it needs |
+|---|---|
+| **The comparison against the previous period** — this week vs last week, with the arrows | the same window, shifted (the helper in §5.3); one line under every KPI |
+| **Today's pace** — so far today vs the same time yesterday | the hourly series of the two days |
+| **The busiest hour and the day parts** (breakfast / lunch / dinner) | the hourly series; the rostering input nothing on the screen gives today |
+| **Gross margin** — the revenue (Sales) against the cost of the goods sold (Inventory) | the two screens joined; the number the owner actually judges the business on |
+| **The VAT collected and the discounts given** | both are on the orders; neither is shown anywhere |
+| **The void / cancel / refund report** — what was cancelled, why, by whom | the cancelled orders carry a reason; it pairs with the reprint log |
+| **The full menu mix** — every item with its contribution % | the Items tab shows only the top 10 |
+| **The top customers** — sortable, exportable, the top 5 on the screen | the loyalty report has the rows; the screen shows them only in the table |
+| **The daily takings sheet that arrives by itself** — the closing routine, by Telegram or email | the closing numbers + the comparison; the one thing a restaurant does every single day |
+
+---
+
+## 7. The phases
+
+| Phase | What | Backend | Risk |
+|---|---|---|---|
+| 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 6 routes | low — a gate |
+| 2 | **The walk-in rule** (§5.2) | the order response | low |
+| 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move |
+| 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move |
+| 5 | **The export on every tab** (§5.6) | none (the client) | low |
+| 6 | **The print stylesheet** (§5.7) | none | low |
+| 7 | The **additions** (§6) | the aggregates | each one is its own |
+
+Phases 1 and 2 are independent of the rest and can ship alone. **Phase 1 is the one
+that should not wait.**
+
+---
+
+## 8. The probes (how we know it is fixed)
+
+The numbers, not the eyes:
+
+```bash
+# the walk-in split, per tenant (the truth is the WALKIN phone)
+sqlite3 database/pos_ai.db "
+SELECT o.customer_id,
+       SUM(CASE WHEN c.phone = 'WALKIN' THEN 1 ELSE 0 END) AS walkin,
+       SUM(CASE WHEN c.phone IS NULL THEN 1 ELSE 0 END) AS no_customer
+FROM orders o LEFT JOIN dining_customers c ON c.id = o.dining_customer_id
+GROUP BY o.customer_id;"
+
+# the Sales tab and the Payments tab must agree, for the same range
+# (the assertion in the test suite)
+
+# the tenancy
+curl -s -b tenantA.jar "…/api/loyalty/report/<B>"    # 403
+curl -s -H "X-API-Key: customer_app_key" "…/api/loyalty/report/1"   # 403
+```
+
+And the screen itself: the range control changes **every** tab (including the chart
+and the payments and loyalty numbers), the Sales tab has an export and a print button,
+the CSV opens in Excel with readable Khmer/Chinese headers, and the printed page has no
+navigation on it.
+
+---
+
+## 9. The open questions
+
+1. **Which roles may read the loyalty report?** (decision 5) The recommendation is the
+   manager and the admin, with `loyalty:read` — the same people the Reports screen is
+   for.
+2. **The previous period for the comparison** — the same length immediately before, or
+   the same weekday range? The recommendation is the same length immediately before.
+3. **The void report** — should it be a tab of this screen or a page of its own with
+   the reprint log? The recommendation is one **audit** page with both.
+4. **The daily takings sheet** — Telegram, email, or both? And at what time (the
+   outlet's closing time)?
+5. **The gross margin** — the cost of the goods sold comes from the recipes and the
+   ingredient movements; the join is a real piece of work. Worth it, but it is its own
+   phase.
+
+---
+
+## 10. What we are **not** doing (yet)
+
+- **No new charting library.** Recharts is enough for a daily series.
+- **No scheduled reports** until the numbers are trusted — a wrong report that arrives
+  by itself every day is worse than no report.
+- **No server-side report engine.** The screen keeps doing its maths in the browser
+  until the order list is big enough to hurt; the export route already shows the shape
+  if that day comes.
+- **No change to the Inventory Reports screen** in these phases — except to share the
+  date helper with it (§5.3), which fixes its own timezone gap as a side effect.
