@@ -54,14 +54,15 @@ proposal.**
 | **4** | the payments tab on the ledger (§5.4) + the pending KPI + the method labels | **BUILT** — 24 probes |
 | **5** | **the export on every tab** (§5.6) — closes C1–C5 | **BUILT** — 24 probes |
 | **6** | **the print stylesheet** (§5.7) — closes D1, D2 | **BUILT** — 25 probes |
-| **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **BUILT** — 60 probes (eight of the nine; the daily takings sheet is still open) |
+| **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **BUILT** — 83 probes (all nine; the daily takings sheet became a tab of its own in phase 8) |
+| **8** | **the numbers move to the server** — E1 and E2: the order list is no longer pulled into the browser (the cap of 10,000 is gone), the sums are the server's, the cost of the goods follows the tenant's plan | **BUILT** — 48 probes (the oracle of the first ones is the **database**, not a copy of the old arithmetic) |
 
 **And one small thing that is not a phase:** **B7** — the Sales tab's "Items Sold"
 counted **line items** while the Items tab counted **quantities**. Two numbers for
 the same thing; they agree today by luck. **It is fixed** (with phase 7 — both sides
 use `salesTotals()`, which counts the plates).
 
-**The total: 223 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 64).
+**The total: 290 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 83 + 48).
 
 | # | The finding | The measure |
 |---|---|---|
@@ -84,8 +85,8 @@ use `salesTotals()`, which counts the plates).
 | C5 | The CSV has **no report header** | the file does not say which outlet, which period, when — **FIXED** (§5.6) |
 | D1 | `window.print()` prints **the whole app** | the sidebar, the header, the tabs, the buttons — no print CSS — **FIXED** (§5.7) |
 | D2 | The print has **no title, outlet, period or timestamp** | a printed sheet that cannot be filed — **FIXED** (§5.7) |
-| E1 | The order list is capped at **10,000** with no notice | a busy tenant's All Time is silently short — **OPEN** |
-| E2 | The whole order list travels to the browser | it should be server-side aggregations — **OPEN** |
+| E1 | The order list is capped at **10,000** with no notice | a busy tenant's All Time is silently short — **FIXED** (phase 8: the summary route has no limit; the browser never sees the orders) |
+| E2 | The whole order list travels to the browser | it should be server-side aggregations — **FIXED** (phase 8: `GET /api/reports/summary` answers with the sums; the browser builds the shape) |
 
 **The order of the work:** the three tenancy holes (§5.1) first — they are a data leak,
 not a polish item. **They are closed** (Nov 8, 2026): the gate is live, the probes pass
@@ -732,6 +733,44 @@ page number in Firefox ✓) adds the rest ✓.
 **The classes are plain CSS on purpose** ✓ — the print rules must not depend on a
 utility framework's variant being switched on ✓.
 
+### 5.9 The numbers move to the server (phase 8, Nov 8, 2026) — **BUILT**
+
+**What was wrong:** the Reports screen pulled **every order of the outlet into
+the browser** and did the arithmetic there. Two consequences:
+
+- the order list is **capped at 10,000** (`backend/app/routes/order.py:464`) —
+  so a busy tenant's "All Time" was silently short, and nothing on screen said
+  so (**E1**);
+- the whole list travelled to the browser, once per screen, for a screen that
+  only ever shows sums (**E2**).
+
+**What it is now:** `GET /api/reports/summary` — the server answers with the
+**numbers** of a window (the sales, the order types, the walk-in split, the
+chart's series, the hours, the previous period's totals, the moment it is
+now). The browser asks for the numbers and builds the **shape** (the KPI keys,
+the table rows) — the shared components stay the same.
+
+**The rules that moved with it:**
+- the window **and** the window before it are the browser's (`previousWindow()`
+  in `utils/dateRange.js`) — the browser sends both, so the server never has
+  to guess which one "before" means;
+- the local day and the local hour of an order live in
+  `backend/app/core/date_window.py` (`local_day()`, `local_hour()`) — the
+  routes never do the arithmetic themselves;
+- the walk-in split is the **backend's** rule (`is_walkin_order`) — the
+  browser never guesses with a customer id (the id is 7 for one restaurant
+  group and 9 for another, so a hardcoded number made the whole tab lie for
+  every tenant but one);
+- **"All Time" has no previous period** → the comparison is **absent**, not a
+  fall of 100%.
+
+**The probe that matters:** `scripts/reports_phase8_check.py` compares the
+server's answer with the **database** — the rows themselves, not a copy of the
+old arithmetic and not a recording of the old answer. It caught one real
+drift on the way: the chart's order count (the browser had counted the paid
+orders only, and the server was counting all of them). The rule was restored
+on the server.
+
 ### 5.8 Phase 1b: the vouchers (built, Nov 8, 2026)
 
 The loyalty router was not the only file with the same shape. **`routes/vouchers.py`**
@@ -919,9 +958,10 @@ on the server only; this document and the memory are the written record.
 
 ## 6. What to add next (the value on top of the fixes)
 
-> **Eight of the nine are built (phase 7, Nov 8, 2026).** The one that is not is
-> the **daily takings sheet that arrives by itself** — it needs a sender and a
-> schedule, and that is a decision, not a bug.
+> **All nine are built (phase 7 and phase 8, Nov 8, 2026).** The ninth — the
+> **daily takings sheet** — is a tab of its own with its own date: the tenant
+> downloads it (or prints it) when the day is closed. It does not arrive by
+> itself, and that is the point: no sender, no schedule, nothing to get wrong.
 
 The fixes make the screen trustworthy. These make it **worth opening**.
 
@@ -935,7 +975,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | **The void / cancel / refund report** — what was cancelled, why, by whom | the cancelled orders carry a reason; it pairs with the reprint log | **BUILT** — `GET /api/reports/voids` + the Void tab (the staff names are read on the server) |
 | **The full menu mix** — every item with its contribution % | the Items tab shows only the top 10 | **BUILT** — the Items tab now shows every dish, with the cost and the contribution |
 | **The top customers** — sortable, exportable, the top 5 on the screen | the loyalty report has the rows; the screen shows them only in the table | **BUILT** — the `TopCustomersPanel` (the top five, the best first) above the table |
-| **The daily takings sheet that arrives by itself** — the closing routine, by Telegram or email | the closing numbers + the comparison; the one thing a restaurant does every single day | **OPEN** — it needs a sender (the tenant's Telegram or email) and a schedule; a decision, not a defect |
+| **The daily takings sheet** — the closing routine | the closing numbers + the comparison; the one thing a restaurant does every single day | **BUILT** — a tab of its own (phase 8): the takings of a day, with its own date, downloadable as a sheet and printable. **It does not arrive by itself** — the tenant presses the button when the day is closed. That was Kens' call, and it is the better one: no sender, no schedule, no delivery to get wrong. |
 
 ### 6.1 The two things the browser cannot know (phase 7)
 
@@ -979,6 +1019,28 @@ The AES tenant reads `gross_margin: null` (it has never valued a dish); the demo
 cafe reads **58.67%** on 14 dishes (the cost of the goods is 2,091.00 against a
 revenue of 5,059.50).
 
+### 6.4 The cost of the goods follows the tenant's plan (phase 8)
+
+Kens' rule, built: **the cost is the RECIPE when the tenant has the Inventory
+feature, and the ESTIMATE when it does not.**
+
+| The tenant's plan | The cost of a dish | The answer says |
+|---|---|---|
+| has **Inventory** | the recipe, valued at the ingredients' current unit costs (the same arithmetic as `calculate_item_cost` in the inventory module — one rule, one place) | `cost_source: "recipe"` |
+| does not have it | the estimate on the menu item (`estimated_cost`) | `cost_source: "estimate"` |
+| neither | **unknown** — never "free" | `cost_known: false` (the screen prints a dash) |
+
+A dish without a recipe falls back to the estimate even in a tenant that has
+Inventory — and the answer says which rule was used, so the screen can show
+**one note to the tenant**: "the cost is the recipe of each dish, valued at the
+ingredients' current prices" (or "the cost is the estimate of each dish — value
+your dishes in the menu to see the real margin").
+
+The demo cafe has Inventory: its Chicken Wings cost **344.00** by the recipe
+(4.00 × 86 sold) where the estimate said 3.00 (258.00) — and the margin moved
+from 58.67% to **62.57%**. The AES tenant has no Inventory and no estimates:
+its margin is a dash.
+
 ---
 
 ## 7. The phases
@@ -992,16 +1054,18 @@ revenue of 5,059.50).
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move | **BUILT Nov 8, 2026** — 24 probes |
 | **5** | **The export on every tab** (§5.6) — closes **C1** (no export and no print button on the Sales tab), **C2** (English headers), **C3** (no BOM, no CRLF), **C4** (no formula guard), **C5** (no report header) | none — the client, reusing `utils/orderExport.js` | low | **BUILT Nov 8, 2026** — 24 probes |
 | **6** | **The print stylesheet** (§5.7) — closes **D1** (the whole app prints), **D2** (no title, outlet, period or timestamp) | none — a `@media print` block | low | **BUILT Nov 8, 2026** — 25 probes |
-| **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | two new routes (the menu mix, the voids) + the client | medium — the numbers move | **BUILT Nov 8, 2026** — 60 probes (8 of the 9 additions; the daily takings sheet is still open) |
+| **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | two new routes (the menu mix, the voids) + the client | medium — the numbers move | **BUILT Nov 8, 2026** — 83 probes (all 9 additions) |
+| **8** | **The numbers move to the server** (E1, E2) + the takings sheet + the cost of the goods follows the tenant's plan | one new route (`/reports/summary`) + the client's mapper | high — every number on the screen moves | **BUILT Nov 8, 2026** — 48 probes (the oracle is the **database**) |
 | **4b** | **B7** — the Sales tab's "Items Sold" counts line items, the Items tab counts quantities | none — one line in `reportsConfig.js` | low | **BUILT Nov 8, 2026** (with phase 7 — `salesTotals()` counts the plates now, and both sides use it) |
 
 Phases 1 and 2 are independent of the rest and can ship alone. **Phase 1 is the one
 that should not wait.** *(It did not wait.)*
 
-**What is left, in one line:** the **daily takings sheet that arrives by itself**
-(the last of the nine additions) — it needs a sender and a schedule. Nothing of
-phases 1–7 is half done: each one is on the disk, on the server and covered by
-its probes.
+**What is left, in one line:** nothing of phases 1–8 is half done — each one is
+on the disk, on the server and covered by its probes. The programme's open ends
+are the ones that are not defects: the **audit page** (the void report and the
+reprint log together), and the **margin from the recipes for a tenant that has
+no recipes yet** (the dash).
 
 ---
 
@@ -1051,12 +1115,16 @@ bash scripts/pos_reports_print_test.sh    # phase 6 - the print stylesheet
 # 25 probes, 0 failing (the chrome is hidden, the sheet says what it is)
 
 bash scripts/pos_reports_phase6_test.sh   # phase 7 - the additions
-# 64 probes, 0 failing (the comparison, the pace, the day parts, the margin,
-# the void report, the top customers - 39 of them run the frontend's own
-# modules in node, so they test the code the screen runs)
+# 83 probes, 0 failing (the comparison, the pace, the day parts, the margin,
+# the void report, the top customers, the takings sheet - 58 of them run the
+# frontend's own modules in node, so they test the code the screen runs)
+
+bash scripts/pos_reports_phase8_test.sh   # phase 8 - the numbers move to the server
+# 48 probes, 0 failing (26 of them compare the server's answer with the
+# DATABASE - the rows themselves, not a copy of the old arithmetic)
 ```
 
-**The total: 223 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 64).
+**The total: 290 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 83 + 48).
 
 Both scripts clean up after themselves — they delete only the rows they can name
 (the probe member, the probe orders, the probe vouchers).
