@@ -52,7 +52,7 @@ proposal.**
 | **2** | the walk-in rule (§5.2) | **BUILT** — 9 probes |
 | **3** | one date rule (§5.3) + the chart follows the range (§5.5) | **BUILT** — 21 probes |
 | **4** | the payments tab on the ledger (§5.4) + the pending KPI + the method labels | **BUILT** — 24 probes |
-| **5** | **the export on every tab** (§5.6) — closes C1–C5 | **OPEN** — the client only, no backend |
+| **5** | **the export on every tab** (§5.6) — closes C1–C5 | **BUILT** — 24 probes |
 | **6** | **the print stylesheet** (§5.7) — closes D1, D2 | **OPEN** — the client only, no backend |
 | **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **OPEN** — each one is its own phase; E1/E2 (the order list moves to the server) come first |
 
@@ -60,7 +60,7 @@ proposal.**
 counts **line items** while the Items tab counts **quantities**. Two numbers for the
 same thing; they agree today by luck. It is a one-line fix in `reportsConfig.js`.
 
-**The total: 110 probes, 0 failing** (33 + 23 + 9 + 21 + 24).
+**The total: 134 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24).
 
 | # | The finding | The measure |
 |---|---|---|
@@ -76,11 +76,11 @@ same thing; they agree today by luck. It is a one-line fix in `reportsConfig.js`
 | B6 | The "Pending Payment" KPI is **hardcoded to 0** | always $0.00 — **FIXED** (§5.4) (it is the real pending money now; with today's data every pending order is a cancelled one, so it reads $0.00) |
 | B7 | "Items Sold" counts **line items**, the Items tab counts **quantities** | equal today by luck |
 | B8 | The payment methods show as **raw keys** | `card`, `khqr`, `duitnow_qr` — the app has real labels — **FIXED** (§5.4) |
-| C1 | The **Sales tab has no export and no print button** | 0 buttons on the most important tab — **OPEN** |
-| C2 | The CSV headers are **English** (`col.label`, not `labelKey`) | the cells are translated, the headers are not — **OPEN** |
-| C3 | The CSV has **no BOM and no CRLF** | Khmer/Chinese headers break in Excel — **OPEN** |
-| C4 | The CSV has **no formula guard** | a name starting with `=` runs as a formula — **OPEN** |
-| C5 | The CSV has **no report header** | the file does not say which outlet, which period, when — **OPEN** |
+| C1 | The **Sales tab has no export and no print button** | 0 buttons on the most important tab — **FIXED** (§5.6) |
+| C2 | The CSV headers are **English** (`col.label`, not `labelKey`) | the cells are translated, the headers are not — **FIXED** (§5.6) |
+| C3 | The CSV has **no BOM and no CRLF** | Khmer/Chinese headers break in Excel — **FIXED** (§5.6) (the BOM now lives in `downloadCsv`, so the **order export** gets it too) |
+| C4 | The CSV has **no formula guard** | a name starting with `=` runs as a formula — **FIXED** (§5.6) |
+| C5 | The CSV has **no report header** | the file does not say which outlet, which period, when — **FIXED** (§5.6) |
 | D1 | `window.print()` prints **the whole app** | the sidebar, the header, the tabs, the buttons — no print CSS — **OPEN** |
 | D2 | The print has **no title, outlet, period or timestamp** | a printed sheet that cannot be filed — **OPEN** |
 | E1 | The order list is capped at **10,000** with no notice | a busy tenant's All Time is silently short — **OPEN** |
@@ -639,25 +639,59 @@ The series is built by the **same helper** as the filter (`buildChartSeries` in
 `utils/dateRange.js`), so a chart and its table always cover the same period — and
 the probes check exactly that.
 
-### 5.6 The export, on every tab
+### 5.6 The export, on every tab — **BUILT (Nov 8, 2026)**
 
-The order export already solved the file rules (`utils/orderExport.js`: the BOM, the
-CRLF, the formula guard, the bare money cells). The reports exporter should **reuse
-them**, not re-implement them:
+> **What was built:** every tab has the export button (and the print button ✓), the
+> file follows the **same rules** as the order export (they are reused, not
+> re-implemented ✓), the headers are **translated** ✓, the file says **what it is** ✓
+> and the **Sales tab has a table** ✓ — the series under its chart ✓. The probes:
+> `scripts/pos_reports_export_test.sh` — **24 probes, 0 failing** (17 of them run the
+> frontend's own modules in node ✓).
+
+**The rules are the order export's rules** (`frontend/src/utils/orderExport.js` — the
+BOM, the CRLF, the formula guard, the bare money cells). The reports exporter
+**imports** them; it builds no Blob and no URL of its own ✓.
 
 ```js
-import { buildCsv, downloadCsv, csvMoney } from '../../utils/orderExport'
+import { buildCsv, csvCell, csvMoney, downloadCsv } from '../../utils/orderExport'
 
 const csv = buildCsv(columns, rows)   // the columns carry the TRANSLATED labels
 downloadCsv(csv, `report_${reportId}_${from || 'all'}_${to || 'all'}.csv`)
 ```
 
-And every tab gets the buttons — including the Sales tab, which needs **a table**
-(the daily series) to export, not just a chart. That table is also what makes the
-chart readable: a chart cannot be summed in a spreadsheet.
+**The BOM moved into `downloadCsv`** ✓ — the rule belongs to the **file**, not to
+whoever happens to build it ✓. Before this the **order export** had no BOM either
+✗ (its module claimed it, its caller did not add it ✗) → the Khmer names were
+mangled in Excel ✗. Now every CSV that is downloaded gets it ✓.
 
-The file gets a **header block**: the outlet, the period, the report, and the moment
-it was generated — the three lines an accountant asks for first.
+**Every tab can be exported** ✓ — including the **Sales tab**, which needed **a
+table** (the daily series ✓) and had none ✗ → it had no export and no print button
+at all ✗ (C1 ✓). That table is also what makes the chart readable: a chart cannot be
+summed in a spreadsheet ✓.
+
+**The file says what it is** — the header block (C5 ✓) and the summary of the report
+(the KPI cards ✓) above the table:
+
+```
+Outlet,"Demo Cafe 1"
+Report,"Sales"
+Period,"Last 7 Days (2026-11-02 to 2026-11-08)"
+Generated at,"2026-11-08 22:10"
+
+Summary
+Total Revenue,"5049.82"
+Total Orders,"238"
+
+Period,Orders,Revenue
+2026-11-02,10,120.50
+2026-11-03,14,310.25
+```
+
+**The headers are translated** (C2 ✓): the columns carry a `labelKey` ✓ and the
+exporter translates it ✓ — before this the **cells** were translated and the
+**headers** were English ✗. The file also carries the BOM (C3 ✓), the CRLF, the
+formula guard (C4 ✓ — a guest's name starting with `=` must not run in Excel ✓) and
+bare money cells ✓ (a spreadsheet can sum them ✓).
 
 ### 5.7 The print
 
@@ -795,6 +829,16 @@ it is the record of what is on the disk, not a plan.
 | `frontend/src/utils/paymentMethods.js` | the labels for the tenders that had none: *unknown* (an order with no tender recorded) and *split* |
 | `frontend/src/i18n/locales/{en,zh,km}/orders.json` | the words for those two tenders in the three locales |
 
+**Phase 5 — the export on every tab**
+
+| File | What changed |
+|---|---|
+| `frontend/src/utils/orderExport.js` | the **BOM moved into `downloadCsv`** — the rule belongs to the file, not to the caller. Before this the **order export** had no BOM either (its module claimed it, its caller did not add it), so the Khmer names were mangled in Excel |
+| `frontend/src/components/reports/ExportButtons.jsx` | the exporter **reuses** the shared rules (`buildCsv`, `csvCell`, `csvMoney`, `downloadCsv`) instead of building a Blob and the rows itself; the **headers are translated** (`labelKey`), the file gets the **header block** (the outlet, the report, the period, the generated-at) and the **summary** of the report; the file is named `report_{id}_{from}_{to}.csv`; the buttons hide themselves when the screen is printed |
+| `frontend/src/components/reports/reportsConfig.js` | the **Sales tab has a table** now — the series under its chart (the period, the orders, the revenue) — so it can be exported and printed |
+| `frontend/src/pages/Reports.jsx` | the table of the tab (the series for the Sales tab, the rows for the others) is what the exporter writes; the period, the outlet's name and the summary of the report go with it |
+| `frontend/src/i18n/locales/{en,zh,km}/reports.json` | the words of the series table and of the header block, in the three locales |
+
 **Phase 3 — the date rule and the chart**
 
 | File | What changed |
@@ -816,6 +860,14 @@ it is the record of what is on the disk, not a plan.
 | `scripts/pos_walkin_report_test.sh` | phase 2 — the flag against the database (both tenants), the truth of tenant 3, no hardcoded id in the browser, one lookup in the backend (9 probes) |
 | `scripts/pos_reports_date_test.sh` | phase 3 — the window of every range, the day of an order in the outlet's timezone, the series of the chart (21 probes; 16 of them run the frontend's own modules in node through a small resolver) |
 | `scripts/pos_reports_payments_test.sh` | phase 4 — the Payments tab's total equals the Sales tab's total for three windows and two tenants, the parts add up to the whole, the pending money is the database's, the window is honoured, the cross-tenant read is still a 403 (24 probes) |
+| `scripts/pos_reports_export_test.sh` | phase 5 — the file rules (the BOM, the CRLF, the formula guard, the bare money cells), the translated headers, the header block, every tab has a table (24 probes; 17 of them run the frontend's own modules in node) |
+
+**The loader** (`scripts/extensionless-loader.mjs`) gives node the resolution rule
+Vite gives the frontend: the extensionless imports (`../utils/format` → `format.js`,
+`../i18n` → `i18n/index.js`) **and** `import.meta.glob('./locales/en/*.json', { eager:
+true })` ✓ — the glob is resolved on the disk and the call becomes a map of real
+imports ✓ (nothing is stubbed ✓), so the checks can import the frontend's own
+modules ✓.
 
 **One note on the source:** `mydoc/Projects/POS_AI` is **not** under version control
 (Kens' rule — git operations there have destroyed work before). The changes above live
@@ -856,7 +908,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | 2 | **The walk-in rule** (§5.2) | the order response | low | **BUILT Nov 8, 2026** — 9 probes |
 | 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move | **BUILT Nov 8, 2026** — 21 probes |
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move | **BUILT Nov 8, 2026** — 24 probes |
-| **5** | **The export on every tab** (§5.6) — closes **C1** (no export and no print button on the Sales tab), **C2** (English headers), **C3** (no BOM, no CRLF), **C4** (no formula guard), **C5** (no report header) | none — the client, reusing `utils/orderExport.js` | low | **OPEN** |
+| **5** | **The export on every tab** (§5.6) — closes **C1** (no export and no print button on the Sales tab), **C2** (English headers), **C3** (no BOM, no CRLF), **C4** (no formula guard), **C5** (no report header) | none — the client, reusing `utils/orderExport.js` | low | **BUILT Nov 8, 2026** — 24 probes |
 | **6** | **The print stylesheet** (§5.7) — closes **D1** (the whole app prints), **D2** (no title, outlet, period or timestamp) | none — a `@media print` block | low | **OPEN** |
 | **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | the aggregates — **E1/E2 come first** (the order list is capped at 10,000 and the whole list travels to the browser) | each one is its own | **OPEN** |
 | **4b** | **B7** — the Sales tab's "Items Sold" counts line items, the Items tab counts quantities | none — one line in `reportsConfig.js` | low | **OPEN** |
@@ -908,6 +960,9 @@ bash scripts/pos_reports_date_test.sh    # phase 3 - the date rule + the chart
 
 bash scripts/pos_reports_payments_test.sh # phase 4 - the payments tab on the ledger
 # 24 probes, 0 failing (the total equals the Sales tab's total, to the cent)
+
+bash scripts/pos_reports_export_test.sh   # phase 5 - the export on every tab
+# 24 probes, 0 failing (the file rules, the translated headers, the header block)
 ```
 
 Both scripts clean up after themselves — they delete only the rows they can name
