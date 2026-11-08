@@ -53,14 +53,14 @@ proposal.**
 | **3** | one date rule (§5.3) + the chart follows the range (§5.5) | **BUILT** — 21 probes |
 | **4** | the payments tab on the ledger (§5.4) + the pending KPI + the method labels | **BUILT** — 24 probes |
 | **5** | **the export on every tab** (§5.6) — closes C1–C5 | **BUILT** — 24 probes |
-| **6** | **the print stylesheet** (§5.7) — closes D1, D2 | **OPEN** — the client only, no backend |
+| **6** | **the print stylesheet** (§5.7) — closes D1, D2 | **BUILT** — 25 probes |
 | **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **OPEN** — each one is its own phase; E1/E2 (the order list moves to the server) come first |
 
 **And one small thing that is not a phase:** **B7** — the Sales tab's "Items Sold"
 counts **line items** while the Items tab counts **quantities**. Two numbers for the
 same thing; they agree today by luck. It is a one-line fix in `reportsConfig.js`.
 
-**The total: 134 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24).
+**The total: 159 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25).
 
 | # | The finding | The measure |
 |---|---|---|
@@ -81,8 +81,8 @@ same thing; they agree today by luck. It is a one-line fix in `reportsConfig.js`
 | C3 | The CSV has **no BOM and no CRLF** | Khmer/Chinese headers break in Excel — **FIXED** (§5.6) (the BOM now lives in `downloadCsv`, so the **order export** gets it too) |
 | C4 | The CSV has **no formula guard** | a name starting with `=` runs as a formula — **FIXED** (§5.6) |
 | C5 | The CSV has **no report header** | the file does not say which outlet, which period, when — **FIXED** (§5.6) |
-| D1 | `window.print()` prints **the whole app** | the sidebar, the header, the tabs, the buttons — no print CSS — **OPEN** |
-| D2 | The print has **no title, outlet, period or timestamp** | a printed sheet that cannot be filed — **OPEN** |
+| D1 | `window.print()` prints **the whole app** | the sidebar, the header, the tabs, the buttons — no print CSS — **FIXED** (§5.7) |
+| D2 | The print has **no title, outlet, period or timestamp** | a printed sheet that cannot be filed — **FIXED** (§5.7) |
 | E1 | The order list is capped at **10,000** with no notice | a busy tenant's All Time is silently short — **OPEN** |
 | E2 | The whole order list travels to the browser | it should be server-side aggregations — **OPEN** |
 
@@ -693,16 +693,40 @@ exporter translates it ✓ — before this the **cells** were translated and the
 formula guard (C4 ✓ — a guest's name starting with `=` must not run in Excel ✓) and
 bare money cells ✓ (a spreadsheet can sum them ✓).
 
-### 5.7 The print
+### 5.7 The print — **BUILT (Nov 8, 2026)**
 
-A `@media print` block for the screen:
+> **What was built:** `frontend/src/print.css` — a `@media print` block for the whole
+> app ✓ — and a **report header** that only exists on the paper ✓. The probes:
+> `scripts/pos_reports_print_test.sh` — **25 probes, 0 failing**.
 
-- the sidebar, the header, the tab row and the buttons are **hidden**;
-- a **report header** appears: the outlet, the report, the period, the generated-at,
-  and who printed it;
-- the table keeps its rows whole (no row split across a page) and repeats its header
-  row on every page;
-- a footer with the page number.
+**The rules:**
+
+- the sidebar, the top bar, the mobile nav, the tab row, the screen's own header and
+  the buttons are **hidden** (`print-hide` ✓);
+- the page loses the app's margins (`print-page` ✓ — the sidebar's `lg:ml-64` has no
+  meaning on paper ✓);
+- a **report header** appears: the outlet, the report, the period, the **moment it was
+  printed** and **who printed it** ✓ — a sheet that cannot be filed is not a report ✓;
+- the table keeps its rows whole (no row split across a page ✓) and repeats its header
+  row on every page ✓ (`display: table-header-group` ✓);
+- the KPI cards print (they are the summary ✓) and the chart prints as the vector it
+  is ✓;
+- a **footer** with the outlet, the report and the moment — a fixed element, so it
+  repeats on **every** page ✓.
+
+**The moment is set when the button is pressed** ✓, not when the screen was drawn ✓ —
+a sheet that says "printed at" must say when it was actually printed ✓ (the screen
+renders when the tab is opened ✗ — an hour later the sheet would lie ✗). The print
+button tells the screen (`onPrint` ✓) and the screen stamps the moment before the
+dialog opens ✓.
+
+**The page number** — Chrome and Edge cannot print one from the page itself (the
+`@page` margin boxes are not supported there ✓), so the sheet carries the outlet, the
+report and the moment in the footer ✓ and the browser's own header/footer (which has a
+page number in Firefox ✓) adds the rest ✓.
+
+**The classes are plain CSS on purpose** ✓ — the print rules must not depend on a
+utility framework's variant being switched on ✓.
 
 ### 5.8 Phase 1b: the vouchers (built, Nov 8, 2026)
 
@@ -829,6 +853,19 @@ it is the record of what is on the disk, not a plan.
 | `frontend/src/utils/paymentMethods.js` | the labels for the tenders that had none: *unknown* (an order with no tender recorded) and *split* |
 | `frontend/src/i18n/locales/{en,zh,km}/orders.json` | the words for those two tenders in the three locales |
 
+**Phase 6 — the print stylesheet**
+
+| File | What changed |
+|---|---|
+| `frontend/src/print.css` | **new** — the `@media print` block: the chrome is hidden, the page loses the app's margins, the table repeats its header row and keeps its rows whole, the KPI cards and the chart print, the footer repeats on every page |
+| `frontend/src/main.jsx` | loads the stylesheet |
+| `frontend/src/App.jsx` | the sidebar, the mobile nav and the top bar are `print-hide`; the page is `print-page` |
+| `frontend/src/pages/Reports.jsx` | the **report header** (paper-only): the outlet, the report, the period, the moment it was printed, who printed it — and the **footer** (paper-only, fixed → every page). The moment is set when the print button is pressed, not when the screen was drawn |
+| `frontend/src/components/reports/ReportTable.jsx` | the table is `print-table`; the sort arrow is hidden |
+| `frontend/src/components/reports/KPICard.jsx` | the card is `print-kpi` (it is not split across a page) |
+| `frontend/src/components/reports/ExportButtons.jsx` | the print button tells the screen when it prints (`onPrint`), so the sheet can carry the moment |
+| `frontend/src/i18n/locales/{en,zh,km}/reports.json` | the words of the print header, in the three locales |
+
 **Phase 5 — the export on every tab**
 
 | File | What changed |
@@ -861,6 +898,7 @@ it is the record of what is on the disk, not a plan.
 | `scripts/pos_reports_date_test.sh` | phase 3 — the window of every range, the day of an order in the outlet's timezone, the series of the chart (21 probes; 16 of them run the frontend's own modules in node through a small resolver) |
 | `scripts/pos_reports_payments_test.sh` | phase 4 — the Payments tab's total equals the Sales tab's total for three windows and two tenants, the parts add up to the whole, the pending money is the database's, the window is honoured, the cross-tenant read is still a 403 (24 probes) |
 | `scripts/pos_reports_export_test.sh` | phase 5 — the file rules (the BOM, the CRLF, the formula guard, the bare money cells), the translated headers, the header block, every tab has a table (24 probes; 17 of them run the frontend's own modules in node) |
+| `scripts/pos_reports_print_test.sh` | phase 6 — the chrome is hidden, the page loses the app's margins, the table repeats its header row and keeps its rows whole, the sheet carries the outlet, the report, the period, the moment and who printed it, the footer repeats on every page (25 probes) |
 
 **The loader** (`scripts/extensionless-loader.mjs`) gives node the resolution rule
 Vite gives the frontend: the extensionless imports (`../utils/format` → `format.js`,
@@ -909,7 +947,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move | **BUILT Nov 8, 2026** — 21 probes |
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move | **BUILT Nov 8, 2026** — 24 probes |
 | **5** | **The export on every tab** (§5.6) — closes **C1** (no export and no print button on the Sales tab), **C2** (English headers), **C3** (no BOM, no CRLF), **C4** (no formula guard), **C5** (no report header) | none — the client, reusing `utils/orderExport.js` | low | **BUILT Nov 8, 2026** — 24 probes |
-| **6** | **The print stylesheet** (§5.7) — closes **D1** (the whole app prints), **D2** (no title, outlet, period or timestamp) | none — a `@media print` block | low | **OPEN** |
+| **6** | **The print stylesheet** (§5.7) — closes **D1** (the whole app prints), **D2** (no title, outlet, period or timestamp) | none — a `@media print` block | low | **BUILT Nov 8, 2026** — 25 probes |
 | **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | the aggregates — **E1/E2 come first** (the order list is capped at 10,000 and the whole list travels to the browser) | each one is its own | **OPEN** |
 | **4b** | **B7** — the Sales tab's "Items Sold" counts line items, the Items tab counts quantities | none — one line in `reportsConfig.js` | low | **OPEN** |
 
@@ -963,6 +1001,9 @@ bash scripts/pos_reports_payments_test.sh # phase 4 - the payments tab on the le
 
 bash scripts/pos_reports_export_test.sh   # phase 5 - the export on every tab
 # 24 probes, 0 failing (the file rules, the translated headers, the header block)
+
+bash scripts/pos_reports_print_test.sh    # phase 6 - the print stylesheet
+# 25 probes, 0 failing (the chrome is hidden, the sheet says what it is)
 ```
 
 Both scripts clean up after themselves — they delete only the rows they can name
