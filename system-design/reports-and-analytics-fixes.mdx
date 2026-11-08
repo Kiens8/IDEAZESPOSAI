@@ -43,7 +43,7 @@ date rule, the chart, the payments tab on the ledger, the loyalty window, the pe
 money and the method labels — phases 2, 3 and 4). **B7, C, D and E are still the
 proposal.**
 
-### 1.1 Where the programme stands (Nov 8, 2026, 21:55)
+### 1.1 Where the programme stands (Nov 8, 2026, 22:55)
 
 | Phase | What it was | State |
 |---|---|---|
@@ -54,13 +54,14 @@ proposal.**
 | **4** | the payments tab on the ledger (§5.4) + the pending KPI + the method labels | **BUILT** — 24 probes |
 | **5** | **the export on every tab** (§5.6) — closes C1–C5 | **BUILT** — 24 probes |
 | **6** | **the print stylesheet** (§5.7) — closes D1, D2 | **BUILT** — 25 probes |
-| **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **OPEN** — each one is its own phase; E1/E2 (the order list moves to the server) come first |
+| **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **BUILT** — 60 probes (eight of the nine; the daily takings sheet is still open) |
 
 **And one small thing that is not a phase:** **B7** — the Sales tab's "Items Sold"
-counts **line items** while the Items tab counts **quantities**. Two numbers for the
-same thing; they agree today by luck. It is a one-line fix in `reportsConfig.js`.
+counted **line items** while the Items tab counted **quantities**. Two numbers for
+the same thing; they agree today by luck. **It is fixed** (with phase 7 — both sides
+use `salesTotals()`, which counts the plates).
 
-**The total: 159 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25).
+**The total: 219 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 60).
 
 | # | The finding | The measure |
 |---|---|---|
@@ -74,7 +75,7 @@ same thing; they agree today by luck. It is a one-line fix in `reportsConfig.js`
 | B4 | The Payments tab has **no date filter** and is built on the tender rows | $5,393.61 for every range; the Sales tab says $5,049.82 (a $343.79 gap) — **FIXED** (§5.4) |
 | B5 | The Loyalty tab has **no date filter** | all-time $2,367.73 next to a Sales tab that says $14.24 for today — **FIXED** (§5.4) |
 | B6 | The "Pending Payment" KPI is **hardcoded to 0** | always $0.00 — **FIXED** (§5.4) (it is the real pending money now; with today's data every pending order is a cancelled one, so it reads $0.00) |
-| B7 | "Items Sold" counts **line items**, the Items tab counts **quantities** | equal today by luck |
+| B7 | "Items Sold" counts **line items**, the Items tab counts **quantities** | equal today by luck — **FIXED** (both count the plates now, through one function) |
 | B8 | The payment methods show as **raw keys** | `card`, `khqr`, `duitnow_qr` — the app has real labels — **FIXED** (§5.4) |
 | C1 | The **Sales tab has no export and no print button** | 0 buttons on the most important tab — **FIXED** (§5.6) |
 | C2 | The CSV headers are **English** (`col.label`, not `labelKey`) | the cells are translated, the headers are not — **FIXED** (§5.6) |
@@ -96,9 +97,12 @@ post its own price and its own discount** (§5.9). Both are closed. Then the acc
 and the print (§5.6–§5.7), which are already solved on the Order History screen and
 can be reused.
 
-**The additions** (§6) are the value on top: the comparison against the previous
-period, today's pace, the busiest hour, the gross margin, the void report, and a daily
-takings sheet that arrives by itself.
+**The additions** (§6) are the value on top — and **eight of the nine are built**
+(phase 7): the comparison against the previous period, today's pace, the busiest hour
+and the day parts, the gross margin, the VAT and the discounts, the void report, the
+full menu mix and the top customers. The **daily takings sheet that arrives by
+itself** is the one that is left: it needs a sender (the tenant's Telegram or email)
+and a schedule — a decision, not a defect.
 
 ---
 
@@ -915,25 +919,49 @@ on the server only; this document and the memory are the written record.
 
 ## 6. What to add next (the value on top of the fixes)
 
-> **None of these is built yet** — they are the content of **phase 7** (§7), and each
-> one is its own piece of work. The order that pays off first: the **comparison
-> against the previous period** and the **daily takings sheet** (the two things a
-> restaurant asks for every day), then the **gross margin** and the **VAT and the
-> discounts**, then the rest.
+> **Eight of the nine are built (phase 7, Nov 8, 2026).** The one that is not is
+> the **daily takings sheet that arrives by itself** — it needs a sender and a
+> schedule, and that is a decision, not a bug.
 
 The fixes make the screen trustworthy. These make it **worth opening**.
 
-| The addition | What it needs |
-|---|---|
-| **The comparison against the previous period** — this week vs last week, with the arrows | the same window, shifted (the helper in §5.3); one line under every KPI |
-| **Today's pace** — so far today vs the same time yesterday | the hourly series of the two days |
-| **The busiest hour and the day parts** (breakfast / lunch / dinner) | the hourly series; the rostering input nothing on the screen gives today |
-| **Gross margin** — the revenue (Sales) against the cost of the goods sold (Inventory) | the two screens joined; the number the owner actually judges the business on |
-| **The VAT collected and the discounts given** | both are on the orders; neither is shown anywhere |
-| **The void / cancel / refund report** — what was cancelled, why, by whom | the cancelled orders carry a reason; it pairs with the reprint log |
-| **The full menu mix** — every item with its contribution % | the Items tab shows only the top 10 |
-| **The top customers** — sortable, exportable, the top 5 on the screen | the loyalty report has the rows; the screen shows them only in the table |
-| **The daily takings sheet that arrives by itself** — the closing routine, by Telegram or email | the closing numbers + the comparison; the one thing a restaurant does every single day |
+| The addition | What it needs | State |
+|---|---|---|
+| **The comparison against the previous period** — this week vs last week, with the arrows | the same window, shifted (the helper in §5.3); one line under every KPI | **BUILT** — `previousWindow()` in `utils/dateRange.js`, `changeAgainst()` in `reportsConfig.js`, the arrow and the percentage on every KPI card |
+| **Today's pace** — so far today vs the same time yesterday | the hourly series of the two days | **BUILT** — the `PacePanel` (today's revenue against yesterday's at the same hour) |
+| **The busiest hour and the day parts** (breakfast / lunch / dinner) | the hourly series; the rostering input nothing on the screen gives today | **BUILT** — the `DayPartsPanel` (the busiest hour + the three parts) |
+| **Gross margin** — the revenue (Sales) against the cost of the goods sold (Inventory) | the two screens joined; the number the owner actually judges the business on | **BUILT** — `GET /api/reports/menu-mix` (the cost lives with the menu item) + the KPIs on the Sales and Items tabs |
+| **The VAT collected and the discounts given** | both are on the orders; neither is shown anywhere | **BUILT** — two KPIs on the Sales tab |
+| **The void / cancel / refund report** — what was cancelled, why, by whom | the cancelled orders carry a reason; it pairs with the reprint log | **BUILT** — `GET /api/reports/voids` + the Void tab (the staff names are read on the server) |
+| **The full menu mix** — every item with its contribution % | the Items tab shows only the top 10 | **BUILT** — the Items tab now shows every dish, with the cost and the contribution |
+| **The top customers** — sortable, exportable, the top 5 on the screen | the loyalty report has the rows; the screen shows them only in the table | **BUILT** — the `TopCustomersPanel` (the top five, the best first) above the table |
+| **The daily takings sheet that arrives by itself** — the closing routine, by Telegram or email | the closing numbers + the comparison; the one thing a restaurant does every single day | **OPEN** — it needs a sender (the tenant's Telegram or email) and a schedule; a decision, not a defect |
+
+### 6.1 The two things the browser cannot know (phase 7)
+
+Most of the additions are arithmetic the browser already does. Two are not, and
+they are the server's:
+
+| The route | What it answers | The gate |
+|---|---|---|
+| `GET /api/reports/menu-mix` | every dish of the window with its quantity, its revenue, **the cost of the goods** and its contribution | `staff:orders:read` + the outlet's tenant + the Reports plan |
+| `GET /api/reports/voids` | what was voided, **why**, and **who** voided it | the same three gates |
+
+Both routes follow the standing audit recipe (a new endpoint is gated before it
+ships): the permission, the tenant (the outlet must belong to the tenant of the
+session — never the `customer_id` in the query string), and the plan (the tenant
+must have bought the Reports).
+
+### 6.2 The one rule behind the comparison
+
+The comparison is not a second set of numbers: it is **the same rule, applied to
+the window before** (`previousWindow()` in `utils/dateRange.js` — the same
+length, immediately before) and the same `salesTotals()` function. "All Time"
+has no previous period, so it shows no comparison rather than a made-up one.
+
+> **One thing changed under the hood:** "Items Sold" counted the LINES of an
+> order (a dish ordered three times was counted once). It counts the **plates**
+> now — and both the tab and the comparison use the same function.
 
 ---
 
@@ -948,15 +976,16 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move | **BUILT Nov 8, 2026** — 24 probes |
 | **5** | **The export on every tab** (§5.6) — closes **C1** (no export and no print button on the Sales tab), **C2** (English headers), **C3** (no BOM, no CRLF), **C4** (no formula guard), **C5** (no report header) | none — the client, reusing `utils/orderExport.js` | low | **BUILT Nov 8, 2026** — 24 probes |
 | **6** | **The print stylesheet** (§5.7) — closes **D1** (the whole app prints), **D2** (no title, outlet, period or timestamp) | none — a `@media print` block | low | **BUILT Nov 8, 2026** — 25 probes |
-| **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | the aggregates — **E1/E2 come first** (the order list is capped at 10,000 and the whole list travels to the browser) | each one is its own | **OPEN** |
-| **4b** | **B7** — the Sales tab's "Items Sold" counts line items, the Items tab counts quantities | none — one line in `reportsConfig.js` | low | **OPEN** |
+| **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | two new routes (the menu mix, the voids) + the client | medium — the numbers move | **BUILT Nov 8, 2026** — 60 probes (8 of the 9 additions; the daily takings sheet is still open) |
+| **4b** | **B7** — the Sales tab's "Items Sold" counts line items, the Items tab counts quantities | none — one line in `reportsConfig.js` | low | **BUILT Nov 8, 2026** (with phase 7 — `salesTotals()` counts the plates now, and both sides use it) |
 
 Phases 1 and 2 are independent of the rest and can ship alone. **Phase 1 is the one
 that should not wait.** *(It did not wait.)*
 
-**What is left, in one line:** the two client-only phases (**5** and **6**) and the
-additions (**7**) — plus **B7**, which is one line. Nothing of phases 1–4 is half
-done: each one is on the disk, on the server and covered by its probes.
+**What is left, in one line:** the **daily takings sheet that arrives by itself**
+(the last of the nine additions) — it needs a sender and a schedule. Nothing of
+phases 1–7 is half done: each one is on the disk, on the server and covered by
+its probes.
 
 ---
 
@@ -1004,7 +1033,14 @@ bash scripts/pos_reports_export_test.sh   # phase 5 - the export on every tab
 
 bash scripts/pos_reports_print_test.sh    # phase 6 - the print stylesheet
 # 25 probes, 0 failing (the chrome is hidden, the sheet says what it is)
+
+bash scripts/pos_reports_phase6_test.sh   # phase 7 - the additions
+# 60 probes, 0 failing (the comparison, the pace, the day parts, the margin,
+# the void report, the top customers - 37 of them run the frontend's own
+# modules in node, so they test the code the screen runs)
 ```
+
+**The total: 219 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 60).
 
 Both scripts clean up after themselves — they delete only the rows they can name
 (the probe member, the probe orders, the probe vouchers).
