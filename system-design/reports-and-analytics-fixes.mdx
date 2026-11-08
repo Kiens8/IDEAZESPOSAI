@@ -43,6 +43,25 @@ date rule, the chart, the payments tab on the ledger, the loyalty window, the pe
 money and the method labels — phases 2, 3 and 4). **B7, C, D and E are still the
 proposal.**
 
+### 1.1 Where the programme stands (Nov 8, 2026, 21:55)
+
+| Phase | What it was | State |
+|---|---|---|
+| **1** | the tenancy gate on the loyalty routes (§5.1) + the sweep of the sibling routes | **BUILT** — 33 probes |
+| **1b** | the same gate on the vouchers (§5.8) + the server taking the money of a guest's order (§5.9) | **BUILT** — 23 probes |
+| **2** | the walk-in rule (§5.2) | **BUILT** — 9 probes |
+| **3** | one date rule (§5.3) + the chart follows the range (§5.5) | **BUILT** — 21 probes |
+| **4** | the payments tab on the ledger (§5.4) + the pending KPI + the method labels | **BUILT** — 24 probes |
+| **5** | **the export on every tab** (§5.6) — closes C1–C5 | **OPEN** — the client only, no backend |
+| **6** | **the print stylesheet** (§5.7) — closes D1, D2 | **OPEN** — the client only, no backend |
+| **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **OPEN** — each one is its own phase; E1/E2 (the order list moves to the server) come first |
+
+**And one small thing that is not a phase:** **B7** — the Sales tab's "Items Sold"
+counts **line items** while the Items tab counts **quantities**. Two numbers for the
+same thing; they agree today by luck. It is a one-line fix in `reportsConfig.js`.
+
+**The total: 110 probes, 0 failing** (33 + 23 + 9 + 21 + 24).
+
 | # | The finding | The measure |
 |---|---|---|
 | A1 | `GET /api/loyalty/report/{customer_id}` has **no guard** and trusts the path | the admin of tenant 1 read tenant 3's report (200) — **FIXED** |
@@ -57,15 +76,15 @@ proposal.**
 | B6 | The "Pending Payment" KPI is **hardcoded to 0** | always $0.00 — **FIXED** (§5.4) (it is the real pending money now; with today's data every pending order is a cancelled one, so it reads $0.00) |
 | B7 | "Items Sold" counts **line items**, the Items tab counts **quantities** | equal today by luck |
 | B8 | The payment methods show as **raw keys** | `card`, `khqr`, `duitnow_qr` — the app has real labels — **FIXED** (§5.4) |
-| C1 | The **Sales tab has no export and no print button** | 0 buttons on the most important tab |
-| C2 | The CSV headers are **English** (`col.label`, not `labelKey`) | the cells are translated, the headers are not |
-| C3 | The CSV has **no BOM and no CRLF** | Khmer/Chinese headers break in Excel |
-| C4 | The CSV has **no formula guard** | a name starting with `=` runs as a formula |
-| C5 | The CSV has **no report header** | the file does not say which outlet, which period, when |
-| D1 | `window.print()` prints **the whole app** | the sidebar, the header, the tabs, the buttons — no print CSS |
-| D2 | The print has **no title, outlet, period or timestamp** | a printed sheet that cannot be filed |
-| E1 | The order list is capped at **10,000** with no notice | a busy tenant's All Time is silently short |
-| E2 | The whole order list travels to the browser | it should be server-side aggregations |
+| C1 | The **Sales tab has no export and no print button** | 0 buttons on the most important tab — **OPEN** |
+| C2 | The CSV headers are **English** (`col.label`, not `labelKey`) | the cells are translated, the headers are not — **OPEN** |
+| C3 | The CSV has **no BOM and no CRLF** | Khmer/Chinese headers break in Excel — **OPEN** |
+| C4 | The CSV has **no formula guard** | a name starting with `=` runs as a formula — **OPEN** |
+| C5 | The CSV has **no report header** | the file does not say which outlet, which period, when — **OPEN** |
+| D1 | `window.print()` prints **the whole app** | the sidebar, the header, the tabs, the buttons — no print CSS — **OPEN** |
+| D2 | The print has **no title, outlet, period or timestamp** | a printed sheet that cannot be filed — **OPEN** |
+| E1 | The order list is capped at **10,000** with no notice | a busy tenant's All Time is silently short — **OPEN** |
+| E2 | The whole order list travels to the browser | it should be server-side aggregations — **OPEN** |
 
 **The order of the work:** the three tenancy holes (§5.1) first — they are a data leak,
 not a polish item. **They are closed** (Nov 8, 2026): the gate is live, the probes pass
@@ -83,7 +102,12 @@ takings sheet that arrives by itself.
 
 ---
 
-## 2. What exists today (the honest baseline)
+## 2. What exists today (the honest baseline — **before** the phases)
+
+> **Read this as the baseline, not as the state of the screen.** It describes the
+> screen as the review found it on Nov 8, 2026, **before** phases 1–4 were built. What
+> each finding became is in §5.1–§5.5 and §5.8–§5.9; what actually changed on disk is
+> in **§5.10**.
 
 ### 2.1 The shape of the screen
 
@@ -718,9 +742,12 @@ The promotions engine moved out of the route into
 `backend/app/services/promotion_service.py`, because the order needs it now. Its
 answer does not change.
 
-### 5.10 What actually changed on disk (phases 1 and 1b)
+### 5.10 What actually changed on disk (phases 1, 1b, 2, 3 and 4)
 
 The list of the files, so anybody can check the work without reading the whole diff.
+Every line below was **checked against the files on the server** on Nov 8, 2026 (the
+new files exist, the new symbols are in them, the customer app's version is 2.6.22) —
+it is the record of what is on the disk, not a plan.
 
 **Phase 1 — the loyalty gate**
 
@@ -798,6 +825,12 @@ on the server only; this document and the memory are the written record.
 
 ## 6. What to add next (the value on top of the fixes)
 
+> **None of these is built yet** — they are the content of **phase 7** (§7), and each
+> one is its own piece of work. The order that pays off first: the **comparison
+> against the previous period** and the **daily takings sheet** (the two things a
+> restaurant asks for every day), then the **gross margin** and the **VAT and the
+> discounts**, then the rest.
+
 The fixes make the screen trustworthy. These make it **worth opening**.
 
 | The addition | What it needs |
@@ -816,19 +849,24 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 
 ## 7. The phases
 
-| Phase | What | Backend | Risk |
-|---|---|---|---|
-| 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 14 routes | low — a gate — **BUILT Nov 8, 2026** |
-| 1b | **The same gate on the vouchers** (§5.8) + the server taking the money of a guest order (§5.9) | 10 routes + the order service | low — a gate — **BUILT Nov 8, 2026** |
-| 2 | **The walk-in rule** (§5.2) | the order response | low — **BUILT Nov 8, 2026** |
-| 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move — **BUILT Nov 8, 2026** |
-| 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move — **BUILT Nov 8, 2026** |
-| 5 | **The export on every tab** (§5.6) | none (the client) | low |
-| 6 | **The print stylesheet** (§5.7) | none | low |
-| 7 | The **additions** (§6) | the aggregates | each one is its own |
+| Phase | What | Backend | Risk | State |
+|---|---|---|---|---|
+| 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 14 routes | low — a gate | **BUILT Nov 8, 2026** — 33 probes |
+| 1b | **The same gate on the vouchers** (§5.8) + the server taking the money of a guest order (§5.9) | 10 routes + the order service | low — a gate | **BUILT Nov 8, 2026** — 23 probes |
+| 2 | **The walk-in rule** (§5.2) | the order response | low | **BUILT Nov 8, 2026** — 9 probes |
+| 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move | **BUILT Nov 8, 2026** — 21 probes |
+| 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move | **BUILT Nov 8, 2026** — 24 probes |
+| **5** | **The export on every tab** (§5.6) — closes **C1** (no export and no print button on the Sales tab), **C2** (English headers), **C3** (no BOM, no CRLF), **C4** (no formula guard), **C5** (no report header) | none — the client, reusing `utils/orderExport.js` | low | **OPEN** |
+| **6** | **The print stylesheet** (§5.7) — closes **D1** (the whole app prints), **D2** (no title, outlet, period or timestamp) | none — a `@media print` block | low | **OPEN** |
+| **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | the aggregates — **E1/E2 come first** (the order list is capped at 10,000 and the whole list travels to the browser) | each one is its own | **OPEN** |
+| **4b** | **B7** — the Sales tab's "Items Sold" counts line items, the Items tab counts quantities | none — one line in `reportsConfig.js` | low | **OPEN** |
 
 Phases 1 and 2 are independent of the rest and can ship alone. **Phase 1 is the one
-that should not wait.**
+that should not wait.** *(It did not wait.)*
+
+**What is left, in one line:** the two client-only phases (**5** and **6**) and the
+additions (**7**) — plus **B7**, which is one line. Nothing of phases 1–4 is half
+done: each one is on the disk, on the server and covered by its probes.
 
 ---
 
