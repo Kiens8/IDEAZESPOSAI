@@ -1,0 +1,668 @@
+# Menu Options & Variants — the dish, the choices, the ticket, the cost
+
+**Document Version:** 1.0 (the proposal — Nov 9, 2026)
+**Owner:** Ideazes POS AI
+**Status:** **Proposed — nothing built.** The review below is against the live code
+and the live database (Nov 9, 2026). Every "what today" statement is a fact about
+the code as it stands, not a memory. The phases at the end are the proposal.
+
+> **Why this document exists.** Kens: *"the current menu management is too simple —
+> ingredients/toppings, size, modifiers, optional, remarks. If we change the menu
+> structure it touches the kitchen printing and the recipe management, which involves
+> costing. Example: a chicken mee soup — the customer chooses the noodle (mee,
+> bihun, flat rice noodle), the size (big or small)."*
+>
+> So: the structure of the menu changes, and the three things that depend on it
+> change with it — **the kitchen ticket**, **the recipe (the stock)** and **the
+> costing (the margin)**. This document says what the menu looks like after, what
+> each of those three becomes, and in which order it is safe to build.
+
+---
+
+## 1. The summary — one page
+
+**Today the menu is a flat list of dishes.** A dish has a name, a price, a
+category, a picture and a **flat list of free-text modification strings**
+(`menu_items.modifications`). There are no sizes, no option groups, no prices on a
+choice, no ingredient deltas and no remark on the order line.
+
+**The gap, in the words of the example:**
+
+| The guest wants | Today |
+|---|---|
+| Chicken mee soup | one menu item, one price |
+| Big or small | **not possible** — no size concept anywhere |
+| Mee, bihun or kway teow | **not possible** — no choice, no ingredient swap |
+| Extra egg / no coriander | **not possible** — and the kitchen would never see it |
+| "Less spicy, no celery" | the counter staff types it — **and the note is silently dropped** (see §3.4) |
+| The right cost and the right margin | one flat cost per dish, whatever the guest chose |
+
+**The proposal — three layers on top of the dish:**
+
+```
+menu_items                      the dish            (today)
+  ├── menu_item_variants        the size            (NEW)  "Big", "Small"  → its own price, its own recipe
+  └── menu_option_groups        the choice group    (NEW)  "Noodle", "Topping", "Spice"
+        └── menu_options        one choice          (NEW)  "Mee", "Bihun", "Extra egg" → a price delta, an ingredient delta, a kitchen note
+```
+
+**and the sold line keeps a snapshot of the choice** (`order_item_options`, NEW) so
+that the receipt, the kitchen ticket, the stock and the margin all speak about the
+same thing.
+
+**The four rules the proposal rests on:**
+
+1. **The guest posts ids, never prices.** The server resolves the price from the
+   menu. *(Today it does not — see §3.6, that is a live money hole.)*
+2. **The choice changes three things at once, or it is not a choice:** the price,
+   the ingredients (stock + cost) and the kitchen ticket. A group that does not
+   move all three is a free-text remark, not an option.
+3. **The sold line is a snapshot.** The history never changes when the menu does.
+4. **Nothing breaks.** The tables are additive, the existing items keep working,
+   the old `modifications` list stays as the legacy remark group.
+
+---
+
+## 2. What the menu is today (the review)
+
+### 2.1 The data
+
+`backend/app/models/models.py`:
+
+```python
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+    id, category_id, outlet_id, name, description
+    price = Column(Float, nullable=False)
+    estimated_cost = Column(Float, default=0.0)
+    has_recipe = Column(Boolean, default=False)
+    image_url, is_available
+    is_addon = Column(Boolean, default=False)
+    add_on_price = Column(Float, default=0.0)
+    modifications = Column(JSON, default=list)      # <- the whole "choices" story
+```
+
+`modifications` is a **flat JSON array of strings** — `["Less spicy", "No onion"]`.
+It has no id, no group, no price, no "required", no "at most two", no link to an
+ingredient and no link to the kitchen. It is a list of suggestions that the
+counter staff may or may not type.
+
+The **only** thing that comes close to a modifier today is the add-on: a menu item
+with `is_addon = 1` and an `add_on_price`, added to the cart as a separate line.
+It is a separate dish with its own category row, not a choice inside a dish.
+
+`backend/app/models/models.py`:
+
+```python
+class OrderItem(Base):
+    __tablename__ = "order_items"
+    order_id, menu_item_id, quantity, unit_price
+    modifications = Column(JSON, default=list)   # the free text, copied
+    add_ons = Column(JSON, default=list)         # [{name, price}]
+    item_total, is_cancelled, cancelled_reason
+```
+
+### 2.2 The API
+
+`backend/app/routes/menu.py`:
+
+```python
+class MenuItemCreate(BaseModel):
+    category_id: int
+    name: str
+    price: float
+    estimated_cost: float = 0.0
+    description, image_url
+    is_addon: bool = False
+    add_on_price: float = 0.0
+    modifications: List[str] = []          # <- a list of strings
+```
+
+`backend/app/routes/order.py`:
+
+```python
+class OrderItemCreate(BaseModel):
+    menu_item_id: int
+    quantity: int = 1
+    unit_price: Optional[float] = None
+    modifications: List[str] = []
+    add_ons: List[dict] = []               # <- {name, price} from the client
+```
+
+So the write path for a choice is a **free-text string** and the price of an
+add-on is **whatever the client says** (§3.6).
+
+### 2.3 The screens
+
+| Screen | What it offers |
+|---|---|
+| `frontend/src/pages/MenuManagement.jsx` | name, price, category, image, available, add-on, estimated cost, and a **free-text list of modifications** (line 95: `modifications: formData.modifications.filter(m => m.trim())`) |
+| `frontend/src/pages/StaffOrder.jsx` | the cart: a quantity and a **free-text note per line** (line 310 sends `notes: c.notes || ''`) |
+| `customer-app/js/app.js` | the item modal **hides the options entirely** — line 1469: `// For now, no modifications - can be extended` → `modsSection.style.display = 'none'` |
+
+So the guest cannot choose anything at all, and the counter staff can only type —
+and the type is lost (§3.4).
+
+### 2.4 The live data
+
+The demo menu (Nov 9): **16 items**, 11 with a recipe, **0** with modifications,
+**0** add-on items, and one cost per dish (`estimated_cost` is set by hand — e.g.
+"Soup of the Day" is priced 4.00 with an estimated cost of 5.00, a negative
+margin, because there is no recipe to compute it from).
+
+---
+
+## 3. What breaks, or is already broken
+
+### 3.1 The kitchen ticket — the browser and the PDF lose the choices
+
+`frontend/src/pages/Kitchen.jsx` has **two** ticket builders and they disagree:
+
+| Builder | Used for | The choices |
+|---|---|---|
+| `generateKitchenTicketHTML()` (line 360) | the browser print and the PDF | **dropped** — it prints only `menu_item_name` and `x{quantity}` |
+| `generateKitchenTicket()` (the ESC/POS, line 425) | the network printer | printed — `> ${mod}` per modification |
+
+So on the browser printer the kitchen sees "Chicken Mee Soup x1" and nothing else —
+not the noodle, not the size, not "no coriander". This is the single most
+dangerous gap in the menu today, and it is **independent** of the new structure: it
+is worth fixing on its own, this week, even if the whole options project is
+deferred.
+
+### 3.2 The recipe — one per dish, so a size cannot cost differently
+
+`backend/app/models/inventory.py`:
+
+```python
+class Recipe:            menu_item_id, outlet_id          # ONE recipe per dish
+class RecipeIngredient:  recipe_id, ingredient_id, quantity, unit_override
+```
+
+`backend/app/routes/inventory.py` → `GET /api/inventory/cost/{menu_item_id}`
+(line 540) walks the recipe and multiplies `ri.quantity * ing.unit_cost`. One
+dish, one cost.
+
+Consequence: "Big chicken mee" and "Small chicken mee" would share **one** cost
+and **one** stock deduction — the margin of the big one would be wrong, and the
+noodle choice would not change the stock at all.
+
+### 3.3 The stock — the deduction follows the dish, not the choice
+
+`backend/app/routes/order.py` → `auto_decrement_stock()` (line ~92) deducts the
+recipe's ingredients when the order is marked **ready**; the add-to-cart stock
+check (line ~50) walks the same recipe. With a choice, the deduction has to be
+`the variant's recipe + the chosen options' ingredient deltas` — otherwise a bowl
+of mee and a bowl of bihun take the same noodles out of the shelf.
+
+### 3.4 The remark is silently dropped
+
+`frontend/src/pages/StaffOrder.jsx:310` sends `notes` **per cart line**.
+`OrderItemCreate` (`backend/app/routes/order.py:185`) has **no `notes` field** and
+`order_items` has **no `notes` column** — so the remark is accepted by the
+browser, sent to the server and dropped by the schema. The only `notes` that
+survives is the **order-level** one (`OrderCreate.notes`, line 206) — one note for
+the whole order, not per line.
+
+So the "less spicy, no celery" of a hawker is typed by the staff and never
+reaches the kitchen nor the receipt.
+
+### 3.5 The margin is a flat number per dish
+
+`backend/app/routes/reports.py` (the menu mix, lines 89–186) joins
+`MenuItem.estimated_cost` to the sold lines and reports the margin per dish.
+With choices, the cost of a line is `the base + the options` — so the margin has
+to be computed **per sold line** (the same rule the reports already use for an
+unknown cost: *a dash, not a lie*).
+
+### 3.6 The add-on's price is trusted from the client — a live money hole
+
+`backend/app/services/order_service.py` (line ~109):
+
+```python
+provided_price = item_data.get("unit_price") if trust_client_money else None
+item_unit_price = provided_price if provided_price is not None else menu_item.price
+add_ons_price = sum(a.get("price", 0) for a in add_ons)      # <- ALWAYS from the client
+item_total = (item_unit_price + add_ons_price) * quantity
+```
+
+The **unit price** is protected (a guest's price is the menu's price ✓), but the
+**add-on's price is not** — the guard `trust_client_money` covers only the unit
+price. A guest who posts `add_ons: [{"name": "x", "price": -5.0}]` lowers their
+own total.
+
+**Verified** with `scripts/addon_price_probe.py` (against a copy of the database,
+Nov 9): an order for a 3.00 dish, posted by a "guest" (`trust_client_money =
+False`) with a `-5.00` add-on, came out at
+
+```
+the item total     : -2.0
+the order subtotal : -2.0
+the order total    : -2.16
+```
+
+**A guest can make their order negative.** This is a **priority 1** fix and it does
+not wait for the options project: the price of an add-on must come from the menu,
+never from the request. The patch is in §7.1.
+
+---
+
+## 4. The proposal — the structure
+
+### 4.1 The five new tables (all additive)
+
+```python
+# ── the size ────────────────────────────────────────────────────────────────
+class MenuItemVariant(Base):
+    """A size (or another whole variation) of a dish.
+    Big / Small / Half / Regular / the lunch set."""
+    __tablename__ = "menu_item_variants"
+    id, outlet_id, menu_item_id
+    name = Column(String(100), nullable=False)        # "Big", "Small"
+    price = Column(Float, nullable=True)              # null -> the dish's price
+    price_delta = Column(Float, default=0.0)          # or a delta on the dish's price
+    recipe_id = Column(Integer, nullable=True)        # its OWN recipe (null -> the dish's)
+    cost_multiplier = Column(Float, default=1.0)      # or a multiplier on the dish's recipe
+    sku = Column(String(50), nullable=True)
+    is_default = Column(Boolean, default=False)
+    is_available = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+
+# ── the group of choices ───────────────────────────────────────────────────
+class MenuOptionGroup(Base):
+    """A named group of choices: Size, Noodle, Topping, Spice, Side, Add-on."""
+    __tablename__ = "menu_option_groups"
+    id, outlet_id
+    name = Column(String(100), nullable=False)        # "Noodle"
+    min_select = Column(Integer, default=0)           # 0 = optional, 1 = required
+    max_select = Column(Integer, default=1)           # 1 = single choice, >1 = multiple
+    sort_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+
+# ── the link between the dish and the group ───────────────────────────────
+class MenuItemOptionGroup(Base):
+    __tablename__ = "menu_item_option_groups"
+    id, menu_item_id, group_id
+    variant_id = Column(Integer, nullable=True)        # null -> the group applies to every variant
+    sort_order = Column(Integer, default=0)
+    required = Column(Boolean, default=False)          # overrides the group's min_select
+
+# ── one choice ────────────────────────────────────────────────────────────
+class MenuOption(Base):
+    """One choice inside a group."""
+    __tablename__ = "menu_options"
+    id, outlet_id, group_id
+    name = Column(String(100), nullable=False)        # "Mee", "Bihun", "Extra egg"
+    price_delta = Column(Float, default=0.0)          # the money
+    ingredient_id = Column(Integer, nullable=True)     # the stock (nullable = no stock effect)
+    ingredient_qty = Column(DECIMAL(12, 4), default=0.0)   # may be negative ("No egg" = -1)
+    kitchen_note = Column(String(100), nullable=True)  # "NO CORIANDER" - printed in CAPS
+    sku = Column(String(50), nullable=True)
+    is_default = Column(Boolean, default=False)
+    is_available = Column(Boolean, default=True)
+    sort_order = Column(Integer, default=0)
+
+# ── the snapshot of what was sold ──────────────────────────────────────────
+class OrderItemOption(Base):
+    """What was chosen, frozen at the moment of the sale."""
+    __tablename__ = "order_item_options"
+    id, order_item_id
+    group_name = Column(String(100))                  # the name at the time
+    option_name = Column(String(100))                 # the name at the time
+    variant_name = Column(String(100), nullable=True) # "Big"
+    price_delta = Column(Float, default=0.0)          # the money at the time
+    ingredient_delta = Column(JSON, default=list)     # [{name, qty}] - the stock at the time
+    kitchen_note = Column(String(100), nullable=True) # what the kitchen reads
+    option_id = Column(Integer, nullable=True)        # null if the option was deleted since
+    variant_id = Column(Integer, nullable=True)
+```
+
+Plus **one column**: `order_items.notes` (the per-line remark, Text, nullable) —
+the field the browser already sends and the server already drops (§3.4).
+
+### 4.2 The rules of a group
+
+| Rule | Where it lives | What it means |
+|---|---|---|
+| `min_select` | the group | 0 = optional, 1 = required (the guest must choose) |
+| `max_select` | the group | 1 = one choice, n = up to n choices |
+| `price_delta` | the option | the money it adds (may be negative) |
+| `ingredient_id` + `ingredient_qty` | the option | the stock it takes (may be negative → "No egg") |
+| `kitchen_note` | the option | what the kitchen reads, in CAPS |
+| `variant_id` on the link | the link | the group's choices can differ per variant ("Big" offers a bigger topping set) |
+
+### 4.3 The example, end to end — chicken mee soup
+
+**The dish** (one menu item, as today):
+
+| Field | Value |
+|---|---|
+| name | Chicken Mee Soup |
+| price | 9.00 (the base) |
+| recipe | 200 g chicken, 100 g mee, 1 piece chicken, soup base |
+
+**The variants** (the size):
+
+| Variant | price_delta | recipe | The cost |
+|---|---|---|---|
+| Small | -1.00 | the dish's recipe × 0.7 | ~2.10 |
+| Regular | 0.00 | the dish's recipe | ~3.00 |
+| Large | +2.00 | the dish's recipe × 1.4 | ~4.20 |
+
+**The groups**:
+
+| Group | min | max | Options (price / ingredient / kitchen note) |
+|---|---|---|---|
+| Noodle | 1 | 1 | Mee (0 / mee 100 g) · Bihun (0 / bihun 100 g) · Kway teow (0 / kway teow 100 g) · Flat rice noodle (+1.00 / flat rice 100 g) |
+| Topping | 0 | 3 | Extra egg (+2.00 / egg +1 / EXTRA EGG) · Extra chicken (+4.00 / chicken +80 g / EXTRA CHICKEN) · No coriander (0 / coriander -1 g / NO CORIANDER) · Extra sprouts (+0.50 / sprouts +50 g) |
+| Spice | 0 | 1 | Mild (0 / -) · Hot (+0.50 / chilli +2 g / HOT) · Extra hot (+0.50 / chilli +4 g / EXTRA HOT) |
+
+**What the guest orders:** "Large Chicken Mee Soup, bihun, extra egg, no coriander, less spicy".
+
+**What the server computes:**
+
+```
+the base            9.00
+the size           +2.00
+the noodle          0.00   (a swap, not a cost)
+the topping        +2.00   (the extra egg)
+                     ------
+the unit price     13.00
+```
+
+**What the kitchen reads (the ticket):**
+
+```
+*** KITCHEN ***
+      12
+--------------------------------
+[TAKEAWAY] 21:14
+Guest: Ah Seng
+--------------------------------
+
+1x CHICKEN MEE SOUP
+   > LARGE
+   > BIHUN
+   > EXTRA EGG
+   > NO CORIANDER
+   > LESS SPICY
+--------------------------------
+```
+
+**What the stock takes:** `chicken +140 g (the large recipe), bihun 100 g, egg +1,
+coriander -1 g` — the dish's recipe is replaced by the variant's, and the options
+add their deltas ✓.
+
+**What the margin is:** `13.00 - (4.20 + 0.60 + 0.40) = 7.80` — a real number per
+line, not the dish's flat 3.00 ✓.
+
+---
+
+## 5. The three dependents — what each one becomes
+
+### 5.1 The kitchen printing
+
+**One formatter, three sinks.** Today there are two builders that disagree (§3.1).
+The proposal is a single pure function that takes the order and returns the lines:
+
+```
+printLines(order) -> [
+  { name: "Chicken Mee Soup", qty: 1, variant: "Large",
+    options: ["BIHUN", "EXTRA EGG", "NO CORIANDER"], note: "less spicy" }
+]
+```
+
+and then:
+- the **browser/PDF** ticket renders it as HTML (the same shape it renders today, plus the lines) ✓;
+- the **ESC/POS** ticket renders it as `> ` lines ✓ (the shape it already has) ✓;
+- the **customer app's** ticket (if it ever prints) renders the same lines ✓.
+
+**The rules:**
+- the choices are printed in CAPS, one per line, under the item ✓;
+- the group name is **not** printed when the option name says it all ("Bihun" ✓) but **is** printed when it is ambiguous ("Noodle: Bihun") ✓ — a per-group flag `print_group_name` ✓;
+- the **remark** prints under the item in italics ✓ ("less spicy") ✓;
+- a "no" choice prints in CAPS with a NO ✓ ("NO CORIANDER") ✓ — the kitchen must never read "No coriander" as "add coriander" ✓;
+- **the item's name is never rewritten** ("Chicken Mee Soup (Large, Bihun)" ✗✗) — the name stays searchable and the choices stay on their own lines ✓.
+
+**The station split (the deferred "stations" feature).** When the stations arrive,
+a group can carry a `station` ("Soup", "Grill", "Fry") ✓ → the ticket router sends
+the soup station only the soup lines ✓. The options structure is the natural place
+to hang that — worth one column now (`menu_option_groups.station`), even if the
+router itself waits ✓.
+
+### 5.2 The recipe and the stock
+
+**The recipe moves from "one per dish" to "one per dish + one per variant + the
+options' deltas".**
+
+```
+the cost of a sold line =
+      (the variant's recipe  OR  the dish's recipe × the variant's cost_multiplier)
+    + Σ (the chosen options' ingredient_qty × the ingredient's unit_cost)
+```
+
+**The rules:**
+- the **dish's recipe stays the base** ✓ — an item without a variant never changes ✓;
+- a **variant** may have its own recipe (the exact grams for the Large) **or** a multiplier (the Large = 1.4 × the base) ✓ — the multiplier is the cheap way to start ✓;
+- an **option** carries at most one ingredient ✓ (the egg, the extra chicken) ✓ — a choice that needs several ingredients becomes its own **dish with a recipe** (an "Extra Chicken" add-on item ✓ — the mechanism that exists today ✓);
+- a **negative** ingredient quantity is the way to say "no" ✓ ("No egg" = -1 egg ✓) — the stock goes up by one egg ✓, which is right ✓;
+- the **deduction** reads the snapshot (`order_item_options`) ✓ — not the live menu ✓ — so a menu change mid-service never moves the stock of an order already sold ✓;
+- the deduction still happens **when the order is marked ready** ✓ (today's rule ✓) — the choice does not change the timing ✓.
+
+**The recipe editor** (`frontend/src/pages/Inventory/RecipeBuilder.jsx` — today it
+edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` ✓)
+gains two things:
+- a **variant list** per dish (with the variant's own recipe or multiplier ✓);
+- an **ingredient column** on the option list ✓ (the option's ingredient and its quantity ✓).
+
+### 5.3 The costing and the margin
+
+- the **dish's** `estimated_cost` stays as the fallback when there is no recipe ✓ (today's rule: no recipe → the hand-written estimate ✓);
+- the **line's** cost is computed at the moment of the sale and **frozen into the snapshot** ✓ (the same way the price is frozen ✓) — the reports read the frozen cost, not today's menu ✓;
+- the **reports** (the menu mix, the top items ✓) keep the dish-level rollup ✓ and gain a **variant breakdown** ✓ (how many Large, how many Regular ✓) — optional, and the cheapest part of the project ✓;
+- the rule *"an unknown cost is a dash, not 100%"* ✓ (the reports' existing rule ✓) applies to the option's cost too ✓: an option with an ingredient but no `unit_cost` → a dash ✓, never a zero ✓.
+
+### 5.4 The other dependents (the short list)
+
+| Dependent | Change | Risk |
+|---|---|---|
+| the **tax** | none — the tax is on the subtotal ✓, and the subtotal grows with the choices ✓ | none ✓ |
+| the **vouchers / promotions** | the subtotal is bigger → the voucher and the bundle are computed on the bigger number ✓ — **the bundle's price in the customer app must include the options** ✓ (today the PWA prorates the bundle's price over the items ✓ — with options it must prorate over the item **+ options** ✓) | medium — the bundle rule needs a line ✓ |
+| the **receipt / the reprint** | the receipt must print the choices ✓ (the same formatter as the kitchen ✓) and the reprint must show them too ✓ (the reprint is a snapshot ✓ — the order's rows are frozen ✓ so this works ✓) | low ✓ |
+| the **customer app** | the modal's hidden `mods-section` gets wired to the real groups ✓ (the HTML is already there ✓ — `mods-section` / `mod-options` ✓) — the guest picks, the price updates, the cart shows the choices ✓ | medium — the PWA's cart is plain JS ✓ |
+| the **staff order** | the cart's line gains a **picker** ✓ (the groups of that dish ✓) and the **remark** is sent ✓ (it is sent already ✓ — the server has to keep it ✓) | medium — the counter's speed matters ✓ (two taps, no more ✓) |
+| the **AI / the NLP search** | the search must find "chicken mee" when the dish's variants and options are called "Mee", "Bihun" ✓ — the index has to read the new tables ✓ | low ✓ |
+| the **translations** | `MenuContentTranslation` covers the dish's name and description ✓ — a variant's and an option's name would want the same treatment ✓ (the customer app is three languages ✓) | medium — a new table for the translations ✓ |
+| the **reports' export** | the menu mix export gains the variant column ✓ | low ✓ |
+
+---
+
+## 6. The phases — the safe order
+
+Each phase is usable on its own and leaves the system working ✓. Nothing here is
+built ✓.
+
+| # | The phase | What it adds | The risk | The dependency |
+|---|---|---|---|---|
+| **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ |
+| **1** | **the data + the read model** | the five tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — |
+| **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ |
+| **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ |
+| **4** | **the recipe + the stock + the costing** | the variant's recipe ✓, the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ |
+| **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
+| **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
+| **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
+| **8** | **the reports' variant breakdown** | the menu mix by variant ✓ | low ✓ | 4 ✓ |
+
+**The order matters in one place only:** the recipe and the costing (4) come
+**after** the snapshot (2), because the deduction has to read a frozen line ✓.
+
+**The customer app last (6)** — but it is the face of the business ✓, so if the
+schedule allows, 5 and 6 can be pulled forward next to each other ✓ (they share
+the picker logic ✓ — the same picker, two hosts ✓).
+
+---
+
+## 7. The details that decide it
+
+### 7.1 The patch for the money hole (phase 0)
+
+`backend/app/services/order_service.py` (both `create_order` and
+`add_items_to_order`):
+
+```python
+# BEFORE
+add_ons_price = sum(a.get("price", 0) for a in add_ons)
+
+# AFTER - the price of an add-on is the MENU's price, never the request's
+add_ons_price = 0.0
+for addon in add_ons:
+    if addon.get("menu_item_id"):
+        addon_item = db.query(MenuItem).filter(MenuItem.id == addon["menu_item_id"]).first()
+        if addon_item:
+            add_ons_price += float(addon_item.price)
+```
+
+The add-on becomes a **menu item reference** (an id), not a free dict ✓ — the
+same shape the options will use ✓ (an id in, a price out ✓). The staff may
+still override a price ✓ (the `trust_client_money` rule ✓) — the guest may not ✓.
+
+### 7.2 The order line's new shape
+
+```jsonc
+// the browser and the customer app post:
+{
+  "menu_item_id": 42,
+  "quantity": 1,
+  "variant_id": 7,              // "Large"
+  "option_ids": [101, 104],     // "Bihun", "Extra egg"
+  "notes": "less spicy"         // the remark
+}
+```
+
+**and the server answers with the resolved line:**
+
+```jsonc
+{
+  "menu_item_id": 42,
+  "menu_item_name": "Chicken Mee Soup",
+  "quantity": 1,
+  "unit_price": 13.00,
+  "variant": { "id": 7, "name": "Large", "price_delta": 2.00 },
+  "options": [
+    { "id": 101, "name": "Bihun", "price_delta": 0.00 },
+    { "id": 104, "name": "Extra egg", "price_delta": 2.00 }
+  ],
+  "notes": "less spicy",
+  "item_total": 13.00
+}
+```
+
+**No price in the request ✓. No price the guest can change ✓.**
+
+### 7.3 The rules the server enforces
+
+| Rule | Where |
+|---|---|
+| the option must belong to a group that is attached to the dish ✓ | the server |
+| the option must belong to **this outlet's** group ✓ (the tenant rule ✓) | the server |
+| the required groups must be satisfied (`min_select`) ✓ | the server |
+| the max must not be exceeded (`max_select`) ✓ | the server |
+| an unavailable option is refused ✓ | the server |
+| the price is the menu's ✓ (the guest) / the staff may override ✓ | the server |
+| the remark is trimmed and length-limited (255) ✓ | the server |
+| the tax is computed on the resolved subtotal ✓ | the server |
+
+### 7.4 The migration — nothing to migrate
+
+- the new tables start empty ✓;
+- a dish with no variant and no group behaves exactly as today ✓ (the price is the
+  dish's price ✓, the recipe is the dish's recipe ✓, the ticket is the dish's name ✓);
+- the legacy `modifications` list stays ✓ and is printed as it is today ✓ (the
+  ESC/POS path ✓) — the phase 7 turns it into a "Remarks" group ✓ if Kens wants ✓;
+- the **existing orders** are untouched ✓ — their `modifications` JSON is still
+  there ✓ and the reprint still prints it ✓.
+
+### 7.5 The price of the work — the honest estimate
+
+| Phase | The size | The note |
+|---|---|---|
+| 0 (the money hole) | **half a day** ✓ | two lines + a probe ✓ |
+| 1 (the data + the read) | **two days** ✓ | five tables ✓ + the routes ✓ |
+| 2 (the write + the snapshot) | **three days** ✓ | the resolver ✓ + the snapshot ✓ + the rules ✓ |
+| 3 (the print) | **two days** ✓ | the formatter ✓ + the three sinks ✓ |
+| 4 (the recipe + the stock + the costing) | **four days** ✓ | the variant recipes ✓ + the deduction ✓ + the frozen cost ✓ |
+| 5 (the counter's picker) | **three days** ✓ | the UI ✓ — the counter's speed is the acceptance test ✓ |
+| 6 (the customer app's picker) | **two days** ✓ | the modal ✓ (the HTML is there ✓) |
+| 7 + 8 (the migration + the reports) | **two days** ✓ | |
+
+**Roughly three weeks of work** for the whole thing ✓, or **one day** for phase 0
+alone ✓ (the money hole ✓).
+
+---
+
+## 8. The open questions for Kens
+
+1. **The sizes: a variant or a group?** The proposal makes the size a **variant**
+   (its own price, its own recipe ✓) and the noodle a **group** ✓. The other way
+   round is possible (both as groups ✓) — but then the size's recipe has to live
+   in the option's ingredient delta ✓, which is clumsier ✓. **The proposal's
+   split is recommended** ✓.
+2. **A choice that changes the dish's recipe (the noodle) or just the ingredients
+   (the topping)?** The proposal: the noodle swaps one ingredient (100 g mee for
+   100 g bihun ✓) — a delta on the same line ✓. A bigger change ("the fish is
+   fried instead of grilled") is a **separate dish** ✓, not an option ✓.
+3. **How many choices may a guest make in total?** The proposal: per group ✓
+   (`max_select`) ✓, and no global cap ✓ — the tenant's menu is the tenant's
+   business ✓.
+4. **Should a choice be allowed to be "removed" (no coriander)?** The proposal:
+   yes ✓ — a negative ingredient delta ✓ and a CAPS kitchen note ✓.
+5. **The customer app first or the counter first?** The proposal's order puts the
+   counter first ✓ (5 before 6 ✓) — the counter is where the money is at risk
+   ✓. But the guest's picker (6) is the face of the business ✓ — Kens's call ✓.
+6. **The translations** (en / zh / km ✓) — the variants and the options would want
+   their own translation table ✓. Is it in this project or a later one ✓?
+
+---
+
+## 9. The evidence (the review, Nov 9, 2026)
+
+**The code read:**
+
+- `backend/app/models/models.py` → `MenuItem` (the `modifications` JSON, `is_addon`,
+  `add_on_price`), `OrderItem` (the `modifications` + `add_ons` JSON, no `notes`)
+- `backend/app/models/inventory.py` → `Recipe`, `RecipeIngredient`
+- `backend/app/routes/menu.py` → `MenuItemCreate` (line 28), `MenuItemResponse` (line 39)
+- `backend/app/routes/order.py` → `OrderItemCreate` (line 185), `OrderCreate` (line 192),
+  the stock check (line ~50), `auto_decrement_stock` (line ~92),
+  `create_order`'s `trust_client_money` (line 407)
+- `backend/app/routes/inventory.py` → `calculate_item_cost` (line 540)
+- `backend/app/routes/reports.py` → the menu mix (lines 89–186)
+- `backend/app/services/order_service.py` → the price resolution (lines 105–120,
+  251–262), the customer's money (line 284)
+- `frontend/src/pages/MenuManagement.jsx` (line 95), `frontend/src/pages/StaffOrder.jsx`
+  (lines 304, 310), `frontend/src/pages/Kitchen.jsx` (`generateKitchenTicketHTML`
+  line 360, `generateKitchenTicket` line ~430)
+- `customer-app/js/app.js` (line 1469 — the options section is hidden)
+
+**The database** (16 items, 11 with a recipe, 0 modifications, 0 add-ons ✓).
+
+**The probe** — `scripts/addon_price_probe.py` → the guest's order at **-2.16**
+for a 3.00 dish ✓ (§3.6 ✓).
+
+**The living probe** — the fix in §7.1 needs a probe of its own: a guest's order
+with a negative add-on must come out at the menu's price ✓.
+
+---
+
+## 10. The summary of the state
+
+| # | The item | The state |
+|---|---|---|
+| 1 | The five new tables (the variants, the groups, the options, the links, the snapshot) | **Proposed** ✓✓ — not built ✗✗ |
+| 2 | The order line's snapshot + the server-side price resolution | **Proposed** ✓✓ — not built ✗✗ |
+| 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **Proposed** ✓✓ — and the today's gap (the browser/PDF ticket drops the choices ✓✓) is a separate, smaller fix ✗✗ |
+| 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **Proposed** ✓✓ — not built ✗✗ |
+| 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ |
+| 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
+| 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
+| 8 | **The add-on's price hole (§3.6)** | **Open** ✗✗ — a live money hole ✓✓ — the patch is in §7.1 ✓✓ — **say the word and it is done today** ✓✓ |
