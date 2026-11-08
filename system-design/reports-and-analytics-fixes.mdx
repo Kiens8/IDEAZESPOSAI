@@ -5,11 +5,12 @@ description: The review of the POS Reports screen (six tabs, the date filter, th
 
 # Reports & Analytics — the fixes, the trust, and what to add next
 
-**Document Version:** 1.0 (the review of Nov 8, 2026 — **nothing is built yet**)
+**Document Version:** 1.1 (v1.1 — **phase 1 is built and live**, Nov 8, 2026)
 **Created:** 2026-11-08
-**Status:** **Design only.** The review was done against the live screen and the live
-data on Nov 8, 2026; every finding in §3 was measured, not guessed. **No code has been
-changed** — the fixes in §5 are the proposal, not the implementation.
+**Status:** **Phase 1 is built** (the tenancy gate on the loyalty routes, Nov 8, 2026 —
+§5.1 says what was built and §5.8 what is still open). The rest of the phases are still
+the proposal. The review was done against the live screen and the live data on Nov 8,
+2026; every finding in §3 was measured, not guessed.
 **Owner:** Ideazes POS AI
 **Scope:** the POS frontend (`frontend/src/pages/Reports.jsx`,
 `frontend/src/components/reports/`), the POS backend (`backend/app/routes/loyalty.py`,
@@ -36,9 +37,10 @@ hand another tenant's loyalty data to anyone who asks.**
 
 | # | The finding | The measure |
 |---|---|---|
-| A1 | `GET /api/loyalty/report/{customer_id}` has **no guard** and trusts the path | the admin of tenant 1 read tenant 3's report (200) |
-| A2 | `GET /api/loyalty/customers/{customer_id}` has **no guard** | the public PWA key listed any tenant's customers (names, phones) |
-| A3 | `GET /api/loyalty/stats/{customer_id}` uses `optional_permission` | the public PWA key read any tenant's aggregates |
+| A1 | `GET /api/loyalty/report/{customer_id}` has **no guard** and trusts the path | the admin of tenant 1 read tenant 3's report (200) — **FIXED** |
+| A2 | `GET /api/loyalty/customers/{customer_id}` has **no guard** | the public PWA key listed any tenant's customers (names, phones) — **FIXED** |
+| A3 | `GET /api/loyalty/stats/{customer_id}` uses `optional_permission` | the public PWA key read any tenant's aggregates — **FIXED** |
+| A4 | **The vouchers router has the same shape** (unguarded tenant routes + unguarded writes) | `GET /api/vouchers/all/{customer_id}` with the public key returns any tenant's voucher codes — **still open, phase 1b** |
 | B1 | The walk-in tab hardcodes the walk-in customer id **7** | tenant 3: 46 orders → **46 "registered", 0 walk-in** (the truth is the reverse) |
 | B2 | The date filter is **UTC**, the Order History screen is the outlet's time | 6 of 16 orders sit on a different local day in Phnom Penh |
 | B3 | The chart is always **the last 7 days** | "Today" shows 6 empty days; "All Time" shows one week |
@@ -58,9 +60,12 @@ hand another tenant's loyalty data to anyone who asks.**
 | E2 | The whole order list travels to the browser | it should be server-side aggregations |
 
 **The order of the work:** the three tenancy holes (§5.1) first — they are a data leak,
-not a polish item. Then the accuracy fixes (§5.2–§5.5), because a report that is
-wrong is worse than no report. Then the export and the print (§5.6–§5.7), which are
-already solved on the Order History screen and can be reused.
+not a polish item. **They are closed** (Nov 8, 2026): the gate is live, the probes pass
+(33 of them, `scripts/pos_loyalty_gate_test.sh`) and the guest app still works. The
+**vouchers** carry the same hole (A4) and are the next thing. Then the accuracy fixes
+(§5.2–§5.5), because a report that is wrong is worse than no report. Then the export
+and the print (§5.6–§5.7), which are already solved on the Order History screen and
+can be reused.
 
 **The additions** (§6) are the value on top: the comparison against the previous
 period, today's pace, the busiest hour, the gross margin, the void report, and a daily
@@ -291,7 +296,14 @@ These are the choices the fixes turn on. Each one has a recommendation.
 
 ## 5. The fix designs
 
-### 5.1 The tenancy gate on the loyalty routes
+### 5.1 The tenancy gate on the loyalty routes — **BUILT (Nov 8, 2026)**
+
+> **What was built:** every route in `backend/app/routes/loyalty.py` is gated; the guest
+> app proves who it is with a signed guest token; the walk-in member travels with the
+> venue's settings; the register and the login derive the tenant from the venue. The
+> probes: `scripts/pos_loyalty_gate_test.sh` — **33 probes, 0 failing**.
+> The mechanism (the guest token) is in §5.1.1, the walk-in move in §5.1.2, and the
+> **vouchers**, which carry the same hole, in §5.8.
 
 The shape every route follows (the audit recipe):
 
@@ -324,6 +336,74 @@ curl -s -b tenantA.jar "…/api/loyalty/report/<B>"      # must be 403
 curl -s -H "X-API-Key: customer_app_key" "…/api/loyalty/report/1"   # must be 403
 curl -s -b tenantB.jar "…/api/loyalty/report/<B>"      # must be 200
 ```
+
+#### 5.1.1 The guest token (the new piece)
+
+The customer app's key is **public** — it ships in the PWA bundle — and it carries
+`loyalty:read`, so a plain `loyalty:read` would not have stopped it. A guest needs a
+**proof of identity**, and the proof is a signed token:
+
+```python
+# backend/app/core/guest_session.py
+create_guest_token(dining_customer_id, customer_id)   # HS256, the SESSION_SECRET
+read_guest_token(token)                               # the claims, or None
+```
+
+- The login and the register **hand the token out** (it travels in the answer's
+  `token` field).
+- The guest app keeps it (`pos_guest_token_<restaurant group>`) and sends it in the
+  **`X-Loyalty-Token`** header.
+- The token has **no `uid` claim**, so `read_session_token()` does not accept it — a
+  guest token can never be used as a staff session, and the two cannot be mixed up.
+- It is signed with the same secret as the staff session but carries a `pur` claim
+  (`loyalty_guest`) and lives 30 days.
+
+The new dependency (`middleware/auth.py`):
+
+```python
+require_guest_or_staff("loyalty:read")
+# → the staff path (the signed session or the frontend key) with the permission,
+# → or the guest path (a valid guest token),
+# → otherwise 401.
+```
+
+The member routes then ask one more question — **is this the member?** — and a member
+of another restaurant group gets the same answer as a member that does not exist
+(**404**), so a guest cannot probe for other guests' ids.
+
+#### 5.1.2 The walk-in member travels with the venue
+
+`GET /api/loyalty/walkin-customer/{customer_id}` was used by the guest app and by the
+staff-order screen. Both of them were asking about a **restaurant group** when they
+actually wanted to know about **their venue** — so the id now travels with the
+venue's settings:
+
+- `GET /api/settings/{outlet_id}` (the POS) and `GET /api/customer/settings/{outlet_id}`
+  (the guest app) carry **`walk_in_customer_id`** — the member whose phone is
+  `'WALKIN'`, of that venue's tenant. The id is **never hardcoded** (it is 7 for
+  tenant 1 and 9 for tenant 3 — §5.2).
+
+#### 5.1.3 The venue decides the tenant (the register and the login)
+
+The register and the login took the restaurant group from the body. They now take the
+**venue** and derive the group from it — the same **venue trust boundary** the order
+route uses:
+
+```python
+tenant_id = _tenant_of_outlet(db, data.outlet_id)      # the venue decides
+if data.customer_id is not None and data.customer_id != tenant_id:
+    raise HTTPException(400, "This customer does not belong to that restaurant")
+```
+
+A guest can no longer sign up inside somebody else's restaurant group.
+
+#### 5.1.4 The version bump (the guest app)
+
+The guest app's assets are cached by the CDN **by URL**, so a new build needs a new
+version query — the SW comment in `customer-app/sw.js` says so, and the service worker's
+own comment calls the old behaviour "a nightmare to debug". The build stamps it:
+`python3 customer-app/scripts/build_pwa.py` (the `VERSION` file). Without the bump the
+guests keep running the old code — and the old code sends no token.
 
 ### 5.2 One walk-in rule
 
@@ -442,6 +522,39 @@ A `@media print` block for the screen:
   row on every page;
 - a footer with the page number.
 
+### 5.8 What phase 1 did NOT close: the vouchers
+
+The loyalty router was not the only file with the same shape. **`routes/vouchers.py`**
+has it too, and worse — some of its routes are **writes**:
+
+| Route | Guard today | What it does |
+|---|---|---|
+| `GET /vouchers/all/{customer_id}` | **none** | every voucher of a restaurant group — **the codes are redeemable** |
+| `GET /vouchers/stats/{customer_id}` | **none** | the voucher statistics of any group |
+| `GET/POST /vouchers/templates/{customer_id}` | **none** | the voucher templates of any group |
+| `PUT /vouchers/templates/{template_id}` | **none** | rewrites a template of any group |
+| `POST /vouchers/issue` | **none** | issues a voucher **to any member** |
+| `POST /vouchers/issue-bulk` | **none** | issues vouchers in bulk, to any group |
+| `GET /vouchers/my-vouchers/{dining_customer_id}` | **none** | the member's vouchers (the guest app's own) |
+| `POST /vouchers/redeem` | **none** | redeems a voucher against an order |
+| `GET /vouchers/validate/{code}` | **none** | **has to stay public** — the cart validates the code |
+
+The shape of the fix is the same as the loyalty one:
+
+- the **group routes** (`all`, `stats`, `templates`, `issue-bulk`) become staff routes
+  with the tenant from the session;
+- the **member routes** (`my-vouchers`, `issue`) take the guest token — the guest app
+  already keeps it now;
+- the **redeem** needs the order's tenant to match the voucher's tenant (the code
+  alone must not work against another group's order);
+- the **validate** stays public — it answers "is this code real?" and nothing more,
+  but it should be scoped to the venue (a code of another restaurant group must not
+  be valid at this table).
+
+**This is phase 1b and it is not done.** It is called out here so it is not forgotten:
+a voucher code is a **redeemable secret**, and right now the public key can list the
+codes of any restaurant group.
+
 ---
 
 ## 6. What to add next (the value on top of the fixes)
@@ -466,7 +579,8 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 
 | Phase | What | Backend | Risk |
 |---|---|---|---|
-| 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 6 routes | low — a gate |
+| 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 14 routes | low — a gate — **BUILT Nov 8, 2026** |
+| 1b | **The same gate on the vouchers** (§5.8) | 9 routes | low — a gate — **still open** |
 | 2 | **The walk-in rule** (§5.2) | the order response | low |
 | 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move |
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move |
@@ -498,6 +612,13 @@ GROUP BY o.customer_id;"
 # the tenancy
 curl -s -b tenantA.jar "…/api/loyalty/report/<B>"    # 403
 curl -s -H "X-API-Key: customer_app_key" "…/api/loyalty/report/1"   # 403
+```
+
+**The probe script** (the whole set, in one run):
+
+```bash
+bash scripts/pos_loyalty_gate_test.sh
+# 33 probes, 0 failing
 ```
 
 And the screen itself: the range control changes **every** tab (including the chart
