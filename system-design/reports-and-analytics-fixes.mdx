@@ -56,13 +56,14 @@ proposal.**
 | **6** | **the print stylesheet** (§5.7) — closes D1, D2 | **BUILT** — 25 probes |
 | **7** | **the additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | **BUILT** — 83 probes (all nine; the daily takings sheet became a tab of its own in phase 8) |
 | **8** | **the numbers move to the server** — E1 and E2: the order list is no longer pulled into the browser (the cap of 10,000 is gone), the sums are the server's, the cost of the goods follows the tenant's plan | **BUILT** — 48 probes (the oracle of the first ones is the **database**, not a copy of the old arithmetic) |
+| **9** | **the audit page** — the void report and the **reprint log** on one screen (the reprints were written down all along; no report ever showed them) | **BUILT** — 35 probes (`GET /api/reports/audit` answers both halves in one fetch; the tab has two tables and two exports) |
 
 **And one small thing that is not a phase:** **B7** — the Sales tab's "Items Sold"
 counted **line items** while the Items tab counted **quantities**. Two numbers for
 the same thing; they agree today by luck. **It is fixed** (with phase 7 — both sides
 use `salesTotals()`, which counts the plates).
 
-**The total: 290 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 83 + 48).
+**The total: 325 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 83 + 48 + 35).
 
 | # | The finding | The measure |
 |---|---|---|
@@ -956,6 +957,33 @@ on the server only; this document and the memory are the written record.
 
 ---
 
+### 5.11 The audit page (phase 9, Nov 8, 2026) — **BUILT**
+
+**What was missing:** the void report (phase 7) showed the cancelled and refunded
+orders with the reason and who voided them. The **reprint log** was written down
+all along (`OrderReprint`: who reprinted, when, which printer, how many copies,
+whether the pickup token was on the paper) and could only be read **one order at a
+time** (the reprint dialog of the order history). **No report ever showed the
+outlet's reprints.** A reprint is an ordinary floor need — and also the way a
+receipt could be handed out twice, which is exactly what a manager wants to see.
+
+**What it is now:** one route, one tab, two tables.
+
+| | |
+|---|---|
+| **The route** | `GET /api/reports/audit` — the voids route renamed and extended. It answers **both** halves in one fetch: the voids (with the money) and the reprints (with the copies and the receipt's amount) |
+| **The tab** | the **Audit** tab (it was the Voids tab) — the void table on top, the reprint log under it |
+| **The exports** | two, one per table: `report_audit_...csv` and `report_audit-reprints_...csv` (the reprints are their own report) |
+| **The gate** | the same as every other route: `staff:orders:read` + `require_outlet_tenant` + `require_plan_feature("Reports")` — another tenant's outlet is a **403** |
+| **The names** | read on the server (`User.name`, `OrderReprint.user_name`) — the browser only ever has the ids |
+
+**The probe that matters:** `scripts/reports_phase9_check.py` compares the
+server's answer with the **database**: the voids, the voided money, the reprints,
+the copies, the receipts' money — and the gate (another tenant refused, the
+customer app's key refused). 35 probes, 0 failing.
+
+---
+
 ## 6. What to add next (the value on top of the fixes)
 
 > **All nine are built (phase 7 and phase 8, Nov 8, 2026).** The ninth — the
@@ -972,7 +1000,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | **The busiest hour and the day parts** (breakfast / lunch / dinner) | the hourly series; the rostering input nothing on the screen gives today | **BUILT** — the `DayPartsPanel` (the busiest hour + the three parts) |
 | **Gross margin** — the revenue (Sales) against the cost of the goods sold (Inventory) | the two screens joined; the number the owner actually judges the business on | **BUILT** — `GET /api/reports/menu-mix` (the cost lives with the menu item) + the KPIs on the Sales and Items tabs |
 | **The VAT collected and the discounts given** | both are on the orders; neither is shown anywhere | **BUILT** — two KPIs on the Sales tab |
-| **The void / cancel / refund report** — what was cancelled, why, by whom | the cancelled orders carry a reason; it pairs with the reprint log | **BUILT** — `GET /api/reports/voids` + the Void tab (the staff names are read on the server) |
+| **The void / cancel / refund report** — what was cancelled, why, by whom | the cancelled orders carry a reason; it pairs with the reprint log | **BUILT** — `GET /api/reports/audit` + the **Audit tab** (the staff names are read on the server). The **reprint log** is its second table (phase 9) |
 | **The full menu mix** — every item with its contribution % | the Items tab shows only the top 10 | **BUILT** — the Items tab now shows every dish, with the cost and the contribution |
 | **The top customers** — sortable, exportable, the top 5 on the screen | the loyalty report has the rows; the screen shows them only in the table | **BUILT** — the `TopCustomersPanel` (the top five, the best first) above the table |
 | **The daily takings sheet** — the closing routine | the closing numbers + the comparison; the one thing a restaurant does every single day | **BUILT** — a tab of its own (phase 8): the takings of a day, with its own date, downloadable as a sheet and printable. **It does not arrive by itself** — the tenant presses the button when the day is closed. That was Kens' call, and it is the better one: no sender, no schedule, no delivery to get wrong. |
@@ -1056,16 +1084,19 @@ its margin is a dash.
 | **6** | **The print stylesheet** (§5.7) — closes **D1** (the whole app prints), **D2** (no title, outlet, period or timestamp) | none — a `@media print` block | low | **BUILT Nov 8, 2026** — 25 probes |
 | **7** | **The additions** (§6) — the comparison against the previous period, today's pace, the busiest hour and the day parts, the gross margin, the VAT and the discounts, the void report, the full menu mix, the top customers | two new routes (the menu mix, the voids) + the client | medium — the numbers move | **BUILT Nov 8, 2026** — 83 probes (all 9 additions) |
 | **8** | **The numbers move to the server** (E1, E2) + the takings sheet + the cost of the goods follows the tenant's plan | one new route (`/reports/summary`) + the client's mapper | high — every number on the screen moves | **BUILT Nov 8, 2026** — 48 probes (the oracle is the **database**) |
+| **9** | **The audit page** — the void report + the reprint log (the recommendation of §9.3, taken) | one route (`/reports/audit`, the voids route renamed and extended) + the client's mapper | low — it adds a table, it moves no money | **BUILT Nov 8, 2026** — 35 probes (the oracle is the **database**) |
 | **4b** | **B7** — the Sales tab's "Items Sold" counts line items, the Items tab counts quantities | none — one line in `reportsConfig.js` | low | **BUILT Nov 8, 2026** (with phase 7 — `salesTotals()` counts the plates now, and both sides use it) |
 
 Phases 1 and 2 are independent of the rest and can ship alone. **Phase 1 is the one
 that should not wait.** *(It did not wait.)*
 
-**What is left, in one line:** nothing of phases 1–8 is half done — each one is
+**What is left, in one line:** nothing of phases 1–9 is half done — each one is
 on the disk, on the server and covered by its probes. The programme's open ends
-are the ones that are not defects: the **audit page** (the void report and the
-reprint log together), and the **margin from the recipes for a tenant that has
-no recipes yet** (the dash).
+are the ones that are **not defects**: the **price of the day** (a usage is
+valued at the ingredient's price *today*, because the movement does not write
+the price down), and the **margin of a tenant that has valued nothing** (the
+dash — the cost rules solve the arithmetic; the tenant has to value its
+dishes).
 
 ---
 
@@ -1122,9 +1153,14 @@ bash scripts/pos_reports_phase6_test.sh   # phase 7 - the additions
 bash scripts/pos_reports_phase8_test.sh   # phase 8 - the numbers move to the server
 # 48 probes, 0 failing (26 of them compare the server's answer with the
 # DATABASE - the rows themselves, not a copy of the old arithmetic)
+
+bash scripts/pos_reports_phase9_test.sh   # phase 9 - the audit page
+# 35 probes, 0 failing (16 of them compare the server's answer with the
+# DATABASE: the voids, the voided money, the reprints, the copies, the
+# receipts' money - and the gate: another tenant is refused)
 ```
 
-**The total: 290 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 83 + 48).
+**The total: 325 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 83 + 48 + 35).
 
 Both scripts clean up after themselves — they delete only the rows they can name
 (the probe member, the probe orders, the probe vouchers).
@@ -1145,11 +1181,26 @@ navigation on it.
    the same weekday range? The recommendation is the same length immediately before.
 3. **The void report** — should it be a tab of this screen or a page of its own with
    the reprint log? The recommendation is one **audit** page with both.
+   **DECIDED (Nov 8, 2026, Kens): one audit page** — it is built (phase 9). The
+   route is `/api/reports/audit` and it answers both halves in one fetch; the tab
+   has two tables (the voids, the reprints) and two exports.
 4. **The daily takings sheet** — Telegram, email, or both? And at what time (the
    outlet's closing time)?
+   **DECIDED (Nov 8, 2026, Kens): a tab of its own** — the tenant downloads it (or
+   prints it) when the day is closed. It does not arrive by itself: no sender, no
+   schedule, nothing to get wrong. It is built (phase 8).
 5. **The gross margin** — the cost of the goods sold comes from the recipes and the
    ingredient movements; the join is a real piece of work. Worth it, but it is its own
    phase.
+   **CORRECTED (Nov 8, 2026, Kens was right): the cost of the goods EXISTS** — the
+   **Inventory Report** has had it all along (the Cost tab: the total cost, the
+   ingredients used, the daily/weekly/monthly periods, the trend, the top
+   contributors and the breakdown by ingredient). Phase 8 joined the menu mix to the
+   same rule (the recipe when the tenant has Inventory, the estimate when it does
+   not). What is **not** there is the price of the **day**: a usage from March is
+   valued at the ingredient's price **today**, because a stock movement does not
+   write the price down (`StockMovement` has no cost column). That is the one open
+   end of the cost — and it is a small one.
 
 ---
 
