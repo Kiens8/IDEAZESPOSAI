@@ -46,7 +46,7 @@ accuracy fixes (B, C, D, E) are still the proposal.
 | A2 | `GET /api/loyalty/customers/{customer_id}` has **no guard** | the public PWA key listed any tenant's customers (names, phones) — **FIXED** |
 | A3 | `GET /api/loyalty/stats/{customer_id}` uses `optional_permission` | the public PWA key read any tenant's aggregates — **FIXED** |
 | A4 | **The vouchers router has the same shape** (unguarded tenant routes + unguarded writes) | `GET /api/vouchers/all/{customer_id}` with the public key returned any tenant's voucher codes — **FIXED** (§5.8) |
-| B1 | The walk-in tab hardcodes the walk-in customer id **7** | tenant 3: 46 orders → **46 "registered", 0 walk-in** (the truth is the reverse) |
+| B1 | The walk-in tab hardcodes the walk-in customer id **7** | tenant 3: 46 orders → **46 "registered", 0 walk-in** (the truth is the reverse) — **FIXED** (§5.2) |
 | B2 | The date filter is **UTC**, the Order History screen is the outlet's time | 6 of 16 orders sit on a different local day in Phnom Penh |
 | B3 | The chart is always **the last 7 days** | "Today" shows 6 empty days; "All Time" shows one week |
 | B4 | The Payments tab has **no date filter** and is built on the tender rows | $5,393.61 for every range; the Sales tab says $5,049.82 (a $343.79 gap) |
@@ -172,6 +172,10 @@ with the id 9 (truth)  ->   0 registered / 46 walk-in
 So the AES account would report *"Good news! Registered customers account for 100.00%
 of orders"* — for a restaurant where **every** order was a walk-in. The insight box
 below the table flips with it.
+
+**FIXED (§5.2, Nov 8, 2026):** the order rows carry an `is_walkin` flag, computed by
+the backend from the tenant's own walk-in member, and the tab reads the flag. Tenant 3
+now reads **0 registered / 46 walk-in** — the truth.
 
 **The house convention is already written down**: the walk-in customer is the row with
 the phone `'WALKIN'` — the backend uses it in this very report and in `vouchers.py`.
@@ -417,7 +421,13 @@ own comment calls the old behaviour "a nightmare to debug". The build stamps it:
 `python3 customer-app/scripts/build_pwa.py` (the `VERSION` file). Without the bump the
 guests keep running the old code — and the old code sends no token.
 
-### 5.2 One walk-in rule
+### 5.2 One walk-in rule — **BUILT (Nov 8, 2026)**
+
+> **What was built:** the order rows carry an `is_walkin` flag, computed by the backend
+> from the tenant's own walk-in member; the browser reads the flag instead of guessing
+> with a customer id; and the lookup that finds the walk-in member lives in **one**
+> file now (there were four copies). The probes: `scripts/pos_walkin_report_test.sh` —
+> **9 probes, 0 failing**.
 
 The backend already knows the tenant's walk-in row (the one with the phone `WALKIN`).
 The order rows carry the flag:
@@ -432,9 +442,37 @@ uses it instead of the number 7:
 
 ```js
 // frontend/src/components/reports/reportsConfig.js
-const registered = orders.filter(o => !o.is_walkin)
-const walkin     = orders.filter(o =>  o.is_walkin)
+const walkin     = orders.filter(o => o.is_walkin === true)
+const registered = orders.filter(o => o.is_walkin !== true)
 ```
+
+**What the flag means** (the whole rule, in two lines):
+
+- the order carries the tenant's **walk-in member** (the counter's way of saying "no
+  customer"), or
+- the order carries **no member at all** (the kiosk, a takeaway where the guest gave
+  no phone).
+
+Everything else is a **registered** customer — a member who can be credited with points
+and who can be reached again.
+
+**The truth it restores** (measured on the live database):
+
+| Tenant | The orders | The walk-in | The registered | What the tab said before |
+|---|---|---|---|---|
+| 1 (Demo Cafe 1) | 283 | **196** (145 with the walk-in member + 51 with no member) | 87 | — |
+| 3 (AES) | 46 | **46** | **0** | "46 registered, 0 walk-in" — **the reverse** |
+
+**One rule, one place.** The lookup (`the member of this group whose phone is
+WALKIN`) was written **four times** — the loyalty route, the outlet's settings, the
+customer BFF and the reports' order list. It is one function now
+(`backend/app/services/walkin_service.py`), and the four callers call it. The other
+mentions of the string `WALKIN` in the codebase are **comparisons** (the walk-in member
+earns no points, the report leaves it out), not lookups.
+
+**The browser keeps a fallback.** If a row arrives without the flag (an old backend),
+the orders with no member are still walk-ins — that part of the rule needs no id. The
+fallback is the honest one: it does not guess with a number.
 
 ### 5.3 One date rule, one helper
 
@@ -634,12 +672,23 @@ The list of the files, so anybody can check the work without reading the whole d
 | `customer-app/js/app.js` | the token travels with `my-vouchers` and `issue`; `issue` sends its parameters **in the query** (the welcome voucher had never worked); the percentage discount is right; the app does not redeem the voucher any more |
 | `customer-app/VERSION` | 2.6.21 → **2.6.22** (the CDN caches the app by URL — a version bump is mandatory after every change) |
 
+**Phase 2 — the walk-in rule**
+
+| File | What changed |
+|---|---|
+| `backend/app/services/walkin_service.py` | **new** — `walkin_customer_id(db, customer_id)` (the member of this group whose phone is `WALKIN`) and `is_walkin_order(...)` (the two cases of the rule). **The lookup that existed in four places now exists once.** |
+| `backend/app/routes/order.py` | `OrderResponse.is_walkin`; the list route and the active route compute it from the tenant's own walk-in member |
+| `backend/app/routes/loyalty.py`, `backend/app/routes/outlet_settings.py`, `backend/app/routes/customer_bff.py` | the three other copies of the lookup now call the service |
+| `frontend/src/components/reports/reportsConfig.js` | the walk-in tab reads `o.is_walkin`; `calculateReportStats` lost the `walkinCustomerId` parameter (and its default of 7) |
+| `frontend/src/pages/Reports.jsx` | the call lost the hardcoded `7` |
+
 **The probe scripts** (in the workspace, next to the other probes):
 
 | Script | What it proves |
 |---|---|
 | `scripts/pos_loyalty_gate_test.sh` | phase 1 — the cross-tenant reads, the guest's own member, the register and the login, the walk-in member (33 probes) |
 | `scripts/pos_voucher_gate_test.sh` | phase 1b — the vouchers of a group, the guest's own member, **the money of a guest order**, and the staff at the till (23 probes) |
+| `scripts/pos_walkin_report_test.sh` | phase 2 — the flag against the database (both tenants), the truth of tenant 3, no hardcoded id in the browser, one lookup in the backend (9 probes) |
 
 **One note on the source:** `mydoc/Projects/POS_AI` is **not** under version control
 (Kens' rule — git operations there have destroyed work before). The changes above live
@@ -671,7 +720,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 |---|---|---|---|
 | 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 14 routes | low — a gate — **BUILT Nov 8, 2026** |
 | 1b | **The same gate on the vouchers** (§5.8) + the server taking the money of a guest order (§5.9) | 10 routes + the order service | low — a gate — **BUILT Nov 8, 2026** |
-| 2 | **The walk-in rule** (§5.2) | the order response | low |
+| 2 | **The walk-in rule** (§5.2) | the order response | low — **BUILT Nov 8, 2026** |
 | 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move |
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move |
 | 5 | **The export on every tab** (§5.6) | none (the client) | low |
@@ -712,6 +761,9 @@ bash scripts/pos_loyalty_gate_test.sh   # phase 1  - the loyalty routes
 
 bash scripts/pos_voucher_gate_test.sh   # phase 1b - the vouchers + the money
 # 23 probes, 0 failing
+
+bash scripts/pos_walkin_report_test.sh   # phase 2 - the walk-in rule
+# 9 probes, 0 failing
 ```
 
 Both scripts clean up after themselves — they delete only the rows they can name
