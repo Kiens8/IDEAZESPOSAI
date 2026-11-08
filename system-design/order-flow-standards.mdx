@@ -238,6 +238,13 @@ for `payment_methods`:
  backend's lifespan ✓✓ (one worker → one sweep ✓✓) → the staff-entered orders are the
  cashier's to manage (no auto-expiry ✗✗) → **no new status** — the wait lives in
  `payment_status` ✓✓.
+ **The sweep's filter** ✓✓ (Nov 9) → `_expire_unpaid_prepay_orders()` in `backend/app/main.py`
+ ✓✓ → it cancels a row when **all** of these hold ✓✓: the `payment_mode` is `prepay_at_counter`
+ or `prepay_online` ✓✓, the `payment_status` is not `paid` ✓✓, the `status` is `pending` ✓✓,
+ the `created_at` is older than the 10 minutes ✓✓ **and `user_id` is null** ✓✓ (the staff id of
+ the person who entered it — it is null for an order that came from the customer app ✓✓) ✓✓ →
+ the cashier's order is never cancelled behind the counter's back ✓✓ → a **postpay** order is
+ never touched (there is no money to wait for) ✓✓.
 
 **Why prepay matters — the ghost order:** a hawker takes the order → the customer walks off
 → the food is made → nobody comes. The waste is real; prepay ends it.
@@ -881,6 +888,10 @@ order appearing in the kitchen, the customer app's line and the restore ✓✓.
 5. **The expiry** ✓✓ → a prepay order whose money never arrives is **cancelled after 10
    minutes** ✓✓ → a background sweep in the backend's lifespan ✓✓ (one worker ✓✓ → one
    sweep ✓✓) → the staff-entered orders are the cashier's to manage (no auto-expiry ✗✗).
+   **The filter** ✓✓ (Nov 9) → the sweep only takes the rows with **no staff id** ✓✓
+   (`orders.user_id` is null for a customer-app order ✓✓) and **never** a postpay row ✓✓ →
+   the probes: `scripts/prepay_expiry_probe.py` ✓✓ (nine cases ✓✓, against a copy of the
+   database ✓✓).
 
 **The locked mode** ✓✓ → `prepay_online` was wired into the model but **refused** ✓✓ →
 **it is UNLOCKED now** ✓✓ (Phase 7 below ✓✓) → the backend raises a 400 with the reason
