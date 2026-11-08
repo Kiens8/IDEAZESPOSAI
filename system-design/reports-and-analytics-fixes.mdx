@@ -33,8 +33,12 @@ The review (Nov 8, 2026) drove the live screen in a browser, read every line beh
 and measured the numbers against the database. The result:
 
 **The screen looks right. Three of the six tabs quietly ignore the date filter, one of
-them is arithmetically wrong for every tenant but the demo, and three backend routes
-hand another tenant's loyalty data to anyone who asks.**
+them is arithmetically wrong for every tenant but the demo, three backend routes hand
+another tenant's loyalty data to anyone who asks — and a guest could post its own
+price and its own discount, so the restaurant could be made to owe the guest money.**
+
+**The four tenancy holes (A1–A4) are closed, and so is the money hole (§5.9).** The
+accuracy fixes (B, C, D, E) are still the proposal.
 
 | # | The finding | The measure |
 |---|---|---|
@@ -311,26 +315,31 @@ These are the choices the fixes turn on. Each one has a recommendation.
 The shape every route follows (the audit recipe):
 
 ```python
-from app.core.tenant import caller_tenant, require_tenant_claim
+# backend/app/routes/loyalty.py  (the code as it stands)
+from app.core.tenant import require_same_tenant as _require_same_tenant
+from app.middleware.auth import require_staff_permission, require_guest_or_staff
 
-@router.get("/report/{customer_id}")
+@router.get("/report/{customer_id}", response_model=LoyaltyReportResponse)
 def get_loyalty_report(
     customer_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    key_info: dict = Depends(require_permission("loyalty:read")),
+    key_info: dict = Depends(require_staff_permission("staff:loyalty:read")),
 ):
-    tenant_id = caller_tenant(request, key_info)      # the tenant of the SESSION
-    if customer_id != tenant_id:
-        raise HTTPException(status_code=403, detail="This restaurant group is not yours")
+    _require_same_tenant(request, key_info, customer_id)   # the tenant of the SESSION
     ...
 ```
 
 - **the tenant comes from the session**, never from the path parameter;
 - the parameter is only a **claim**, and a mismatch is a **403**;
 - the permission is **required**, not optional — the customer app key must not pass;
+- the permission is the **`staff:`** one (`staff:loyalty:read`), not `loyalty:read` —
+  the customer app's key **carries** `loyalty:read` (it ships in the PWA bundle), so
+  the plain permission would have stopped nothing. The `staff:` namespace is what the
+  customer key cannot satisfy;
 - the same treatment for `/customers/{id}`, `/stats/{id}`, `/customer/{id}`,
-  `/customer/{id}/points`, `/customer/{id}/transactions`, `/walkin-customer/{id}`.
+  `/customer/{id}/points`, `/customer/{id}/transactions`, `/walkin-customer/{id}`,
+  `/program/{id}` (read and write).
 
 **The probe** (log in as two tenants):
 
@@ -597,6 +606,45 @@ The promotions engine moved out of the route into
 `backend/app/services/promotion_service.py`, because the order needs it now. Its
 answer does not change.
 
+### 5.10 What actually changed on disk (phases 1 and 1b)
+
+The list of the files, so anybody can check the work without reading the whole diff.
+
+**Phase 1 — the loyalty gate**
+
+| File | What changed |
+|---|---|
+| `backend/app/core/guest_session.py` | **new** — `create_guest_token(dining_customer_id, customer_id)` / `read_guest_token(token)` — the signed proof of a guest (HS256, the `SESSION_SECRET`, a `pur` claim, 30 days) |
+| `backend/app/core/tenant.py` | `require_same_tenant`, `require_member_access`, `caller_tenant` — the tenant helpers the routes call |
+| `backend/app/middleware/auth.py` | `require_staff_permission` (the `staff:` namespace) and `require_guest_or_staff` (the staff **or** the guest token) |
+| `backend/app/routes/loyalty.py` | **14 routes** gated; the register and the login take the venue; the walk-in member is looked up by the venue |
+| `backend/app/routes/outlet_settings.py`, `backend/app/routes/customer_bff.py` | the venue's settings carry `walk_in_customer_id` (the id is never hardcoded) |
+| `customer-app/js/app.js` | the guest token travels with the member calls; the register sends the venue |
+
+**Phase 1b — the vouchers and the money**
+
+| File | What changed |
+|---|---|
+| `backend/app/routes/vouchers.py` | **10 routes** gated (§5.8); the redeem uses the service, so the campaign behind the voucher is told |
+| `backend/app/services/voucher_service.py` | **new** — `find_by_code`, `member_of`, `tenant_of`, `discount_for`, `validate_for_order`, `mark_used`, `redeem_for_order` — the **rules** of a voucher, in one place |
+| `backend/app/services/order_service.py` | `trust_client_money` — the price is the menu's and the discount is the voucher's (or the promotions') when the server owns the money |
+| `backend/app/routes/order.py` | the flag: `trust_client_money=key_info.get("key_type") != "customer"` — one parameter, both sides |
+| `backend/app/services/promotion_service.py` | **new** — the promotions engine out of the route (`calculate_best_discount(db, outlet_id, items)`), because the order needs it now |
+| `backend/app/routes/promotions.py` | the route calls the service; **the answer does not change** |
+| `customer-app/js/app.js` | the token travels with `my-vouchers` and `issue`; `issue` sends its parameters **in the query** (the welcome voucher had never worked); the percentage discount is right; the app does not redeem the voucher any more |
+| `customer-app/VERSION` | 2.6.21 → **2.6.22** (the CDN caches the app by URL — a version bump is mandatory after every change) |
+
+**The probe scripts** (in the workspace, next to the other probes):
+
+| Script | What it proves |
+|---|---|
+| `scripts/pos_loyalty_gate_test.sh` | phase 1 — the cross-tenant reads, the guest's own member, the register and the login, the walk-in member (33 probes) |
+| `scripts/pos_voucher_gate_test.sh` | phase 1b — the vouchers of a group, the guest's own member, **the money of a guest order**, and the staff at the till (23 probes) |
+
+**One note on the source:** `mydoc/Projects/POS_AI` is **not** under version control
+(Kens' rule — git operations there have destroyed work before). The changes above live
+on the server only; this document and the memory are the written record.
+
 ---
 
 ## 6. What to add next (the value on top of the fixes)
@@ -656,12 +704,18 @@ curl -s -b tenantA.jar "…/api/loyalty/report/<B>"    # 403
 curl -s -H "X-API-Key: customer_app_key" "…/api/loyalty/report/1"   # 403
 ```
 
-**The probe script** (the whole set, in one run):
+**The probe scripts** (the whole set, in one run):
 
 ```bash
-bash scripts/pos_loyalty_gate_test.sh
+bash scripts/pos_loyalty_gate_test.sh   # phase 1  - the loyalty routes
 # 33 probes, 0 failing
+
+bash scripts/pos_voucher_gate_test.sh   # phase 1b - the vouchers + the money
+# 23 probes, 0 failing
 ```
+
+Both scripts clean up after themselves — they delete only the rows they can name
+(the probe member, the probe orders, the probe vouchers).
 
 And the screen itself: the range control changes **every** tab (including the chart
 and the payments and loyalty numbers), the Sales tab has an export and a print button,
