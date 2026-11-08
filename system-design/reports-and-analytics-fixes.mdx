@@ -61,7 +61,7 @@ counted **line items** while the Items tab counted **quantities**. Two numbers f
 the same thing; they agree today by luck. **It is fixed** (with phase 7 — both sides
 use `salesTotals()`, which counts the plates).
 
-**The total: 219 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 60).
+**The total: 223 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 64).
 
 | # | The finding | The measure |
 |---|---|---|
@@ -963,6 +963,22 @@ has no previous period, so it shows no comparison rather than a made-up one.
 > order (a dish ordered three times was counted once). It counts the **plates**
 > now — and both the tab and the comparison use the same function.
 
+### 6.3 The margin must not be a lie
+
+A tenant that has never valued its dishes has **no cost** for them — and a
+margin computed from a cost of zero reads **100%**. So the rule is:
+
+- an item whose cost was never set is **not** a free item — it is an **unknown**
+  cost, and it is left out of the cost;
+- if **no** item has a known cost, the **margin is unknown** (the screen shows a
+  dash, never a number);
+- if **some** items have one, the margin is computed and the **cost cover** says
+  how much of the sales the known costs cover.
+
+The AES tenant reads `gross_margin: null` (it has never valued a dish); the demo
+cafe reads **58.67%** on 14 dishes (the cost of the goods is 2,091.00 against a
+revenue of 5,059.50).
+
 ---
 
 ## 7. The phases
@@ -1035,12 +1051,12 @@ bash scripts/pos_reports_print_test.sh    # phase 6 - the print stylesheet
 # 25 probes, 0 failing (the chrome is hidden, the sheet says what it is)
 
 bash scripts/pos_reports_phase6_test.sh   # phase 7 - the additions
-# 60 probes, 0 failing (the comparison, the pace, the day parts, the margin,
-# the void report, the top customers - 37 of them run the frontend's own
+# 64 probes, 0 failing (the comparison, the pace, the day parts, the margin,
+# the void report, the top customers - 39 of them run the frontend's own
 # modules in node, so they test the code the screen runs)
 ```
 
-**The total: 219 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 60).
+**The total: 223 probes, 0 failing** (33 + 23 + 9 + 21 + 24 + 24 + 25 + 64).
 
 Both scripts clean up after themselves — they delete only the rows they can name
 (the probe member, the probe orders, the probe vouchers).
