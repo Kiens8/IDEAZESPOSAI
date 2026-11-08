@@ -37,8 +37,9 @@ them is arithmetically wrong for every tenant but the demo, three backend routes
 another tenant's loyalty data to anyone who asks — and a guest could post its own
 price and its own discount, so the restaurant could be made to owe the guest money.**
 
-**The four tenancy holes (A1–A4) are closed, and so is the money hole (§5.9).** The
-accuracy fixes (B, C, D, E) are still the proposal.
+**The four tenancy holes (A1–A4) are closed, and so is the money hole (§5.9).** Of the
+accuracy findings, **B1, B2 and B3 are closed** (the walk-in rule, the date rule and
+the chart — phases 2 and 3). **B4, B5, C, D and E are still the proposal.**
 
 | # | The finding | The measure |
 |---|---|---|
@@ -47,8 +48,8 @@ accuracy fixes (B, C, D, E) are still the proposal.
 | A3 | `GET /api/loyalty/stats/{customer_id}` uses `optional_permission` | the public PWA key read any tenant's aggregates — **FIXED** |
 | A4 | **The vouchers router has the same shape** (unguarded tenant routes + unguarded writes) | `GET /api/vouchers/all/{customer_id}` with the public key returned any tenant's voucher codes — **FIXED** (§5.8) |
 | B1 | The walk-in tab hardcodes the walk-in customer id **7** | tenant 3: 46 orders → **46 "registered", 0 walk-in** (the truth is the reverse) — **FIXED** (§5.2) |
-| B2 | The date filter is **UTC**, the Order History screen is the outlet's time | 6 of 16 orders sit on a different local day in Phnom Penh |
-| B3 | The chart is always **the last 7 days** | "Today" shows 6 empty days; "All Time" shows one week |
+| B2 | The date filter is **UTC**, the Order History screen is the outlet's time | 6 of 16 orders sit on a different local day in Phnom Penh — **FIXED** (§5.3) |
+| B3 | The chart is always **the last 7 days** | "Today" shows 6 empty days; "All Time" shows one week — **FIXED** (§5.5) |
 | B4 | The Payments tab has **no date filter** and is built on the tender rows | $5,393.61 for every range; the Sales tab says $5,049.82 (a $343.79 gap) |
 | B5 | The Loyalty tab has **no date filter** | all-time $2,367.73 next to a Sales tab that says $14.24 for today |
 | B6 | The "Pending Payment" KPI is **hardcoded to 0** | always $0.00 |
@@ -474,7 +475,14 @@ earns no points, the report leaves it out), not lookups.
 the orders with no member are still walk-ins — that part of the rule needs no id. The
 fallback is the honest one: it does not guess with a number.
 
-### 5.3 One date rule, one helper
+### 5.3 One date rule, one helper — **BUILT (Nov 8, 2026)**
+
+> **What was built:** `frontend/src/utils/dateRange.js` — one helper that holds the
+> whole rule (the window of a range, the day of an order in the outlet's timezone,
+> the series for the chart). Every tab filters with it, and the chart is built for
+> the same window. The probes: `scripts/pos_reports_date_test.sh` — **21 probes, 0
+> failing** (16 of them run the frontend's **own modules** through node, so they
+> test the code the screen runs).
 
 ```js
 // frontend/src/utils/dateRange.js
@@ -482,34 +490,45 @@ export const RANGE_DAYS = { today: 1, week: 7, month: 30, all: null }
 
 /** The window of a range, as the LOCAL dates of the outlet (YYYY-MM-DD). */
 export function rangeWindow(dateRange, tz, now = new Date()) {
-  const today = now.toLocaleDateString('en-CA', { timeZone: tz })
-  const shift = (d, days) => {
-    const dt = new Date(`${d}T00:00:00Z`)
-    dt.setUTCDate(dt.getUTCDate() + days)
-    return dt.toISOString().slice(0, 10)
-  }
-  if (dateRange === 'today') return { from: today, to: today }
-  if (dateRange === 'week')  return { from: shift(today, -6), to: today }   // 7 days
-  if (dateRange === 'month') return { from: shift(today, -29), to: today }  // 30 days
-  return { from: null, to: null }                                          // all
+  const today = localDay(now, tz)
+  const days = RANGE_DAYS[dateRange]
+  if (days === null || days === undefined) return { from: null, to: null }  // all
+  if (days <= 1) return { from: today, to: today }                        // today
+  return { from: shiftDay(today, -(days - 1)), to: today }                 // 7 / 30 days
 }
 
 /** Is an order inside the window, in the outlet's day? */
 export function inWindow(createdAt, tz, from, to) {
   if (!from && !to) return true
-  const local = new Date(createdAt).toLocaleDateString('en-CA', { timeZone: tz })
+  const local = localDay(createdAt, tz)
   if (from && local < from) return false
   if (to && local > to) return false
   return true
 }
 ```
 
-The window is then sent to the server (`date_from`, `date_to`) for the tabs that are
+**The rule, in four lines:**
+
+- a **day** is a day **of the outlet**, in the outlet's timezone. An order created at
+  00:30 in Phnom Penh belongs to that local day — whatever UTC says. The old code
+  took `created_at.split('T')[0]`, which is **UTC**: six of sixteen orders sat on the
+  wrong day, because the kitchen is seven hours ahead of UTC;
+- **"Last 7 Days" is seven days** — today and the six before it. The old code did
+  `now - 7 days`, which is **eight** calendar days;
+- **"Last 30 Days" is thirty days** — today and the twenty-nine before (the old code:
+  thirty-one);
+- **"All Time"** is no window at all.
+
+**Where the timezone comes from:** the outlet's own settings (`settings.timezone`,
+the same source the Order History screen uses), with `DEFAULT_TIMEZONE` as the
+fallback. The default now lives in its own tiny module (`utils/timezone.js`), so the
+date rule can use it without dragging the whole formatter — and the i18n setup — in
+with it.
+
+**The window is then sent to the server** (`date_from`, `date_to`) for the tabs that are
 aggregated there — **the same parameters the export route already takes**
 (`GET /api/orders/export`), so the report and the file always cover the same period.
-
-**The "week" range is seven days** (today and the six before). The old code used
-`now - 7 days`, which is **eight** calendar days — the label said seven.
+That part belongs to phase 4 (the Payments tab), which is still open.
 
 ### 5.4 The Payments tab on the ledger
 
@@ -535,11 +554,27 @@ order 42.00, tender rows 30.00 card + 12.00 cash
 **The rule to test:** the Payments tab's total **equals** the Sales tab's total for the
 same range, to the cent. One assertion, and it catches every future drift.
 
-### 5.5 The chart follows the range
+### 5.5 The chart follows the range — **BUILT (Nov 8, 2026)**
 
-The chart's series is built **for the selected window**: today → the hours so far,
-7 days → seven daily bars, 30 days → thirty daily bars, all time → the months. The
-day labels come from the outlet's timezone and are translated like the rest.
+> **What was built:** the chart's series is built for the **selected** window — today
+> shows the hours so far, seven days show seven days, thirty days show thirty days,
+> all time shows the months. Before this the chart was **always** the last seven days:
+> "Today" showed six empty bars and "All Time" showed one week.
+
+| The range | The chart |
+|---|---|
+| **today** | the hours so far (the hours of the outlet, in its timezone) |
+| **7 days** | seven daily bars, labelled with the weekday ("Mon") — the page translates it like the rest of the screen |
+| **30 days** | thirty daily bars, labelled with the day of the month ("8") — thirty weekday names in a row would be noise |
+| **all** | the months the data reaches ("Sep 2026"), labelled through the locale-aware date formatter |
+
+The **title carries the range too**: it used to say "Revenue (Last 7 Days)" whatever
+the range was, so it was lying on every other tab. It is now "Revenue" plus the range
+the screen already translates.
+
+The series is built by the **same helper** as the filter (`buildChartSeries` in
+`utils/dateRange.js`), so a chart and its table always cover the same period — and
+the probes check exactly that.
 
 ### 5.6 The export, on every tab
 
@@ -682,6 +717,18 @@ The list of the files, so anybody can check the work without reading the whole d
 | `frontend/src/components/reports/reportsConfig.js` | the walk-in tab reads `o.is_walkin`; `calculateReportStats` lost the `walkinCustomerId` parameter (and its default of 7) |
 | `frontend/src/pages/Reports.jsx` | the call lost the hardcoded `7` |
 
+**Phase 3 — the date rule and the chart**
+
+| File | What changed |
+|---|---|
+| `frontend/src/utils/dateRange.js` | **new** — the whole rule: `RANGE_DAYS`, `rangeWindow`, `inWindow`, `localDay`, `shiftDay`, `windowDays`, `hoursSoFar`, `dataMonths` and `buildChartSeries` (the chart's series for a window) |
+| `frontend/src/utils/timezone.js` | **new** — `DEFAULT_TIMEZONE` in its own module, so the date rule does not drag the formatter (and the i18n setup) in with it |
+| `frontend/src/utils/format.js` | imports and re-exports the default from the new module (nothing else changed) |
+| `frontend/src/components/reports/reportsConfig.js` | `filterOrdersByDate(orders, dateRange, timeZone)` uses the helper; `calculateReportStats` takes an **options object** (the loyalty data, the payment stats, the range, the timezone, the locale) instead of a growing list of parameters |
+| `frontend/src/pages/Reports.jsx` | the outlet's timezone (`settings.timezone`) is passed to the filter and to the stats; the chart's title carries the range |
+| `frontend/src/i18n/locales/{en,zh,km}/reports.json` | the chart's title is "Revenue" (it used to say "Last 7 Days" on every range) — the range is added by the screen |
+| `frontend/scripts/test-format.mjs` | carries the new timezone module into the test bundle |
+
 **The probe scripts** (in the workspace, next to the other probes):
 
 | Script | What it proves |
@@ -689,6 +736,7 @@ The list of the files, so anybody can check the work without reading the whole d
 | `scripts/pos_loyalty_gate_test.sh` | phase 1 — the cross-tenant reads, the guest's own member, the register and the login, the walk-in member (33 probes) |
 | `scripts/pos_voucher_gate_test.sh` | phase 1b — the vouchers of a group, the guest's own member, **the money of a guest order**, and the staff at the till (23 probes) |
 | `scripts/pos_walkin_report_test.sh` | phase 2 — the flag against the database (both tenants), the truth of tenant 3, no hardcoded id in the browser, one lookup in the backend (9 probes) |
+| `scripts/pos_reports_date_test.sh` | phase 3 — the window of every range, the day of an order in the outlet's timezone, the series of the chart (21 probes; 16 of them run the frontend's own modules in node through a small resolver) |
 
 **One note on the source:** `mydoc/Projects/POS_AI` is **not** under version control
 (Kens' rule — git operations there have destroyed work before). The changes above live
@@ -721,7 +769,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | 1 | **The tenancy gate** on the loyalty routes (§5.1) + the sweep of the sibling routes | 14 routes | low — a gate — **BUILT Nov 8, 2026** |
 | 1b | **The same gate on the vouchers** (§5.8) + the server taking the money of a guest order (§5.9) | 10 routes + the order service | low — a gate — **BUILT Nov 8, 2026** |
 | 2 | **The walk-in rule** (§5.2) | the order response | low — **BUILT Nov 8, 2026** |
-| 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move |
+| 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move — **BUILT Nov 8, 2026** |
 | 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move |
 | 5 | **The export on every tab** (§5.6) | none (the client) | low |
 | 6 | **The print stylesheet** (§5.7) | none | low |
@@ -764,6 +812,9 @@ bash scripts/pos_voucher_gate_test.sh   # phase 1b - the vouchers + the money
 
 bash scripts/pos_walkin_report_test.sh   # phase 2 - the walk-in rule
 # 9 probes, 0 failing
+
+bash scripts/pos_reports_date_test.sh    # phase 3 - the date rule + the chart
+# 21 probes, 0 failing (16 of them run the frontend's own modules in node)
 ```
 
 Both scripts clean up after themselves — they delete only the rows they can name
