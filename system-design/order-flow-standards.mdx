@@ -122,6 +122,54 @@ switch (`125`), its labels (`944`), the "all served" rule (`935` — a dispatche
 served), the kitchen's filter (`Kitchen.jsx:545` — an out-for-delivery order must leave the
 kitchen), the unpaid-served list (`OrderSearchPanel.jsx:34`) and the report's status counts.
 
+### 2.2a The second order follows the switch (built, Nov 8, 2026 ✓✓)
+
+**Kens' rule: a second order on the same tab follows the outlet's
+auto-confirm switch.**
+
+The switch means "this outlet does not confirm orders - they go straight to the
+kitchen". A second order is the **same flow** — it must not be sent back to
+"pending" just because the customer has not paid yet.
+
+**What the reset used to do (and why it was wrong):** `add_items_to_order` set
+`order.status = "pending"` unconditionally. That drops the ticket into the
+kitchen's **"pending" lane** — the lane that waits for a confirm — and the
+kitchen's board sorts `preparing → confirmed → pending → ready`
+(`Kitchen.jsx`). So the reset made the changed ticket **less** visible and
+**undid the auto-confirm**: the outlet that switched it on still had to press
+confirm again for every extra drink. (The comment in the code said "so the
+kitchen knows there are NEW items" — the intent was right, the status was the
+wrong instrument.)
+
+**The rule now (one function, `second_order_status` in
+`backend/app/services/order_service.py`):**
+
+| The switch | The order is in the kitchen's flow (confirmed / preparing) | Otherwise (pending, ready, served, cancelled) |
+|---|---|---|
+| **on** | the order **keeps its status** — the new items join the ticket the kitchen is already working on | **"pending"** — the order waits for its money, or the new items must be queued again |
+| **off** | **"pending"** — the staff confirms, as they do now | **"pending"** |
+
+The rule is a **pure function of two things** (the current status and the
+switch), so it is probed on its own — and the probe runs the **real service
+function** with a stubbed database (`scripts/order_autoconfirm_check.py`, 20
+probes; the suite `scripts/pos_order_autoconfirm_test.sh`, 36 probes).
+
+**The signal that a ticket grew is NOT the status — it is the kitchen's own
+mark.** With the switch on, the status stays where it is, so the kitchen needs
+another way to know that a ticket has new items on it:
+
+- the kitchen screen remembers the items each ticket had at the last poll
+  (it polls every 3 seconds);
+- a ticket that **grew** gets the kitchen's notification sound and a **🆕
+  badge** ("NEW ITEMS (2)");
+- the **new lines are lit up** (an amber background and a "NEW" mark), so the
+  cook sees which lines are new.
+
+**The hole this does not close (named, not fixed):** on an order that has
+**already been paid**, adding items raises the total but **nobody collects the
+extra money**. The status reset never collected it either — that is a money
+problem, not a status problem, and it stays open on purpose.
+
 ### 2.3 The anchor — what identifies the order
 
 Every order needs something to point at: the counter, the kitchen and the bill.
