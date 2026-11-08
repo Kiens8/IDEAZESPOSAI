@@ -38,8 +38,10 @@ another tenant's loyalty data to anyone who asks — and a guest could post its 
 price and its own discount, so the restaurant could be made to owe the guest money.**
 
 **The four tenancy holes (A1–A4) are closed, and so is the money hole (§5.9).** Of the
-accuracy findings, **B1, B2 and B3 are closed** (the walk-in rule, the date rule and
-the chart — phases 2 and 3). **B4, B5, C, D and E are still the proposal.**
+accuracy findings, **B1, B2, B3, B4, B5, B6 and B8 are closed** (the walk-in rule, the
+date rule, the chart, the payments tab on the ledger, the loyalty window, the pending
+money and the method labels — phases 2, 3 and 4). **B7, C, D and E are still the
+proposal.**
 
 | # | The finding | The measure |
 |---|---|---|
@@ -50,11 +52,11 @@ the chart — phases 2 and 3). **B4, B5, C, D and E are still the proposal.**
 | B1 | The walk-in tab hardcodes the walk-in customer id **7** | tenant 3: 46 orders → **46 "registered", 0 walk-in** (the truth is the reverse) — **FIXED** (§5.2) |
 | B2 | The date filter is **UTC**, the Order History screen is the outlet's time | 6 of 16 orders sit on a different local day in Phnom Penh — **FIXED** (§5.3) |
 | B3 | The chart is always **the last 7 days** | "Today" shows 6 empty days; "All Time" shows one week — **FIXED** (§5.5) |
-| B4 | The Payments tab has **no date filter** and is built on the tender rows | $5,393.61 for every range; the Sales tab says $5,049.82 (a $343.79 gap) |
-| B5 | The Loyalty tab has **no date filter** | all-time $2,367.73 next to a Sales tab that says $14.24 for today |
-| B6 | The "Pending Payment" KPI is **hardcoded to 0** | always $0.00 |
+| B4 | The Payments tab has **no date filter** and is built on the tender rows | $5,393.61 for every range; the Sales tab says $5,049.82 (a $343.79 gap) — **FIXED** (§5.4) |
+| B5 | The Loyalty tab has **no date filter** | all-time $2,367.73 next to a Sales tab that says $14.24 for today — **FIXED** (§5.4) |
+| B6 | The "Pending Payment" KPI is **hardcoded to 0** | always $0.00 — **FIXED** (§5.4) (it is the real pending money now; with today's data every pending order is a cancelled one, so it reads $0.00) |
 | B7 | "Items Sold" counts **line items**, the Items tab counts **quantities** | equal today by luck |
-| B8 | The payment methods show as **raw keys** | `card`, `khqr`, `duitnow_qr` — the app has real labels |
+| B8 | The payment methods show as **raw keys** | `card`, `khqr`, `duitnow_qr` — the app has real labels — **FIXED** (§5.4) |
 | C1 | The **Sales tab has no export and no print button** | 0 buttons on the most important tab |
 | C2 | The CSV headers are **English** (`col.label`, not `labelKey`) | the cells are translated, the headers are not |
 | C3 | The CSV has **no BOM and no CRLF** | Khmer/Chinese headers break in Excel |
@@ -530,29 +532,66 @@ aggregated there — **the same parameters the export route already takes**
 (`GET /api/orders/export`), so the report and the file always cover the same period.
 That part belongs to phase 4 (the Payments tab), which is still open.
 
-### 5.4 The Payments tab on the ledger
+### 5.4 The payments tab on the ledger — **BUILT (Nov 8, 2026)**
 
-The total comes from the order; the tender rows only split it:
+> **What was built:** `GET /api/orders/payment-stats/{outlet_id}` now answers for a
+> **window** (`date_from`, `date_to` - the local dates of the outlet) and the money is
+> the **order's total**. The tender rows only split a split order, and their shares are
+> scaled to the order's total. The pending money is real now. The Loyalty tab takes
+> the same window. The probes: `scripts/pos_reports_payments_test.sh` — **24 probes, 0
+> failing**.
 
-```sql
-SELECT o.payment_method, COUNT(*) AS count, SUM(o.total) AS revenue
-FROM orders o
-WHERE o.customer_id = :tenant AND o.outlet_id = :outlet
-  AND o.payment_status = 'paid'
-  AND o.created_at >= :from AND o.created_at < :to
-GROUP BY o.payment_method
-```
+**The rule, in three lines:**
 
-For a **split** order the tender rows give the **shares**, and the order's total is
-split by those shares (so the parts still add up to the total):
+- the money is the **order's total** (the ledger), never the tender rows;
+- the tender rows only say **how** a split order was paid — their shares are scaled to
+  the order's total, so the parts always add up to the whole;
+- an order whose tender was never recorded still counts (as *unknown*) — the money is
+  real even when the note is missing.
+
+**Why the old route was wrong** (it built the totals from the tender rows):
+
+- a **single** 'full' tender row often holds a different figure than the order
+  (order 2: the row says 3.50, the order says 20.03) — the row won, the order was
+  lost;
+- a **split** order's rows were added as they were, so the parts did not make the
+  whole (order 45: four rows of 12.90 for an order of 25.80 — **double**);
+- an order with **no method** was skipped entirely — 105.20 of real money, gone;
+- and there was **no window at all**: the tab showed every range at once.
+
+**What it says now** (measured on the live database, tenant 1):
+
+| | before | now |
+|---|---|---|
+| The total (every range) | $5,393.61 — **not the Sales tab's number** | **$5,049.82** — the ledger, the same as the Sales tab |
+| The tenders | card 108 · khqr 54 · cash 79 … and money in no row at all | card 108 · khqr 54 · cash 79 … and **every ringgit in a row** |
+| Today | the same $5,393.61 | **$17.24** (the five paid orders of the day) |
+| Pending payment | hardcoded **$0.00** | the **real** pending money |
+
+**The shares, scaled to the order:**
 
 ```
 order 42.00, tender rows 30.00 card + 12.00 cash
 -> card 28.00, cash 14.00   (the shares, scaled to the order total)
 ```
 
+A share is a **(method, amount) pair** — the same pair written twice is ONE share, so
+a row that was written twice cannot take the money twice (the restore of the demo data
+wrote some rows twice, and the report must not pay them twice).
+
+**The window is one rule** (`backend/app/core/date_window.py`): the local dates of the
+outlet become a half-open UTC window (`[from 00:00 local, to+1 00:00 local)`), and
+the **export route** uses the same helper now — so the file and the report always
+cover the same period.
+
+**The Loyalty tab takes the window too** (B5): the revenue, the orders, the points
+earned and redeemed and the vouchers used are the ones of the **period**; the number
+of registered customers and their lifetime points are **stocks**, not flows, so they
+stay as they are (a customer who joined in March is still a customer in November).
+
 **The rule to test:** the Payments tab's total **equals** the Sales tab's total for the
-same range, to the cent. One assertion, and it catches every future drift.
+same range, to the cent. One assertion, and it catches every future drift — it is the
+first probe of `pos_reports_payments_test.sh` (three windows × two tenants).
 
 ### 5.5 The chart follows the range — **BUILT (Nov 8, 2026)**
 
@@ -717,6 +756,18 @@ The list of the files, so anybody can check the work without reading the whole d
 | `frontend/src/components/reports/reportsConfig.js` | the walk-in tab reads `o.is_walkin`; `calculateReportStats` lost the `walkinCustomerId` parameter (and its default of 7) |
 | `frontend/src/pages/Reports.jsx` | the call lost the hardcoded `7` |
 
+**Phase 4 — the payments tab on the ledger**
+
+| File | What changed |
+|---|---|
+| `backend/app/core/date_window.py` | **new** — the window rule: `outlet_timezone`, `tenant_timezone`, `local_window_to_utc` (the local dates of the outlet → a half-open UTC window). The export route uses it too |
+| `backend/app/routes/order.py` | the payment statistics are on the **ledger** (the order's total), the tender rows only split a split order (scaled to the total), the pending money is real, the window is honoured, and the answer says which window and which timezone it is |
+| `backend/app/routes/loyalty.py` | the loyalty report takes the window: the revenue, the orders, the points and the vouchers of the period (the customers and their lifetime points stay — they are stocks, not flows) |
+| `frontend/src/pages/Reports.jsx` | the screen sends the window with the payment statistics and the loyalty report, and fetches them again when the range changes (before this they were fetched once, so the tab kept the first range it was opened with); the tenders are shown with their words; the KPI cards of the Payments tab are the **data's** (the total, the pending money and the two biggest tenders) |
+| `frontend/src/components/reports/reportsConfig.js` | the pending money comes from the backend (it was hardcoded to 0) and one flat key per tender (`method_cash`, `method_card`, …) so the KPI cards can follow the data |
+| `frontend/src/utils/paymentMethods.js` | the labels for the tenders that had none: *unknown* (an order with no tender recorded) and *split* |
+| `frontend/src/i18n/locales/{en,zh,km}/orders.json` | the words for those two tenders in the three locales |
+
 **Phase 3 — the date rule and the chart**
 
 | File | What changed |
@@ -737,6 +788,7 @@ The list of the files, so anybody can check the work without reading the whole d
 | `scripts/pos_voucher_gate_test.sh` | phase 1b — the vouchers of a group, the guest's own member, **the money of a guest order**, and the staff at the till (23 probes) |
 | `scripts/pos_walkin_report_test.sh` | phase 2 — the flag against the database (both tenants), the truth of tenant 3, no hardcoded id in the browser, one lookup in the backend (9 probes) |
 | `scripts/pos_reports_date_test.sh` | phase 3 — the window of every range, the day of an order in the outlet's timezone, the series of the chart (21 probes; 16 of them run the frontend's own modules in node through a small resolver) |
+| `scripts/pos_reports_payments_test.sh` | phase 4 — the Payments tab's total equals the Sales tab's total for three windows and two tenants, the parts add up to the whole, the pending money is the database's, the window is honoured, the cross-tenant read is still a 403 (24 probes) |
 
 **One note on the source:** `mydoc/Projects/POS_AI` is **not** under version control
 (Kens' rule — git operations there have destroyed work before). The changes above live
@@ -770,7 +822,7 @@ The fixes make the screen trustworthy. These make it **worth opening**.
 | 1b | **The same gate on the vouchers** (§5.8) + the server taking the money of a guest order (§5.9) | 10 routes + the order service | low — a gate — **BUILT Nov 8, 2026** |
 | 2 | **The walk-in rule** (§5.2) | the order response | low — **BUILT Nov 8, 2026** |
 | 3 | **One date rule** (§5.3) + the chart follows the range (§5.5) | the payment/loyalty aggregates take a window | medium — the numbers move — **BUILT Nov 8, 2026** |
-| 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move |
+| 4 | **The payments tab on the ledger** (§5.4) + the pending KPI + the method labels | the payment-stats route | medium — the numbers move — **BUILT Nov 8, 2026** |
 | 5 | **The export on every tab** (§5.6) | none (the client) | low |
 | 6 | **The print stylesheet** (§5.7) | none | low |
 | 7 | The **additions** (§6) | the aggregates | each one is its own |
@@ -815,6 +867,9 @@ bash scripts/pos_walkin_report_test.sh   # phase 2 - the walk-in rule
 
 bash scripts/pos_reports_date_test.sh    # phase 3 - the date rule + the chart
 # 21 probes, 0 failing (16 of them run the frontend's own modules in node)
+
+bash scripts/pos_reports_payments_test.sh # phase 4 - the payments tab on the ledger
+# 24 probes, 0 failing (the total equals the Sales tab's total, to the cent)
 ```
 
 Both scripts clean up after themselves — they delete only the rows they can name
