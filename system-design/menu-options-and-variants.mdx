@@ -1,13 +1,17 @@
 # Menu Options & Variants — the dish, the choices, the ticket, the cost
 
-**Document Version:** 1.1 (the proposal — Nov 9, 2026 · revised the same night after
+**Document Version:** 1.2 (the proposal — Nov 9, 2026 · revised the same night after
 Kens's two rules: *"make sure the new proposal won't impact the existing menu"* and
 *"the proposal also has to be compatible in the current recipes management, because the
-ingredients inside will use to calculate the actual cost"* ✓✓ — §4.1, §4.4, §5.2, §5.2a)
+ingredients inside will use to calculate the actual cost"* ✓✓ — §4.1, §4.4, §5.2, §5.2a
+· **v1.2 — Nov 10, 2026 ✓: phase 5 (the counter's picker ✓) is built and proved by a
+browser ✓✓ — §7.1g ✓)**
 **Owner:** Ideazes POS AI
-**Status:** **Proposed — nothing built.** The review below is against the live code
-and the live database (Nov 9, 2026). Every "what today" statement is a fact about
-the code as it stands, not a memory. The phases at the end are the proposal.
+**Status:** **In build — phases 0, 1, 2, 3, 4, 4b and 5 are built, probed and
+live** ✓✓ (Nov 9–10, 2026 ✓). The review below was written against the live code
+and the live database (Nov 9, 2026 ✓) — every "what today" statement is a fact
+about the code as it stood then, not a memory ✓. The phases at the end are the
+proposal ✓ — the built ones carry their own section ✓ (§7.1 ✓ — §7.1g ✓).
 
 > **Why this document exists.** Kens: *"the current menu management is too simple —
 > ingredients/toppings, size, modifiers, optional, remarks. If we change the menu
@@ -681,8 +685,8 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` �
 ## 6. The phases — the safe order
 
 Each phase is usable on its own and leaves the system working ✓. Phases **0** ✓
-— **4** ✓ and **4b** ✓ are **built** ✓✓ (Nov 9–10, 2026 ✓) — **5** ✓ and on are
-still to come ✓.
+— **4** ✓, **4b** ✓ and **5** ✓ are **built** ✓✓ (Nov 9–10, 2026 ✓) — **6** ✓ and
+on are still to come ✓.
 
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
@@ -692,7 +696,7 @@ still to come ✓.
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1c ✓) |
 | **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1d ✓) |
 | **4b** | **the management API + the screen** | the tenant can **create** a size, a group, a choice and the links ✓ — the write routes ✓ + the panel on the menu screen ✓ **proved by a browser** ✓ | medium ✓ | 4 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓, §7.1f ✓) |
-| **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
+| **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1g ✓) |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
 | **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
 | **8** | **the reports' variant breakdown** | the menu mix by variant ✓ | low ✓ | 4 ✓ |
@@ -1240,6 +1244,125 @@ stands** ✓: the dish's own recipe × the size's multiplier ✓✓.
 **403s** ✗. It signs in as **admin** ✓ now ✓.
 
 
+### 7.1g The patch for phase 5 (the counter's picker) — **BUILT** ✓✓
+
+**Status: built, proved in a real browser and live (Nov 10, 2026 ✓✓).**
+
+The staff order screen (the till ✓) — the staff taps a dish that carries
+choices, the **sizes** ✓ and the **groups of choices** ✓ appear, one tap each ✓,
+the **price moves as they go** ✓, and the line goes into the cart carrying the
+size, the choices and the note for the kitchen ✓.
+
+---
+
+#### 1. The pieces ✓
+
+**The read — one call, not one per dish ✓.** `GET /api/menu/options-catalog`
+✓ (`backend/app/routes/menu.py` ✓) → `options_catalog()` ✓
+(`backend/app/services/menu_options.py` ✓): the outlet's **variants** ✓, its
+**groups** ✓, the **options inside them** ✓ and the **links** that say which dish
+carries which group ✓ — in **one** payload ✓. The till must not wait for a
+request per dish at the counter ✓ (§5.4: two taps, no more ✓).
+
+The route carries the same three gates as every other menu route ✓: the
+**tenant** ✓ (`require_outlet_access` ✓ — the outlet id comes from the session ✓,
+never from the request ✓), the **plan** ✓ (`require_plan_feature("Menu")` ✓) and
+the **permission** ✓ (`menu:read` ✓, optional ✓ — the guest's menu keeps working ✓).
+
+**The panel — `frontend/src/components/pos/ChoicePicker.jsx` ✓.** The sizes ✓
+(one tap ✓, the default size is pre-selected ✓), the groups ✓ (the range is
+shown ✓ — *pick 1 to 2* ✓), the options ✓ (a group at its maximum refuses the
+next tap ✓ — the server would refuse it anyway ✓), the **note for the kitchen**
+✓ and the **live price** ✓ (the dish + the size + the choices ✓).
+
+**The rules stay the menu's ✓.** The panel only keeps the staff from making a
+choice the server would refuse ✓ (`min_select` ✓, `max_select` ✓, the groups
+that belong to this dish ✓) — the **server enforces them again** when the order
+is posted ✓ (phase 2 ✓). A **group that belongs to one size only** shows with
+that size ✓.
+
+**The wiring — `frontend/src/pages/StaffOrder.jsx` ✓.** The catalog rides along
+with the menu's own read ✓ (one call, not four ✓), a dish **without** choices
+never opens the panel ✓ (it goes into the cart with the same single tap it
+always took ✓ — the counter's speed ✓), and the line's **key** carries the size
+and the choices ✓ — so *Spring Rolls Big with Chili* and *Spring Rolls Small
+with Chili* are **two lines** ✓, not one.
+
+**The cart — `frontend/src/components/pos/CartPanel.jsx` ✓.** The line shows its
+size and its choices under the dish ✓ (`Big · Chili` ✓) — the staff must see
+what the guest is getting ✓.
+
+**The order.** The line posts `variant_id` + `option_ids` + `notes` ✓ (phase 2 ✓)
+and the **server resolves the price** ✓ — the client's price is a display ✓, not
+the truth ✓.
+
+**The three languages ✓** — `staffOrder:picker.*` ✓ in en ✓, km ✓ and zh ✓.
+
+---
+
+#### 2. The browser check — and what it found ✓✓
+
+**`scripts/pos_picker_screen_check.js`** ✓ (Playwright ✓, Chromium ✓, headless
+✓): it logs in as the demo tenant ✓, opens the till ✓, taps a dish that
+carries a size and a group ✓, checks that the panel opens ✓, **clicks a choice
+and watches the price move** ✓, adds the line ✓, checks that the cart shows the
+size and the choice ✓, picks the table ✓, places the order ✓, and then asks the
+**database** ✓ whether the order holds the **snapshot** ✓ (the choice ✓, the
+size ✓) and the **server's price** ✓ — and finally cleans up ✓ (the order ✓ and
+the line ✓ are gone ✓).
+
+**It found a bug that the API probe could not see ✗✗ — and it was a big one ✓:**
+
+> **The till was EMPTY for an admin ✗✗.** The staff order screen read the
+> session **once, when it mounted** ✗ (`useState(null)` ✓ + an effect with an
+> empty dependency list ✓). But an **admin** has no outlet in the session
+> **until the app picks the first one** ✓ — which happens **after** the login ✓.
+> The screen therefore never saw the outlet ✗ → it never fetched the menu ✗ →
+> **the till showed nothing at all** ✗✗ (an empty grid ✓, no error ✓, no clue ✗).
+>
+> **Fixed (Nov 10, 2026 ✓✓):** the screen reads the session **reactively** ✓
+> (`useSession()` ✓ — the hook that re-renders when the session changes ✓), so
+> the outlet arrives whenever it arrives ✓. The hook already existed ✓ and the
+> comment on it already said why ✓ (*"an admin only gets an outlet after the
+> login" ✓) — the screen simply was not using it ✗.
+
+**And it found three things about the flow ✓:**
+
+| # | What the check found | The answer |
+|---|---|---|
+| 1 | the **AI upsell popup** opens over the till right after the line is added ✓ | it has a backdrop ✓ — the check closes it ✓ — the staff can close it too ✓ |
+| 2 | the **dine-in needs a table** before *Place Order* enables ✓ | that is the rule ✓ (`needsTable` ✓) — the check picks the table ✓ |
+| 3 | the **banner is short-lived** ✗ — *Order placed successfully* ✗ | the check reads it right after the click ✓ |
+
+**The result:** every check passes ✓✓ — the picker opens ✓, the price moves with
+the choice ✓ ($6.00 → $6.50 ✓), the cart shows *Big · Chili* ✓, the order is
+created ✓, the **snapshot** holds the choice ✓ and the size ✓, the **server's
+price** is the picker's price ✓, the live data is untouched afterwards ✓ and
+**no call was refused** ✓.
+
+---
+
+#### 3. What phase 5 does NOT do ✓
+
+- the **guest's modal** ✓ (the PWA ✓) is **phase 6** ✓ — still to come ✓;
+- the **legacy `modifications`** ✓ (the free-text list ✓) is **phase 7** ✓;
+- the **reports' variant breakdown** ✓ is **phase 8** ✓;
+- the picker **does not** change the money rule ✓ — the server resolves the
+  price ✓ (phase 0 ✓ ✓ — the add-on's price comes from the menu ✓).
+
+---
+
+#### 4. Two lessons the probes carry now ✓✓
+
+1. **A screen that reads the session once is a screen that can be empty.** ✓✓
+   The session is **written by another component** ✓ (the app picks the admin's
+   outlet ✓), so a screen that reads it once at mount races that write ✗. The
+   rule: **read the session reactively** ✓ (`useSession()` ✓ / `useOutletId()` ✓).
+2. **The check must walk the whole flow ✓** — the table ✓, the upsell ✓, the
+   payment timing ✓ — and then ask the **database** ✓ what really happened ✓.
+   A screenshot proves that the screen looked right ✓; only the database proves
+   that the **order** is right ✓.
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -1399,7 +1522,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 
 ## 10. The summary of the state
 
-*Nov 10, 2026 — phases 0, 1, 2, 3, 4 and 4b are built, probed and live ✓✓.*
+*Nov 10, 2026 — phases 0, 1, 2, 3, 4, 4b and 5 are built, probed and live ✓✓.*
 
 | # | The item | The state |
 |---|---|---|
@@ -1407,7 +1530,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 2 | The order line's snapshot + the server-side price resolution | **BUILT** ✓✓ — phase 2 ✓✓ (Nov 9, 2026 ✓) — the write path ✓, the snapshot ✓, the remark ✓ — **live** ✓✓ — §7.1b ✓✓ |
 | 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **BUILT** ✓✓ — phase 3 ✓✓ (Nov 9, 2026 ✓) — the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the receipt ✓ — the today's gap is **closed** ✓✓ — §7.1c ✓✓ |
 | 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **BUILT ✓✓** (Nov 10 ✓) — the variant's recipe TABLES ✓✓ (phase 1 ✓) — the snapshot holds the ingredient deltas ✓✓ (phase 2 ✓) — the API for the size's recipe ✓✓ — the deduction reads the FROZEN stock ✓✓ — the cost is frozen ✓✓ — the reports say `mixed` when they mix ✓✓ |
-| 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ — the picker's DATA is built ✓✓ (phase 1 ✓) |
+| 5 | The counter's picker | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1g ✓) — the panel ✓ (`frontend/src/components/pos/ChoicePicker.jsx` ✓) + the cart's line ✓ + the wiring ✓ (`pages/StaffOrder.jsx` ✓) + **one read for the whole outlet** ✓ (`GET /api/menu/options-catalog` ✓) — **proved by a browser** ✓ (`scripts/pos_picker_screen_check.js` ✓ — the price moves ✓, the cart shows the choices ✓, the order holds the snapshot ✓) — and it found **an empty till for an admin** ✗✗ (the session read once at mount ✗ → **fixed** ✓) |
 | 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
