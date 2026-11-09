@@ -1,0 +1,342 @@
+---
+title: The Pricing Engine and the Promotions
+description: Who owns the money of an order, how a promotion is read, and what was wrong with it before Nov 9, 2026
+---
+
+# The Pricing Engine and the Promotions
+
+> The money of an order is the server's. The React app and the customer app show the numbers the
+> server gives them — they never work them out themselves.
+
+Written Nov 9, 2026, after the happy hour of Demo Cafe 1 (Kens SS17, Phnom Penh) charged a guest
+for a $55.80 basket the wrong way.
+
+---
+
+## The short version
+
+| | Before | Now |
+|---|---|---|
+| The tax | on the **gross** subtotal | on the amount the guest **pays** |
+| The discount | computed by the client, by the server, and by both | **one** source, and the order says which |
+| The happy hour | ran on the **server's** clock | runs on the **outlet's** clock |
+| A promotion with `required_item_ids = 'null'` | silently skipped, forever | applies to the whole cart |
+| Two drinks | charged as four | charged as two |
+| A bundle | the components at the menu's price | the components minus the saving = the bundle price |
+
+---
+
+## The five bugs
+
+### 1. The engine read the server's clock
+
+`datetime.now()` on the server is **Asia/Kuala_Lumpur (UTC+8)**. The branch in Phnom Penh is
+**UTC+7** — an hour behind. A happy hour of `14:00-18:00` in Phnom Penh was `15:00-19:00` on the
+server, and the server's days are the same days, so the bug only showed itself at the edges of
+the window.
+
+**Now:** every window and every weekday of a promotion is read in the **outlet's** timezone
+(`backend/app/core/date_window.py` → `outlet_timezone`, `local_moment`).
+
+### 2. The JSON columns of SQLite arrived as text
+
+`required_item_ids` and `required_category_ids` are JSON columns, but SQLite handed the engine the
+raw text: `'null'` and `'[1, 7, 10]'`.
+
+`set('null')` is `{n, u, l}` — three letters, and **not** empty. So a promotion whose
+`required_item_ids` was `'null'` asked for "an item called n, u or l", found none, and skipped the
+promotion **forever**. The happy hour of Demo Cafe 1 never ran.
+
+**Now:** every JSON column is read through `as_list()` / `as_ids()`
+(`backend/app/services/promotion_service.py`), which understands a list, the raw text and `'null'`.
+
+### 3. The quantity was multiplied twice
+
+The engine multiplied `price x quantity`, and the callers handed it the **line total**. A guest who
+ordered two drinks was charged for four.
+
+**Now:** the engine reads **unit** prices (`price` is one unit, `quantity` is how many) and
+multiplies exactly once. The callers (`order_service.py`, `routes/promotions.py`) send the unit
+price.
+
+### 4. The tax was on the gross, and the discount was subtracted by hand
+
+`add_items_to_order` re-taxed the subtotal **before** the discount and then added the tax to the
+total without taking the discount off. The receipt did not add up.
+
+**Now:** the tax is computed on the amount the guest pays — the subtotal minus the discount — by
+`compute_totals()` in `backend/app/services/order_pricing.py`. The total comes from the tax
+service, so a price that already carries the tax keeps carrying it.
+
+### 5. Nobody knew where the discount came from
+
+The order had a `discount` but no idea whether it was a voucher, a promotion or something the
+staff gave at the till. So a repricing had to guess, and it guessed wrong.
+
+**Now:** the order has a `discount_source` (`voucher` | `promotion` | `manual` | `none`).
+
+---
+
+## The rules
+
+### The order says where its discount came from
+
+| `discount_source` | What it means | What happens on a reprice |
+|---|---|---|
+| `voucher` | a validated voucher | the voucher's amount is recomputed — it is **never** redeemed again |
+| `promotion` | the promotions engine | the promotions are re-evaluated at `order.created_at`, **ignoring the usage caps** |
+| `manual` | the staff gave it at the till | the amount is kept |
+| `none` | there is no discount | — |
+
+The orders of before the fix have no source. It is inferred (`infer_source()`):
+
+1. a `voucher_code` means a **voucher**,
+2. a promotion that gives the very same amount (within a cent) at the moment the order was placed
+   means a **promotion**,
+3. a guest's discount came from the server, so it is a **promotion**,
+4. anything else was a discount the staff gave: a **manual** one, and the amount is kept.
+
+A reprice never takes money away: if the promotion that gave an order its discount is gone, the
+amount the guest was charged is kept.
+
+### The precedence is strict
+
+**voucher > staff manual discount > best promotion > nothing.**
+
+A staff discount of **zero** does **not** switch the promotions off — the staff who gives nothing
+gets the promotion the guest would get. A staff discount **over zero** suppresses the promotion
+(what the staff gives is what the guest gets).
+
+### The price of an order is locked when it is placed
+
+The promotions of an existing order are re-evaluated at **`order.created_at`**, never at the moment
+of the repricing, and the usage caps are ignored while repricing. Otherwise an order would change
+its price every time somebody else used the promotion.
+
+:::info
+**This is a decision, not an accident.** An order placed at 13:00 keeps its 13:00 price even if a
+drink is added at 15:00 inside the happy hour. If Kens wants the other rule ("the price follows the
+moment of the change"), it is one line in `order_pricing.reprice_order()` — the `at` argument.
+:::
+
+### The usage counters
+
+| The promotion's field | The counter | The table |
+|---|---|---|
+| `max_uses` | the global counter | `promotions.current_uses` |
+| `max_uses_per_outlet` | the counter of **this** branch | `promotion_outlet_usage(promotion_id, outlet_id, uses)` |
+
+A promotion counts **once**, when it is really applied at the creation of an order. A preview
+(`/api/promotions/calculate`) never counts. The table is created by the migration in
+`backend/app/main.py` (it did not exist before).
+
+### The promotion rules
+
+| The type | The rule |
+|---|---|
+| `time_based` | the window and the weekdays of the **outlet**; the items are narrowed by `required_item_ids` / `required_category_ids` when there are any |
+| `percentage` | a share of the eligible items — **all** of them when there is no category filter |
+| `bundle` | a **complete set**: every component has to be in the cart; the number of bundles is the smallest count among the components; the saving is `(the set - the bundle price) x the number of bundles` |
+| `bogo` | one unit of the cheapest eligible item is free — and the cart has to hold **at least two eligible units** |
+| `fixed_discount` | an amount, never more than the subtotal it comes from |
+
+The discount is never negative and never more than the subtotal it is taken from.
+
+### The tax
+
+The tax is on the **amount the guest pays**. For outlet 1 (VAT 8%, not included):
+
+```
+subtotal 55.80 - discount 11.16 = 44.64
+44.64 x 8% = 3.57
+44.64 + 3.57 = 48.21
+```
+
+---
+
+## The API
+
+### `POST /api/promotions/calculate?outlet_id=<id>`
+
+The server's answer to "what is this cart worth?". The body is either
+`{"items": [...], "voucher_code": "..."}` or the bare list of the items (the old shape, still
+accepted).
+
+```json
+{
+  "subtotal": 55.8, "discount": 11.16, "after_discount": 44.64,
+  "tax": 3.57, "total": 48.21,
+  "tax_breakdown": { "...": "..." },
+  "best_discount": 11.16,
+  "best_promotion": { "id": 4, "name": "Happy Hour Special", "badge_text": "20% OFF" },
+  "discount_breakdown": [ { "promotion_id": 4, "name": "...", "discount": 11.16 } ],
+  "discount_source": "promotion",
+  "voucher_error": null,
+  "items": [ { "id": 6, "price": 22.9, "quantity": 1, "category_id": 2, "line_total": 22.9 } ]
+}
+```
+
+- A **guest** may not post a price — the menu's price is the price, and an item the menu does not
+  know is not in the cart.
+- A **bundle** may arrive as one line (`bundle_<promotion id>`); the server expands it into its
+  components at the menu's prices. The expansion is idempotent: the components carry the real menu
+  item ids.
+- A **voucher** is validated here but **never** redeemed here — it is redeemed once, when the
+  order is created.
+
+### The permissions
+
+| Who | May |
+|---|---|
+| the customer app (`customer_app_key`) | **read** the promotions of a branch and ask for the price of a cart |
+| the staff (the session, the role `staff`) | **read** the promotions of their branch |
+| the manager and the admin | **write** the promotions |
+
+A tenant may not read another tenant's promotions (`require_outlet_access`).
+
+---
+
+## What changed
+
+### The backend — 7 files changed, 1 new
+
+**`backend/app/services/order_pricing.py`** — **new, 334 lines.** The money of an order in one
+place, so there is one rule and not five:
+
+| The function | What it does |
+|---|---|
+| `compute_totals(db, outlet_id, subtotal, discount)` | the tax on the amount the guest **pays**; the total comes from the tax service |
+| `resolve_discount(db, outlet_id, items, voucher=..., manual_discount=..., at=...)` | the strict precedence; returns `{discount, source, promotion, breakdown}` |
+| `reprice_order(db, order, at=None, lines=None)` | reprices from the order's own `discount_source`, at `order.created_at`, ignoring the usage caps |
+| `infer_source(db, order, moment, lines)` | the legacy inference for the orders without a source |
+| `order_lines(db, order)` | the order's cart in the engine's shape (the unit price = the price + the add-ons) |
+| `subtotal_of(lines)` | what the cart is worth — the stored line totals |
+
+**`backend/app/services/promotion_service.py`** — **rewritten (+557 lines).** The engine:
+
+| The function | What it does |
+|---|---|
+| `parse_time(value)` | a time from the DB or from a string — the route and the engine read a time the **same** way now |
+| `as_list(value)` / `as_ids(value)` | the JSON columns of SQLite: a list, the raw text (`'[0, 1, 2]'`) or `'null'` (which means **nothing**) |
+| `promotion_is_running(db, promo, outlet_id, at=None, ignore_usage=False)` | is it running — the outlet's clock, the usage caps |
+| `outlet_uses(...)` / `record_usage(...)` | the per-outlet counter and the counting (both counters move) |
+| `calculate_best_discount(db, outlet_id, items, at=None, ignore_usage=False)` | **the same name and the same return shape** as before — `(discount, promotion, breakdown)` — so the old callers still work |
+
+**`backend/app/services/order_service.py`** — **114 lines.** The creation and the adding of an
+item use the shared pricing. The cart goes to the engine as **unit** prices (the old code sent the
+line total, so the engine multiplied it by the quantity again). The discount is resolved once and
+the order says where it came from. A voucher is redeemed **once**, here. A promotion counts
+**once**, here.
+
+**`backend/app/routes/promotions.py`** — **420 lines.** Every route gained its permission
+(`promotions:read` to read, `promotions:write` to write) and `require_outlet_access` (a tenant may
+not read another tenant's promotions). `/calculate` was rewritten to the new contract: the bundle
+expansion, the guest's prices from the menu, the voucher validated but never redeemed.
+`/increment-usage` now moves **both** counters (the global one and the per-outlet one).
+
+**`backend/app/routes/order.py`** — **45 lines.** The cancelling and the restoring of an item
+reprice the order (they used to zero the tax and subtract the discount by hand). `discount_source`
+is now in the five order responses, so the client is told too.
+
+**`backend/app/models/models.py`** — **9 lines.** `orders.discount_source`.
+
+**`backend/app/main.py`** — **29 lines.** The migration: the `orders.discount_source` column and
+the `promotion_outlet_usage` table (it did not exist).
+
+**`backend/app/middleware/auth.py`** — **10 lines.** `promotions:read` for the customer app key
+and for the `staff` role. `promotions:write` stays with the manager and the admin.
+
+### The React staff app — 2 files
+
+**`frontend/src/pages/StaffOrder.jsx`** — the cart asks `POST /api/promotions/calculate`
+(debounced 300 ms, with a stale-answer guard: a sequence number and a fingerprint of the cart) and
+shows the server's subtotal, discount, tax and total. The old `calculateTax` is only the **offline
+fallback**, so the till never freezes. The order payload is **unchanged** — the server re-prices
+the order.
+
+**`frontend/src/components/pos/CartPanel.jsx`** — the discount row (with the promotion's badge)
+between the subtotal and the tax. The row was hidden by one line: `display='flex'` followed
+immediately by `display='none'`.
+
+### The customer app — 1 file
+
+**`customer-app/js/app.js`** — four functions. The preview asks the server (and sends the voucher's
+code), the cart's subtotal, discount, tax and total come from the answer, a bundle line is
+expanded into its components for the preview, and the confirmation shows the **server's** order
+total. The discount row had the same one-line bug as the staff app.
+
+### New files
+
+| The file | What it is |
+|---|---|
+| `scripts/pos_pricing_probe.py` | the probe — 49 checks, part A in process, part B over HTTP; it restores the real promotions' counters and deletes everything it creates |
+| `scripts/pos_pricing_repair.py` | the repair — idempotent |
+| `ideazesposai/system-design/pricing-engine-and-promotions.mdx` | this document |
+
+### The database
+
+| The change | What |
+|---|---|
+| `orders.discount_source` | a column, added |
+| `promotion_outlet_usage` | a table, created |
+| promotion 4 | the description, repaired |
+| order 368 | the money and the source, repaired |
+
+Everything else in the database is untouched — the probe leaves no trace, and the other 333 orders
+keep their money (they add up exactly).
+
+---
+
+## The repair
+
+**Promotion 4 (Happy Hour Special)** — the description said *"20% off all drinks during happy
+hour"*, but the promotion has no item and no category filter: it takes 20% off **every** item. The
+description now says what it does:
+*"20% off all items during happy hour, 14:00-18:00, Monday-Friday"*.
+
+**Order 368 (`ORD-20261109-5830`)** — it was created with **one** item, so the happy hour was 20%
+of 22.90 (4.58). A second item was added afterwards, and the old code re-taxed the gross subtotal
+(55.80 → 4.46) and added the tax to the total without taking the discount off (60.26). The order
+now carries the money it should:
+
+| | Before | Now |
+|---|---|---|
+| subtotal | 55.80 | 55.80 |
+| discount | 4.58 | **11.16** (20% of 55.80) |
+| tax | 4.46 | **3.57** (8% of 44.64) |
+| total | 60.26 | **48.21** |
+| `discount_source` | (none) | **promotion** |
+
+The order was created at `2026-11-09 08:38:46 UTC` = **15:38:46 in Phnom Penh**, on a **Monday** —
+inside the happy hour (14:00-18:00, Monday to Friday).
+
+Only 4 orders of the 333 have a discount at all, and the other 3 add up exactly (their outlet had
+no tax back then) — **order 368 was the only broken one.**
+
+---
+
+## How it is proved
+
+```bash
+cd /root/.openclaw/workspace/mydoc/Projects/POS_AI/backend
+python3 /root/.openclaw/workspace/scripts/pos_pricing_probe.py      # 49 checks
+python3 /root/.openclaw/workspace/scripts/pos_pricing_repair.py     # the repair
+```
+
+The probe checks the engine against the database's own truth **and** the running server over HTTP:
+the happy hour, the timezone, the weekdays, the raw JSON, the bundle, the quantity, the reprice of
+order 368, the creation of an order, the usage caps, the permissions, the tenant's isolation, the
+bundle expansion and the bundle order of the guest app. It cleans up after itself — the promotions and the orders it creates are
+deleted again.
+
+---
+
+## The open questions for Kens
+
+1. **The price is locked when the order is placed.** An order that gets an item later keeps the
+   promotion of its first minute. The other rule ("the price follows the change") is one line.
+2. **The other 333 orders were not repriced.** Their money adds up (they were not broken), and
+   rewriting the history of a ledger is a decision, not a cleanup. Say the word and a reprice of
+   every order is one script.
+3. **The staff app has no manual discount field yet.** The server honours one (it wins over the
+   promotion), but there is no place in the UI to type it.
