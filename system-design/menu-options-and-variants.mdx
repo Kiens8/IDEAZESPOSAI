@@ -279,6 +279,7 @@ class MenuItemVariant(Base):
     is_default = Column(Boolean, default=False)
     is_available = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
+    created_at, updated_at
 
 # ── the group of choices ───────────────────────────────────────────────────
 class MenuOptionGroup(Base):
@@ -290,6 +291,7 @@ class MenuOptionGroup(Base):
     max_select = Column(Integer, default=1)           # 1 = single choice, >1 = multiple
     sort_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
+    created_at, updated_at
 
 # ── the link between the dish and the group ───────────────────────────────
 class MenuItemOptionGroup(Base):
@@ -298,6 +300,7 @@ class MenuItemOptionGroup(Base):
     variant_id = Column(Integer, nullable=True)        # null -> the group applies to every variant
     sort_order = Column(Integer, default=0)
     required = Column(Boolean, default=False)          # overrides the group's min_select
+    created_at
 
 # ── one choice ────────────────────────────────────────────────────────────
 class MenuOption(Base):
@@ -313,6 +316,7 @@ class MenuOption(Base):
     is_default = Column(Boolean, default=False)
     is_available = Column(Boolean, default=True)
     sort_order = Column(Integer, default=0)
+    created_at, updated_at
 
 # ── the snapshot of what was sold ──────────────────────────────────────────
 class OrderItemOption(Base):
@@ -327,7 +331,15 @@ class OrderItemOption(Base):
     kitchen_note = Column(String(100), nullable=True) # what the kitchen reads
     option_id = Column(Integer, nullable=True)        # null if the option was deleted since
     variant_id = Column(Integer, nullable=True)
+    created_at
 ```
+
+The **relationships** that were built with them ✓: `MenuItem.variants` ✓ and
+`MenuItem.option_group_links` ✓, `MenuItemVariant.links` ✓ and `.recipe` ✓
+(`uselist=False` ✓ — a variant has **one** recipe ✓), `MenuOptionGroup.options` ✓
+and `.links` ✓, `MenuItemOptionGroup.group` / `.variant` / `.menu_item` ✓,
+`MenuOption.group` / `.ingredient` ✓, `OrderItem.order_item` ✓ and
+`OrderItem.option_snapshot` ✓.
 
 # ── the variant's recipe — its OWN tables ─────────────────────────────────
 class MenuItemVariantRecipe(Base):
@@ -355,8 +367,19 @@ class MenuItemVariantRecipeIngredient(Base):
     quantity = Column(DECIMAL(12, 4), nullable=False)   # the same shape as the dish's
     unit_override = Column(String(50), nullable=True)    # the same shape as the dish's
 
-Plus **one column**: `order_items.notes` (the per-line remark, Text, nullable) —
-the field the browser already sends and the server already drops (§3.4).
+Plus **three columns** on the order line (`order_items`) ✓ — all nullable ✓, all
+additive ✓:
+
+| The column | What it holds | Why |
+|---|---|---|
+| `notes` (Text) | the per-line remark ✓ | the field the browser already sends and the server already drops (§3.4 ✓) |
+| `variant_id` (Integer) | the size of the line ("Big") ✓ | a line may have a **size and no choice at all** ✓ — the snapshot rows hold the OPTIONS ✓, so the size needs its own place ✓ |
+| `variant_name` (String(100)) | the name of the size, frozen ✓ | the menu may be renamed tomorrow ✓ — the ticket of yesterday must still say "Big" ✓ |
+
+> **This is a change to the first draft** ✓: the draft said **one** column ✓. The
+> two size columns were added in phase 2 ✓, when the write path showed that a
+> line with a size and no choice would lose its size ✓. **Nothing was rewritten**
+> ✓ — the three columns are nullable ✓ and the 502 old lines have none of them ✓.
 
 **Seven tables, not five** — and every one of them is additive ✓ (§4.4).
 
@@ -648,7 +671,7 @@ built ✓.
 |---|---|---|---|---|
 | **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1 ✓) |
 | **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1a ✓) |
-| **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ |
+| **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1b ✓) |
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ |
 | **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
@@ -804,6 +827,79 @@ session of tenant 1 reads them (**200** ✓), the session of **tenant 3** is
 refused (**403** ✓ on both routes ✓) and a request with no credential at all
 is refused (**401** ✓).
 
+### 7.1b The patch for phase 2 (the write path + the snapshot) — **BUILT** ✓✓
+
+**Status: built, probed and live (Nov 9, 2026 ✓✓).**
+
+**What the write path does now** (`backend/app/services/order_service.py` ✓ —
+one helper, used by **both** write paths ✓ — `create_order` ✓ and
+`add_items_to_order` ✓):
+
+```python
+choices = resolve_line_choices(
+    db, menu_item, item_data, trust_client_money, outlet_id=order.outlet_id
+)
+item_unit_price = choices["unit_price"]      # the MENU's price (the guest) / the counter's (the staff)
+...
+db.add(order_item)
+if choices["resolved"]:
+    db.flush()
+    write_choice_snapshot(db, order_item, choices["resolved"])   # the frozen rows
+```
+
+**The rules, as they are implemented ✓:**
+
+| The rule | The code |
+|---|---|
+| a guest never sets a price ✓ | `resolve_line_choices` ignores the request's price when `trust_client_money` is False ✓ |
+| the price of a line with choices is the MENU's ✓ | the dish's price + the size's delta + the choices' deltas ✓ (`app/services/menu_options.py::resolve_choices` ✓) |
+| the counter may give a price of its own ✓ | the request's price wins when `trust_client_money` is True ✓ — the same right the counter has over the dish's price ✓ |
+| a line with **no** choices takes the old path exactly ✓ | `resolve_line_choices` returns the old numbers and no snapshot ✓ |
+| the remark is trimmed and length-limited (255) ✓ | `MAX_LINE_NOTES` ✓ — a remark that is only spaces is stored as nothing ✓ |
+| the rules of the groups are the server's ✓ | the required group ✓, the maximum ✓, an unavailable choice ✓, a choice of another dish ✓, another branch's choice ✓ — all **400** ✓ |
+
+**The snapshot** (`write_choice_snapshot` ✓): one row per chosen option ✓ —
+the group's name ✓, the option's name ✓, the size's name ✓, the money ✓, the
+stock of the choice ✓ (as JSON ✓ — `{ingredient_id, name, qty}` ✓), the kitchen
+note ✓ and the ids ✓ (for the reports ✓). **The size is frozen on the line
+itself** ✓ (`order_items.variant_id` / `.variant_name` ✓) — a line may have a
+size and **no** choice at all ✓, and the snapshot rows hold the choices ✓.
+
+**The API** (`backend/app/routes/order.py` ✓): `OrderItemCreate` gained
+`variant_id` ✓, `option_ids` ✓ and `notes` ✓ — **all optional** ✓, so a client
+that knows nothing about them posts the old body ✓ and gets the old answer ✓.
+`OrderItemResponse` gained `variant` ✓, `options` ✓ and `notes` ✓ — a line with
+no choices answers with `null` / `[]` / `null` ✓.
+
+**The five places that build an order's answer** now use one helper ✓
+(`order_item_payload` ✓) — so the guest app, the staff app and the reports see
+the same line ✓.
+
+**The probe** (`scripts/pos_menu_options_write_probe.py` ✓ — against a **copy** ✓):
+**28 checks, all green** ✓✓ — the old path does not move ✓, the guest's price
+is ignored ✓, the counter's price wins ✓, the snapshot holds the names ✓, the
+money ✓, the stock ✓ and the kitchen note ✓, the remark is trimmed and cut ✓,
+and every rule is refused with a **400** ✓.
+
+**Live on the production path** ✓: a guest's order with a size and two choices
+→ **200** ✓ — the unit price **8.00** (the dish 3.00 + the size 2.00 + the
+choices 3.00 ✓, the guest's 0.01 ignored ✓), the size ✓, the choices ✓, the
+remark trimmed ✓, the kitchen note ✓; an order **without** choices → the old
+path ✓ (3.00 ✓, no size ✓, no choices ✓); a choice that is not on the dish →
+**400** ✓. The test rows were deleted afterwards ✓ — the live database holds
+**no** test data ✓.
+
+**What phase 2 does NOT do yet ✓ (and phase 4 does ✓):**
+- the **stock** does not move for a choice ✓ — the deduction reads the frozen
+  snapshot and comes with phase 4 ✓;
+- the **cost** of a line with choices is not frozen ✓ — phase 4 ✓;
+- the **variant's own recipe** (the exact grams of the Large ✓) and its
+  `cost_multiplier` ✓ are not applied to the stock or the cost yet ✓ — phase 4 ✓.
+
+> **The order matters ✓:** the picker (phase 5 ✓) and the guest's modal (phase 6 ✓)
+> come **after** phase 4 ✓ — so nothing can be sold with a choice before the
+> stock and the cost follow it ✓.
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -821,21 +917,34 @@ is refused (**401** ✓).
 
 ```jsonc
 {
+  "id": 918,                       // the line's id
   "menu_item_id": 42,
   "menu_item_name": "Chicken Mee Soup",
   "quantity": 1,
-  "unit_price": 13.00,
-  "variant": { "id": 7, "name": "Large", "price_delta": 2.00 },
+  "unit_price": 13.00,             // the MENU's price + the size + the choices
+  "modifications": [],
+  "add_ons": [],
+  "variant": { "id": 7, "name": "Large" },
   "options": [
-    { "id": 101, "name": "Bihun", "price_delta": 0.00 },
-    { "id": 104, "name": "Extra egg", "price_delta": 2.00 }
+    { "id": 101, "name": "Bihun", "group_name": "Noodle", "price_delta": 0.00, "kitchen_note": null },
+    { "id": 104, "name": "Extra egg", "group_name": "Extra", "price_delta": 2.00, "kitchen_note": "NO CORIANDER" }
   ],
   "notes": "less spicy",
-  "item_total": 13.00
+  "item_total": 13.00,
+  "is_cancelled": false
 }
 ```
 
 **No price in the request ✓. No price the guest can change ✓.**
+
+**The names come from the SNAPSHOT ✓** — what was sold, as it was at that moment
+✓ — and not from the live menu ✓ (a dish renamed tomorrow must not rewrite the
+answer for an order sold today ✓).
+
+**The size's delta is not repeated in the answer ✓** — the money of the line is
+`unit_price` ✓ (the dish's price + the size + the choices, frozen ✓). The
+choice's own delta **is** there ✓ (each choice carries its own money ✓, and the
+snapshot keeps it ✓).
 
 ### 7.3 The rules the server enforces
 
@@ -849,7 +958,7 @@ is refused (**401** ✓).
 | the price is the menu's ✓ (the guest) / the staff may override ✓ | the server |
 | the remark is trimmed and length-limited (255) ✓ | the server |
 | the tax is computed on the resolved subtotal ✓ | the server |
-| the new routes ask for the **plan** (the inventory ones: `require_plan_feature("Inventory")` ✓) and for the **tenant** (`require_outlet_tenant` ✓ / `require_outlet_access` ✓) ✓ | the server |
+| the new routes ask for the **plan** ✓ and for the **tenant** ✓ | the server — the menu's choices: `require_plan_feature("Menu")` ✓ (built in phase 1 ✓ — every plan has it ✓, so nobody is locked out ✓); the inventory ones: `require_plan_feature("Inventory")` ✓ (phase 4 ✓); the tenant: `require_outlet_access` ✓ (the tenant comes from the **resource** ✓ — the item's outlet ✓ — never from a query parameter ✓) ✓ |
 
 ### 7.4 The migration — nothing to migrate
 
@@ -953,9 +1062,9 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | # | The item | The state |
 |---|---|---|
 | 1 | The five new tables (the variants, the groups, the options, the links, the snapshot) | **BUILT** ✓✓ — phase 1 ✓✓ (Nov 9, 2026 ✓) — the seven tables ✓ + `order_items.notes` ✓ — **live** ✓✓ — §7.1a ✓✓ |
-| 2 | The order line's snapshot + the server-side price resolution | **Proposed** ✓✓ — not built ✗✗ — the resolver itself is built ✓✓ (phase 1 ✓) — the write path is phase 2 ✓✓ |
+| 2 | The order line's snapshot + the server-side price resolution | **BUILT** ✓✓ — phase 2 ✓✓ (Nov 9, 2026 ✓) — the write path ✓, the snapshot ✓, the remark ✓ — **live** ✓✓ — §7.1b ✓✓ |
 | 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **Proposed** ✓✓ — and the today's gap (the browser/PDF ticket drops the choices ✓✓) is a separate, smaller fix ✗✗ |
-| 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **Proposed** ✓✓ — not built ✗✗ — the variant's recipe TABLES are built ✓✓ (phase 1 ✓) — the deduction and the costing are phase 4 ✓✓ |
+| 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **Proposed** ✓✓ — not built ✗✗ — the variant's recipe TABLES are built ✓✓ (phase 1 ✓) — the snapshot holds the ingredient deltas ✓✓ (phase 2 ✓) — the deduction and the costing are phase 4 ✓✓ |
 | 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ — the picker's DATA is built ✓✓ (phase 1 ✓) |
 | 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
