@@ -646,7 +646,7 @@ built ✓.
 
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
-| **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ |
+| **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1 ✓) |
 | **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — |
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ |
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ |
@@ -673,27 +673,55 @@ the picker logic ✓ — the same picker, two hosts ✓).
 
 ## 7. The details that decide it
 
-### 7.1 The patch for the money hole (phase 0)
+### 7.1 The patch for the money hole (phase 0) — **BUILT** ✓✓
 
-`backend/app/services/order_service.py` (both `create_order` and
-`add_items_to_order`):
+**Status: built, tested and live (Nov 9, 2026, 23:20 ✓✓).** Kens said the word ✓.
+
+**The hole (it was real ✓):** the add-on's price came straight from the request ✓ —
+`add_ons_price = sum(a.get("price", 0) for a in add_ons)` ✓ — so a guest posting
+`{"name": "extra egg", "price": -5.0}` brought a 3.00 dish down to **-2.00** ✓ and the
+order to **0.00** ✓ (the probe: **the guest paid nothing for a dish** ✓).
+
+**The patch** — `backend/app/services/order_service.py` ✓, one helper
+(`resolve_add_ons` ✓) used by **both** write paths (`create_order` ✓ and
+`add_items_to_order` ✓) and by the **cart's** price
+(`backend/app/routes/promotions.py` → `price_lines` ✓) ✓ so the cart and the order
+can never disagree ✓:
 
 ```python
-# BEFORE
+# BEFORE - the request's number
 add_ons_price = sum(a.get("price", 0) for a in add_ons)
 
-# AFTER - the price of an add-on is the MENU's price, never the request's
-add_ons_price = 0.0
-for addon in add_ons:
-    if addon.get("menu_item_id"):
-        addon_item = db.query(MenuItem).filter(MenuItem.id == addon["menu_item_id"]).first()
-        if addon_item:
-            add_ons_price += float(addon_item.price)
+# AFTER - the MENU's number
+resolved_add_ons, add_ons_price = resolve_add_ons(
+    db, add_ons, trust_client_money, outlet_id=order.outlet_id
+)
 ```
 
-The add-on becomes a **menu item reference** (an id), not a free dict ✓ — the
-same shape the options will use ✓ (an id in, a price out ✓). The staff may
-still override a price ✓ (the `trust_client_money` rule ✓) — the guest may not ✓.
+**The rules of the helper:**
+- an add-on **with** a `menu_item_id` → the **menu's price** and the **menu's name** ✓
+  (the request's price is a claim ✓ — a guest posting -5.00 gets the menu's price ✓);
+- an add-on **without** an id → the **counter's** price for the staff ✓ (the extra of
+  the day ✓) — and for a **guest** it is **refused** (`400` ✓ — *"This add-on is not on
+  the menu of this branch."* ✓) — there is no free add-on ✓;
+- the counter may still give a price for an add-on that **is** on the menu ✓ (the same
+  right the counter has over the dish's price ✓) — the name stays the menu's ✓;
+- the add-on's dish must be a dish of **this branch** ✓ (another tenant's dish is not
+  on this menu ✓).
+
+**The probe** (`scripts/addon_price_probe.py` ✓ — against a **copy** of the database ✓)
+now has **four cases** ✓ — **7 checks, all green** ✓:
+1. the guest's negative add-on → **refused** ✓;
+2. the guest's add-on with the menu's id and a lying price → the **menu's** price and
+   name ✓;
+3. the counter's price for an extra that is not on the menu → **kept** ✓;
+4. the counter's price for an add-on that is on the menu → **kept**, the name is the
+   menu's ✓.
+
+**Live on the production path** ✓ (the live server, not a copy ✓): the crafted guest's
+order answers **400** ✓, the staff's order answers **200** with the counter's price ✓,
+and an ordinary guest's order is unchanged ✓ (3.00 − the happy hour 0.60 + the tax
+0.19 = **2.59** ✓ — the same as before the patch ✓).
 
 ### 7.2 The order line's new shape
 
@@ -850,6 +878,6 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ |
 | 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
-| 8 | **The add-on's price hole (§3.6)** | **Open** ✗✗ — a live money hole ✓✓ — the patch is in §7.1 ✓✓ — **say the word and it is done today** ✓✓ |
+| 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
 | 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **Proposed** ✓✓ — the probe is the gate of every phase ✓✓ — **not built** ✗✗ |
 | 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **Proposed** ✓✓ — it replaces the first draft's `recipe_id` on the variant ✓✓ — **not built** ✗✗ |
