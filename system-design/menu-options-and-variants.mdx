@@ -675,8 +675,9 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` �
 
 ## 6. The phases — the safe order
 
-Each phase is usable on its own and leaves the system working ✓. Nothing here is
-built ✓.
+Each phase is usable on its own and leaves the system working ✓. Phases **0** ✓
+— **4** ✓ are **built** ✓✓ (Nov 9–10, 2026 ✓) — **5** ✓ and on are still to
+come ✓.
 
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
@@ -684,7 +685,7 @@ built ✓.
 | **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1a ✓) |
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1b ✓) |
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1c ✓) |
-| **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ |
+| **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1d ✓) |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
 | **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
@@ -975,6 +976,86 @@ is no print path in it ✓ — the doc's "if it ever prints" ✓), and the **sta
 split** is still a deferred feature ✓ — the column is there ✓, the router is
 not ✓.
 
+### 7.1d The patch for phase 4 (the recipe + the stock + the costing) — **BUILT** ✓✓
+
+**Status: built, probed and live (Nov 10, 2026 ✓✓).**
+
+**What it closes (§5.2 ✓):** the size's recipe was not applied to the stock or
+to the cost ✓, the choices' ingredients were not in the cost ✓, and the
+deduction read the **live menu** ✓ — so a recipe that changed mid-service moved
+the stock of an order already sold ✓.
+
+**The four pieces ✓:**
+
+**1. The size's own recipe** — its own tables ✓ (§4.1 ✓:
+`menu_item_variant_recipes` ✓ + `menu_item_variant_recipe_ingredients` ✓), never
+in `recipes` ✓. A size with no recipe of its own uses the **dish's recipe × its
+multiplier** ✓ (`line_recipe_lines` ✓ in `backend/app/services/line_cost.py` ✓).
+
+**2. The API for the size's recipe** ✓ (`backend/app/routes/inventory.py` ✓):
+
+| The route | What it does |
+|---|---|
+| `GET /api/inventory/variants?menu_item_id=` | the sizes of a dish, with the **cost of each one** ✓ (the editor shows the margin before the guest does ✓) |
+| `GET /api/inventory/variants/{id}/recipe` | the size's own recipe ✓ — or the fallback (the base × the multiplier ✓) **in the same shape** ✓, so the editor shows one list ✓ |
+| `PUT /api/inventory/variants/{id}/recipe` | write the size's own recipe ✓ |
+| `DELETE /api/inventory/variants/{id}/recipe` | drop it ✓ — it falls back to the base × the multiplier again ✓ |
+
+**The tenant comes from the RESOURCE** ✓ — the size's own outlet ✓ — never from
+a query parameter ✓. The plan gate ✓ (`require_plan_feature("Inventory")` ✓)
+and the permission ✓ (`inventory:read` / `inventory:write` ✓) are on every
+route ✓.
+
+**3. The stock and the cost follow the choices ✓:**
+
+- the **cost of a line** ✓ = the size's recipe ✓ + the choices' ingredients ✓
+  (`compute_line_cost` ✓) — frozen into `order_items.frozen_cost` ✓ at the
+  moment of the sale ✓ (§5.2a ✓);
+- the **stock of a line** ✓ = the same ingredients ✓ (`compute_stock_lines` ✓)
+  — frozen into **`order_items.stock_lines`** ✓ (a JSON list of
+  `{ingredient_id, quantity}` ✓) at the moment of the sale ✓;
+- the **deduction** ✓ reads the **frozen** list ✓ — never the live menu ✓ — so
+  a recipe that changes mid-service **does not** move the stock of an order
+  already sold ✓. The **502 old lines** ✓ (no frozen list ✓) keep the old
+  behaviour ✓ — the live recipe ✓ — the compatibility rule of §4.4 ✓;
+- a **negative** quantity is the way to say "no" ✓ ("No egg" = -1 ✓) — the
+  stock goes **up** ✓;
+- the **stock check** ✓ (`check_stock_blocking` ✓) reads the live menu ✓ — it
+  runs **before** the sale ✓, so it must see the menu as it is now ✓.
+
+**4. The reports say where the number comes from ✓** (`backend/app/routes/reports.py` ✓):
+the cost of a line is its **frozen** cost ✓, or the dish's recipe for the old
+lines ✓. And the **label is honest** ✓: a dish whose lines came from different
+rules is **`mixed`** ✓ — the screen says so ✓
+(`reports:items.costNote.mixed` ✓ in en / km / zh ✓) instead of picking one
+rule and pretending ✓.
+
+**The editor** ✓ (`frontend/src/pages/Inventory/RecipeBuilder.jsx` ✓): the
+**same component** edits the dish's recipe and the sizes' recipes ✓ (§5.2a ✓) —
+the size tabs ✓, the **cost of every size** ✓ next to its name ✓, and the
+badge that tells the tenant when a size still uses the base × the multiplier ✓.
+
+**The probe** (`scripts/pos_menu_options_stock_probe.py` ✓ — against a **copy**
+✓): **25 checks, all green** ✓✓ — the old path does not move ✓, the multiplier
+✓, the size's own recipe ✓, the choice's ingredient in the cost ✓ and in the
+stock ✓, a "no" choice makes the stock go **up** ✓, the deduction reads the
+**frozen** deltas ✓ and the **frozen** size recipe ✓ (the menu changes after
+the sale ✓ and the stock does not ✓), the cost is frozen ✓, an unknown cost is
+a **dash** ✓ (never zero ✓), and the stock check blocks what is out of stock ✓
+— including a size's own ingredient ✓ — and never blocks a "no egg" ✓.
+
+**Live** ✓: the sale of a size with a choice froze the cost ✓ (18.50 ✓) and the
+stock ✓ (the size's own 3.50 ✓ + the choice's 1.00 ✓); the size's recipe was
+then **changed to 9.00** ✓ — and the deduction still moved the stock by the
+**frozen 3.50** ✓✓. The menu mix answered **`mixed`** ✓ for the dish whose
+lines came from both rules ✓.
+
+**What phase 4 does NOT do ✓:** the **menu management screen** for the groups,
+the choices and the sizes is still to be built ✓ (the routes read the menu ✓,
+the write routes for the groups come with the screen ✓), and the **picker** ✓
+(the counter's ✓ — phase 5 ✓ — and the guest's modal ✓ — phase 6 ✓) is still
+to come ✓ — the sizes and the choices cannot be picked yet ✓.
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -1139,10 +1220,11 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 1 | The five new tables (the variants, the groups, the options, the links, the snapshot) | **BUILT** ✓✓ — phase 1 ✓✓ (Nov 9, 2026 ✓) — the seven tables ✓ + `order_items.notes` ✓ — **live** ✓✓ — §7.1a ✓✓ |
 | 2 | The order line's snapshot + the server-side price resolution | **BUILT** ✓✓ — phase 2 ✓✓ (Nov 9, 2026 ✓) — the write path ✓, the snapshot ✓, the remark ✓ — **live** ✓✓ — §7.1b ✓✓ |
 | 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **BUILT** ✓✓ — phase 3 ✓✓ (Nov 9, 2026 ✓) — the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the receipt ✓ — the today's gap is **closed** ✓✓ — §7.1c ✓✓ |
-| 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **Proposed** ✓✓ — not built ✗✗ — the variant's recipe TABLES are built ✓✓ (phase 1 ✓) — the snapshot holds the ingredient deltas ✓✓ (phase 2 ✓) — the deduction and the costing are phase 4 ✓✓ |
+| 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **BUILT ✓✓** (Nov 10 ✓) — the variant's recipe TABLES ✓✓ (phase 1 ✓) — the snapshot holds the ingredient deltas ✓✓ (phase 2 ✓) — the API for the size's recipe ✓✓ — the deduction reads the FROZEN stock ✓✓ — the cost is frozen ✓✓ — the reports say `mixed` when they mix ✓✓ |
 | 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ — the picker's DATA is built ✓✓ (phase 1 ✓) |
 | 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
 | 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **BUILT** ✓✓ — the probe is **built and green** ✓✓ (55 checks ✓ — 16 of 16 dishes unchanged ✓✓) — phase 1 ✓✓ — §7.1a ✓✓ |
-| 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables are there ✓✓ (phase 1 ✓✓) — the route and the deduction come with phase 4 ✓✓ |
+| 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables ✓✓ (phase 1 ✓✓) — the API ✓✓ + the deduction ✓✓ + the editor ✓✓ (phase 4 ✓✓) — §7.1d ✓✓ |
+| 11 | **The menu management screen** — the groups, the choices and the sizes | **NOT BUILT** ✗✗ — **and it is in NO phase** ✗✗ — the routes READ the menu ✓✓ (phase 1 ✓✓) but the tenant cannot **create** a group, a choice or a size ✗✗ — **this belongs BEFORE the pickers** ✓✓ (phase 5 ✓ and phase 6 ✓ would have nothing to pick ✗✗) |
