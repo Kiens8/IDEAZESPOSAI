@@ -291,6 +291,8 @@ class MenuOptionGroup(Base):
     max_select = Column(Integer, default=1)           # 1 = single choice, >1 = multiple
     sort_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
+    print_group_name = Column(Boolean, default=False) # does the kitchen read the group's name?
+    station = Column(String(50), nullable=True)        # "Soup", "Grill", "Fry" (the split is deferred)
     created_at, updated_at
 
 # ── the link between the dish and the group ───────────────────────────────
@@ -329,6 +331,7 @@ class OrderItemOption(Base):
     price_delta = Column(Float, default=0.0)          # the money at the time
     ingredient_delta = Column(JSON, default=list)     # [{name, qty}] - the stock at the time
     kitchen_note = Column(String(100), nullable=True) # what the kitchen reads
+    print_group_name = Column(Boolean, default=False) # the flag, frozen at the sale
     option_id = Column(Integer, nullable=True)        # null if the option was deleted since
     variant_id = Column(Integer, nullable=True)
     created_at
@@ -545,10 +548,18 @@ and then:
 
 **The rules:**
 - the choices are printed in CAPS, one per line, under the item ✓;
-- the group name is **not** printed when the option name says it all ("Bihun" ✓) but **is** printed when it is ambiguous ("Noodle: Bihun") ✓ — a per-group flag `print_group_name` ✓;
+- the group name is **not** printed when the option name says it all ("Bihun" ✓) but **is** printed when it is ambiguous ("Noodle: Bihun") ✓ — a per-group flag `print_group_name` ✓ (**built** ✓ — and **frozen** into the snapshot ✓, so the kitchen reads the ticket as it was written ✓);
 - the **remark** prints under the item in italics ✓ ("less spicy") ✓;
 - a "no" choice prints in CAPS with a NO ✓ ("NO CORIANDER") ✓ — the kitchen must never read "No coriander" as "add coriander" ✓;
 - **the item's name is never rewritten** ("Chicken Mee Soup (Large, Bihun)" ✗✗) — the name stays searchable and the choices stay on their own lines ✓.
+
+> **Two decisions the build made** ✓:
+> - **the kitchen note wins over the name** ✓ — when a choice carries a note
+>   ("NO CORIANDER" ✓), the note is what the kitchen reads ✓; the name is what
+>   the guest picked ✓ and it is printed when there is no note ✓;
+> - **the remark is a row of its own** ✓ — marked as a remark ✓ (the HTML prints
+>   it in italics ✓, the ESC/POS prints it in italic ✓) so the kitchen never
+>   reads a remark as a choice ✓.
 
 **The station split (the deferred "stations" feature).** When the stations arrive,
 a group can carry a `station` ("Soup", "Grill", "Fry") ✓ → the ticket router sends
@@ -672,7 +683,7 @@ built ✓.
 | **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1 ✓) |
 | **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1a ✓) |
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1b ✓) |
-| **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ |
+| **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1c ✓) |
 | **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
@@ -900,6 +911,70 @@ path ✓ (3.00 ✓, no size ✓, no choices ✓); a choice that is not on the di
 > come **after** phase 4 ✓ — so nothing can be sold with a choice before the
 > stock and the cost follow it ✓.
 
+### 7.1c The patch for phase 3 (the kitchen print) — **BUILT** ✓✓
+
+**Status: built, probed and live (Nov 9, 2026 ✓✓).**
+
+**The gap it closes (§3.1 ✓):** the browser/PDF ticket printed only the dish's
+name and the quantity — it dropped the **choices** ✓ *and* the **remarks** ✓ —
+while the ESC/POS ticket printed the modifications ✓. The kitchen saw different
+tickets depending on which printer was plugged in ✓.
+
+**The one formatter** — `frontend/src/utils/kitchenTicket.js` ✓ (new ✓): a pure
+function that takes the order and returns the lines ✓.
+
+```js
+printLines(order) -> [
+  { name: "Chicken Mee Soup", qty: 1, variant: "Large",
+    options: ["BIHUN", "NO CORIANDER"], note: "less spicy" }
+]
+```
+
+**The three sinks** now render **the same lines** ✓:
+- the **browser** ticket ✓ (`pages/Kitchen.jsx` ✓) — the rows under the dish's
+  name ✓, the remark in italics ✓;
+- the **PDF** ✓ — the same HTML ✓ (the print dialog's "Save as PDF" ✓);
+- the **ESC/POS** ✓ — the shape the ticket already had ✓ (`   > ` ✓), the remark
+  in italic ✓ (`ESC 4` ✓ — the same convention the file already uses for the
+  bold ✓).
+
+**And the receipt** ✓ (`hooks/useReceiptPrinter.js` ✓) — the guest's paper
+prints the size, the choices and the remark too ✓ (the same formatter ✓ — the
+doc's §5.1 lists the customer app's ticket as a sink of the same formatter ✓).
+
+**The backend** — three small pieces so the kitchen has something to print:
+- `menu_option_groups.print_group_name` (Boolean ✓) — the group's flag ✓;
+- `menu_option_groups.station` (String ✓, nullable ✓) — the deferred station
+  split gets its column now ✓ (§5.1 ✓: "worth one column now" ✓);
+- `order_item_options.print_group_name` (Boolean ✓) — **the flag, frozen** ✓ at
+  the moment of the sale ✓, so the kitchen reads the ticket as it was written ✓.
+
+The resolver carries the flag ✓ → the write path freezes it ✓ → the answer
+carries it ✓ (`options[].print_group_name` ✓).
+
+**The text is escaped** ✓ (`escapeHtml` ✓) — the remark is typed by the **guest**
+✓, so it is not trusted ✓ (the old builders wrote the names straight into the
+HTML ✓).
+
+**The probe** (`scripts/pos_kitchen_ticket_probe.mjs` ✓ — node ✓): **32 checks,
+all green** ✓✓ — the size, the choices and the remark are printed in CAPS ✓,
+the group's name only when the group says so ✓, the "no" choice prints as
+"NO CORIANDER" ✓, the dish's name is never rewritten ✓, the text is escaped ✓,
+and **an order with no choices gives byte for byte the same ESC/POS lines as
+before** ✓✓.
+
+**Live** ✓: the two new columns are in the live database ✓, the frontend is
+rebuilt ✓ (the bundle carries the formatter ✓), and an order with a size, a
+choice and a "no" choice answers with the size ✓, the remark ✓ and the choices
+with their frozen flag ✓ (the Noodle group's flag False ✓, the Herb group's
+True ✓) — and the snapshot holds the frozen flag ✓. The test rows were deleted
+✓ — the live database holds **no** test data ✓.
+
+**What phase 3 does not do** ✓: the **customer app** does not print yet ✓ (there
+is no print path in it ✓ — the doc's "if it ever prints" ✓), and the **station
+split** is still a deferred feature ✓ — the column is there ✓, the router is
+not ✓.
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -1063,7 +1138,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 |---|---|---|
 | 1 | The five new tables (the variants, the groups, the options, the links, the snapshot) | **BUILT** ✓✓ — phase 1 ✓✓ (Nov 9, 2026 ✓) — the seven tables ✓ + `order_items.notes` ✓ — **live** ✓✓ — §7.1a ✓✓ |
 | 2 | The order line's snapshot + the server-side price resolution | **BUILT** ✓✓ — phase 2 ✓✓ (Nov 9, 2026 ✓) — the write path ✓, the snapshot ✓, the remark ✓ — **live** ✓✓ — §7.1b ✓✓ |
-| 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **Proposed** ✓✓ — and the today's gap (the browser/PDF ticket drops the choices ✓✓) is a separate, smaller fix ✗✗ |
+| 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **BUILT** ✓✓ — phase 3 ✓✓ (Nov 9, 2026 ✓) — the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the receipt ✓ — the today's gap is **closed** ✓✓ — §7.1c ✓✓ |
 | 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **Proposed** ✓✓ — not built ✗✗ — the variant's recipe TABLES are built ✓✓ (phase 1 ✓) — the snapshot holds the ingredient deltas ✓✓ (phase 2 ✓) — the deduction and the costing are phase 4 ✓✓ |
 | 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ — the picker's DATA is built ✓✓ (phase 1 ✓) |
 | 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
