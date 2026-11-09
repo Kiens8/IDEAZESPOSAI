@@ -1,6 +1,9 @@
 # Menu Options & Variants — the dish, the choices, the ticket, the cost
 
-**Document Version:** 1.0 (the proposal — Nov 9, 2026)
+**Document Version:** 1.1 (the proposal — Nov 9, 2026 · revised the same night after
+Kens's two rules: *"make sure the new proposal won't impact the existing menu"* and
+*"the proposal also has to be compatible in the current recipes management, because the
+ingredients inside will use to calculate the actual cost"* ✓✓ — §4.1, §4.4, §5.2, §5.2a)
 **Owner:** Ideazes POS AI
 **Status:** **Proposed — nothing built.** The review below is against the live code
 and the live database (Nov 9, 2026). Every "what today" statement is a fact about
@@ -59,7 +62,10 @@ same thing.
    move all three is a free-text remark, not an option.
 3. **The sold line is a snapshot.** The history never changes when the menu does.
 4. **Nothing breaks.** The tables are additive, the existing items keep working,
-   the old `modifications` list stays as the legacy remark group.
+   the old `modifications` list stays as the legacy remark group. **A dish with no
+   variant and no group takes the old code path exactly** — and the **compatibility
+   probe** (§4.4) proves it on every phase, against the live menu: the same price,
+   the same cost, the same grams, the same ticket lines.
 
 ---
 
@@ -208,11 +214,17 @@ reaches the kitchen nor the receipt.
 
 ### 3.5 The margin is a flat number per dish
 
-`backend/app/routes/reports.py` (the menu mix, lines 89–186) joins
-`MenuItem.estimated_cost` to the sold lines and reports the margin per dish.
-With choices, the cost of a line is `the base + the options` — so the margin has
-to be computed **per sold line** (the same rule the reports already use for an
-unknown cost: *a dash, not a lie*).
+`backend/app/routes/reports.py` (the menu mix, lines 89–186) joins the cost of the
+sold lines to the menu and reports the margin per dish. The cost is chosen **per
+tenant**, not per dish (`_menu_item_cost`, line 395): the tenant has the **Inventory**
+feature → the **recipe** (the real cost ✓) — otherwise `MenuItem.estimated_cost` (the
+hand-written estimate ✓) — otherwise **nothing is known** (`cost_known: false` ✓, *a
+dash, not a lie* ✓).
+
+With choices, the cost of a line is `the base + the options` — so the margin has to be
+computed **per sold line** ✓, under the same rule (the recipe's cost when the plan is
+on ✓, the estimate when it is not ✓, a dash when neither is known ✓) — and the
+**frozen** cost of the line when the line has one ✓ (§5.2a ✓).
 
 ### 3.6 The add-on's price is trusted from the client — a live money hole
 
@@ -248,7 +260,7 @@ never from the request. The patch is in §7.1.
 
 ## 4. The proposal — the structure
 
-### 4.1 The five new tables (all additive)
+### 4.1 The seven new tables (all additive)
 
 ```python
 # ── the size ────────────────────────────────────────────────────────────────
@@ -260,8 +272,9 @@ class MenuItemVariant(Base):
     name = Column(String(100), nullable=False)        # "Big", "Small"
     price = Column(Float, nullable=True)              # null -> the dish's price
     price_delta = Column(Float, default=0.0)          # or a delta on the dish's price
-    recipe_id = Column(Integer, nullable=True)        # its OWN recipe (null -> the dish's)
     cost_multiplier = Column(Float, default=1.0)      # or a multiplier on the dish's recipe
+    # Its OWN recipe is NOT a row of the `recipes` table - it lives in
+    # `menu_item_variant_recipes` (below), keyed by this variant's id.
     sku = Column(String(50), nullable=True)
     is_default = Column(Boolean, default=False)
     is_available = Column(Boolean, default=True)
@@ -316,8 +329,36 @@ class OrderItemOption(Base):
     variant_id = Column(Integer, nullable=True)
 ```
 
+# ── the variant's recipe — its OWN tables ─────────────────────────────────
+class MenuItemVariantRecipe(Base):
+    """The recipe of a variant - the exact grams of the Large.
+
+    It is NOT a row of the `recipes` table. That table holds **one recipe per
+    dish** and thirteen places take it by `menu_item_id` (the stock check, the
+    deduction, the cost, the menu's stock status, the reports' cost, the AI's
+    predictions...). A second row for the same dish would be picked up by
+    `.first()` in the wrong place - the wrong cost and the wrong stock, with
+    no error to show for it.
+
+    So the dish's recipe stays exactly where it is, untouched, and the
+    variant's recipe lives here. The lookup is by `variant_id`, so it can
+    never be mistaken for the dish's.
+    """
+    __tablename__ = "menu_item_variant_recipes"
+    id, outlet_id
+    variant_id = Column(Integer, ForeignKey("menu_item_variants.id"), nullable=False)
+    created_at, updated_at
+
+class MenuItemVariantRecipeIngredient(Base):
+    __tablename__ = "menu_item_variant_recipe_ingredients"
+    id, recipe_id, ingredient_id
+    quantity = Column(DECIMAL(12, 4), nullable=False)   # the same shape as the dish's
+    unit_override = Column(String(50), nullable=True)    # the same shape as the dish's
+
 Plus **one column**: `order_items.notes` (the per-line remark, Text, nullable) —
 the field the browser already sends and the server already drops (§3.4).
+
+**Seven tables, not five** — and every one of them is additive ✓ (§4.4).
 
 ### 4.2 The rules of a group
 
@@ -397,6 +438,69 @@ line, not the dish's flat 3.00 ✓.
 
 ---
 
+## 4.4 The compatibility guarantee — the existing menu does not move
+
+**Kens's rule:** *"make sure the new proposal won't impact the existing menu."*
+
+The rule of the whole proposal: **a dish that has no variant and no group takes the
+old code path exactly.** The new tables are additive, every new field of the API is
+optional, and **nothing that exists today is rewritten** — not a row of the menu, not
+a row of the recipes, not an order of yesterday.
+
+| The thing | Today | After the proposal | Why it cannot move |
+|---|---|---|---|
+| the dish's price | `menu_items.price` | the same ✓ | the resolver adds nothing when there is no variant and no option ✓ |
+| the dish's recipe | `recipes` + `recipe_ingredients` — **one row per dish** ✓ | **the same rows, untouched** ✓ | the variant's recipe lives in its own tables (§4.1) ✓ |
+| the cost of the dish | `Σ quantity × unit_cost` ✓ | the same ✓ | a line with no choice costs exactly what the dish costs ✓ |
+| the stock | the dish's recipe ✓ | the same ✓ | the snapshot's deltas are added **on top of** the base, never instead of it ✓ |
+| the tile's stock status | the dish's recipe ✓ | the same ✓ | the menu route still asks for the dish's recipe ✓ |
+| `menu_items.modifications` | a free-text list ✓ | the same, printed as it is ✓ | the write path still accepts it ✓ |
+| the order lines (502 today ✓) | `order_items.modifications` ✓ | untouched ✓ | the snapshot rows are written only for the new lines ✓ |
+| the order line's API | `menu_item_id, quantity, unit_price, modifications, add_ons` ✓ | the same **plus** the optional `variant_id`, `option_ids`, `notes` ✓ | an old client posts the old body and gets the old answer ✓ |
+| the customer app | the modal hides the options ✓ | the same until phase 6 ✓ | the PWA posts the old body ✓ |
+| the reports' cost | the dish's recipe, live ✓ | the same for the old lines ✓ | a line with no frozen cost falls back to the dish's recipe ✓ |
+| the ticket | the dish's name ✓ | the same ✓ | a line with no choice is the line of today ✓ |
+| the promotions and the voucher | the subtotal ✓ | the same ✓ | a dish with no choice has the same subtotal ✓ |
+| the tax | the subtotal ✓ | the same ✓ | unchanged ✓ |
+
+**The rule in code — three "if there is nothing, do exactly what you did" branches:**
+
+```python
+# the price: no variant, no option -> the dish's price, unchanged
+unit_price = menu_item.price
+if variant:  unit_price += variant.price_delta
+unit_price += sum(option.price_delta for option in chosen_options)
+
+# the cost: no variant -> the dish's recipe, unchanged
+cost = dish_recipe_cost()
+if variant and variant.has_own_recipe: cost = variant_recipe_cost()
+elif variant:                           cost = dish_recipe_cost() * variant.cost_multiplier
+cost += sum(option.ingredient_qty * ingredient.unit_cost for option in chosen_options)
+
+# the stock: no choice -> the dish's recipe, unchanged
+ingredients = dish_recipe_ingredients()
+if variant and variant.has_own_recipe: ingredients = variant_recipe_ingredients()
+ingredients += the option's deltas
+```
+
+**The proof — the compatibility probe.** It is **the acceptance gate of every phase**,
+not a test at the end. For every dish of the live menu (16 today ✓) the **old path**
+and the **new path** are run side by side, and the answers must be **identical**:
+
+- the price of the line ✓,
+- the cost of the line ✓,
+- the grams the stock would take ✓,
+- the lines of the kitchen ticket ✓.
+
+**A dish with no variant and no group may not move by one cent, one gram or one
+line.** The probe is the answer to "will this impact the existing menu" — it is not a
+promise, it is a number that has to stay the same.
+
+**And the tenant's data:** the probe runs against a **copy** of the database (the
+pattern the other probes use ✓), so the live menu is never the thing being tested ✓.
+
+---
+
 ## 5. The three dependents — what each one becomes
 
 ### 5.1 The kitchen printing
@@ -429,30 +533,89 @@ the soup station only the soup lines ✓. The options structure is the natural p
 to hang that — worth one column now (`menu_option_groups.station`), even if the
 router itself waits ✓.
 
-### 5.2 The recipe and the stock
+### 5.2 The recipe and the stock — inside the recipe management that exists
 
-**The recipe moves from "one per dish" to "one per dish + one per variant + the
-options' deltas".**
+**Kens's second rule:** *"the proposal also has to be compatible in the current
+recipes management, because the ingredients inside will use to calculate the actual
+cost."*
+
+**The recipe management today (Nov 9, 2026 — the live code):**
+
+| The piece | Where | What it does |
+|---|---|---|
+| the two tables | `backend/app/models/inventory.py` | `recipes` (one row per dish — `menu_item_id` NOT NULL) and `recipe_ingredients` (`recipe_id, ingredient_id, quantity, unit_override`) |
+| the three routes | `backend/app/routes/inventory.py` | `GET` / `PUT` / `DELETE /api/inventory/recipes/{menu_item_id}` — the PUT **replaces** the ingredient rows and sets `menu_item.has_recipe = True` ✓ |
+| the cost | `backend/app/routes/inventory.py` → `calculate_item_cost` (line 542) | `Σ ri.quantity × ing.unit_cost` — the same arithmetic the reports use (`reports.py:395` `_menu_item_cost`) ✓ |
+| the stock | `backend/app/routes/order.py` → `auto_decrement_stock` (line 133) | the dish's recipe, at the moment the order is marked **ready** ✓, with a `StockMovement` row per ingredient ✓ |
+| the stock check | `backend/app/routes/order.py` (line 59) | the dish's recipe, at the moment the item is added to the cart ✓ |
+| the editor | `frontend/src/pages/Inventory/RecipeBuilder.jsx` | **one** recipe per dish ✓ — the dish's list on the left, the ingredients on the right ✓ |
+
+**The live shape (Nov 9, 2026):** 16 dishes ✓ · 11 with a recipe ✓ · **never more than
+one recipe row for a dish** ✓ · 502 order lines ✓ · 38 ingredients, **all** with a unit
+cost ✓.
+
+**The rule: the dish's recipe does not move.** The proposal adds the choices to the
+**side** of it — it never rewrites it, never re-keys it and never puts a second row
+for the same dish into `recipes`.
+
+**The thirteen places that take the recipe** — every one of them keeps taking the
+**dish's** recipe, and the variant's recipe is a **separate** read:
+
+| The place | Today | With a choice |
+|---|---|---|
+| the stock check (add to cart) `order.py:59` | the dish's recipe | the base + the **options' ingredients** are checked too ✓ (the egg may be out of stock ✓) |
+| the deduction (when ready) `order.py:133` | the dish's recipe | the **frozen snapshot** ✓ (§5.2a) |
+| the cost `inventory.py:542` | the dish's recipe | the base stays the base ✓; the variant's cost is a **new** read with the same arithmetic ✓ |
+| the recipe routes `inventory.py:318/366/402` | one recipe per dish | **unchanged** ✓ — the variant's recipe has its own routes ✓ |
+| the menu's stock status `menu.py:319` | the dish's recipe | the base ✓ (the variant's status is a detail of the tile, optional ✓) |
+| the reports' cost `reports.py:404` | the dish's recipe | the base for the old lines ✓; the frozen cost for the new ones ✓ |
+| the AI's predictions (3 places) | the dish's recipe | the base ✓ — a prediction is per dish ✓ |
+| the anomaly detector | the dish's recipe | the base ✓ |
+
+**The cost of a sold line — the same arithmetic, one layer more:**
 
 ```
 the cost of a sold line =
-      (the variant's recipe  OR  the dish's recipe × the variant's cost_multiplier)
+      (the variant's own recipe        OR  the dish's recipe × the variant's cost_multiplier)
     + Σ (the chosen options' ingredient_qty × the ingredient's unit_cost)
 ```
 
 **The rules:**
 - the **dish's recipe stays the base** ✓ — an item without a variant never changes ✓;
-- a **variant** may have its own recipe (the exact grams for the Large) **or** a multiplier (the Large = 1.4 × the base) ✓ — the multiplier is the cheap way to start ✓;
-- an **option** carries at most one ingredient ✓ (the egg, the extra chicken) ✓ — a choice that needs several ingredients becomes its own **dish with a recipe** (an "Extra Chicken" add-on item ✓ — the mechanism that exists today ✓);
-- a **negative** ingredient quantity is the way to say "no" ✓ ("No egg" = -1 egg ✓) — the stock goes up by one egg ✓, which is right ✓;
+- a **variant** may have its own recipe (the exact grams for the Large ✓) **or** a multiplier (the Large = 1.4 × the base ✓) — the multiplier is the cheap way to start ✓ — **its recipe lives in `menu_item_variant_recipes`**, never in `recipes` ✓ (§4.1 ✓);
+- an **option** carries at most one ingredient ✓ (the egg, the extra chicken ✓) — a choice that needs several ingredients becomes its own **dish with a recipe** (an "Extra Chicken" add-on item ✓ — the mechanism that exists today ✓); the option's ingredient **touches no recipe table** ✓;
+- a **negative** ingredient quantity is the way to say "no" ✓ ("No egg" = -1 egg ✓) — the stock goes up by one egg ✓, which is right ✓ (the stock is clamped at 0 today ✓ — `max(0, old - qty)` ✓ — a negative delta still adds ✓);
 - the **deduction** reads the snapshot (`order_item_options`) ✓ — not the live menu ✓ — so a menu change mid-service never moves the stock of an order already sold ✓;
-- the deduction still happens **when the order is marked ready** ✓ (today's rule ✓) — the choice does not change the timing ✓.
+- the deduction still happens **when the order is marked ready** ✓ (today's rule ✓) — the choice does not change the timing ✓;
+- the **cost is frozen into the line** at the moment of the sale ✓ (the same way the price is frozen ✓) — and **a line with no frozen cost falls back to the dish's recipe** ✓ (that is the 502 old lines ✓).
+
+### 5.2a The frozen cost — what the reports read
+
+The reports read the **line's** cost when there is one, and the **dish's** recipe when
+there is not:
+
+```python
+# the cost of a sold line, in the reports
+cost = line.frozen_cost                     # the new lines - frozen at the sale
+if cost is None:                            # the old lines - the dish's recipe, as today
+    cost = dish_recipe_cost(line.menu_item_id)
+```
+
+**Why the frozen cost and not a live read:** the ingredient's price moves (the flour
+costs more this month ✓), and the margin of an order sold in October must not be
+rewritten by October's price ✓ — the same rule the price follows ✓.
+
+**The rule "an unknown cost is a dash, not a lie"** ✓ (the reports' existing rule ✓)
+applies to the option's cost too ✓: an option whose ingredient has no `unit_cost` →
+the line's cost is **unknown** → a **dash** ✓, never a zero ✓. (All 38 ingredients
+have a unit cost today ✓ — but a new ingredient may not have one ✓.)
 
 **The recipe editor** (`frontend/src/pages/Inventory/RecipeBuilder.jsx` — today it
-edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` ✓)
-gains two things:
-- a **variant list** per dish (with the variant's own recipe or multiplier ✓);
-- an **ingredient column** on the option list ✓ (the option's ingredient and its quantity ✓).
+edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` ✓):
+- the **dish's recipe editor does not change** ✓ — the same screen, the same buttons, the same rows ✓;
+- a **variant's recipe** is edited by the **same component** with a variant's id ✓ (the variant's recipe lives in its own tables ✓);
+- the **option's ingredient** is a column on the option's list ✓ (the option's ingredient and its quantity ✓) — and the ingredient is picked from the **existing** ingredient list ✓ (no new ingredient type ✓);
+- the editor shows the **cost of the dish as it is today** ✓ and the **cost of each variant** ✓ (the same arithmetic ✓) — so the tenant sees the margin before the guest does ✓.
 
 ### 5.3 The costing and the margin
 
@@ -484,10 +647,10 @@ built ✓.
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
 | **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ |
-| **1** | **the data + the read model** | the five tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — |
+| **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — |
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ |
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ |
-| **4** | **the recipe + the stock + the costing** | the variant's recipe ✓, the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ |
+| **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
 | **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
@@ -495,6 +658,12 @@ built ✓.
 
 **The order matters in one place only:** the recipe and the costing (4) come
 **after** the snapshot (2), because the deduction has to read a frozen line ✓.
+
+**The compatibility probe is the gate of every phase** ✓ (§4.4) ✓ — before a phase
+may be merged, the old path and the new path must answer the **same** for every dish
+of the live menu ✓: the same price ✓, the same cost ✓, the same grams ✓, the same
+ticket lines ✓. A phase that moves an existing dish by one cent has failed ✓ —
+whatever else it achieves ✓.
 
 **The customer app last (6)** — but it is the face of the business ✓, so if the
 schedule allows, 5 and 6 can be pulled forward next to each other ✓ (they share
@@ -571,6 +740,7 @@ still override a price ✓ (the `trust_client_money` rule ✓) — the guest may
 | the price is the menu's ✓ (the guest) / the staff may override ✓ | the server |
 | the remark is trimmed and length-limited (255) ✓ | the server |
 | the tax is computed on the resolved subtotal ✓ | the server |
+| the new routes ask for the **plan** (the inventory ones: `require_plan_feature("Inventory")` ✓) and for the **tenant** (`require_outlet_tenant` ✓ / `require_outlet_access` ✓) ✓ | the server |
 
 ### 7.4 The migration — nothing to migrate
 
@@ -587,16 +757,20 @@ still override a price ✓ (the `trust_client_money` rule ✓) — the guest may
 | Phase | The size | The note |
 |---|---|---|
 | 0 (the money hole) | **half a day** ✓ | two lines + a probe ✓ |
-| 1 (the data + the read) | **two days** ✓ | five tables ✓ + the routes ✓ |
+| 1 (the data + the read) | **three days** ✓ | seven tables ✓ + the routes ✓ |
 | 2 (the write + the snapshot) | **three days** ✓ | the resolver ✓ + the snapshot ✓ + the rules ✓ |
 | 3 (the print) | **two days** ✓ | the formatter ✓ + the three sinks ✓ |
-| 4 (the recipe + the stock + the costing) | **four days** ✓ | the variant recipes ✓ + the deduction ✓ + the frozen cost ✓ |
+| 4 (the recipe + the stock + the costing) | **five days** ✓ | the variant's recipe tables ✓ + the deduction from the snapshot ✓ + the frozen cost ✓ |
 | 5 (the counter's picker) | **three days** ✓ | the UI ✓ — the counter's speed is the acceptance test ✓ |
 | 6 (the customer app's picker) | **two days** ✓ | the modal ✓ (the HTML is there ✓) |
 | 7 + 8 (the migration + the reports) | **two days** ✓ | |
 
-**Roughly three weeks of work** for the whole thing ✓, or **one day** for phase 0
-alone ✓ (the money hole ✓).
+**Roughly three and a half weeks of work** for the whole thing ✓, or **one day** for
+phase 0 alone ✓ (the money hole ✓).
+
+**The compatibility probe** (§4.4 ✓) is **half a day** ✓ and it is **not optional** ✓ —
+it is the gate of every phase ✓ (it runs against a copy of the database ✓, so the live
+menu is never the thing being tested ✓).
 
 ---
 
@@ -635,7 +809,8 @@ alone ✓ (the money hole ✓).
 - `backend/app/routes/order.py` → `OrderItemCreate` (line 185), `OrderCreate` (line 192),
   the stock check (line ~50), `auto_decrement_stock` (line ~92),
   `create_order`'s `trust_client_money` (line 407)
-- `backend/app/routes/inventory.py` → `calculate_item_cost` (line 540)
+- `backend/app/routes/inventory.py` → `calculate_item_cost` (line 542), the three recipe
+  routes (`GET`/`PUT`/`DELETE /api/inventory/recipes/{menu_item_id}` — lines 317, 357, 393)
 - `backend/app/routes/reports.py` → the menu mix (lines 89–186)
 - `backend/app/services/order_service.py` → the price resolution (lines 105–120,
   251–262), the customer's money (line 284)
@@ -652,6 +827,16 @@ for a 3.00 dish ✓ (§3.6 ✓).
 **The living probe** — the fix in §7.1 needs a probe of its own: a guest's order
 with a negative add-on must come out at the menu's price ✓.
 
+**The compatibility probe** (§4.4 ✓) — to be written with phase 1 ✓: for every dish of
+the live menu, the old path and the new path must answer the same ✓ — the price ✓, the
+cost ✓, the grams ✓, the ticket lines ✓. It runs against a **copy** of the database ✓
+(the pattern the other probes use ✓).
+
+**The recipe facts (Nov 9, 2026, the live database):** 16 dishes ✓ · 11 with a recipe ✓
+· **never more than one recipe row for a dish** ✓ · 502 order lines ✓ · 38 ingredients,
+all with a unit cost ✓. And the thirteen places that take the recipe by `menu_item_id`
+✓ — the reason the variant's recipe gets its own tables ✓ (§4.1 ✓).
+
 ---
 
 ## 10. The summary of the state
@@ -666,3 +851,5 @@ with a negative add-on must come out at the menu's price ✓.
 | 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
 | 8 | **The add-on's price hole (§3.6)** | **Open** ✗✗ — a live money hole ✓✓ — the patch is in §7.1 ✓✓ — **say the word and it is done today** ✓✓ |
+| 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **Proposed** ✓✓ — the probe is the gate of every phase ✓✓ — **not built** ✗✗ |
+| 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **Proposed** ✓✓ — it replaces the first draft's `recipe_id` on the variant ✓✓ — **not built** ✗✗ |
