@@ -647,7 +647,7 @@ built ✓.
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
 | **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1 ✓) |
-| **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — |
+| **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1a ✓) |
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ |
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ |
 | **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ |
@@ -722,6 +722,87 @@ now has **four cases** ✓ — **7 checks, all green** ✓:
 order answers **400** ✓, the staff's order answers **200** with the counter's price ✓,
 and an ordinary guest's order is unchanged ✓ (3.00 − the happy hour 0.60 + the tax
 0.19 = **2.59** ✓ — the same as before the patch ✓).
+
+### 7.1a The patch for phase 1 (the data + the read model) — **BUILT** ✓✓
+
+**Status: built, probed and live (Nov 9, 2026 ✓✓).** Kens said the word ✓.
+
+**The seven tables** (`backend/app/models/menu_options.py` ✓ — a new file ✓,
+one per domain ✓ like `inventory.py` ✓ and `promotion.py` ✓):
+
+| The table | The model | What it holds |
+|---|---|---|
+| `menu_item_variants` | `MenuItemVariant` | the sizes ("Big", "Small") ✓ |
+| `menu_option_groups` | `MenuOptionGroup` | the named groups ("Noodle", "Topping") ✓ |
+| `menu_item_option_groups` | `MenuItemOptionGroup` | the link between the dish and the group ✓ |
+| `menu_options` | `MenuOption` | one choice inside a group ✓ |
+| `order_item_options` | `OrderItemOption` | the snapshot of what was sold ✓ |
+| `menu_item_variant_recipes` | `MenuItemVariantRecipe` | the variant's recipe ✓ — **its own table** ✓ |
+| `menu_item_variant_recipe_ingredients` | `MenuItemVariantRecipeIngredient` | the grams of the variant's recipe ✓ |
+
+**Plus one column:** `order_items.notes` (Text, nullable ✓) — the per-line
+remark the browser already sends and the server already drops (§3.4 ✓). The
+ALTER is in `_ensure_added_columns()` (`backend/app/main.py` ✓) — idempotent ✓,
+it runs on every start ✓ and only when the column is really missing ✓.
+
+**The service** (`backend/app/services/menu_options.py` ✓):
+- `outlet_option_groups()` — the outlet's groups with their choices ✓;
+- `item_choices()` — the dish's picker data (the sizes, the groups, the options ✓);
+- `resolve_choices()` — **the resolver** ✓: the price of a line with choices ✓
+  (the dish's price ✓ + the variant's delta ✓ + the options' deltas ✓) and the
+  rules of §7.3 ✓. Phase 2's write path reuses this exact function ✓ — one
+  implementation, one answer ✓.
+
+**The price of a variant** — two ways to say it, and only one applies ✓:
+- `price` is set → it **is** the price of the line ✓;
+- `price` is null → the dish's price + `price_delta` ✓.
+
+**The routes** (`backend/app/routes/menu.py` ✓ — three reads ✓, no UI change ✓):
+
+| The route | It answers | The gates |
+|---|---|---|
+| `GET /api/menu/option-groups?outlet_id=` | the outlet's groups and their choices ✓ | `optional_permission("menu:read")` ✓ + `require_outlet_access` ✓ + `require_plan_feature("Menu")` ✓ |
+| `GET /api/menu/items/{item_id}/options` | the dish's picker data ✓ | the same three ✓ |
+| `GET /api/menu/items/{item_id}/options/price?variant_id=&option_ids=` | the resolved line and its price ✓ | the same three ✓ |
+
+**The gates** (the audit recipe ✓):
+1. **Who may call it** — `optional_permission("menu:read")` ✓ → the customer
+   app's key may read them ✓ (it ships in the PWA ✓) ✓ and a browser with no
+   session and no key is refused ✓ (**401** ✓);
+2. **Whose data** — `require_outlet_access` ✓ → the tenant comes from the
+   **resource** ✓ (the item's outlet ✓, the groups' outlet ✓), never from a
+   query parameter ✓ → the other tenant's session gets a **403** ✓;
+3. **Did the tenant buy it** — `require_plan_feature("Menu")` ✓ → the live
+   plan, read through the plan cache ✓ (the cache holds the demo tenants'
+   plans ✓: 40 and 20 features ✓). Every plan has "Menu" ✓, so nobody is
+   locked out ✓ — but a plan without the menu does not get the choices ✓;
+4. **Does the UI agree** — there is **no UI in this phase** ✓ (the picker is
+   phase 5 ✓ and the guest's modal is phase 6 ✓) ✓ → nothing to change ✓.
+
+**The probe** (`scripts/pos_menu_options_probe.py` ✓ — against a **copy** of
+the database ✓): **55 checks, all green** ✓✓.
+
+- the seven tables exist ✓ and the column is there ✓;
+- the new tables start **empty** ✓ — nothing was rewritten ✓;
+- **the compatibility gate (§4.4 ✓)** — for **every one of the 16 dishes** of
+  the live menu ✓: the price ✓, the cost ✓, the grams ✓ and the ticket's
+  lines ✓ are **identical** before and after ✓✓ ("a dish with no variant and
+  no group may not move by one cent, one gram or one line" ✓);
+- the read model answers for a dish with no choices ✓ (the dish's own price ✓,
+  no variant ✓, no options ✓);
+- a dish **with** choices (made in the copy ✓) resolves correctly ✓ — the
+  size's delta ✓, the options' deltas ✓, the kitchen note ✓ — and the rules
+  are enforced ✓: a required group with nothing chosen ✓ (**400** ✓), the
+  group's own `min_select` ✓, more choices than `max_select` ✓, a choice that
+  is not on the dish ✓, an unavailable choice ✓;
+- a dish without choices still answers the old way ✓.
+
+**Live on the production path** ✓ (the live server, not a copy ✓): the guest's
+key reads a dish's choices (**200** ✓), the price preview answers the dish's
+own price (**200** ✓), a bogus choice is refused (**400** ✓), the staff
+session of tenant 1 reads them (**200** ✓), the session of **tenant 3** is
+refused (**403** ✓ on both routes ✓) and a request with no credential at all
+is refused (**401** ✓).
 
 ### 7.2 The order line's new shape
 
@@ -871,13 +952,13 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 
 | # | The item | The state |
 |---|---|---|
-| 1 | The five new tables (the variants, the groups, the options, the links, the snapshot) | **Proposed** ✓✓ — not built ✗✗ |
-| 2 | The order line's snapshot + the server-side price resolution | **Proposed** ✓✓ — not built ✗✗ |
+| 1 | The five new tables (the variants, the groups, the options, the links, the snapshot) | **BUILT** ✓✓ — phase 1 ✓✓ (Nov 9, 2026 ✓) — the seven tables ✓ + `order_items.notes` ✓ — **live** ✓✓ — §7.1a ✓✓ |
+| 2 | The order line's snapshot + the server-side price resolution | **Proposed** ✓✓ — not built ✗✗ — the resolver itself is built ✓✓ (phase 1 ✓) — the write path is phase 2 ✓✓ |
 | 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **Proposed** ✓✓ — and the today's gap (the browser/PDF ticket drops the choices ✓✓) is a separate, smaller fix ✗✗ |
-| 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **Proposed** ✓✓ — not built ✗✗ |
-| 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ |
+| 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **Proposed** ✓✓ — not built ✗✗ — the variant's recipe TABLES are built ✓✓ (phase 1 ✓) — the deduction and the costing are phase 4 ✓✓ |
+| 5 | The counter's picker | **Proposed** ✓✓ — not built ✗✗ — the picker's DATA is built ✓✓ (phase 1 ✓) |
 | 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
-| 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **Proposed** ✓✓ — the probe is the gate of every phase ✓✓ — **not built** ✗✗ |
-| 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **Proposed** ✓✓ — it replaces the first draft's `recipe_id` on the variant ✓✓ — **not built** ✗✗ |
+| 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **BUILT** ✓✓ — the probe is **built and green** ✓✓ (55 checks ✓ — 16 of 16 dishes unchanged ✓✓) — phase 1 ✓✓ — §7.1a ✓✓ |
+| 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables are there ✓✓ (phase 1 ✓✓) — the route and the deduction come with phase 4 ✓✓ |
