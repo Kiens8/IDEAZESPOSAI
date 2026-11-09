@@ -686,6 +686,7 @@ come ✓.
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1b ✓) |
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1c ✓) |
 | **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1d ✓) |
+| **4b** | **the management API + the screen** | the tenant can **create** a size, a group, a choice and the links ✓ — the write routes ✓ + the panel on the menu screen ✓ | medium ✓ | 4 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
 | **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
@@ -1050,11 +1051,63 @@ then **changed to 9.00** ✓ — and the deduction still moved the stock by the
 **frozen 3.50** ✓✓. The menu mix answered **`mixed`** ✓ for the dish whose
 lines came from both rules ✓.
 
-**What phase 4 does NOT do ✓:** the **menu management screen** for the groups,
-the choices and the sizes is still to be built ✓ (the routes read the menu ✓,
-the write routes for the groups come with the screen ✓), and the **picker** ✓
-(the counter's ✓ — phase 5 ✓ — and the guest's modal ✓ — phase 6 ✓) is still
-to come ✓ — the sizes and the choices cannot be picked yet ✓.
+**What phase 4 does NOT do ✓:** the **picker** ✓ (the counter's ✓ — phase 5 ✓ —
+and the guest's modal ✓ — phase 6 ✓) is still to come ✓ — the sizes and the
+choices cannot be picked yet ✓. (The **management screen** that lets the tenant
+create them **is** built ✓ — phase 4b ✓, §7.1e ✓.)
+
+### 7.1e The patch for phase 4b (the management API + the screen) — **BUILT** ✓✓
+
+**Status: built, probed and live (Nov 10, 2026 ✓✓).**
+
+**What it closes:** the menu's read routes answered ✓✓ (phase 1 ✓✓) but **nothing
+could write them** ✗✗ — no size, no group, no choice, no link ✗✗. The tenant
+could read the menu and could not change it ✗✗. **The pickers (phase 5 ✓, phase 6 ✓)
+would have had nothing to pick** ✗✗.
+
+**The write routes ✓** (`backend/app/routes/menu.py` ✓):
+
+| The route | What it does |
+|---|---|
+| `POST /api/menu/items/{id}/variants` | add a **size** to a dish ✓ |
+| `PUT/DELETE /api/menu/variants/{id}` | change or drop a size ✓ |
+| `POST /api/menu/option-groups` | create a **group of choices** for an outlet ✓ |
+| `PUT/DELETE /api/menu/option-groups/{id}` | change or drop a group ✓ |
+| `POST /api/menu/option-groups/{id}/options` | add a **choice** to a group ✓ |
+| `PUT/DELETE /api/menu/options/{id}` | change or drop a choice ✓ |
+| `POST /api/menu/items/{id}/option-groups` | put a group **on a dish** ✓ |
+| `PUT/DELETE /api/menu/items/{id}/option-groups/{group_id}` | the rules of the link ✓ / take it off ✓ |
+
+**The gates on every one of them ✓ (the audit recipe ✓):**
+
+- the **permission** ✓ — `menu:read` for the reads ✓, `menu:write` for the
+  writes ✓; the **house roles** ✓ — the owner and the manager write ✓✓, the
+  cashier reads ✓✓ (the probe proves the 403 ✓);
+- the **tenant** ✓ — from the **resource** ✓ (the dish's outlet ✓, the group's
+  outlet ✓), never from a query parameter ✓; another tenant's id is a **403** ✓;
+- the **plan** ✓ — `require_plan_feature("Menu")` ✓ on every route ✓;
+- **the money rules** ✓ — the choice's ingredient must belong to **this outlet**
+  ✓ (another outlet's ingredient is a **403** ✓), a multiplier of **zero** is
+  refused ✓, a group cannot be attached twice ✓, and a group may be attached
+  to **one size** as well ✓;
+- the **delete** ✓ cascades ✓ — the group takes its choices with it ✓, the size
+  takes its recipe ✓, and the **snapshot of an order already sold survives** ✓
+  (§7.2 ✓ — the snapshot keeps its own copy of the name ✓).
+
+**The screen ✓** (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — a
+panel on the **menu management** screen ✓ (the fork-and-knife button on every
+dish ✓): the **sizes** ✓ (the name, the price difference, the cost multiplier ✓),
+the **groups** ✓ (the rules, the choices ✓, and each choice's **ingredient and
+quantity** ✓ — the picker offers only the outlet's own ingredients ✓), and the
+**attach** ✓ (put a group on the dish ✓, take it off ✓).
+
+**The write gate in the UI** ✓ — the panel shows the write buttons only to the
+session that holds `menu:write` ✓ / `menu:*` ✓ / `admin:*` ✓ — the cashier sees
+the dish's choices and cannot change them ✓.
+
+**The probe:** `scripts/pos_menu_management_probe.py` ✓ — **33 checks** ✓ against
+a **copy** of the database ✓ (the tenant's 403 ✓, the roles ✓, the money rules ✓,
+the links ✓, the cascade ✓, the snapshot that survives the delete ✓).
 
 ### 7.2 The order line's new shape
 
@@ -1227,4 +1280,4 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
 | 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **BUILT** ✓✓ — the probe is **built and green** ✓✓ (55 checks ✓ — 16 of 16 dishes unchanged ✓✓) — phase 1 ✓✓ — §7.1a ✓✓ |
 | 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables ✓✓ (phase 1 ✓✓) — the API ✓✓ + the deduction ✓✓ + the editor ✓✓ (phase 4 ✓✓) — §7.1d ✓✓ |
-| 11 | **The menu management screen** — the groups, the choices and the sizes | **NOT BUILT** ✗✗ — **and it is in NO phase** ✗✗ — the routes READ the menu ✓✓ (phase 1 ✓✓) but the tenant cannot **create** a group, a choice or a size ✗✗ — **this belongs BEFORE the pickers** ✓✓ (phase 5 ✓ and phase 6 ✓ would have nothing to pick ✗✗) |
+| 11 | **The menu management screen** — the groups, the choices and the sizes | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) — the write routes ✓ (the sizes ✓, the groups ✓, the choices ✓, the links ✓) + the panel on the menu screen ✓ (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — **the phase it never had** ✓ (4b ✓) |
