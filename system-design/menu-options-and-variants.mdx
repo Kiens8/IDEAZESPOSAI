@@ -61,7 +61,10 @@ same thing.
    the ingredients (stock + cost) and the kitchen ticket. A group that does not
    move all three is a free-text remark, not an option.
 3. **The sold line is a snapshot.** The history never changes when the menu does.
-4. **Nothing breaks.** The tables are additive, the existing items keep working,
+4. **The tenant can build it.** The sizes, the groups and the choices are not
+   only readable — the tenant **creates** them ✓ (phase 4b ✓, §7.1e ✓), and the
+   rules of the menu are enforced by the server ✓, never by the browser ✓.
+5. **Nothing breaks.** The tables are additive, the existing items keep working,
    the old `modifications` list stays as the legacy remark group. **A dish with no
    variant and no group takes the old code path exactly** — and the **compatibility
    probe** (§4.4) proves it on every phase, against the live menu: the same price,
@@ -142,7 +145,7 @@ add-on is **whatever the client says** (§3.6).
 
 | Screen | What it offers |
 |---|---|
-| `frontend/src/pages/MenuManagement.jsx` | name, price, category, image, available, add-on, estimated cost, and a **free-text list of modifications** (line 95: `modifications: formData.modifications.filter(m => m.trim())`) |
+| `frontend/src/pages/MenuManagement.jsx` | name, price, category, image, available, add-on, estimated cost, and a **free-text list of modifications** (line 95: `modifications: formData.modifications.filter(m => m.trim())`) — **and, since Nov 10 ✓, the panel of the sizes and the choices** ✓ (`components/menu/ItemChoicesModal.jsx` ✓ — the fork-and-knife button ✓) |
 | `frontend/src/pages/StaffOrder.jsx` | the cart: a quantity and a **free-text note per line** (line 310 sends `notes: c.notes || ''`) |
 | `customer-app/js/app.js` | the item modal **hides the options entirely** — line 1469: `// For now, no modifications - can be extended` → `modsSection.style.display = 'none'` |
 
@@ -676,8 +679,8 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` �
 ## 6. The phases — the safe order
 
 Each phase is usable on its own and leaves the system working ✓. Phases **0** ✓
-— **4** ✓ are **built** ✓✓ (Nov 9–10, 2026 ✓) — **5** ✓ and on are still to
-come ✓.
+— **4** ✓ and **4b** ✓ are **built** ✓✓ (Nov 9–10, 2026 ✓) — **5** ✓ and on are
+still to come ✓.
 
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
@@ -1060,54 +1063,80 @@ create them **is** built ✓ — phase 4b ✓, §7.1e ✓.)
 
 **Status: built, probed and live (Nov 10, 2026 ✓✓).**
 
-**What it closes:** the menu's read routes answered ✓✓ (phase 1 ✓✓) but **nothing
-could write them** ✗✗ — no size, no group, no choice, no link ✗✗. The tenant
-could read the menu and could not change it ✗✗. **The pickers (phase 5 ✓, phase 6 ✓)
-would have had nothing to pick** ✗✗.
+**What it closes:** the menu's read routes answered ✓✓ (phase 1 ✓✓) but
+**nothing could write them** ✗✗ — no size, no group, no choice, no link ✗✗. The
+tenant could read the menu and could not change it ✗✗, and the pickers (phase 5 ✓,
+phase 6 ✓) would have had **nothing to pick** ✗✗. The work belonged to **no
+phase** ✗✗ — it is **phase 4b** now ✓.
 
-**The write routes ✓** (`backend/app/routes/menu.py` ✓):
+---
 
-| The route | What it does |
-|---|---|
-| `POST /api/menu/items/{id}/variants` | add a **size** to a dish ✓ |
-| `PUT/DELETE /api/menu/variants/{id}` | change or drop a size ✓ |
-| `POST /api/menu/option-groups` | create a **group of choices** for an outlet ✓ |
-| `PUT/DELETE /api/menu/option-groups/{id}` | change or drop a group ✓ |
-| `POST /api/menu/option-groups/{id}/options` | add a **choice** to a group ✓ |
-| `PUT/DELETE /api/menu/options/{id}` | change or drop a choice ✓ |
-| `POST /api/menu/items/{id}/option-groups` | put a group **on a dish** ✓ |
-| `PUT/DELETE /api/menu/items/{id}/option-groups/{group_id}` | the rules of the link ✓ / take it off ✓ |
+#### The actual changes
 
-**The gates on every one of them ✓ (the audit recipe ✓):**
+**The backend — `backend/app/routes/menu.py` ✓** — **fourteen routes** ✓
+(eleven write ✓, three read ✓), all in the existing `/api/menu` router ✓:
 
-- the **permission** ✓ — `menu:read` for the reads ✓, `menu:write` for the
-  writes ✓; the **house roles** ✓ — the owner and the manager write ✓✓, the
-  cashier reads ✓✓ (the probe proves the 403 ✓);
-- the **tenant** ✓ — from the **resource** ✓ (the dish's outlet ✓, the group's
-  outlet ✓), never from a query parameter ✓; another tenant's id is a **403** ✓;
+| The route | The body / the parameter | What it does |
+|---|---|---|
+| `POST /api/menu/option-groups?outlet_id=` | `{name, min_select, max_select, sort_order, is_active, print_group_name}` | create a **group of choices** ✓ |
+| `PUT /api/menu/option-groups/{id}` | the same fields, all optional | change a group ✓ |
+| `DELETE /api/menu/option-groups/{id}` | — | drop a group ✓ (its choices go with it ✓) |
+| `POST /api/menu/option-groups/{id}/options` | `{name, price_delta, ingredient_id, ingredient_qty, kitchen_note, sku, is_default, is_available, sort_order}` | add a **choice** to a group ✓ |
+| `PUT /api/menu/options/{id}` | the same fields, all optional | change a choice ✓ |
+| `DELETE /api/menu/options/{id}` | — | drop a choice ✓ |
+| `POST /api/menu/items/{id}/option-groups` | `{group_id, variant_id, required, sort_order}` | put a group **on a dish** ✓ |
+| `DELETE /api/menu/items/{id}/option-groups/{group_id}` | — | take it off ✓ |
+| `POST /api/menu/items/{id}/variants` | `{name, price, price_delta, cost_multiplier, sku, is_default, is_available, sort_order}` | add a **size** to a dish ✓ |
+| `PUT /api/menu/variants/{id}` | the same fields, all optional | change a size ✓ |
+| `DELETE /api/menu/variants/{id}` | — | drop a size ✓ (its recipe goes with it ✓) |
+| `GET /api/menu/option-groups?outlet_id=` | — | the branch's groups ✓ (the attach picker ✓) |
+| `GET /api/menu/items/{id}/options` | — | the dish's sizes + groups + choices ✓ (the panel ✓) |
+| `GET /api/menu/items/{id}/options/price` | the choices | the resolved price ✓ (phase 2 ✓) |
+
+**The gates on every write ✓ (the audit recipe ✓):**
+
+- the **permission** ✓ — `require_permission("menu:write")` ✓; the **house
+  roles** ✓ — the owner ✓ and the manager ✓ write ✓✓, the cashier is a **403** ✓;
+- the **tenant** ✓ — `require_outlet_access(...)` ✓ **on the resource** ✓ (the
+  dish's outlet ✓, the group's outlet ✓, the size's outlet ✓), **never** from a
+  query parameter ✓ — another tenant's id is a **403** ✓;
 - the **plan** ✓ — `require_plan_feature("Menu")` ✓ on every route ✓;
-- **the money rules** ✓ — the choice's ingredient must belong to **this outlet**
-  ✓ (another outlet's ingredient is a **403** ✓), a multiplier of **zero** is
-  refused ✓, a group cannot be attached twice ✓, and a group may be attached
-  to **one size** as well ✓;
-- the **delete** ✓ cascades ✓ — the group takes its choices with it ✓, the size
-  takes its recipe ✓, and the **snapshot of an order already sold survives** ✓
-  (§7.2 ✓ — the snapshot keeps its own copy of the name ✓).
+- the **rules the service enforces** ✓ (`backend/app/services/menu_options.py` ✓):
+  the choice's ingredient must belong to **this outlet** ✓ (another outlet's is
+  a **403** ✓), a **multiplier of zero** is refused ✓, the same group cannot be
+  attached to a dish **twice** ✓, a group may also sit on **one size** ✓, and a
+  group's rules are checked (`min_select` ≤ `max_select` ✓);
+- the **delete cascades** ✓ — the group takes its choices ✓, the size takes its
+  recipe ✓ — and the **snapshot of an order already sold survives** ✓ (§7.2 ✓:
+  the snapshot keeps its own copy of the name ✓).
 
-**The screen ✓** (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — a
-panel on the **menu management** screen ✓ (the fork-and-knife button on every
-dish ✓): the **sizes** ✓ (the name, the price difference, the cost multiplier ✓),
-the **groups** ✓ (the rules, the choices ✓, and each choice's **ingredient and
-quantity** ✓ — the picker offers only the outlet's own ingredients ✓), and the
-**attach** ✓ (put a group on the dish ✓, take it off ✓).
+**The frontend — `frontend/src/components/menu/ItemChoicesModal.jsx` ✓** (new ✓)
+wired into `frontend/src/pages/MenuManagement.jsx` ✓ (the fork-and-knife button
+on every dish ✓):
 
-**The write gate in the UI** ✓ — the panel shows the write buttons only to the
-session that holds `menu:write` ✓ / `menu:*` ✓ / `admin:*` ✓ — the cashier sees
-the dish's choices and cannot change them ✓.
+- the **sizes** ✓ — the name ✓, the price difference ✓, the cost multiplier ✓;
+- the **groups of choices** ✓ — the group's rules ✓ (`min_select` / `max_select`
+  ✓), its choices ✓, and each choice's **ingredient and quantity** ✓ — the
+  picker offers **only the branch's own ingredients** ✓ (`GET
+  /api/inventory/ingredients?outlet_id=` ✓);
+- the **attach** ✓ — put a group on the dish ✓, take it off ✓;
+- the **write gate in the UI** ✓ — the write buttons appear only for a session
+  holding `menu:write` ✓ / `menu:*` ✓ / `admin:*` ✓ — the cashier sees the
+  dish's choices and cannot change them ✓.
+
+**The i18n ✓** — the `menu:choices.*` keys in **en** ✓ / **km** ✓ / **zh** ✓
+(`frontend/src/i18n/locales/{en,km,zh}/menu.json` ✓) — the parity check passes ✓.
 
 **The probe:** `scripts/pos_menu_management_probe.py` ✓ — **33 checks** ✓ against
-a **copy** of the database ✓ (the tenant's 403 ✓, the roles ✓, the money rules ✓,
-the links ✓, the cascade ✓, the snapshot that survives the delete ✓).
+a **copy** of the database ✓ (the tenant's 403 ✓, the house roles ✓, the money
+rules ✓, the links ✓, the delete cascade ✓, the snapshot that survives the
+delete ✓).
+
+**The live test (Nov 10 ✓):** the panel's own calls were run against the
+deployed site with the demo tenant ✓ — a size ✓, a group ✓ and a choice with an
+ingredient ✓ were created ✓, the group was attached to a dish ✓, the read model
+answered with all three ✓, and everything was deleted afterwards ✓ — the
+database was verified **clean** ✓.
 
 ### 7.2 The order line's new shape
 
@@ -1267,6 +1296,8 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 ---
 
 ## 10. The summary of the state
+
+*Nov 10, 2026 — phases 0, 1, 2, 3, 4 and 4b are built, probed and live ✓✓.*
 
 | # | The item | The state |
 |---|---|---|
