@@ -64,6 +64,8 @@ same thing.
 4. **The tenant can build it.** The sizes, the groups and the choices are not
    only readable — the tenant **creates** them ✓ (phase 4b ✓, §7.1e ✓), and the
    rules of the menu are enforced by the server ✓, never by the browser ✓.
+   **And the screen is proved by a browser** ✓ — not by an API probe ✓
+   (§7.1f ✓), because the API cannot see a missing button ✓.
 5. **Nothing breaks.** The tables are additive, the existing items keep working,
    the old `modifications` list stays as the legacy remark group. **A dish with no
    variant and no group takes the old code path exactly** — and the **compatibility
@@ -689,7 +691,7 @@ still to come ✓.
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1b ✓) |
 | **3** | **the kitchen print** | the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the remark on the ticket ✓ — **this also fixes the today's gap (§3.1)** ✓ | low ✓ | 1 (the snapshot) ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1c ✓) |
 | **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1d ✓) |
-| **4b** | **the management API + the screen** | the tenant can **create** a size, a group, a choice and the links ✓ — the write routes ✓ + the panel on the menu screen ✓ | medium ✓ | 4 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) |
+| **4b** | **the management API + the screen** | the tenant can **create** a size, a group, a choice and the links ✓ — the write routes ✓ + the panel on the menu screen ✓ **proved by a browser** ✓ | medium ✓ | 4 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓, §7.1f ✓) |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
 | **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
@@ -1140,6 +1142,104 @@ ingredient ✓ were created ✓, the group was attached to a dish ✓, the read 
 answered with all three ✓, and everything was deleted afterwards ✓ — the
 database was verified **clean** ✓.
 
+### 7.1f The browser check, and the plan compatibility — **BUILT** ✓✓
+
+**Status: built, proved in a real browser and live (Nov 10, 2026 ✓✓).**
+
+Two things came out of Kens asking for the screen to be checked with
+**Playwright** ✓ and for the plan to be considered ✓.
+
+---
+
+#### 1. The screen is now proved by a BROWSER, not by the API ✓
+
+**`scripts/pos_menu_screen_check.js`** ✓ — Playwright ✓, Chromium ✓, headless
+✓: it logs in as a real member of staff ✓, opens the menu screen ✓, opens the
+panel of a dish ✓, **creates a size, a group and a choice by clicking** ✓,
+checks that they appear ✓, **deletes them by clicking** ✓, and then asks the
+**database** ✓ whether anything is left ✓. The screenshots land in
+`/tmp/pos_screen/` ✓.
+
+**The browser found four things the API probe could not ✓✓:**
+
+| # | The hole | The fix |
+|---|---|---|
+| 1 | **the session carried no permissions** ✗✗ — the login returned only the role ✗, so the panel's write gate was false for **everyone** ✗✗ — the panel opened ✗ but nobody could write ✗ | the login now returns the role's **own** permission list ✓ (`ROLE_PERMISSIONS` ✓) and the panel gates on it ✓ (with the role as the fallback ✓ for the sessions stored before ✗) |
+| 2 | **"Add a size" opened nothing** ✗✗ — the new-size form was never rendered ✗✗ | the form is there ✓ (`data-testid="variant-name"` ✓) |
+| 3 | **a group could not be deleted** ✗✗ — the panel could only take it off the dish ✗ | the **delete** button ✓ (`group-delete` ✓) — the delete cascades ✓ |
+| 4 | **`GET /api/inventory/cost/{id}?outlet_id=null`** ✗ — a **422** on every dish of the menu screen ✗ (an admin with no outlet picked ✗) | the call is skipped when there is no outlet ✓ |
+
+**And it found a security hole in an old route ✗✗:**
+
+> `GET /api/menu/items` had **no tenant filter** when no outlet was named ✗✗ —
+> it returned **every tenant's menu** ✗✗. The AES admin (tenant 3 ✓) was served
+> the demo tenant's dishes (Spring Rolls ✓, Chicken Wings ✓ ✗).
+>
+> **Fixed (Nov 10, 2026 ✓✓):** without an outlet the list is now limited to the
+> **caller's own** outlets ✓ (`caller_tenant` ✓ + `tenant_outlet_ids` ✓) — an
+> admin of a group still sees **every branch of their own group** ✓.
+> The regression check lives in the probe ✓.
+
+**The result:** the demo tenant (with Inventory ✓) and the AES tenant (without
+✓) both pass **every** check ✓ — the login ✓, the panel ✓, the size ✓, the
+group ✓, the choice ✓, the ingredient picker ✓, the delete ✓, the clean
+database ✓ and a clean console ✓.
+
+---
+
+#### 2. A tenant without the Inventory plan — the menu still works ✓✓
+
+Kens: *"some tenant may not subscribe the inventory features — the changes must
+be compatible to a tenant who subscribes with inventory and who doesn't."*
+
+**The rule, now written into the code ✓:** the **ingredient is an extra, never a
+requirement** ✓✓.
+
+| | The tenant WITH Inventory ✓ | The tenant WITHOUT ✓ |
+|---|---|---|
+| the sizes ✓ | work ✓ | work ✓ |
+| the groups and the choices ✓ | work ✓ | work ✓ |
+| the **ingredient** of a choice ✓ | offered by the picker ✓ | **not offered** ✓ — the panel says so ✓ |
+| the stock ✓ | deducted ✓ | nothing to deduct ✓ (no inventory ✓) |
+| the cost ✓ | the ingredient's cost is added ✓ | the dish's own cost ✓ |
+
+**The panel ✓** — the ingredient list belongs to the Inventory feature ✓, so
+the call is refused with a **403** ✓ for a tenant without it ✓. The panel
+treats that as a fact, not as a failure ✓: the picker is hidden ✓ and a note
+tells the tenant why ✓ (*"linking an ingredient to a choice needs the
+Inventory feature — the choices and the sizes work without it"* ✓).
+
+**The server ✓** — a choice's ingredient is **optional** ✓ (`ingredient_id` is
+nullable ✓) and the **money rule** still holds ✓: an ingredient of another
+branch is refused ✓ (a **400** ✓ — the ingredient's rule ✓; a group of another
+tenant is a **403** ✓ — the tenant's rule ✓). A tenant without the plan can
+therefore never attach an ingredient it cannot see ✓ — the rule is the same
+for everyone ✓.
+
+**The size's recipe (phase 4 ✓)** — the recipe editor belongs to Inventory ✓,
+so a tenant without the plan simply has no per-size recipe ✓ and the **fallback
+stands** ✓: the dish's own recipe × the size's multiplier ✓✓.
+
+---
+
+#### 3. Two lessons the probes have to carry now ✓✓
+
+1. **An API probe is not a screen.** ✓ The panel answered every API call ✓ and
+   still could not be used ✓ — the write gate ✓, the missing form ✓ and the
+   missing button ✓ were all invisible to the API ✓. The browser found them in
+   one run ✓✓.
+2. **The probe's copy of the database must be a REAL copy.** ✓ The live
+   database runs in **WAL mode** ✓ — a plain file copy misses the WAL ✓, so the
+   probe was testing a **stale snapshot** ✓. It now uses SQLite's **backup
+   API** ✓ (`src.backup(dst)` ✓) and checks the **live** database (read-only ✓)
+   for leftovers ✓.
+
+**And the house roles are "admin" ✓, "manager" ✓ and "staff" ✓** — there is no
+"owner" role ✓ (`ROLE_PERMISSIONS` ✓). The probe was signing in as an "owner"
+✓, which the server read as a **staff** ✓ — so its "owner" checks were
+**403s** ✗. It signs in as **admin** ✓ now ✓.
+
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -1314,3 +1414,4 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **BUILT** ✓✓ — the probe is **built and green** ✓✓ (55 checks ✓ — 16 of 16 dishes unchanged ✓✓) — phase 1 ✓✓ — §7.1a ✓✓ |
 | 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables ✓✓ (phase 1 ✓✓) — the API ✓✓ + the deduction ✓✓ + the editor ✓✓ (phase 4 ✓✓) — §7.1d ✓✓ |
 | 11 | **The menu management screen** — the groups, the choices and the sizes | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) — the write routes ✓ (the sizes ✓, the groups ✓, the choices ✓, the links ✓) + the panel on the menu screen ✓ (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — **the phase it never had** ✓ (4b ✓) |
+| 12 | **The screen proved by a browser** — and the plan compatibility ✓ | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1f ✓) — the browser check ✓ (`scripts/pos_menu_screen_check.js` ✓ — it found the missing permissions ✓, the missing size form ✓, the missing delete ✓ and a **cross-tenant leak** in the menu list ✓✓ — all fixed ✓✓) — and **a tenant without the Inventory plan** ✓ works exactly the same ✓ (the ingredient is an extra ✓, never a requirement ✓) |
