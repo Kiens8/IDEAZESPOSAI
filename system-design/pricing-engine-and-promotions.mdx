@@ -189,6 +189,25 @@ accepted).
   the code. When the server refuses, the guest app takes the voucher off the cart and asks the
   server again: the money is always the server's.
 
+### `GET /api/promotions/prices?outlet_id=<id>`
+
+The price of every menu item when a promotion is running. The staff order screen shows the price
+the guest pays — the menu price with the promotion of the moment on it.
+
+```json
+[ { "menu_item_id": 1, "price": 3.0, "promo_price": 2.4, "discount": 0.6,
+    "promotion_id": 4, "promotion_name": "Happy Hour Special",
+    "badge_text": "20% OFF", "badge_color": "red" } ]
+```
+
+- It is **one unit** of the item, priced the way the engine prices a cart: the same rules, the same
+  caps, the same clock (the outlet's own).
+- A **bundle** and a **BOGO** need more than one item, so they leave the single price alone — the
+  bundle price belongs to the **cart**, not to one tile of the menu.
+- The **server** owns the money: the tile shows what the server says, and the cart still sends the
+  **menu's** price to the server. The two agree to the cent — the tiles of a cart add up to the
+  server's `after_discount` (2 × $2.40 + $10.32 = $15.12 = the cart's `after_discount`).
+
 ### The permissions
 
 | Who | May |
@@ -196,6 +215,10 @@ accepted).
 | the customer app (`customer_app_key`) | **read** the promotions of a branch and ask for the price of a cart |
 | the staff (the session, the role `staff`) | **read** the promotions of their branch |
 | the manager and the admin | **write** the promotions |
+
+The **prices** of the menu are a **staff** route: it asks for `staff:promotions:read`. The
+customer app's key is public (it ships in the PWA bundle) and it carries `promotions:read`, so the
+plain permission would not stop it — the `staff:` namespace does, and the `staff` role carries it.
 
 A tenant may not read another tenant's promotions (`require_outlet_access`).
 
@@ -226,6 +249,7 @@ place, so there is one rule and not five:
 | `promotion_is_running(db, promo, outlet_id, at=None, ignore_usage=False)` | is it running — the outlet's clock, the usage caps |
 | `outlet_uses(...)` / `record_usage(...)` | the per-outlet counter and the counting (both counters move) |
 | `calculate_best_discount(db, outlet_id, items, at=None, ignore_usage=False)` | **the same name and the same return shape** as before — `(discount, promotion, breakdown)` — so the old callers still work |
+| `promotion_prices(db, outlet_id, items, at=None)` | **new.** The price of every menu item when a promotion covers it — one unit, priced by the engine |
 
 **`backend/app/services/order_service.py`** — **114 lines.** The creation and the adding of an
 item use the shared pricing. The cart goes to the engine as **unit** prices (the old code sent the
@@ -237,7 +261,9 @@ the order says where it came from. A voucher is redeemed **once**, here. A promo
 (`promotions:read` to read, `promotions:write` to write) and `require_outlet_access` (a tenant may
 not read another tenant's promotions). `/calculate` was rewritten to the new contract: the bundle
 expansion, the guest's prices from the menu, the voucher validated but never redeemed.
-`/increment-usage` now moves **both** counters (the global one and the per-outlet one).
+`/increment-usage` now moves **both** counters (the global one and the per-outlet one). **`/prices`
+is new**: the price of every menu item when a promotion is running — a **staff** route
+(`staff:promotions:read`), because the customer app's key is public.
 
 **`backend/app/routes/order.py`** — **45 lines.** The cancelling and the restoring of an item
 reprice the order (they used to zero the tax and subtract the discount by hand). `discount_source`
@@ -248,10 +274,24 @@ is now in the five order responses, so the client is told too.
 **`backend/app/main.py`** — **29 lines.** The migration: the `orders.discount_source` column and
 the `promotion_outlet_usage` table (it did not exist).
 
-**`backend/app/middleware/auth.py`** — **10 lines.** `promotions:read` for the customer app key
-and for the `staff` role. `promotions:write` stays with the manager and the admin.
+**`backend/app/middleware/auth.py`** — **11 lines.** `promotions:read` for the customer app key
+and for the `staff` role. `promotions:write` stays with the manager and the admin. And
+`staff:promotions:read` for the `staff` role — the prices of the menu are a staff route, and the
+plain `promotions:read` would not stop the customer app's key.
 
-### The React staff app — 2 files
+### The staff order screen shows the promotion (Nov 9, 2026)
+
+The staff order screen and the full screen (the kiosk) show the **price the guest pays**: the
+menu price with the promotion of the moment on it, the menu price struck through and the badge of
+the promotion (`20% OFF`) beside it. The cart shows the same.
+
+- The prices come from `GET /api/promotions/prices` — the **server** says what the price is.
+- They are refreshed **every minute**: the promotions run on the outlet's clock, so the happy hour
+  starts and ends while the screen is open.
+- The cart keeps the **menu's** price — that is what the server is sent, and the server owns the
+  money. The client never works the money out a second time.
+
+### The React staff app — 3 files
 
 **`frontend/src/pages/StaffOrder.jsx`** — the cart asks `POST /api/promotions/calculate`
 (debounced 300 ms, with a stale-answer guard: a sequence number and a fingerprint of the cart) and
@@ -259,9 +299,16 @@ shows the server's subtotal, discount, tax and total. The old `calculateTax` is 
 fallback**, so the till never freezes. The order payload is **unchanged** — the server re-prices
 the order.
 
-**`frontend/src/components/pos/CartPanel.jsx`** — the discount row (with the promotion's badge)
+**`frontend/src/components/pos/CartPanel.jsx`** — the promotion's price on a cart line (the menu
+price struck through) and the discount row (with the promotion's badge)
 between the subtotal and the tax. The row was hidden by one line: `display='flex'` followed
 immediately by `display='none'`.
+
+**`frontend/src/pages/OrderQueue.jsx`** — the **table tab** threw `ReferenceError: lastStep is not
+defined` when a table row was clicked. `TableBillCard` is a component of its own, and it read
+`lastStep` — a variable of the **page** above it. The wording now comes in as a prop
+(`servedLabel`), the way the other components of the file already did it. The rule: a component of
+its own never reaches for the page's variables.
 
 ### The customer app — 1 file
 
