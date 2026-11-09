@@ -181,8 +181,13 @@ accepted).
 - A **bundle** may arrive as one line (`bundle_<promotion id>`); the server expands it into its
   components at the menu's prices. The expansion is idempotent: the components carry the real menu
   item ids.
-- A **voucher** is validated here but **never** redeemed here — it is redeemed once, when the
-  order is created.
+- A **voucher** is checked here but **never** redeemed here — it is redeemed once, when the
+  order is created. A refusal comes back with a **code** as well as a sentence
+  (`voucher_error_code`: `not_found` · `used` · `not_yet` · `expired` · `other_member` ·
+  `other_tenant` · `min_spend`) and, for the minimum spend, the amount
+  (`voucher_error_amount`) — the guest's language is not the server's, so the client translates
+  the code. When the server refuses, the guest app takes the voucher off the cart and asks the
+  server again: the money is always the server's.
 
 ### The permissions
 
@@ -263,7 +268,9 @@ immediately by `display='none'`.
 **`customer-app/js/app.js`** — four functions. The preview asks the server (and sends the voucher's
 code), the cart's subtotal, discount, tax and total come from the answer, a bundle line is
 expanded into its components for the preview, and the confirmation shows the **server's** order
-total. The discount row had the same one-line bug as the staff app.
+total. The discount row had the same one-line bug as the staff app. A voucher the server refuses
+comes off the cart, the guest is told why **in their own language** (`cart.voucherRefused` and
+`cart.voucherMinSpend`, in en/zh/km) and the server is asked again without it.
 
 ### New files
 
@@ -319,14 +326,15 @@ no tax back then) — **order 368 was the only broken one.**
 
 ```bash
 cd /root/.openclaw/workspace/mydoc/Projects/POS_AI/backend
-python3 /root/.openclaw/workspace/scripts/pos_pricing_probe.py      # 49 checks
+python3 /root/.openclaw/workspace/scripts/pos_pricing_probe.py      # 58 checks
 python3 /root/.openclaw/workspace/scripts/pos_pricing_repair.py     # the repair
 ```
 
 The probe checks the engine against the database's own truth **and** the running server over HTTP:
 the happy hour, the timezone, the weekdays, the raw JSON, the bundle, the quantity, the reprice of
 order 368, the creation of an order, the usage caps, the permissions, the tenant's isolation, the
-bundle expansion and the bundle order of the guest app. It cleans up after itself — the promotions and the orders it creates are
+bundle expansion, the bundle order of the guest app and the voucher's refusal (the code, the
+minimum spend, a good voucher and a code that does not exist). It cleans up after itself — the promotions and the orders it creates are
 deleted again.
 
 ---
