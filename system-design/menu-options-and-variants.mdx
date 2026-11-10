@@ -70,6 +70,9 @@ same thing.
    rules of the menu are enforced by the server ✓, never by the browser ✓.
    **And the screen is proved by a browser** ✓ — not by an API probe ✓
    (§7.1f ✓), because the API cannot see a missing button ✓.
+   **And both pickers are built** ✓ — the counter's ✓ (phase 5 ✓) and the
+   guest's ✓ (phase 6 ✓, §7.1h ✓) — each proved by a browser ✓ and each
+   **asking** the server for the price ✓, never working it out ✓.
 5. **Nothing breaks.** The tables are additive, the existing items keep working,
    the old `modifications` list stays as the legacy remark group. **A dish with no
    variant and no group takes the old code path exactly** — and the **compatibility
@@ -492,7 +495,8 @@ a row of the recipes, not an order of yesterday.
 | `menu_items.modifications` | a free-text list ✓ | the same, printed as it is ✓ | the write path still accepts it ✓ |
 | the order lines (502 today ✓) | `order_items.modifications` ✓ | untouched ✓ | the snapshot rows are written only for the new lines ✓ |
 | the order line's API | `menu_item_id, quantity, unit_price, modifications, add_ons` ✓ | the same **plus** the optional `variant_id`, `option_ids`, `notes` ✓ | an old client posts the old body and gets the old answer ✓ |
-| the customer app | the modal hides the options ✓ | the same until phase 6 ✓ | the PWA posts the old body ✓ |
+| the customer app | the modal hides the options ✓ | the same, and the choices are **optional** ✓ | the PWA posts the old body ✓ **and** the new one ✓ — a dish with no choices is untouched ✓ |
+| the tenant's internals (`estimated_cost` ✓, `cost_multiplier` ✓, `sku` ✓, the ingredient links ✓) | the guest's key could read them ✗✗ | **the guest's key reads none of them** ✓✓ | the stripper **fails closed** ✓ — only a staff key keeps them ✓ (phase 6 ✓, §7.1h ✓) |
 | the reports' cost | the dish's recipe, live ✓ | the same for the old lines ✓ | a line with no frozen cost falls back to the dish's recipe ✓ |
 | the ticket | the dish's name ✓ | the same ✓ | a line with no choice is the line of today ✓ |
 | the promotions and the voucher | the subtotal ✓ | the same ✓ | a dish with no choice has the same subtotal ✓ |
@@ -685,8 +689,8 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` �
 ## 6. The phases — the safe order
 
 Each phase is usable on its own and leaves the system working ✓. Phases **0** ✓
-— **4** ✓, **4b** ✓ and **5** ✓ are **built** ✓✓ (Nov 9–10, 2026 ✓) — **6** ✓ and
-on are still to come ✓.
+— **4** ✓, **4b** ✓, **5** ✓ and **6** ✓ are **built** ✓✓ (Nov 9–11, 2026 ✓) —
+**7** ✓ and on are still to come ✓.
 
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
@@ -697,7 +701,7 @@ on are still to come ✓.
 | **4** | **the recipe + the stock + the costing** | the variant's recipe (in its own tables ✓), the option's ingredient ✓, the deduction from the snapshot ✓, the line's cost frozen ✓ | **high** ✓ — this is where the numbers move ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1d ✓) |
 | **4b** | **the management API + the screen** | the tenant can **create** a size, a group, a choice and the links ✓ — the write routes ✓ + the panel on the menu screen ✓ **proved by a browser** ✓ | medium ✓ | 4 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓, §7.1f ✓) |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1g ✓) |
-| **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ |
+| **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ | **DONE** ✓✓ — Nov 11, 2026 ✓ (§7.1h ✓) |
 | **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
 | **8** | **the reports' variant breakdown** | the menu mix by variant ✓ | low ✓ | 4 ✓ |
 
@@ -1344,7 +1348,7 @@ price** is the picker's price ✓, the live data is untouched afterwards ✓ and
 
 #### 3. What phase 5 does NOT do ✓
 
-- the **guest's modal** ✓ (the PWA ✓) is **phase 6** ✓ — still to come ✓;
+- the **guest's modal** ✓ (the PWA ✓) is **phase 6** ✓ — **built** ✓✓ (Nov 11 ✓, §7.1h ✓);
 - the **legacy `modifications`** ✓ (the free-text list ✓) is **phase 7** ✓;
 - the **reports' variant breakdown** ✓ is **phase 8** ✓;
 - the picker **does not** change the money rule ✓ — the server resolves the
@@ -1362,6 +1366,166 @@ price** is the picker's price ✓, the live data is untouched afterwards ✓ and
    payment timing ✓ — and then ask the **database** ✓ what really happened ✓.
    A screenshot proves that the screen looked right ✓; only the database proves
    that the **order** is right ✓.
+
+### 7.1h The patch for phase 6 (the guest's picker) — **BUILT** ✓✓
+
+**Status: built, proved by a browser and live (Nov 11, 2026 ✓✓).**
+
+The guest opens a dish that carries choices — the **sizes** ✓ and the **groups of
+choices** ✓ appear, one tap each ✓, the **price moves as they go** ✓, and the
+line goes into the cart carrying the size, the choices and the note for the
+kitchen ✓. The **server owns the money and the rules** ✓ — the price is
+**asked for** ✓, never worked out in the browser ✓.
+
+---
+
+#### 1. The pieces ✓
+
+**The picker — `customer-app/js/choices.js` ✓** (the only picker in the guest's
+app ✓). It draws the sizes ✓, the groups ✓, the note ✓ and the price ✓, and it
+**asks** the server for the price ✓:
+`GET /api/menu/items/{id}/options/price?enforce_rules=false` ✓ — the **preview
+mode** ✓ (added in this phase ✓). The preview mode applies the **ownership**
+rules ✓ (a choice that is not on this dish is refused ✓) but **not** the
+group's rules ✓ (the guest may still be choosing ✓) — the order's write path
+enforces those again ✓ (phase 2 ✓).
+
+**The rules are the menu's ✓.** The picker only keeps the guest from making a
+choice the server would refuse ✓ (`min_select` ✓, `max_select` ✓, the groups
+that belong to this dish ✓, an unavailable choice ✓) — the same promise the
+counter's picker makes ✓ (`frontend/src/components/pos/ChoicePicker.jsx` ✓).
+
+**The wiring — `customer-app/js/app.js` ✓** (no picker logic of its own ✓):
+the modal opens the picker ✓ and awaits it ✓; the customization section shows
+**only** when the dish carries choices ✓ (a dish without choices keeps the old
+modal ✓ — §4.4 ✓); the line goes into the cart carrying `variant_id` ✓,
+`option_ids` ✓, `notes` ✓, `choice_labels` ✓ and the **server's** price ✓; two
+lines merge only when their choices are identical ✓; the cart shows
+`Big · Chili · Mayo` ✓ and the note ✓ (HTML-escaped ✓ — the guest types it ✓);
+and `quickAdd()` ✓ sends a dish with choices to the modal ✓ instead of straight
+into the cart ✓.
+
+**The promotion and the order carry the same choices ✓** — `/promotions/calculate`
+✓ and `/orders/` ✓ both take `variant_id` ✓ / `option_ids` ✓ / `notes` ✓ → the
+cart's number and the order's number **cannot disagree** ✓.
+
+**The three languages ✓** — `picker.*` ✓ in en ✓, km ✓ and zh ✓ (the size ✓,
+the note ✓, the range ✓ — *pick 1 to 2* ✓ — and the eight refusal messages ✓).
+
+**The deployment is a BIND MOUNT ✓** — `/var/www/html/posai-customer` ✓ **is**
+the repo's `customer-app/` ✓ (the same inode ✓) → editing the repo **is** the
+deployment ✓ → there is no deploy step to run ✓.
+
+---
+
+#### 2. Three live bugs the work found ✓✓
+
+**1. The API ran the OLD code ✗✗.** PM2's `pos-backend` ✓ had been up since
+Nov 10 ✓ without `--reload` ✓ → `enforce_rules` ✓ was **missing** from the live
+OpenAPI ✓ → the preview mode was not live ✗ → **fixed** ✓ (`pm2 restart
+pos-backend` ✓). *A probe against the local code is not a probe against the
+live service ✓.*
+
+**2. The guest's cart total was wrong ✗✗.** `price_lines()` ✓ in
+`backend/app/routes/promotions.py` ✓ ignored `variant_id` / `option_ids` ✓ →
+Spring Rolls Big + Chili + Mayo priced at **$3.00** ✗ instead of **$7.00** ✗ →
+the guest saw the wrong total ✓, the tax sat on the wrong base ✓ and a
+voucher's minimum-spend ran against the wrong subtotal ✓. **Fixed** ✓ —
+`_choices_unit_price()` ✓ now asks **the same resolver** ✓ the order's write
+path asks ✓ (`resolve_choices` ✓), so the cart and the order cannot disagree ✓✓.
+
+**3. The tenant's costing leaked to the customer key ✗✗.** `customer_app_key` ✓
+ships inside the PWA bundle ✓ → whatever it reads is public ✓. Live proof
+(Nov 10 ✓): `GET /api/menu/items/1/options` ✓ returned `cost_multiplier: 1.5`
+✓, `sku` ✓, `ingredient_id: 51` ✓, `ingredient_qty: 0.05` ✓,
+`ingredient_name: "Bean Sprouts"` ✓, `has_own_recipe` ✓; and
+`GET /api/menu/items` ✓ returned `estimated_cost` ✓ and `has_recipe` ✓.
+
+**The fix — three files ✓✓:**
+
+| The file | What it does ✓ |
+|---|---|
+| `backend/app/middleware/auth.py` ✓ | `is_customer_caller()` ✓ — only the **staff** keys ✓ (`key_type` in `frontend` / `user` ✓) keep the internal view ✓; the customer key ✓, the external key ✓ and an **unknown** caller ✓ get the guest's view ✓ — the rule **fails closed** ✓ |
+| `backend/app/services/menu_options.py` ✓ | `strip_internal()` ✓ — one recursive walk ✓ that drops the nine internal names ✓ at any depth ✓ — so a **new** internal field ✓ is hidden by adding its name ✓ to `INTERNAL_FIELD_NAMES` ✓ |
+| `backend/app/routes/menu.py` ✓ | `public_menu_item()` ✓ applied to `GET /items` ✓, `GET /items/{id}` ✓, `GET /items/{id}/options` ✓, `GET /items/{id}/options/price` ✓, `GET /options-catalog` ✓ and `GET /option-groups` ✓ |
+
+The nine internal names ✓ — `estimated_cost` ✓, `has_recipe` ✓,
+`cost_multiplier` ✓, `has_own_recipe` ✓, `sku` ✓, `ingredient_id` ✓,
+`ingredient_qty` ✓, `ingredient_name` ✓, `ingredient_delta` ✓.
+
+**What was deliberately NOT touched ✓** — the **internal order write path** ✓.
+The routes strip ✓, but `order_service.py` ✓ calls `resolve_choices()` ✓
+**directly** ✓ → the kitchen ✓ and the stock ✓ still receive the costing ✓, the
+recipe links ✓ and `ingredient_delta` ✓. The **staff's** answers stay unwidened ✓
+— the till needs the margin ✓, the recipe ✓ and the stock ✓.
+
+---
+
+#### 3. The two proofs ✓✓
+
+**The browser — `scripts/phase6_picker_check.js` ✓** (Playwright ✓) against the
+**live** app ✓ (`https://order.ideazes.com` ✓): **25/25** ✓ — the venue ✓, the
+table ✓, the picker ✓ (2 sizes ✓, 1 group ✓, 2 options ✓, the note ✓, the price
+row ✓), the default size ✓, the price moving **6.00 → 3.00 → 6.50 → 7.00** ✓,
+the group's maximum ✓, the note ✓, the quantity ✓ (7.00 × 2 = 14.00 ✓), the
+cart showing `Big · Chili · Mayo` ✓ and the note ✓, the cart across a reload ✓,
+the promotion on the chosen line ✓ (subtotal 14 ✓) and the order ✓ — the server
+keeping the size ✓, the choices ✓ and the note ✓ and pricing the line itself ✓
+(7.00 ✓).
+
+**The API — `scripts/phase6_leak_check.py` ✓:** **29/29** ✓ against the live API
+✓ (`https://api.ideazes.com` ✓): the customer key reads **no** internal field ✓
+on any route ✓; the staff key still reads `estimated_cost` ✓ (2.0 ✓),
+`has_recipe` ✓, `cost_multiplier` ✓, `sku` ✓, `ingredient_id` ✓ and
+`ingredient_delta` ✓; and the order's write path ✓ still froze the size ✓
+(`Big` ✓) ✓ and the two choices ✓ with their stock movement ✓
+(`ingredient_delta` ✓ on 2 rows ✓) ✓ and priced the line itself ✓ (7.00 ✓).
+The check writes **one** throwaway order ✓ to prove the write path ✓ —
+`--no-order` ✓ skips it ✓ for a routine re-check ✓ (22/22 ✓).
+
+**The build is green ✓** — `build_pwa.py --check` ✓ (2.6.23 ✓) ✓ and
+`check-i18n-parity.mjs` ✓ (291 keys ✓, three locales ✓, none missing ✓).
+
+**A note on the 422s in the console ✓** — they are **not** from this work ✓:
+the PWA asks for `outlet_id=null` ✓ before a venue is chosen ✓ and FastAPI
+rejects the string at the query ✓ (`int_parsing` ✓) — the same answer for the
+customer key ✓ and the staff key ✓ ✓, and there were 632 such lines ✓ in the
+log ✓ long before this change ✓.
+
+---
+
+#### 4. What phase 6 does NOT do ✓
+
+- the **legacy `modifications`** ✓ (the free-text list ✓) is **phase 7** ✓;
+- the **reports' variant breakdown** ✓ is **phase 8** ✓;
+- the picker **does not** change the money rule ✓ — the server resolves the
+  price ✓ (phase 0 ✓ ✓ — the add-on's price comes from the menu ✓);
+- the **absolute-priced variant** is still an open edge ✓ — `variant_unit_price()`
+  ✓ treats `variant.price` ✓ as the **absolute** price ✓ when it is set ✓ and
+  as `base + price_delta` ✓ when it is null ✓, but `options_catalog` ✓ does not
+  send `variant.price` ✓ and the **staff's** `ChoicePicker.jsx` ✓ only does the
+  delta form ✓ → an absolute-priced variant would show and price **wrong** for
+  the staff ✓. **No live variant uses an absolute price** ✓ (the live data ✓:
+  two variants ✓, both `price = null` ✓) → it is an edge the tenant could walk
+  into ✓, not a live bug ✓ — it belongs to a small follow-up ✓.
+
+---
+
+#### 5. Three lessons the probes carry now ✓✓
+
+1. **A key that ships in a client bundle makes every field it can read
+   public.** ✓✓ The `customer_app_key` ✓ is inside the PWA's own JavaScript ✓ —
+   the guest's browser has it ✓. The rule: a **public** key may read the
+   **public** shape only ✓, and the sanitizer must **fail closed** ✓ (an
+   unknown caller gets the guest's view ✓, never the staff's ✓).
+2. **Two price paths are one bug waiting to happen.** ✓✓ The cart's number ✓
+   and the order's number ✓ are priced by **different code** ✓ — the fix is not
+   that each path is careful ✓ but that both ask **the same resolver** ✓.
+3. **A probe is not a screen, and a read that answers 200 is not a read that is
+   allowed.** ✓✓ Both of the bugs above were found by asking the **live** API
+   what a guest can see ✓, not by reading the code ✓✓.
+
+---
 
 ### 7.2 The order line's new shape
 
@@ -1443,7 +1607,7 @@ snapshot keeps it ✓).
 | 3 (the print) | **two days** ✓ | the formatter ✓ + the three sinks ✓ |
 | 4 (the recipe + the stock + the costing) | **five days** ✓ | the variant's recipe tables ✓ + the deduction from the snapshot ✓ + the frozen cost ✓ |
 | 5 (the counter's picker) | **three days** ✓ | the UI ✓ — the counter's speed is the acceptance test ✓ |
-| 6 (the customer app's picker) | **two days** ✓ | the modal ✓ (the HTML is there ✓) |
+| 6 (the customer app's picker) | **two days** ✓ | the modal ✓ (the HTML is there ✓) — **done** ✓✓ (Nov 11 ✓) |
 | 7 + 8 (the migration + the reports) | **two days** ✓ | |
 
 **Roughly three and a half weeks of work** for the whole thing ✓, or **one day** for
@@ -1471,9 +1635,10 @@ menu is never the thing being tested ✓).
    business ✓.
 4. **Should a choice be allowed to be "removed" (no coriander)?** The proposal:
    yes ✓ — a negative ingredient delta ✓ and a CAPS kitchen note ✓.
-5. **The customer app first or the counter first?** The proposal's order puts the
-   counter first ✓ (5 before 6 ✓) — the counter is where the money is at risk
-   ✓. But the guest's picker (6) is the face of the business ✓ — Kens's call ✓.
+5. ~~**The customer app first or the counter first?**~~ ✓✓ — **answered: both**
+   ✓ — the counter's picker is phase 5 ✓ (Nov 10 ✓) and the guest's is phase 6 ✓
+   (Nov 11 ✓, §7.1h ✓). The counter is where the money is at risk ✓ and the
+   guest's picker is the face of the business ✓ — both were built ✓.
 6. **The translations** (en / zh / km ✓) — the variants and the options would want
    their own translation table ✓. Is it in this project or a later one ✓?
 
@@ -1522,7 +1687,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 
 ## 10. The summary of the state
 
-*Nov 10, 2026 — phases 0, 1, 2, 3, 4, 4b and 5 are built, probed and live ✓✓.*
+*Nov 11, 2026 — phases 0, 1, 2, 3, 4, 4b, 5 and 6 are built, probed and live ✓✓.*
 
 | # | The item | The state |
 |---|---|---|
@@ -1531,7 +1696,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **BUILT** ✓✓ — phase 3 ✓✓ (Nov 9, 2026 ✓) — the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the receipt ✓ — the today's gap is **closed** ✓✓ — §7.1c ✓✓ |
 | 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **BUILT ✓✓** (Nov 10 ✓) — the variant's recipe TABLES ✓✓ (phase 1 ✓) — the snapshot holds the ingredient deltas ✓✓ (phase 2 ✓) — the API for the size's recipe ✓✓ — the deduction reads the FROZEN stock ✓✓ — the cost is frozen ✓✓ — the reports say `mixed` when they mix ✓✓ |
 | 5 | The counter's picker | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1g ✓) — the panel ✓ (`frontend/src/components/pos/ChoicePicker.jsx` ✓) + the cart's line ✓ + the wiring ✓ (`pages/StaffOrder.jsx` ✓) + **one read for the whole outlet** ✓ (`GET /api/menu/options-catalog` ✓) — **proved by a browser** ✓ (`scripts/pos_picker_screen_check.js` ✓ — the price moves ✓, the cart shows the choices ✓, the order holds the snapshot ✓) — and it found **an empty till for an admin** ✗✗ (the session read once at mount ✗ → **fixed** ✓) |
-| 6 | The customer app's picker | **Proposed** ✓✓ — not built ✗✗ (the HTML is already there ✓✓) |
+| 6 | The customer app's picker | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1h ✓) — the picker ✓ (`customer-app/js/choices.js` ✓ — **one module** ✓, and `app.js` ✓ holds no picker logic ✓) + the modal ✓ + the cart ✓ + the three languages ✓ (en ✓ / km ✓ / zh ✓) + the **preview mode** ✓ (`enforce_rules=false` ✓) + the **cart's price fixed** ✓ (`_choices_unit_price` ✓ — the same resolver ✓) + the **leak closed** ✓ (`strip_internal` ✓ — the guest's key reads **no** internal field ✓) — **proved by a browser** ✓ (`scripts/phase6_picker_check.js` ✓ — **25/25** ✓) **and by the API** ✓ (`scripts/phase6_leak_check.py` ✓ — **29/29** ✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
 | 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **BUILT** ✓✓ — the probe is **built and green** ✓✓ (55 checks ✓ — 16 of 16 dishes unchanged ✓✓) — phase 1 ✓✓ — §7.1a ✓✓ |
