@@ -1116,7 +1116,8 @@ lines came from both rules ✓.
 
 **What phase 4 does NOT do ✓:** the **picker** ✓ (the counter's ✓ — phase 5 ✓ —
 and the guest's modal ✓ — phase 6 ✓) was still to come ✓ — the sizes and the
-choices could not be picked yet ✓. (The **management screen** that lets the
+choices could not be picked yet ✓ (**both are built now** ✓✓ — the counter's ✓
+§7.1g ✓ and the guest's ✓ §7.1h ✓). (The **management screen** that lets the
 tenant create them **is** built ✓ — phase 4b ✓, §7.1e ✓.)
 
 ### 7.1e The patch for phase 4b (the management API + the screen) — **BUILT** ✓✓
@@ -1821,3 +1822,4 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables ✓✓ (phase 1 ✓✓) — the API ✓✓ + the deduction ✓✓ + the editor ✓✓ (phase 4 ✓✓) — §7.1d ✓✓ |
 | 11 | **The menu management screen** — the groups, the choices and the sizes | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) — the write routes ✓ (the sizes ✓, the groups ✓, the choices ✓, the links ✓) + the panel on the menu screen ✓ (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — **the phase it never had** ✓ (4b ✓) |
 | 12 | **The screen proved by a browser** — and the plan compatibility ✓ | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1f ✓) — the browser check ✓ (`scripts/pos_menu_screen_check.js` ✓ — it found the missing permissions ✓, the missing size form ✓, the missing delete ✓ and a **cross-tenant leak** in the menu list ✓✓ — all fixed ✓✓) — and **a tenant without the Inventory plan** ✓ works exactly the same ✓ (the ingredient is an extra ✓, never a requirement ✓) |
+| 13 | **The reports' variant breakdown** (phase 8 ✓) | **NOT STARTED** ✗✗ — the phase table says *to come* ✓ (row 8 ✓ of §6 ✓) — and the §10 table had **no row for it** ✗✗ (fixed Nov 11 ✓) — the **data is already there** ✓: `order_items.variant_id` ✓ + `variant_name` ✓ and `order_item_options.variant_name` ✓ (15 live rows ✓) → so it is a **query-only** job ✓ (the menu mix ✓ rolls the dish up today ✓ — `backend/app/routes/reports.py` ✓ has **no** variant grouping ✓) — the cheapest part of the project ✓ (doc §5.3 ✓ calls it so ✓) |
