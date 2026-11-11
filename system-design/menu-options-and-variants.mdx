@@ -1367,6 +1367,74 @@ price** is the picker's price ✓, the live data is untouched afterwards ✓ and
    A screenshot proves that the screen looked right ✓; only the database proves
    that the **order** is right ✓.
 
+#### 5. The kiosk — the full-screen till — **FIXED** ✓✓
+
+**The staff order screen has TWO faces ✓✓** and this design only ever described
+one of them ✗✗:
+
+| The face | The route | What it is |
+|---|---|---|
+| the **embedded** screen ✓ | `/staff-order` ✓ | the till inside the app shell ✓ (the sidebar ✓, the app bar ✓) ✓ |
+| the **kiosk** ✓ | `/staff-order/full` ✓ | the **full-screen** ordering mode ✓ — no sidebar ✓, no app bar ✓, its own dark header ✓, the cart as a tall column ✓ (and a bottom sheet on a phone ✓) ✓ |
+
+Both are the **same component** ✓ (`pages/StaffOrder.jsx` ✓, `mode="kiosk"` ✓
+— `App.jsx` ✓) and both share the same wiring ✓: the same catalog read ✓, the
+same `addToCart()` ✓, the same cart ✓, the same `submitOrder()` ✓.
+
+**And the picker was only wired into ONE of them ✗✗ — two real bugs ✓✓:**
+
+**1. In the kiosk the picker did not open at all ✗✗.** The kiosk's JSX **returns
+early** ✓ (its own full-screen layout ✓ — the embedded screen's JSX comes
+*after* that return ✓), and the picker's modal ✓ (`{picker}` ✓) was rendered
+**only in the embedded screen's JSX** ✓ → in the kiosk a tap on a dish that
+carries choices set the picker state ✓ and **showed nothing** ✓✗ — the dish
+could not be sold at all ✗✗ (no modal ✓, no line in the cart ✓). The staff
+were stuck on the till with a dish they could not add ✗✗.
+
+> **Fixed (Nov 11, 2026 ✓✓):** the kiosk renders `{picker}` ✓ — the **same**
+> component ✓, the same prices ✓, the same rules ✓. One line of JSX ✓ — and the
+> gap was invisible to the API probe ✓ and to the embedded screen's browser
+> check ✓ because **neither of them ever opened the kiosk** ✓✗.
+
+**2. The kiosk's cart dropped the size and the choices ✗✗.** `CartPanel.jsx` ✓
+has **two** renderings of the line ✗: the shared one ✓ (`variant="embedded"` ✓,
+which shows the size and the choices ✓) and the kiosk's own ✓ (the tall column
+✓, written separately ✓ for the kiosk's layout ✓). The kiosk's rendering had
+**no** `item.choices` ✓ → the staff could not see *what the guest is getting* ✓
+— the very thing the shared rendering was written for ✓ (§7.1g ✓).
+
+> **Fixed (Nov 11, 2026 ✓✓):** the kiosk's line shows the size and the choices
+> ✓ (`Big · Chili` ✓) — the same `data-testid="cart-choices"` ✓, so the browser
+> check reads both faces the same way ✓.
+
+**A third, smaller one ✓** — `addPickedLine()` ✓ wrote the `notes` key **twice**
+✓ in the same object literal ✓ (the second won ✓, so the behaviour was right ✓
+— but the build warned ✓ and a reader had to stop and work out which one
+counted ✓). **Fixed** ✓ — one key ✓.
+
+**The proof — `scripts/pos_kiosk_picker_check.js` ✓** (Playwright ✓): **16/16**
+✓ against the **live** kiosk ✓ (`https://app.ideazes.com/staff-order/full` ✓)
+— the picker opens in the kiosk ✓ (2 sizes ✓, 2 choices ✓), the price moves
+with the choice ✓ ($6.00 → $6.50 ✓), the **kiosk's** cart shows `Big · Chili`
+✓, the order is placed ✓ and the **database** holds the snapshot ✓ (`Chili` ✓
+0.5 ✓, `Big` ✓) with the **server's** price ✓ (6.50 ✓) — and the test order is
+cleaned up ✓.
+
+**And the check was proved to be meaningful ✓✓** — the **negative control** ✓:
+the same script was pointed at a **local build of the old, broken code** ✓
+(the two fixes reverted ✓, served on `127.0.0.1` ✓ — the live app was never
+touched ✓) and it **failed exactly where the bug was** ✓ — *0 sizes* ✓, *0
+choices* ✓ — and stopped ✓. A check that passes proves nothing until you have
+seen it fail ✓.
+
+**The lesson ✓✓** — *a screen with two faces is two screens ✓.* The embedded
+screen and the kiosk share a component ✓, not a rendering ✓: the kiosk's early
+return ✓ and the kiosk's own cart rendering ✓ each needed their own check ✓.
+The browser check must walk **every face** a screen has ✓ — not the one the
+test happens to open ✓.
+
+---
+
 ### 7.1h The patch for phase 6 (the guest's picker) — **BUILT** ✓✓
 
 **Status: built, proved by a browser and live (Nov 11, 2026 ✓✓).**
@@ -1695,7 +1763,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 2 | The order line's snapshot + the server-side price resolution | **BUILT** ✓✓ — phase 2 ✓✓ (Nov 9, 2026 ✓) — the write path ✓, the snapshot ✓, the remark ✓ — **live** ✓✓ — §7.1b ✓✓ |
 | 3 | The kitchen print (one formatter, three sinks, the choices + the remark) | **BUILT** ✓✓ — phase 3 ✓✓ (Nov 9, 2026 ✓) — the one formatter ✓, the browser + the PDF + the ESC/POS ✓, the receipt ✓ — the today's gap is **closed** ✓✓ — §7.1c ✓✓ |
 | 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **BUILT ✓✓** (Nov 10 ✓) — the variant's recipe TABLES ✓✓ (phase 1 ✓) — the snapshot holds the ingredient deltas ✓✓ (phase 2 ✓) — the API for the size's recipe ✓✓ — the deduction reads the FROZEN stock ✓✓ — the cost is frozen ✓✓ — the reports say `mixed` when they mix ✓✓ |
-| 5 | The counter's picker | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1g ✓) — the panel ✓ (`frontend/src/components/pos/ChoicePicker.jsx` ✓) + the cart's line ✓ + the wiring ✓ (`pages/StaffOrder.jsx` ✓) + **one read for the whole outlet** ✓ (`GET /api/menu/options-catalog` ✓) — **proved by a browser** ✓ (`scripts/pos_picker_screen_check.js` ✓ — the price moves ✓, the cart shows the choices ✓, the order holds the snapshot ✓) — and it found **an empty till for an admin** ✗✗ (the session read once at mount ✗ → **fixed** ✓) |
+| 5 | The counter's picker | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1g ✓) — the panel ✓ (`frontend/src/components/pos/ChoicePicker.jsx` ✓) + the cart's line ✓ + the wiring ✓ (`pages/StaffOrder.jsx` ✓) + **one read for the whole outlet** ✓ (`GET /api/menu/options-catalog` ✓) — **proved by a browser** ✓ (`scripts/pos_picker_screen_check.js` ✓ — the price moves ✓, the cart shows the choices ✓, the order holds the snapshot ✓) — and it found **an empty till for an admin** ✗✗ (the session read once at mount ✗ → **fixed** ✓) — and the **kiosk** ✓ (the full-screen till ✓) is **fixed** ✓✓ (Nov 11 ✓ — the picker did not open there ✗✗ and its cart dropped the choices ✗✗ → both fixed ✓ → **16/16** ✓ with a **negative control** ✓, §7.1g ✓) |
 | 6 | The customer app's picker | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1h ✓) — the picker ✓ (`customer-app/js/choices.js` ✓ — **one module** ✓, and `app.js` ✓ holds no picker logic ✓) + the modal ✓ + the cart ✓ + the three languages ✓ (en ✓ / km ✓ / zh ✓) + the **preview mode** ✓ (`enforce_rules=false` ✓) + the **cart's price fixed** ✓ (`_choices_unit_price` ✓ — the same resolver ✓) + the **leak closed** ✓ (`strip_internal` ✓ — the guest's key reads **no** internal field ✓) — **proved by a browser** ✓ (`scripts/phase6_picker_check.js` ✓ — **25/25** ✓) **and by the API** ✓ (`scripts/phase6_leak_check.py` ✓ — **29/29** ✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
