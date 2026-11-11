@@ -2036,6 +2036,11 @@ out. The cost the tenant has not valued is passed as **null** (a dash)
   the user's rows and the live database do not move);
 - the **live edge** — the running server answers the menu mix with
   `variant_items` and the complete `variant_totals`.
+- the **browser** `scripts/pos_phase8_browser_check.js` — **12/12** — the
+  **screen** half of phase 8: the live Reports page's **Items** tab shows
+  the **"Breakdown by size"** table, the row `Spring Rolls|Normal`, and the
+  **coverage note** (what the breakdown covers, and the items it names). The
+  browser holds **no** report rule — it reads what the server published.
 
 **A lesson this patch carried** — *a breakdown and its dish table are one
 question asked twice*. The temptation was a second query and a second set
@@ -2166,6 +2171,22 @@ with** the fold and survives a **failing** fold.
   source proven to still **compile**) → **25** fix-covering checks **fail**
   and the **17** unrelated ones stay **green** — the revert is surgical; the
   live tree, the live database and the running server proven untouched.
+- the **browser** `scripts/pos_phase7_browser_check.py` +
+  `scripts/pos_phase7_browser_walk.js` — **15/15** — the **screen** half of
+  phase 7: the migrated group really reaches the guest's picker. It runs on
+  an **isolated stack** (the database is **copied** to `/tmp`, a **second**
+  backend and a **copy** of the customer app are started against it, and the
+  live app is **never edited**) and the fixture dish is created through the
+  copy's **own write path** → the migration **really runs**, the same way it
+  runs in production. It proves: the **"Remarks"** group appears; its rule
+  reads **"Pick up to 2"** (not "Pick one" — the legacy list was
+  multi-select); both legacy remarks are the choices; **both fit** at the
+  maximum and neither is refused; the price is **the dish's own** (`$9.50`)
+  and **does not move** — a remark is **free**; the group asks for
+  **nothing** (it is optional — `missing()` is empty); and the cart shows
+  `Less spicy · No onion`. The live database and the live app are
+  **fingerprinted before and after** and proven **unchanged**, and the
+  running server still answers (**HTTP 200**).
 
 The check covers: per-dish isolation and no cross-dish leakage, the optional
 multi-select and its maximum, zero pricing, `variant_id = NULL`,
@@ -2175,6 +2196,10 @@ tenant-created options and links, the rollback **sticking** across later
 saves, the savepoint isolation, the existing orders and their frozen
 `order_items.modifications` staying untouched, the fixture cleanup, and the
 live database's integrity.
+
+**The browser's own 422s** — the same pre-existing ones (§7.1h.3): the PWA
+asks for `outlet_id=null` before a venue is chosen. They are **not** from
+this work and they do not touch the picker.
 
 #### 7. What phase 7 does NOT do
 
