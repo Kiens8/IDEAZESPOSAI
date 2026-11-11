@@ -6,6 +6,8 @@ Kens's two rules: *"make sure the new proposal won't impact the existing menu"* 
 ingredients inside will use to calculate the actual cost"* ✓✓ — §4.1, §4.4, §5.2, §5.2a
 · **v1.2 — Nov 10, 2026 ✓: phase 5 (the counter's picker ✓) is built and proved by a
 browser ✓✓ — §7.1g ✓)**
+· **v1.3 — Nov 11, 2026 ✓: the choices are translated too ✓✓ — the sizes ✓, the
+groups ✓ and the choices themselves ✓ — §7.1j ✓✓**
 **Owner:** Ideazes POS AI
 **Status:** **In build — phases 0, 1, 2, 3, 4, 4b and 5 are built, probed and
 live** ✓✓ (Nov 9–10, 2026 ✓). The review below was written against the live code
@@ -681,7 +683,7 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` �
 | the **customer app** | the modal's hidden `mods-section` gets wired to the real groups ✓ (the HTML is already there ✓ — `mods-section` / `mod-options` ✓) — the guest picks, the price updates, the cart shows the choices ✓ | medium — the PWA's cart is plain JS ✓ |
 | the **staff order** | the cart's line gains a **picker** ✓ (the groups of that dish ✓) and the **remark** is sent ✓ (it is sent already ✓ — the server has to keep it ✓) | medium — the counter's speed matters ✓ (two taps, no more ✓) |
 | the **AI / the NLP search** | the search must find "chicken mee" when the dish's variants and options are called "Mee", "Bihun" ✓ — the index has to read the new tables ✓ | low ✓ |
-| the **translations** | `MenuContentTranslation` covers the dish's name and description ✓ — a variant's and an option's name would want the same treatment ✓ (the customer app is three languages ✓) | medium — a new table for the translations ✓ |
+| the **translations** | `MenuContentTranslation` covers the dish's name and description ✓ — **the sizes ✓, the groups ✓ and the choices ✓ now have the same treatment** ✓ (§7.1j ✓✓) — the same table ✓, three new `content_type` values ✓ (no new table ✓, no migration ✓) | **none ✓✓** — the tenant rule ✓ (the outlet is in the key ✓) and the display rule ✓ (the snapshot keeps the business language ✓) — **CLOSED** ✓✓ |
 | the **reports' export** | the menu mix export gains the variant column ✓ | low ✓ |
 
 ---
@@ -690,7 +692,9 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` �
 
 Each phase is usable on its own and leaves the system working ✓. Phases **0** ✓
 — **4** ✓, **4b** ✓, **5** ✓ and **6** ✓ are **built** ✓✓ (Nov 9–11, 2026 ✓) —
-**7** ✓ and on are still to come ✓.
+**7** ✓ and on are still to come ✓. The **translated choices** ✓ (the sizes ✓,
+the groups ✓ and the choices ✓) were added on top of phase 6 ✓ ✓✓ (§7.1j ✓✓ —
+a **display** patch ✓ — the schema did not change ✓).
 
 | # | The phase | What it adds | The risk | The dependency |
 |---|---|---|---|---|
@@ -1740,6 +1744,158 @@ the server's numbers ✓ and the charge path **asks** the one resolver ✓.
 
 ---
 
+### 7.1j The patch for the translated choices (the sizes, the groups, the choices) — **BUILT** ✓✓
+
+**Status: built, proved and live (Nov 11, 2026 ✓✓).**
+
+§8 Q6 ✓ is **answered** ✓ — the translations are **in this project** ✓ — and the
+half that was missing was the half the **guest** sees ✓: the dish's name was
+translated ✓✓ (the category's too ✓✓), and the **sizes** ✓, the **groups** ✓ and
+the **choices** ✓ sat next to it in **English** ✓ — `大份` ✓ next to `Big` ✓.
+
+This patch closes that ✓✓. It is a **display** patch ✓✓ — and it is deliberately
+the *narrowest* kind ✓: the **names** move ✓, and **nothing else does** ✓.
+
+---
+
+#### 1. No new table, and no migration ✓
+
+`menu_content_translations.content_type` ✓ is a free-form `String(50)` ✓ — there
+is no `CHECK` constraint ✓ — and the unique key is already
+`(content_type, content_id, outlet_id, locale)` ✓. So three new content types
+drop straight into the table that was already there ✓✓:
+
+- `menu_variant` ✓ — the size ✓;
+- `menu_option_group` ✓ — the group of choices ✓;
+- `menu_option` ✓ — the choice itself ✓.
+
+**The schema does not change** ✓✓ — and the `outlet_id` on every row is what
+keeps the tenant rule ✓✓: a translation belongs to the **branch** whose menu it
+was made for ✓ and can never surface in another branch's picker ✓.
+
+#### 2. The names move, and only the names ✓
+
+`backend/app/services/menu_options.py` ✓ — `apply_choice_translations()` ✓ —
+walks a payload and puts the guest's language into the **names** ✓ (the size's ✓,
+the group's ✓, the choice's ✓ — and the group's name **inside** the choice ✓, so
+a line is never half in one language and half in another ✓✓).
+
+It is applied at **three** read points ✓ — the picker ✓
+(`GET /api/menu/items/{id}/options` ✓), the catalog ✓
+(`GET /api/menu/options-catalog` ✓) and the price answer ✓
+(`GET /api/menu/items/{id}/options/price` ✓) — and each takes an **optional**
+`locale` ✓✓. The ids ✓, the prices ✓, the rules ✓ (`min_select` ✓,
+`max_select` ✓) and the stock ✓ are **untouched** ✓✓.
+
+**The staff's picker deliberately does NOT send a locale** ✓✓ — the business
+language is the operational record ✓, and the counter reads the same words the
+kitchen does ✓✓.
+
+#### 3. The snapshot keeps the business language ✓✓
+
+This is the rule the whole patch rests on ✓:
+
+- the **display** layer is localised ✓ — the guest's picker ✓;
+- the **resolver** never is ✓ — `resolve_choices()` ✓ answers with the **source**
+  names ✓, because the order's write path ✓ (`order_service` ✓) freezes **that**
+  payload into `order_item_options` ✓✓.
+
+So the **snapshot** keeps `Big` ✓ / `Sauce` ✓ / `Chili` ✓ — the kitchen reads
+the business language ✓✓ — while the guest reads `大份` ✓ / `酱汁` ✓ / `辣椒酱` ✓.
+The write path is **not** changed to use localised display names ✓✓.
+
+The refusal is the one place where the two meet ✓ — the server's own sentence
+names the **group** in the guest's language ✓ (`Please choose 酱汁.` ✓) while the
+**shape** of the sentence stays the English one ✓✓ — the guest app already
+recognises `Please choose {name}.` ✓ and `You can only choose {n} of {name}.` ✓
+and says the whole thing in the guest's language ✓✓.
+
+#### 4. The labels get their own prompt ✓✓
+
+A size and a choice are **labels** ✓ — `Big` ✓, `Sauce` ✓, `Chili` ✓ — and the
+prose prompt that translates a dish's **description** ✓ would hand back a
+**sentence** ✓ for them ✓. So the choices get their **own** prompt ✓
+(`LABEL_PROMPT_TEMPLATE` ✓ in `backend/app/services/ai_translation.py` ✓) and
+their **own gate** ✓ (`is_valid_label()` ✓): an answer that came back as a
+sentence ✓, or with a full stop the source did not have ✓, or too long ✓, is
+**refused** ✓✓ — the English source stands ✓ and the bad answer is **not
+cached** ✓✓ (the next run asks again ✓).
+
+**Proved against the live model** ✓✓: eight real labels ✓ (`Big` ✓, `Normal` ✓,
+`Sauce` ✓, `Chili` ✓, `Mayo` ✓, `Extra egg` ✓, `No onion` ✓, `Less ice` ✓) in
+**zh** ✓ and **km** ✓ — **all sixteen** ✓ passed the gate ✓✓.
+
+#### 5. The guest app asks in the guest's language ✓✓
+
+`customer-app/js/choices.js` ✓ — the picker sends the guest's locale ✓
+(`guestLocale()` ✓ / `localeQuery()` ✓) and the **app translates nothing
+itself** ✓✓ — the server decides what the name is ✓.
+
+`Choices.reloadLocale()` ✓ — when the guest **changes the language** ✓ with the
+picker **open** ✓, the picker re-reads the names ✓✓, **keeps** the ids that are
+still valid ✓, **drops** the ones that are not ✓, re-renders ✓ and re-asks the
+price ✓✓. `app.js` ✓ calls it from `onLanguageChanged` ✓✓ — the static markup ✓,
+the menu ✓ and the **choices** ✓ all move together ✓.
+
+#### 6. The two proofs ✓✓
+
+- **`scripts/pos_choice_translation_check.py` ✓** — the **durable** check ✓
+  (**64 checks ✓✓**, green against the live tree ✓): it owns its fixtures ✓ (its
+  own dish ✓, its own sizes ✓, its own groups ✓, its own choices ✓ — on a
+  **copy** of the database ✓, taken with the **backup API** ✓ so the copy is
+  never torn ✓), it fingerprints the rows **the user owns** ✓ before and after ✓
+  (seven tables ✓, every row unchanged ✓), it refuses to run on the live
+  database ✓, and it reads the **running** server too ✓✓. It covers: the three
+  content types ✓, the unique key ✓, the **English fallback** ✓, the
+  **outlet's isolation** ✓, the **guest vs the staff** payload ✓, the
+  **localised price answer** ✓, the **frozen snapshot in the business
+  language** ✓✓, the **localised refusal** ✓, the **label gate** ✓, and the
+  **route edge** ✓✓ (the real HTTP requests ✓ — a route that forgot to pass the
+  locale on would pass every other check and still show the guest English ✓✓).
+- **`scripts/pos_choice_translation_control.py` ✓** — the **negative control** ✓
+  (the check must fail without the fix ✓): it copies the source to a scratch
+  tree ✓, reverts **only** the fix ✓ (the display layer ✓ — each replacement
+  asserted to match exactly once ✓) and runs the **same** check against the copy
+  ✓ → **16 of the fix-covering checks fail** ✓✓ and the **29** that do not
+  cover the fix stay green ✓✓ (the storage ✓, the money ✓, the frozen snapshot
+  ✓ and the sanitising must not move ✓ — the revert is surgical ✓✓). The live
+  tree ✓, the live database ✓ and the running server are proven **untouched**
+  ✓✓ afterwards ✓.
+
+#### 7. Live ✓✓
+
+Deployed ✓ (the backend restarted ✓) and the **real** choices of the live
+branch ✓ backfilled ✓ — `Big` ✓ / `Normal` ✓ / `Sauce` ✓ / `Chili` ✓ / `Mayo` ✓
+— in **zh** ✓ and **km** ✓✓. The live picker answers ✓✓:
+
+| The guest's language | The size | The group | The choice |
+|---|---|---|---|
+| **zh** ✓ | `大份` ✓ | `酱汁` ✓ | `辣椒酱` ✓ |
+| **km** ✓ | `ធំ` ✓ | `ស៊ូស` ✓ | `ម្ទឹស` ✓ |
+| **no locale** ✓ (the staff's view ✓) | `Big` ✓ | `Sauce` ✓ | `Chili` ✓ |
+
+The live price answer is right ✓✓ — `3.00` (the dish ✓) `+ 3.00` (the size ✓)
+`+ 0.50` (the choice ✓) `= 6.50` ✓✓ — **and** it carries the localised names ✓✓.
+
+**A lesson this patch carried** ✓ — the **storage** was never the problem ✓
+(the table ✓ and the unique key ✓ were already right ✓); the problem was that
+**three** read points ✓ never asked for a language ✓. A translation that is
+stored ✓ but never **read** ✓ is the same as no translation at all ✓✓ — and
+the fix is that **every** read point asks ✓✓, and the **proof** is that the
+**route edge** is checked ✓✓ (not only the helpers beneath it ✓).
+
+**What this patch deliberately does NOT do** ✓✓:
+
+- it does **not** translate the **write path** ✓ — the snapshot stays in the
+  business language ✓✓ (§7.1j.3 ✓);
+- it does **not** localise the **staff's** picker ✓ — the counter reads the
+  business language ✓✓;
+- it does **not** change the **prices** ✓ — the ids ✓, the money ✓ and the rules
+  ✓ are untouched ✓✓;
+- it does **not** change the **schema** ✓✓.
+
+---
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -1852,8 +2008,13 @@ menu is never the thing being tested ✓).
    ✓ — the counter's picker is phase 5 ✓ (Nov 10 ✓) and the guest's is phase 6 ✓
    (Nov 11 ✓, §7.1h ✓). The counter is where the money is at risk ✓ and the
    guest's picker is the face of the business ✓ — both were built ✓.
-6. **The translations** (en / zh / km ✓) — the variants and the options would want
-   their own translation table ✓. Is it in this project or a later one ✓?
+6. ~~**The translations** (en / zh / km ✓) — the variants and the options would want
+   their own translation table ✓. Is it in this project or a later one ✓?~~ ✓✓ —
+   **answered: in this project** ✓ — **built** ✓✓ (Nov 11, 2026 ✓ — §7.1j ✓✓) —
+   and **no new table was needed** ✓✓: `menu_content_translations.content_type` ✓
+   is free-form ✓, so the three new content types ✓ (`menu_variant` ✓,
+   `menu_option_group` ✓, `menu_option` ✓) drop into the table that was already
+   there ✓ — the dish's name and the category's name ✓ had made it already ✓.
 
 ---
 
@@ -1918,3 +2079,4 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 12 | **The screen proved by a browser** — and the plan compatibility ✓ | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1f ✓) — the browser check ✓ (`scripts/pos_menu_screen_check.js` ✓ — it found the missing permissions ✓, the missing size form ✓, the missing delete ✓ and a **cross-tenant leak** in the menu list ✓✓ — all fixed ✓✓) — and **a tenant without the Inventory plan** ✓ works exactly the same ✓ (the ingredient is an extra ✓, never a requirement ✓) |
 | 13 | **The reports' variant breakdown** (phase 8 ✓) | **NOT STARTED** ✗✗ — the phase table says *to come* ✓ (row 8 ✓ of §6 ✓) — and the §10 table had **no row for it** ✗✗ (fixed Nov 11 ✓) — the **data is already there** ✓: `order_items.variant_id` ✓ + `variant_name` ✓ and `order_item_options.variant_name` ✓ (15 live rows ✓) → so it is a **query-only** job ✓ (the menu mix ✓ rolls the dish up today ✓ — `backend/app/routes/reports.py` ✓ has **no** variant grouping ✓) — the cheapest part of the project ✓ (doc §5.3 ✓ calls it so ✓) |
 | 14 | **The absolute-priced variant (the staff picker + the charge path)** | **CLOSED** ✓✓ — Nov 11, 2026 ✓ (§7.1i ✓✓) — the rule in **one place** ✓ (`backend/app/services/line_pricing.py` ✓ — the preview ✓ and the write path ✓ both ask it ✓) — the catalog publishes the size's own price ✓ (`effective_price` ✓ / `effective_delta` ✓) and the picker **reads** it ✓ — the counter's deliberate price is a field of its own ✓ (`price_override` ✓, a guest's is ignored ✓) — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_pricing_check.py` ✓ — **39/39** ✓ — own fixtures ✓, the user's rows fingerprinted ✓) **with a negative control** ✓ (`scripts/pos_choice_pricing_control.py` ✓ — **10** fix-covering checks fail on a reverted copy ✓) **and by a browser** ✓ (`scripts/pos_staff_price_check.js` ✓ — a real order ✓ — the DB charges the deliberate price ✓ and the choices stay frozen ✓) |
+| 15 | **The translated choices (the sizes, the groups, the choices)** | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1j ✓✓) — **no new table** ✓✓ (`menu_content_translations.content_type` ✓ is free-form ✓ — three new types ✓: `menu_variant` ✓, `menu_option_group` ✓, `menu_option` ✓) — the names move ✓ and **only** the names ✓ (the ids ✓, the prices ✓, the rules ✓ untouched ✓) — the **snapshot keeps the business language** ✓✓ (the write path is never localised ✓) while the guest's picker ✓, the catalog ✓ and the price answer ✓ are localised ✓ — the staff's picker deliberately sends **no** locale ✓✓ — the choices get their **own short-label prompt** ✓ + their **own gate** ✓ (a sentence is refused ✓, the bad answer is not cached ✓) — the guest app asks in the guest's language ✓ and the picker reloads when the language changes ✓ — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_translation_check.py` ✓ — **64/64** ✓ — own fixtures ✓, the user's rows fingerprinted ✓, the **route edge** checked ✓) **with a negative control** ✓ (`scripts/pos_choice_translation_control.py` ✓ — **16** fix-covering checks fail on a reverted copy ✓) — **live** ✓✓ (the real choices backfilled ✓ in zh ✓ and km ✓) |
