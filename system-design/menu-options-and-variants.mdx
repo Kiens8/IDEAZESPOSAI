@@ -691,8 +691,9 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}` �
 ## 6. The phases — the safe order
 
 Each phase is usable on its own and leaves the system working ✓. Phases **0** ✓
-— **4** ✓, **4b** ✓, **5** ✓ and **6** ✓ are **built** ✓✓ (Nov 9–11, 2026 ✓) —
-**7** ✓ and on are still to come ✓. The **translated choices** ✓ (the sizes ✓,
+— **4** ✓, **4b** ✓, **5** ✓, **6** ✓ and **8** ✓ are **built** ✓✓ (Nov 9–11,
+2026 ✓) — **7** ✓ is still to come ✓ (and it is **optional** ✓ by its own
+wording ✓). The **translated choices** ✓ (the sizes ✓,
 the groups ✓ and the choices ✓) were added on top of phase 6 ✓ ✓✓ (§7.1j ✓✓ —
 a **display** patch ✓ — the schema did not change ✓).
 
@@ -707,7 +708,7 @@ a **display** patch ✓ — the schema did not change ✓).
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price ✓ | medium ✓ | 2 ✓ | **DONE** ✓✓ — Nov 10, 2026 ✓ (§7.1g ✓) |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price ✓ | medium ✓ | 2 ✓ | **DONE** ✓✓ — Nov 11, 2026 ✓ (§7.1h ✓) |
 | **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group ✓ (or stays as it is ✓ — the dish keeps working either way ✓) | low ✓ | 1 ✓ |
-| **8** | **the reports' variant breakdown** | the menu mix by variant ✓ | low ✓ | 4 ✓ |
+| **8** | **the reports' variant breakdown** | the menu mix by variant ✓ | low ✓ | 4 ✓ | **DONE** ✓✓ — Nov 11, 2026 ✓ (§7.1k ✓) — the breakdown beside the dish table ✓ — one loop ✓, two tables ✓ — the coverage is published ✓ — **43/43** ✓ with a **negative control** ✓ |
 
 **The order matters in one place only:** the recipe and the costing (4) come
 **after** the snapshot (2), because the deduction has to read a frozen line ✓.
@@ -1896,6 +1897,120 @@ the fix is that **every** read point asks ✓✓, and the **proof** is that the
 
 ---
 
+### 7.1k The patch for phase 8 (the reports' variant breakdown) — **BUILT** ✓✓
+
+**Status: built, proved and live (Nov 11, 2026 ✓✓).**
+
+Phase 8 ✓ was the **cheapest** part of the project ✓ and it is now **done**
+✓✓ — the menu mix answers with a **breakdown by size** ✓ beside the dish
+table ✓ (§5.3 ✓), and the screen says **what the breakdown covers** ✓✓.
+
+It stayed **query-only** ✓✓ — the data was **already frozen** ✓ (phase 2 ✓):
+`order_items.variant_id` ✓ + `variant_name` ✓. **No new table** ✓, **no
+migration** ✓, **no write path touched** ✓✓.
+
+---
+
+#### 1. One loop, two tables — they cannot disagree ✓✓
+
+The rule of the whole patch ✓: the breakdown is **not a second
+calculation** ✓✓. `backend/app/routes/reports.py` ✓ reads the lines **once**
+✓ — the same loop that builds the dish rollup ✓ — and every number in the
+breakdown comes from the **line values that loop already read** ✓✓. The two
+tables are two views of **one** set of lines ✓, not two sets of lines ✓.
+
+So the route answers with ✓:
+
+- `items` ✓ — the dish rollup ✓ (**unchanged** ✓✓ — the old screen's numbers
+  do not move ✓);
+- `variant_items` ✓ — one row per **(dish, size)** pair ✓;
+- `variant_totals` ✓ — what the breakdown **covers** ✓ (§7.1k.3 ✓).
+
+#### 2. The size's name is the business language ✓
+
+`variant_name` ✓ is the name **frozen at the moment of the sale** ✓✓ — the
+same rule as the kitchen's ticket ✓ and the receipt ✓ (§7.1j.3 ✓). The
+report never translates it ✓✓; the **column header** is translated ✓ (the
+"Size" label ✓ in en ✓ / km ✓ / zh ✓) but the **value** is the business
+language ✓✓ — because a size's name is part of the operational record ✓.
+
+#### 3. The honesty rule — the screen says what it covers ✓✓
+
+A breakdown that quietly leaves rows out is a lie the reader cannot see ✓.
+So the route publishes the **coverage** ✓✓, and the screen prints it ✓:
+
+| The number | What it says |
+|---|---|
+| `quantity` ✓ | how many items the breakdown covers ✓ |
+| `total_quantity` ✓ | every item sold ✓ — the denominator ✓ |
+| `unvaried_quantity` ✓ / `unvaried_revenue` ✓ | the lines sold **without** a size ✓ — in the dish table ✓ and **not** in the breakdown ✓ |
+| `row_count` ✓ / `cost_known_count` ✓ | how many rows, and how many have a **known** cost ✓ |
+
+The screen's note reads ✓: *"This breakdown covers **6** of the **11** items
+sold. **5** items were sold without a size and are in the table above only."*
+✓✓ — so the reader can **add the two tables up** ✓ and the difference is
+**named**, not mysterious ✓.
+
+#### 4. The cost rules do not move ✓✓ — they are the same rules ✓
+
+The breakdown reads the **same** cost rules as the dish table ✓✓ (§5.3 ✓):
+
+- the **frozen** cost of the sale ✓ (the line's own choices are in it ✓);
+- the **recipe** ✓ (the 502 old lines ✓);
+- the **tenant's estimate** ✓ — the fallback ✓;
+- a dish sold under **two rules** says `mixed` ✓ — never one rule picked
+  silently ✓✓;
+- an **unknown** cost stays **unknown** ✓ — a dash, never a zero, never a fake
+  100% margin ✓✓ (the breakdown's `cost_known` ✓ and `cost_known_count` ✓
+  carry it ✓).
+
+#### 5. The browser holds **no** report rule ✓✓
+
+`frontend/src/components/reports/reportsConfig.js` ✓ — `buildVariantRows()`
+✓ — **renames the fields** ✓ and nothing else ✓: the server sends the rows
+**already rolled up** ✓ and **already sorted** ✓, and the browser lays them
+out ✓✓. The cost the tenant has not valued is passed as **null** ✓ (a dash ✓)
+— the browser does not decide what "unknown" means ✓✓.
+
+#### 6. Proved ✓✓ — a durable check **and** a negative control ✓✓
+
+- the **durable check** ✓ (`scripts/pos_report_variant_check.py` ✓) — **43/43
+  green** ✓✓ — it **owns its fixtures** ✓ (its own tenant ✓, outlet ✓,
+  dishes ✓, sizes ✓ and orders ✓), it works on a **copy** of the database ✓,
+  the user's rows are **fingerprinted before and after** ✓, and the live
+  database is proven **untouched** ✓✓. It proves the rules ✓: the rows are
+  per **(dish, size)** ✓, the quantity ✓ and the revenue ✓ are the lines' own
+  ✓, only **paid and non-cancelled** lines are counted ✓, the two tables
+  count the **same** items ✓, an **unknown** cost stays unknown ✓, a dish
+  sold under **two rules** says `mixed` ✓, and the size's name is the **frozen**
+  one ✓✓;
+- the **negative control** ✓ (`scripts/pos_report_variant_control.py` ✓) —
+  phase 8 is **reverted in a scratch copy** of the backend ✓ (six blocks, each
+  matched **exactly once** ✓, and the reverted copy is proven to **compile**
+  ✓ so the failure is an **assertion** and not a crash ✓) → **22** fix-covering
+  checks **fail** ✓ and the **16** unrelated ones stay **green** ✓✓ (the
+  revert is surgical ✓: the dish rollup ✓, the money rules ✓, the clean-up ✓,
+  the user's rows ✓ and the live database ✓ do not move ✓✓);
+- the **live edge** ✓ — the running server answers the menu mix with
+  `variant_items` ✓ and the complete `variant_totals` ✓✓.
+
+**A lesson this patch carried** ✓ — *a breakdown and its dish table are one
+question asked twice* ✓✓. The temptation was a second query and a second set
+of numbers ✓; the answer was **one loop** ✓ — so the two tables **cannot**
+disagree ✓✓, and the check proves it ✓.
+
+**What this patch deliberately does NOT do** ✓✓:
+
+- it does **not** add a table ✓ and does **not** migrate ✓✓;
+- it does **not** touch the **write path** ✓ — the snapshot stays as it is ✓✓;
+- it does **not** move the dish rollup's numbers ✓✓ — the old screen's rows
+  are byte for byte the same ✓;
+- it does **not** translate the size's name ✓✓ (the business language ✓);
+- it does **not** change the PWA's order-detail gap ✓ — `GET /pwa/orders/
+  {order_id}` not showing the selected size stays **outside** phase 8 ✓✓.
+
+---
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -1977,7 +2092,8 @@ snapshot keeps it ✓).
 | 4 (the recipe + the stock + the costing) | **five days** ✓ | the variant's recipe tables ✓ + the deduction from the snapshot ✓ + the frozen cost ✓ |
 | 5 (the counter's picker) | **three days** ✓ | the UI ✓ — the counter's speed is the acceptance test ✓ |
 | 6 (the customer app's picker) | **two days** ✓ | the modal ✓ (the HTML is there ✓) — **done** ✓✓ (Nov 11 ✓) |
-| 7 + 8 (the migration + the reports) | **two days** ✓ | |
+| 8 (the reports' variant breakdown) | **half a day** ✓ | **done** ✓✓ (Nov 11 ✓) — the breakdown ✓ + the coverage ✓ (§7.1k ✓) |
+| 7 (the migration of the legacy `modifications`) | **one day** ✓ | optional ✓ — the dish keeps working either way ✓ |
 
 **Roughly three and a half weeks of work** for the whole thing ✓, or **one day** for
 phase 0 alone ✓ (the money hole ✓).
@@ -2077,6 +2193,6 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables ✓✓ (phase 1 ✓✓) — the API ✓✓ + the deduction ✓✓ + the editor ✓✓ (phase 4 ✓✓) — §7.1d ✓✓ |
 | 11 | **The menu management screen** — the groups, the choices and the sizes | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) — the write routes ✓ (the sizes ✓, the groups ✓, the choices ✓, the links ✓) + the panel on the menu screen ✓ (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — **the phase it never had** ✓ (4b ✓) |
 | 12 | **The screen proved by a browser** — and the plan compatibility ✓ | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1f ✓) — the browser check ✓ (`scripts/pos_menu_screen_check.js` ✓ — it found the missing permissions ✓, the missing size form ✓, the missing delete ✓ and a **cross-tenant leak** in the menu list ✓✓ — all fixed ✓✓) — and **a tenant without the Inventory plan** ✓ works exactly the same ✓ (the ingredient is an extra ✓, never a requirement ✓) |
-| 13 | **The reports' variant breakdown** (phase 8 ✓) | **NOT STARTED** ✗✗ — the phase table says *to come* ✓ (row 8 ✓ of §6 ✓) — and the §10 table had **no row for it** ✗✗ (fixed Nov 11 ✓) — the **data is already there** ✓: `order_items.variant_id` ✓ + `variant_name` ✓ and `order_item_options.variant_name` ✓ (15 live rows ✓) → so it is a **query-only** job ✓ (the menu mix ✓ rolls the dish up today ✓ — `backend/app/routes/reports.py` ✓ has **no** variant grouping ✓) — the cheapest part of the project ✓ (doc §5.3 ✓ calls it so ✓) |
+| 13 | **The reports' variant breakdown** (phase 8 ✓) | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1k ✓✓) — the **menu mix** ✓ answers with `variant_items` ✓ (one row per **(dish, size)** pair ✓) + `variant_totals` ✓ (the coverage ✓) — the **data was already frozen** ✓ (phase 2 ✓: `order_items.variant_id` ✓ + `variant_name` ✓) → so it stayed **query-only** ✓✓ (no new table ✓, no migration ✓, no write path touched ✓✓) — **one loop** ✓, **two tables** ✓ → they **cannot disagree** ✓✓ (the dish rollup's numbers do not move ✓✓) — the size's name is the **frozen** business language ✓✓ (never translated ✓) — the screen says **what the breakdown covers** ✓✓ ("6 of the 11 items sold" ✓ — the 5 without a size are **named** ✓) — the cost rules do not move ✓✓ (frozen ✓ / recipe ✓ / estimate ✓ / `mixed` ✓ / unknown stays unknown ✓) — the browser holds **no** report rule ✓✓ — **proved** ✓✓: the durable check ✓ (`scripts/pos_report_variant_check.py` ✓ — **43/43** ✓ — own fixtures ✓, the user's rows fingerprinted ✓, the live database untouched ✓) **with a negative control** ✓ (`scripts/pos_report_variant_control.py` ✓ — **22** fix-covering checks fail on a reverted copy ✓ and the **16** unrelated ones stay green ✓) + the **live edge** ✓ |
 | 14 | **The absolute-priced variant (the staff picker + the charge path)** | **CLOSED** ✓✓ — Nov 11, 2026 ✓ (§7.1i ✓✓) — the rule in **one place** ✓ (`backend/app/services/line_pricing.py` ✓ — the preview ✓ and the write path ✓ both ask it ✓) — the catalog publishes the size's own price ✓ (`effective_price` ✓ / `effective_delta` ✓) and the picker **reads** it ✓ — the counter's deliberate price is a field of its own ✓ (`price_override` ✓, a guest's is ignored ✓) — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_pricing_check.py` ✓ — **39/39** ✓ — own fixtures ✓, the user's rows fingerprinted ✓) **with a negative control** ✓ (`scripts/pos_choice_pricing_control.py` ✓ — **10** fix-covering checks fail on a reverted copy ✓) **and by a browser** ✓ (`scripts/pos_staff_price_check.js` ✓ — a real order ✓ — the DB charges the deliberate price ✓ and the choices stay frozen ✓) |
 | 15 | **The translated choices (the sizes, the groups, the choices)** | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1j ✓✓) — **no new table** ✓✓ (`menu_content_translations.content_type` ✓ is free-form ✓ — three new types ✓: `menu_variant` ✓, `menu_option_group` ✓, `menu_option` ✓) — the names move ✓ and **only** the names ✓ (the ids ✓, the prices ✓, the rules ✓ untouched ✓) — the **snapshot keeps the business language** ✓✓ (the write path is never localised ✓) while the guest's picker ✓, the catalog ✓ and the price answer ✓ are localised ✓ — the staff's picker deliberately sends **no** locale ✓✓ — the choices get their **own short-label prompt** ✓ + their **own gate** ✓ (a sentence is refused ✓, the bad answer is not cached ✓) — the guest app asks in the guest's language ✓ and the picker reloads when the language changes ✓ — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_translation_check.py` ✓ — **64/64** ✓ — own fixtures ✓, the user's rows fingerprinted ✓, the **route edge** checked ✓) **with a negative control** ✓ (`scripts/pos_choice_translation_control.py` ✓ — **16** fix-covering checks fail on a reverted copy ✓) — **live** ✓✓ (the real choices backfilled ✓ in zh ✓ and km ✓) |
