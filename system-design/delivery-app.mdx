@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.4
+**Document Version:** 1.5
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array**
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -28,10 +28,10 @@ are a **feature for them** (they know their customers).
 
 | Plan | The shape | The delivery features |
 |---|---|---|
-| **Starter** | 1 outlet · 3 staff | **Delivery** — the order type, the storefront, the flat fee, the driver assignment |
-| **Basic** | 3 outlets · 10 staff | **Delivery** (+ the outlets) |
-| **Pro** | 5 outlets · 25 staff | **Delivery** + **Delivery Zones** (the postcode pricing) |
-| **Enterprise** | unlimited | **Delivery** + **Delivery Zones** + **Delivery Scheduling** + **Delivery Analytics** |
+| **Starter** | 1 outlet · 3 staff | **Delivery** + **Delivery Management** — the order type, the storefront, the fee, the driver roster, the live progress |
+| **Basic** | 3 outlets · 10 staff | **Delivery** + **Delivery Management** (+ the outlets) |
+| **Pro** | 5 outlets · 25 staff | the two + **Delivery Zones** (the postcode pricing) |
+| **Enterprise** | unlimited | the three + **Delivery Scheduling** + **Delivery Tracking** (the live driver map) + **Delivery Analytics** |
 
 > **The prices are NOT in this document — they are data.** The catalogue lives in the
 > **website API** (`plan_prices` — per currency, per billing cycle, with the
@@ -52,11 +52,17 @@ are a **feature for them** (they know their customers).
   → **charging for it would fight the adoption**;
 - the tenant's **own fee settings** — the whole value is **"no commission"** →
   charging for the fee settings would contradict the pitch;
-- the **driver assignment** — it is two fields.
+- the **driver assignment** — two fields on the order;
+- the **driver roster** — the tenant maintains its own drivers (a list → a table —
+  §3) → **v1.5 changed this**: a roster the tenant *maintains* cannot live in two
+  fields on an order;
+- the **live progress** — the queue shows where every delivery is (assigned / out
+  for delivery / delivered) → **no map needed** → **the free tier gets the progress**.
 
 **What is paid (the ops depth)**
 - **Delivery Zones** — the postcode pricing → **Pro**;
 - **Delivery Scheduling** — the promised windows → **Enterprise**;
+- **Delivery Tracking** — the **live driver map** → **Enterprise** (§11);
 - **Delivery Analytics** — the delivery revenue, the fee per order → **Enterprise**.
 
 **The adoption argument — the decisive one** — a tenant that switches to us **for the
@@ -76,27 +82,40 @@ delivery is the Starter's hook**.
 
 ```python
 {"name": "delivery", "display_name": "Delivery",
- "description": "Delivery orders, branded storefront and own delivery charges",
+ "description": "Delivery settings, branded storefront and own delivery charges",
  "category": "delivery", "icon": "🛵", "tab_name": "Delivery", "sort_order": 39},
+{"name": "delivery_management", "display_name": "Delivery Management",
+ "description": "Drivers, coverage areas and the live delivery progress",
+ "category": "delivery", "icon": "🧭", "tab_name": "Delivery Management", "sort_order": 40},
 {"name": "delivery_zones", "display_name": "Delivery Zones",
  "description": "Postcode-based delivery pricing and zones",
- "category": "delivery", "icon": "🗺️", "tab_name": "Delivery Zones", "sort_order": 40},
+ "category": "delivery", "icon": "🗺️", "tab_name": "Delivery Zones", "sort_order": 41},
 {"name": "delivery_scheduling", "display_name": "Delivery Scheduling",
  "description": "Delivery time windows and scheduling",
- "category": "delivery", "icon": "📅", "tab_name": "Delivery Scheduling", "sort_order": 41},
+ "category": "delivery", "icon": "📅", "tab_name": "Delivery Scheduling", "sort_order": 42},
+{"name": "delivery_tracking", "display_name": "Delivery Tracking",
+ "description": "Live driver location on the customer order status",
+ "category": "delivery", "icon": "📍", "tab_name": "Delivery Tracking", "sort_order": 43},
 {"name": "delivery_analytics", "display_name": "Delivery Analytics",
  "description": "Delivery revenue, fees and order analytics",
- "category": "delivery", "icon": "📊", "tab_name": "Delivery Analytics", "sort_order": 42},
+ "category": "delivery", "icon": "📊", "tab_name": "Delivery Analytics", "sort_order": 44},
 ```
 
-→ **the plan assignments** — `delivery` → **all four plans** · `delivery_zones` →
+→ **the plan assignments** — `delivery` → **all four plans** ·
+`delivery_management` → **all four plans** · `delivery_zones` →
 **pro, enterprise** · `delivery_scheduling` → **enterprise** ·
-`delivery_analytics` → **enterprise**.
+`delivery_tracking` → **enterprise** · `delivery_analytics` → **enterprise**.
 
-> **The sort orders are 39-42 — the review found a collision** — the live `features`
+→ **why SIX rows and not one** — a feature row gates **ONE surface** → Kens asked
+for **two screens** and for the plan to decide which tenant gets which → **the two
+screens need two rows** → and the paid tiers need their own rows (the zones, the
+scheduling, the tracking, the analytics) → **six rows in total**.
+
+> **The sort orders are 39-44 — the review found a collision** — the live `features`
 > table already **uses 21-24** (`tax` 21, `payment` 22, `receipt` 23,
-> `kitchen_settings` 24) and its **highest** is **38** → the four delivery rows take
-> **39, 40, 41, 42** — the admin's list is ordered by `sort_order`
+> `kitchen_settings` 24) and its **highest** is **38** (three live rows share it)
+> → the six delivery rows take
+> **39, 40, 41, 42, 43, 44** — the admin's list is ordered by `sort_order`
 > (`features.py`) → a collision would have pushed the delivery rows into the middle of the
 > settings screen.
 
@@ -129,10 +148,10 @@ delivery is the Starter's hook**.
 | We build | We do NOT build |
 |---|---|
 | the **white-label storefront PWA** (the tenant's branding, the menu, the cart, the checkout, the order status) | a **marketplace** — the customers are the tenant's own |
-| the **delivery order type** in the core POS | a **driver app** — the tenant's own drivers |
-| the **fee settings** (the flat fee, the minimum, the free-delivery threshold, the zones) | **GPS / live tracking** — that is Grab's cost centre |
+| the **delivery order type** in the core POS | a **driver APP** — the tenant's own drivers (the tracking tier ships a **one-page driver LINK**, not an app — §11) |
+| the **fee settings** (the flat fee, the minimum, the free-delivery threshold, the radius) | **GPS / live tracking on the free tier** — that is Grab's cost centre (the live driver map is the **Enterprise** tier — §11) |
 | the **driver assignment** (a name + a phone on the order) | a **courier matching engine** |
-| the **status flow** (out for delivery → delivered) | **commission handling** — we take no commission |
+| the **status flow** — a **parallel leg** on the order (assigned → out for delivery → delivered), **the shared machine untouched** | **commission handling** — we take no commission |
 | the **prepay path** (the DuitNow QR / the online payment) | a **delivery schedule/dispatch optimiser** |
 | **cash on delivery** (the driver collects — the tenant's choice) | **anything that makes the tenant manage OUR way** |
 
@@ -154,10 +173,49 @@ driver's name and phone on the order** → the customer can call them.
 | `operating_hours` | **yes** (`models.py:381`) |
 | **the delivery SWITCH** (`allow_delivery`) | **yes — it EXISTS** (`models.py:447` · the settings screen `Settings.jsx:1203` · the customer app reads it `order.py:702` · the presets `business_presets.py`) |
 | **the delivery ADDRESS** (`orders.delivery_address`) | **yes — it EXISTS** (`models.py:280` · carried through the write path `order_service.py:494`) |
-| **the storefront slug** (the PWA's URL) | **new** — one field |
+| **the storefront slug** (the PWA's URL) | **new** — one column on the outlet (`outlets.delivery_slug`, nullable, UNIQUE) |
 
-→ **the storefront setup is ~2 new fields** (the slug + the delivery settings)
-.
+→ **the storefront setup is ~2 new columns** (the slug + the delivery settings) —
+**and three new tables** (below).
+
+**The new data — three tables and two columns:**
+
+| The thing | Where | Why |
+|---|---|---|
+| **the storefront slug** | `outlets.delivery_slug` — a **column**, nullable, UNIQUE | the PWA's path is `/d/<slug>` → the slug resolves the outlet → the outlet resolves the tenant → **that chain IS the PWA's trust boundary** |
+| **the delivery settings** | `outlet_settings.delivery_settings` — a **column**, JSON, nullable | the fee, the minimum, the free threshold, the radius, the prepaid-only flag, the ETA |
+| **the delivery leg** | `delivery_orders` — a **table**, one row per delivery order | the leg's status, the driver (the id + the name/phone snapshot), the fee, the ETA, the geocode, the timestamps |
+| **the driver roster** | `delivery_drivers` — a **table** | **the tenant maintains a LIST** (add, edit, deactivate) → that is a table, never two fields on an order (§9.4 — v1.5 corrected this) |
+| **the coverage areas** | `delivery_zones` — a **table** (**Pro+**) | the postcode pricing → a maintained list (the core uses a **radius** instead — §3) |
+
+```
+delivery_drivers      (the tenant's roster — tenant-scoped)
+  id, customer_id, name, phone, vehicle, is_active, sort_order, created_at
+
+delivery_orders       (the leg — one row per delivery order)
+  id, order_id (UNIQUE), customer_id, outlet_id,
+  status (unassigned | assigned | picked_up | delivered | cancelled),
+  driver_id (→ delivery_drivers.id, nullable),
+  driver_name, driver_phone,      ← the SNAPSHOT (the history survives an edit)
+  fee, radius_km, eta_at,
+  address_text, address_lat, address_lng,
+  assigned_at, picked_up_at, delivered_at, created_at
+
+delivery_zones        (the Pro+ coverage areas — tenant-scoped, per outlet)
+  id, customer_id, outlet_id, name, postcodes (JSON), fee, is_active, sort_order
+```
+
+→ **the tables need no ALTER** — `create_all()` (`main.py:44`) creates **tables** → the
+three new tables appear on the next start → **only the two new COLUMNS need the
+idempotent ALTER** (`_ensure_added_columns()` — `main.py:47`).
+
+→ **the leg lives on a table, not on the order row** — the house pattern for a
+one-to-one extension is a table plus a relationship (`Order.delivery`,
+`uselist=False`) → the order's own columns stay the shared ones (`order_type`,
+`delivery_address`, `payment_mode`…) → **the shared order machine is not polluted
+with delivery-only fields** → and the management screen queries **one table**
+("today's deliveries, with their drivers and their progress") instead of filtering
+the orders.
 
 > **The review found the switch already exists** — `outlet_settings.allow_delivery`
 > (`models.py:447`) is **the delivery on/off the tenant already owns**. It has a
@@ -195,16 +253,19 @@ driver's name and phone on the order** → the customer can call them.
   "fee": 5.00,              // the flat delivery fee
   "free_above": 100.00,     // free above this order value
   "minimum_order": 30.00,   // the minimum order value
-  "eta_minutes": 30,
+  "radius_km": 8,           // the coverage radius from the outlet (0 = no limit)
+  "eta_minutes": 30,        // the base ETA (the provider's route refines it — §11)
   "eta_max_minutes": 45,
-  "prepaid_only": false,    // false = cash on delivery is allowed
-  "zones": [                // the postcode pricing
-    { "name": "SS17", "postcodes": ["43000"], "fee": 5.00 }
-  ]
+  "prepaid_only": false     // false = cash on delivery is allowed
 }
 ```
 
 → **one nullable column** → **no backfill**.
+
+→ **the zones moved OUT of the JSON** — v1.4 kept the postcode pricing inside the
+column → **but the tenant must MAINTAIN a list of them** (add, edit, remove a zone)
+→ a managed list is a **table** (`delivery_zones` — **Pro+**) → the core carries the
+**radius** instead (one number, no map, no geocode on the hot path).
 
 > **But the column does need the ALTER — the review found it** — `create_all()`
 > (`main.py:44`) creates a **missing table** — it **never adds a column to an existing
@@ -218,95 +279,162 @@ driver's name and phone on the order** → the customer can call them.
 > `allow_delivery` and it already exists (`models.py:447`) → **the JSON column
 > must not carry a second switch** — the same rule the review found in §3.
 
+**The two POS screens** (Kens's comment — the delivery gets **two**, not one):
+
+| The screen | Where it lives | What it holds | The feature row |
+|---|---|---|---|
+| **Delivery** (the settings tab) | **Settings → Delivery** (`Settings.jsx` — the `SETTINGS_TABS` array, line 25) | the **switch** · the **QR** + the storefront URL · the fees · the radius · the prepaid-only flag | `delivery` |
+| **Delivery Management** (the operations screen) | **a nav screen** (`navItems.js` — the shared, plan-filtered navigation) | today's deliveries · the **driver roster** · the coverage areas · the **live progress** | `delivery_management` |
+
+→ **why one is a tab and one is a nav screen** — the settings tab is a
+**configuration** (it is set once and forgotten) → the management screen is
+**live** (the deliveries of right now, and their drivers) → **a live screen does
+not belong in the settings tabs** → and the house already has the right shape for
+each: a settings tab is `{id, labelKey, icon, feature}` (`Settings.jsx:25`) and a
+nav screen is `{path, icon, labelKey, minRole, feature}` (`navItems.js`).
+
+→ **the switch MOVES, it does not copy** — the delivery switch leaves the **Order**
+tab and lives in the **Delivery** tab → **one switch, one place, one field**
+(`outlet_settings.allow_delivery` — unchanged) → **there is no second switch.**
+
+→ **the QR is drawn by the SERVER** — the front end has **no QR library**
+(`frontend/package.json` — no qrcode) while the backend has **`qrcode==7.4.2`**
+(`backend/requirements.txt:7`) → so the QR is a **PNG from a route**, exactly the
+payment QR's shape (`/api/pwa/orders/{id}/pay-qr`, `/api/orders/{id}/pay-online/qr`)
+→ **`GET /api/delivery/outlets/{outlet_id}/qr`** → the tab shows the image, the URL,
+a copy button and a download → **and the QR encodes the tenant's own storefront**
+(`https://order.ideazes.com/d/<slug>`).
+
 **The setup flow** (the tenant's side):
-1. **Settings → Delivery** → turn it on;
-2. **the fees** (the flat fee, the minimum, the free threshold);
-3. **the zones** (optional — the postcodes and their fee);
-4. **the storefront URL** (the slug) → the PWA;
-5. **done** — **no driver setup** (the tenant's problem).
+1. **Settings → Delivery** → turn it on (the switch moves here);
+2. **the fees** (the flat fee, the minimum, the free threshold) and the radius;
+3. **the QR** → the slug is generated from the outlet's name if it is blank → the
+   QR and the URL are on the tab → **print it on the menu card**;
+4. **Delivery Management → the drivers** → add the tenant's drivers (a name and a
+   phone);
+5. **done** — **the delivery is live**.
 
 ---
 
 ## 4. The order flow
 
-**The statuses** — the shared machine **plus TWO delivery-specific steps**:
+**The rule that decides the whole design — the shared order machine does not change.**
+The core keeps exactly the five statuses it has today:
 
 ```
-pending → confirmed → preparing → ready → out_for_delivery → delivered
-                                └── the shared machine ✓ ──┘  └── the delivery only ✓ ✓
+pending → confirmed → preparing → ready → served
+                          └──── the shared machine — UNCHANGED ────┘
 ```
 
-- **the last step's wording** — "Delivered" for the delivery (the translation trick
-  — the same as "Collected");
-- → **two new status values** (`out_for_delivery` and `delivered`) — and they apply
-  **only to the delivery type** — the dine-in and the takeaway keep their shared
-  machine untouched;
-- → **and "delivered" must resolve to the existing end state** — **"completed"**
-  (the payment drives the order there) → **or the revenue reports would miss every
-  delivery order** (`is_order_finished()` — §4);
-- → **the cancellation rule** — pending / confirmed / preparing (unchanged).
+**The delivery is a SECOND, PARALLEL leg on the order** — it never touches the
+shared statuses:
 
-> **The review found the status flow is a HARDCODED array — and three of them** — the new
-> state is not one change, it is **three**:
-> - the **staff flow** — `OrderQueue.jsx:135` → `const flow = ['pending', 'confirmed',
->   'preparing', 'ready', 'served']` → **`out_for_delivery` is not in it** → the
->   button would never appear;
-> - the **kitchen's filter** — `Kitchen.jsx:266` → it keeps only `pending` / `confirmed` /
->   `preparing` / `ready` → **a delivery ticket drops out of the kitchen when it goes out
->   ** (that is right — the food has left — but it must be a decision, not an
->   accident);
-> - the **kitchen's type chip** — `Kitchen.jsx:900` → `order.order_type === 'dine_in' ? … :
->   …` → **a delivery ticket would be labelled "Takeaway"** → the chip needs a
->   third arm.
->
-> → **and the backend accepts any status string** — `OrderStatusUpdate.status` is a
-> bare `str` (`order.py:340`) and the route has **no whitelist**
-> (`order.py:942`) → **so "out_for_delivery" would be storable today** — **but the
-> finished-order rule would not know it** (see the money note below).
->
-> → **and the cancellation list is a literal too** — `cancellable_statuses`
-> (`order.py:1233` and `1305`) and the customer app's own cancel (`pwa.py:618`)
-> both stop at **preparing** → **so "out for delivery" is NOT cancellable** — which
-> is the right rule (the food is already on the road).
+```
+unassigned → assigned → picked_up → delivered
+└──────── the delivery leg — a table, NOT the core statuses ────────┘
+```
 
-**The driver's place in the flow**
-1. the order is placed (prepaid or cash on delivery);
-2. the kitchen prepares (the same kitchen);
-3. **the staff assigns the driver** (a name + a phone — from the tenant's own list
-   ) → **the assignment is on the order**;
-4. **the staff taps "out for delivery"** when the driver takes it;
-5. **the customer sees the driver's name and phone** in their PWA → **a WhatsApp call
-   ** — the whole "tracking" for the price of a phone number;
-6. **"delivered"** → the cash is collected if needed → the payment is recorded.
+→ **the handover IS the shared `served` step** — the core moves `ready → served`
+exactly when the leg reaches `delivered` → **and the word on the button becomes
+"Delivered"** (the same wording trick the house already uses for "Collected" —
+`businessType.js:38`).
 
-**The money**
+> **Why the leg and not two new statuses** — this is the answer to "propose the flow
+> that does not go against the current ordering flow":
+
+| If we added `out_for_delivery` and `delivered` to `orders.status` | What would break |
+|---|---|
+| **the live-order rule** | `isLiveOrder()` (`paymentModes.js:47`) — a **prepay** order is live only in `pending`/`confirmed`/`preparing`/`ready` → **the order would vanish from the OrderQueue while the driver is on the road** |
+| **the finished-order rule** | `is_order_finished()` (`payment_modes.py:159`) — finished means `completed` **or** `served` + paid → **a third end state needs a third rule, and the revenue reports would silently miss the delivery orders** |
+| **the shared flow array** | `OrderQueue.jsx:135` — the hardcoded `flow` → the button would never appear |
+| **the cancellation list** | `cancellable_statuses` (`order.py:1233`, `1305`) and the customer app's own cancel (`pwa.py:618`) → literal lists that stop at `preparing` → a new status would need a third edit |
+| **the reports** | `reports.py:145` filters on `payment_status == "paid"` → the money still lands, but the status vocabulary forks |
+
+→ **the leg keeps the shared machine, the money rules and the reports exactly as they
+are** → **the delivery reuses `served` as the handover** → **no status vocabulary
+forks, no rule is rewritten, and the revenue path is untouched.**
+
+**The leg's statuses and the staff's buttons** — the button depends on the **pair**
+(core status, leg status) → so the queue's next-step helper must read the **order**,
+not just the status (`getNextStatus(current)` → `getNextStatus(order)`,
+`OrderQueue.jsx:134`):
+
+| The core status | The leg | The button | What it does |
+|---|---|---|---|
+| `pending` | `unassigned` | **Confirm** | the shared step (unchanged) |
+| `confirmed` | `unassigned` | **Assign driver** | the leg → `assigned` (a name + a phone from the tenant's roster) |
+| `confirmed` / `preparing` | `assigned` | **Change driver** | the leg stays `assigned`; the name/phone change |
+| `preparing` | `assigned` | **Start preparing** | the shared step (unchanged) |
+| `ready` | `assigned` | **Out for delivery** | the leg → `picked_up` — the driver has the food |
+| `ready` | `picked_up` | **Delivered** | the leg → `delivered` **and** the core → `served` — the handover |
+| `served` | `delivered` | — | done (the money write may still be pending) |
+
+→ **the three rules of the leg** — the driver may be **assigned** from `confirmed`
+onward (a driver can be told in advance) · the leg may only go **`picked_up`** from
+`ready` (the food must be bagged) · and the core may only go to **`served`** from
+`picked_up` (the food must be on the road).
+
+→ **and the leg must be validated on the SERVER — because the backend has no status
+whitelist** — `OrderStatusUpdate.status` is a bare `str` (`order.py:340`) and the
+status route has **no whitelist** (`order.py:942`) → **any client can write any
+status string** → **so the hidden buttons are NOT the guard**:
+- a delivery order may only move to **`served`** when its leg is **`picked_up`** —
+  checked **server-side**, in the same write as the leg;
+- the leg may only move **forward**, one step at a time
+  (`unassigned → assigned → picked_up → delivered`), never backwards;
+- the **other order types keep today's behaviour exactly** — the shared status route
+  is untouched for them.
+→ **so the leg is the one place where a new server-side rule must be written** — the
+cost of the leg, paid once, in one route.
+
+**The cancellation rule stays exactly as it is** — pending / confirmed / preparing
+(`cancellable_statuses` — `order.py:1233` and `1305`; the customer app's own cancel
+— `pwa.py:618`) → **a delivery whose leg is `assigned` but not yet `picked_up` sits
+at `ready` → it is not cancellable** → **that is the existing rule, unchanged** → and
+it is the right one (the kitchen has already cooked it).
+
+**The kitchen** — a delivery ticket is a kitchen ticket **until the driver takes it**:
+- the kitchen's **status filter** (`Kitchen.jsx:121` — the `pending`/`confirmed`/
+  `preparing`/`ready` list) would keep the ticket in the ready column for the whole
+  drive (and the ready tickets stay until they are dismissed — `Kitchen.jsx:268`)
+  → **so the kitchen drops the delivery ticket when the leg reaches `picked_up`** →
+  the order payload must carry the leg (a `delivery` object) → the kitchen filters
+  on it;
+- the kitchen's **type chip** (`Kitchen.jsx:362`, `Kitchen.jsx:459`, `Kitchen.jsx:900`
+  — all three are `dine_in ? … : takeaway`) → **a third arm → "Delivery"**;
+- → **v1.5 corrected a source line** — v1.4 cited `Kitchen.jsx:266` for the status
+  filter; the real filter is **line 121** (line 268 is the "ready stays" rule).
+
+**The queue already knows the delivery** — `OrderQueue.jsx:199` already filters the
+delivery orders (`o.order_type === 'delivery' && isLiveOrder(o)`) and the type label
+at `OrderQueue.jsx:959` already has a delivery arm → **the queue's job is only the
+buttons and the leg chip.**
+
+**The customer's status page** — the PWA shows the **merged** timeline:
+- the shared steps (Placed → Confirmed → Preparing → Ready);
+- the leg's steps (Driver assigned → Out for delivery → Delivered) — **only when the
+  leg is not `unassigned`**;
+- the driver's name and phone — **always** (the WhatsApp call);
+- the ETA — the estimate, refreshed when the driver is assigned.
+
+**The money** — the rules are the existing ones:
 - **prepaid** — the DuitNow QR or the online payment → **the kitchen waits**
-  (the rule from `order-flow-standards.mdx` §2.4) → **no ghost delivery**;
-- **cash on delivery** — the driver collects → the staff records it at the handover
-  → the `Payment` row with `payment_method = 'cash'`.
+  (`order-flow-standards.mdx` §2.4) → the order stays `pending` until the money
+  lands (`status_after_payment()` → `confirmed`, `payment_modes.py:142`) → **no ghost
+  delivery**;
+- **cash on delivery** — the driver collects → the staff records it at the handover →
+  the `Payment` row with `payment_method = 'cash'` → the postpay write lands the order
+  on `completed` (`payment_modes.py:142`);
+- → **and a delivery prepay is `prepay_online`** (the money comes through the
+  gateway, not at a counter) → **so it needs a connected payment account**
+  (`outlet_settings.py:317` — the `LOCKED_MODES` check, `payment_modes.py:47`) **and a
+  Malaysian outlet** (`ONLINE_COUNTRIES` — `payment_modes.py:73`; the check itself is
+  `country_supports_online()` — `payment_modes.py:96`) → **otherwise the
+  delivery order is `postpay`** (cash on delivery) → **which is the default anyway**.
 
-> **The review found the online payment is CLOSED outside Malaysia — it is not a free choice
-> ** — `ONLINE_COUNTRIES` is `("MY",)` (`payment_modes.py:73`) and
-> `country_supports_online()` (`payment_modes.py:96`) is the check → **an outlet in
-> another country can never offer it** (the rule is per **outlet**, not per tenant
-> — the same tenant may own a Malaysian outlet and another elsewhere).
-> → **and the "pay online" mode is LOCKED for a second reason** — `LOCKED_MODES`
-> (`payment_modes.py:47`) refuses `prepay_online` unless the tenant has a **connected
-> payment account** (`outlet_settings.py:317`) → **so "prepaid" is per tenant**
-> , not a property of the delivery.
->
-> **What the payment write does to the STATUS — the one to watch** — `status_after_payment()`
-> (`payment_modes.py:142`) sends a **postpay** order to **"completed"** and a
-> **prepay** order to **"confirmed"** → **so the money write lands the order on a
-> status the delivery flow does not own** → **the delivery needs its own hand-off
-> between the kitchen and the driver** (the status the kitchen leaves at **"ready"**
-> and the driver takes from there).
->
-> **And the finished-order rule** — `is_order_finished()` (`payment_modes.py:159`)
-> counts an order as finished when it is **"completed"** or **"served" + paid** →
-> **a delivery order that ends at "delivered" would never be counted** → the revenue
-> reports would **miss the delivery revenue** → **so "delivered" must resolve to the
-> existing end state** (the payment drives it there).
+**The delivery fee** — the **server** computes it (the client never sends a price) and
+it reaches the order's total → **the reports pick it up unchanged** (they filter on
+`payment_status == "paid"` — `reports.py:145`).
 
 ---
 
@@ -323,14 +451,22 @@ already large) → **a new `delivery-app/`** sharing the API client and the i18n
 2. **the cart** — the same rules as the in-venue PWA;
 3. **the checkout** — the name, the phone, the **address**, the **postcode** (the
    zone → the fee), the payment;
-4. **the order status** — placed → confirmed → preparing → out for delivery →
-   delivered **+ the driver's name and phone**;
-5. **the order history** (the customer's own — the `dining_customer_id` already
+4. **the login and the sign-up** — **the tenant comes from the URL's slug**
+   (§10.3) → a signed-up customer becomes that tenant's customer → the login
+   returns the guest token, exactly like the in-venue app;
+5. **the order status** — the shared steps **+ the delivery leg** (driver assigned →
+   out for delivery → delivered) **+ the driver's name and phone** + the ETA;
+6. **the order history** (the customer's own — the `dining_customer_id` already
    exists).
 
 **The white-label rule** — **the tenant's branding comes from the outlet settings**
 (the logo, the colour, the name — **already stored**) → **no per-tenant build,
 no per-tenant deployment**.
+
+**And the delivery prepay** — the customer can **submit and prepay** → the same
+payment path as the in-venue PWA (the QR, the poll) → **but a delivery prepay is
+`prepay_online`** → **so it needs a connected payment account and a Malaysian
+outlet** (§4) → **otherwise the delivery is cash on delivery**.
 
 ---
 
@@ -374,8 +510,18 @@ customer key** → **every new route it calls needs all four**:
    → **and the gate is a browser-session gate ONLY** — a server-to-server caller
    (`key_type != "user"` — `auth.py:652`) **returns unchecked** → so the **PWA's
    public routes are NOT plan-gated by this dependency** → **the delivery PWA must
-   check the plan itself** (the tenant's own feature list) — this is a **real gap in
-   this design**.
+   check the plan itself** — this was a **real gap in this design**, and **v1.5
+   closes it**:
+   → **the fix is a server-side check, not a client-side one** → `plan_features.py`
+   already reads the tenant's plan features → **add a `plan_has_feature()` helper**
+   (the customer id and the tab name) → the delivery routes call it → **the
+   comparison is against the plan's own list, read on the server** → **the client is
+   never trusted to declare what the tenant bought** → and it is the **same list**
+   the staff app reads →
+   **one truth, two readers**.
+   → **the string it compares is the tab name** (`admin.py:1052` hands the reader the
+   `tab_name` under `name`) → so the delivery rows' tab names — **"Delivery"** and
+   **"Delivery Management"** — are the gate keys.
 4. **does the UI agree?** → the tenant's plan, the nav, the PWA's visibility.
 
 **And the PWA's public key is NOT a staff credential** — the PWA's order routes must
@@ -388,15 +534,19 @@ prove ownership (the order token — **a new field**, or the existing
 
 | Phase | What | Size |
 |---|---|---|
-| **0 — the plan rows** | the four `features` rows (sort orders 39-42) + their `plan_features` rows — **BEFORE any route declares the gate** (§9) | small |
-| **1 — the core** | the `delivery_settings` (one nullable column **+ the idempotent ALTER**) · the delivery order type (the address, the fee) · the fee in the order's total | medium |
-| **2 — the staff side** | the delivery order in the OrderQueue · the **driver assignment** (the name + the phone) · the **status buttons** (out for delivery → delivered — **the hardcoded flow array and the kitchen's type chip**) · the kitchen's ticket shows the delivery | medium |
-| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout, the zones) + the public routes (the four gates — **including the plan check the PWA must do itself**) | **large** |
+| **0 — the plan rows** | the **six** `features` rows (sort orders **39-44**) + their `plan_features` rows — **BEFORE any route declares the gate** (§9) | small |
+| **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium |
+| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR, the fees) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) | medium |
+| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout, the **login and the sign-up**) + the public routes (the four gates — **including the server-side plan check**) | **large** |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records | medium |
-| **5 — the paid tier** | the zones (the postcode pricing) · the scheduling · the delivery analytics | medium |
+| **5 — the paid tier** | the zones (the postcode pricing) · the scheduling · the analytics | medium |
+| **6 — the tracking** | the **driver link** · the live pings · the customer's map · the ETA · the **Mapbox** routes (**Enterprise**) · the privacy pruning | medium |
 
 **The order matters** — the core → the staff side → the storefront → the money:
 **the POS must be able to deliver before the customer can order delivery**.
+→ **and the tracking is last on purpose** — it needs the leg, the fee, the geocode
+and the money all in place → **and it is the only phase that buys a third-party
+bill** → so it is the phase that gets its own plan row.
 
 ---
 
@@ -405,23 +555,41 @@ prove ownership (the order token — **a new field**, or the existing
 1. **Cash on delivery — the default?** — my pick: **allowed** (the tenant's driver
    collects) but **the tenant can require prepay** (`prepaid_only`) — my
    default: **allowed** (the Malaysian market expects it).
-2. **The zones — by postcode or by area name?** — my pick: **postcodes** (the
-   customer types one → the fee) — **no map**.
+2. **The zones — by postcode or by area name?** — **the core uses a radius** (one
+   number, no geocode on the hot path) and **Pro+ uses the postcodes** (the customer
+   types one → the fee) → **the zones became a table** (a managed list).
 3. **Does the delivery order carry a separate fee line?** — my pick: **yes** (a
    delivery-fee line item) → the invoice and the e-Invoice stay clean.
-4. **Do the tenants' customers get an account?** — the `dining_customer_id` already
-   exists → **reuse it** (the PWA's login).
+4. **Do the tenants' customers get an account?** — **yes, and the v1.5 answer is
+   firmer** — the `dining_customer_id` already exists → **reuse it** → and the
+   sign-up **derives the tenant from the slug** (§10.3).
 5. **Is the delivery PWA its own domain or a path?** — my pick: **a path**
    (`/d/<slug>`) → **one deployment, one certificate** — a custom domain later
    .
 6. **Does the delivery order need its own kitchen screen?** — my pick: **no** — the same
    kitchen (a restaurant's delivery food is made in the same kitchen).
-7. **Who checks the plan on the PWA's own routes?** — **the review raised this** — the
-   `require_plan_feature()` gate is a **browser-session gate** → a server-to-server
-   caller is **returned unchecked** → **the delivery PWA's public routes are NOT gated by
-   it** → my pick: **the PWA checks the tenant's feature list itself** (the
-   same list the staff app reads) → **so a tenant without the delivery feature cannot order
-   delivery**.
+7. **Who checks the plan on the PWA's own routes?** — **the server does** —
+   `plan_has_feature()` in `plan_features.py`, called by the delivery routes (§6) →
+   **a tenant without the delivery feature cannot order delivery**, and the client
+   is never the one to say so.
+8. **Where does the storefront slug live — the outlet or the tenant?** — **the
+   outlet** → because the branding (`restaurant_name`, `restaurant_logo`,
+   `brand_color`), the menu and the switch are all **per outlet**
+   (`outlet_settings`) → the tenant is derived from the outlet → **one storefront
+   and one QR per branch**, one tenant behind them.
+9. **The driver roster — a table or two fields on the order?** — **a table**
+   (`delivery_drivers`) → **Kens's comment changed this**: a list the tenant
+   *maintains* cannot live in two fields → and the order keeps a **snapshot** of the
+   name and the phone, so the history survives an edit.
+10. **The coverage area — a radius or a polygon?** — **a radius in the core** (one
+    number) and **the postcode zones on Pro+** → a polygon needs a map editor and a
+    geocoder per vertex → **not before Pro**.
+11. **Where does the driver's live location come from?** — **three options** (§11) →
+    my pick: **the driver link** for the Enterprise tier, the tenant's own tracker
+    for the tenants who have one, and **no tracking** for the core → **the honest
+    risk is the driver's cooperation, not the provider.**
+12. **Which map and routing provider?** — **Geoapify for the geocoding (already
+    integrated), Mapbox for the route, the ETA and the tiles** → §11.
 
 ---
 
@@ -467,8 +635,11 @@ the driver, not the order type**.
    **never columns** → the column goes into `_ensure_added_columns()`
    (`main.py:47`), exactly as `payment_timing` did (§3).
 6. **The status flow lives in a HARDCODED array** — `OrderQueue.jsx:135` → **and the kitchen's
-   type chip would call a delivery "Takeaway"** → **three front-end places, not one**
-   (§4).
+   type chip would call a delivery "Takeaway"** (`Kitchen.jsx:362`, `Kitchen.jsx:459`,
+   `Kitchen.jsx:900`)
+   → **three front-end places, not one** (§4).
+   → **v1.5 corrected the source line** — the kitchen's **status filter is line 121**,
+   not 266 (line 268 is the "ready tickets stay until dismissed" rule).
 
 ### 9.3 What the review did NOT change
 
@@ -485,15 +656,238 @@ the driver, not the order type**.
 
 ### 9.4 What the review found that is NOT in this design yet — the open work
 
-- **the driver fields** — the name and the phone need a home (the order, not a table
-  — the tenant's drivers are the tenant's business);
+- ~~**the driver fields**~~ → **RESOLVED in v1.5** — the name and the phone live on
+  the **order** (the snapshot) **and** on a **table** (`delivery_drivers` — the
+  roster the tenant maintains) → §3;
+- **the delivery leg** — the parallel status (assigned / out for delivery / delivered)
+  → a table (`delivery_orders`), **not** two new values on `orders.status` → §4;
+- **the live tracking's source** — who reports the driver's location → §11;
 - **the delivery fee in the total** — the fee must reach the order's total and the reports
   → **the server computes it** (the client never sends a price);
 - **the "delivered" end state** — it must resolve to the existing **"completed"** or the
   revenue reports would **miss the delivery orders** → `is_order_finished()`
   (`payment_modes.py:159`) is the place to check (§4);
-- **the storefront slug** — one field on the outlet (the path is `/d/<slug>`);
-- **the PWA's own plan check** — §8 Q7.
+- **the storefront slug** — one column on the outlet (`outlets.delivery_slug`,
+  nullable, UNIQUE; the path is `/d/<slug>`) → §3;
+- **the PWA's own plan check** → **RESOLVED in v1.5** — the server-side
+  `plan_has_feature()` (§6 · §8 Q7).
+
+### 9.5 The v1.5 review — the new live findings
+
+**Kens's five comments were checked against the live code before anything was
+proposed (Nov 12, 2026). What the code said:**
+
+| The comment | What the live code said | The design consequence |
+|---|---|---|
+| **the delivery settings tab** | the switch **exists** (`outlet_settings.allow_delivery` — `models.py:447`) and it is **already rendered in the Order tab** (`Settings.jsx:1203`) → the settings tabs are a literal array of `{id, labelKey, icon, feature}` (`Settings.jsx:25`) and the `feature` string is compared **exactly** against the plan's tab names | **the switch moves, it does not copy** → one switch → and the new tab's `feature` string must be **"Delivery"** exactly |
+| **the delivery management screen** | the nav is **one list** (`navItems.js` — `{path, icon, labelKey, minRole, feature}`) and the queue **already** separates the delivery orders (`OrderQueue.jsx:199`) | **a nav screen, not a settings tab** → its own feature row |
+| **the `features` rows** | the live table's **highest sort_order is 38** (three rows share it), the **highest id is 40**, and **no delivery row exists** → the plans are Starter (20 features), Basic (24), Pro (30), Enterprise (40) | **six rows at 39-44** → and the gate key is the **`tab_name`** (`admin.py:1052`) |
+| **the sign-up and the login** | the loyalty register already derives the tenant from the venue (`loyalty.py:236-255`) and **rejects a mismatched customer tenant** → **but its registration-enabled check reads the tenant's FIRST outlet** (`loyalty.py:257-265`) | **the delivery copies the derivation** → **and the registration check must follow the slug's outlet** |
+| **the status flow** | the shared flow is a literal (`OrderQueue.jsx:135`) · the live-order rule is a literal list (`paymentModes.js:47`) · the finished-order rule knows two end states (`payment_modes.py:159`) · the kitchen's status filter is a literal (`Kitchen.jsx:121`) | **the parallel leg** → **the shared machine is not touched** |
+
+**And three more facts the v1.5 work turned up:**
+- **the QR must be drawn by the server** — the front end has **no QR library**
+  (`frontend/package.json`) while the backend has **`qrcode==7.4.2`**
+  (`backend/requirements.txt:7`) → the delivery QR is a **PNG route**, like the
+  payment QR (`/api/pwa/orders/{id}/pay-qr`, `/api/orders/{id}/pay-online/qr`);
+- **the delivery prepay is `prepay_online`** — and that mode is **locked** without a
+  connected payment account (`LOCKED_MODES` — `payment_modes.py:47`; the check —
+  `outlet_settings.py:317`) → **so a delivery order without a connected account is
+  cash on delivery** → the default anyway;
+- **the Geoapify key is hardcoded in three places** (`outlet_settings.py:359`,
+  `competitors.py:707` and `763`) → it moves to the environment (§11).
+
+---
+
+## 10. Kens's five comments — the answers
+
+**The five comments, and what this document now says about each:**
+
+| The comment | The answer | Where |
+|---|---|---|
+| **1 — the delivery settings tab: the switch on/off, the QR code (the URL path to the tenant's delivery app), the other related settings** | **a Settings tab** — the switch (the existing `allow_delivery`, **moved** into it), the QR + the storefront URL, the fees, the radius, the prepaid-only flag → **one feature row** (`delivery`) → the plan decides the tab | §3 · §10.1 |
+| **2 — the delivery management: the drivers, the delivery fees, the cover area, the related data and the progress of the current delivery status** | **a separate nav screen** (not a settings tab — it is live, not a configuration) — the driver roster, the fees, the coverage areas, today's deliveries with their live progress → **its own feature row** (`delivery_management`) | §3 · §10.2 |
+| **3 — add the screens into `website_api.db` → `features` so the plan decides which tenant can use them** | **six rows**, sorted **39-44** — `delivery` and `delivery_management` on **all four plans**; the zones on **Pro+**; the scheduling, the tracking and the analytics on **Enterprise** → and the gate key is the row's **`tab_name`** (`admin.py:1052`), so the two tab names are written exactly | §1 · §9 |
+| **4 — the delivery PWA: a login and a sign-up; a signed-up customer becomes that tenant's customer; after the login the customer can order, submit and prepay** | **the tenant comes from the URL's slug** → the slug resolves the outlet → the outlet resolves the tenant → **the client never sends a tenant id** → the new delivery auth routes resolve the slug **server-side** and reuse the loyalty register's own logic → the customer is then a `customers` row of that tenant and carries `dining_customer_id` on the order | §5 · §10.3 |
+| **5 — the POS delivery order status flow: propose the best flow which does not go against the current ordering flow** | **a parallel leg** — the shared machine is **untouched** and `served` **is** the handover → **no new status values, no rewritten rule, no forked vocabulary** | §4 · §10.4 |
+
+### 10.1 The delivery settings tab
+
+**The contents, in the order the tenant needs them:**
+1. **the switch** — `allow_delivery` (**moved** here from the Order tab — one switch,
+   one field, one place);
+2. **the storefront** — the slug (auto-generated from the outlet's name, editable),
+   the URL, and the **QR** (a server-drawn PNG) with a copy + a download;
+3. **the fees** — the flat fee, the minimum order, the free-delivery threshold;
+4. **the coverage** — the radius in km (0 = no limit) → **the postcode zones on
+   Pro+** (a separate tab);
+5. **the money** — the prepaid-only switch (cash on delivery allowed or not);
+6. **the ETA** — the base estimate and the maximum (the provider's route refines it —
+   §11);
+7. **the preview** — the name, the logo and the brand colour **already stored**
+   (`outlet_settings`) → the tenant sees its own storefront before it prints the QR.
+
+→ **the tab is feature-gated** — `Settings.jsx:25` — the `SETTINGS_TABS` entries carry
+a `feature` string compared **exactly** against the plan's tab names → the entry is
+`{ id: 'delivery', labelKey: 'delivery', icon: Bike, feature: 'Delivery' }` → and
+`FEATURES.DELIVERY = 'Delivery'` is added to the constants (`useFeatures.jsx:139`).
+
+### 10.2 The delivery management screen
+
+**Four panels — the four things a tenant actually does during a shift:**
+1. **today's deliveries** — the live list (the order, the customer, the address, the
+   leg's chip, the driver, the ETA, the fee) → **the "progress of the current
+   delivery status"** the comment asked for → it reads **one table**
+   (`delivery_orders`);
+2. **the drivers** — the roster (add, edit, deactivate) → **the tenant maintains its
+   own drivers** → the name and the phone → **the order keeps a snapshot** of both,
+   so the history survives an edit or a deactivation;
+3. **the fees** — the flat fee, the minimum, the free threshold (a quick edit — the
+   settings tab holds the full form);
+4. **the coverage areas** — the radius (the core) and the postcode zones (Pro+).
+
+→ **the screen is feature-gated** — `navItems.js` — a nav entry
+(`{ path: '/delivery', icon: Bike, labelKey: 'nav.delivery', minRole: 'manager', feature: FEATURES.DELIVERY_MANAGEMENT }`)
+→ and it sits **after Orders** (it is an operations screen, next to the queue).
+
+→ **a note on the role** — the roster and the fees are **manager** actions (the
+house's own ladder: admin > manager > staff — `navItems.js`) → the staff see the
+deliveries but not the roster.
+
+### 10.3 The sign-up and the login (the delivery PWA)
+
+**The chain — and it is the security of the whole feature:**
+```
+/d/<slug>  →  the outlet (the slug)  →  the tenant (outlets.customer_id)  →  the customer
+```
+→ **the client never sends a tenant id** → the slug is the only thing in the URL and
+the **server** resolves it.
+
+**The routes** (the tenant's own public routes — the PWA's key is public, so they
+carry the four gates of §6):
+- `POST /api/delivery/{slug}/auth/register` → resolve the outlet from the slug →
+  **call the same service functions the loyalty register uses** (no duplicated
+  password logic) → the `customers` row belongs to the tenant;
+- `POST /api/delivery/{slug}/auth/login` → the same resolution → the guest token
+  (`create_guest_token` — the loyalty register's own pattern).
+
+> **the review found a real trap here** — the loyalty register derives the tenant
+> from the venue (`loyalty.py:236-255` — "the tenant comes from the VENUE, never from
+> the body") → **that is the pattern the delivery must copy** → **but its
+> registration-enabled check reads the tenant's FIRST outlet**
+> (`loyalty.py:257-265`) → **for the delivery it must read the outlet that owns the
+> slug** → otherwise a tenant with three branches (one open for registration, two
+> closed) would inherit the first branch's answer for all three.
+
+→ **after the login** — the customer is a `customers` row of that tenant → the order
+carries the existing **`dining_customer_id`** → the customer's own order history
+works across the tenant's branches → and the customer can **order, submit and
+prepay** (§4 — the prepay is the same payment path as the in-venue PWA: the QR, the
+poll, the money lands, the order leaves `pending`).
+
+### 10.4 The status flow, in one picture
+
+```
+the customer places the order ──────────────────────────────► pending
+the staff confirms ──────────────────────────────────────────► confirmed
+the staff starts the kitchen ────────────────────────────────► preparing
+the kitchen bags it ─────────────────────────────────────────► ready
+the staff assigns a driver (the leg) ────────────────────────► leg: assigned
+the driver takes it (the leg) ───────────────────────────────► leg: picked_up
+the driver hands it over (the leg) ──────────────────────────► leg: delivered
+the core status moves with the handover ─────────────────────► served
+the money is recorded (the postpay write) ───────────────────► completed
+```
+
+→ **one line of the core machine changed** (`ready → served` is the handover) →
+**and the leg is four values in a table the POS does not own.**
+
+---
+
+## 11. The map, the routing and the ETA — the provider decision
+
+**The needs — and they are different problems:**
+
+| The need | The call | The provider |
+|---|---|---|
+| **the address → the coordinates** | one per order | **Geoapify** (already integrated) |
+| **the coordinates → a place** (the address check) | one per order | **Geoapify** (already integrated) |
+| **is this address inside our coverage?** | a travel-time area | **Geoapify Isochrone API** (Pro+) |
+| **the route + the ETA** | one per order | **Mapbox Directions** |
+| **the map the customer looks at** | the tiles | **Mapbox GL JS** |
+| **the driver's raw GPS → a road** | the map matching | **Mapbox Map Matching** |
+| **the driver → the customer** (the turn-by-turn) | **nothing** | the driver uses their own phone |
+
+**The recommendation — a hybrid, and the reason for each part:**
+- **Geoapify stays the geocoder** → it is **already integrated in two places**
+  (`outlet_settings.py:359-362` — the outlet's own geocode; `competitors.py:707`,
+  `731`, `763`, `778` — the reverse geocode, the search and the places) → **the
+  marginal cost is zero for a small tenant** (the free plan: **3,000 credits a day**
+  — a tenant doing 500 orders a day spends 500) → **and its Isochrone API answers the
+  coverage question better than a circle on a map** (a 15-minute travel area, not a
+  5 km radius) → **it is the one place where the existing integration pays off**;
+- **Mapbox is added for the route, the ETA and the map** → the thing Geoapify's
+  routing cannot do is the **live traffic** (its routing is open-data → **the ETA is
+  optimistic exactly at the peak hours, when the customer is watching**) → Mapbox
+  Directions is **$2 per 1,000 requests** → and the map itself is inside the free
+  tier (**100,000 map loads a month**);
+- **no Google** → the Routes API is the best traffic data in the market, but it is
+  billed **per kilometre**, it comes with a heavier commercial setup and display
+  constraints, and its place search we already have → **it is a "later, at scale"
+  answer, not a "now" answer**;
+- **no HERE** → the strongest commercial-fleet routing in the market, at roughly
+  **$3 per 1,000** → our drivers are cars and motorbikes, not trucks → **overkill**;
+- **no self-hosted OSRM (yet)** → it is free, but it has **no traffic** → the ETA is
+  wrong at the peak → and it is infrastructure we run → **worth revisiting when the
+  volume makes the per-call cost visible** (at 100k orders a month, Mapbox Directions
+  is about $200 a month for the whole platform).
+
+**The cost, at 500 orders a day** (one tenant):
+- the geocodes: 500 a day → **inside the free Geoapify plan** (3,000 credits a day);
+- the routes: 500 a day = 15,000 a month → **about $30 a month** (Mapbox Directions,
+  $2/1,000);
+- the map loads: the customer's tracking page → **inside the free tier**;
+- → **the live tracking costs about the price of a coffee per order** → **and it is
+  the Enterprise tier's whole reason to exist.**
+
+**The live tracking needs a location source — and that is the real question.** There
+is no GPS without somebody reporting it:
+1. **the driver link** (my pick) — a **one-page web page** the driver opens on their
+   own phone: no install, no account, three taps (Start / Arrived / Delivered) and
+   it posts the location while the order is on the road → **it is not a driver app**
+   (nothing to install, nothing to publish) → **the tenant's drivers must agree to
+   use it**;
+2. **the tenant's own tracker** — a tenant that already runs a fleet system posts the
+   position to a webhook → **we integrate, we do not replace it**;
+3. **no tracking** — the core: the status timeline, the driver's name and phone, the
+   ETA → **the WhatsApp model** → **and it is what the free tier gets**.
+
+→ **the honest risk is not technical** — a tenant whose drivers will not tap anything
+**cannot be tracked**, whatever provider we buy → **so the tracking tier sells a
+workflow, not a map** → **the map is the cheap part.**
+
+**The privacy — this is not a small footnote.** The driver's location and the
+customer's address are **personal data** (the Malaysia PDPA; the GDPR for the tenants
+that operate in the EU):
+1. **the customer's address** → it lives in the leg and the order → it is **not** in
+   the customer-facing tracking response **after the handover**;
+2. **the driver's location** → the pings are **dropped 24 hours after the delivery**
+   (the `delivery_pings` table is pruned by the nightly job) → **the pings are never
+   part of the order record** (they are a separate table with their own life);
+3. **the access** → the tenant's staff see **their own** orders only (the tenant
+   scope on every route) → the customer sees **their own order only** (the order
+   token / `dining_customer_id`);
+4. **the driver** → the driver is tracked too → **the tenant must tell its own
+   drivers** (the driver link says so) → **the driver's consent is the tenant's to
+   obtain, not ours**;
+5. **the map tiles** → the provider's terms require the attribution → the attribution
+   goes on the tracking page.
+
+**And the key** — the existing code falls back to a **hardcoded Geoapify key**
+(`outlet_settings.py:359`, `competitors.py:707` and `763` — the literal
+`3c079f5c93eb4965b38050a266a703e6`) → **that fallback must not survive** → the key
+comes from the environment (a SecretRef) → **and the code must fail loudly when it is
+missing** → a silent fallback to a shared key is how a bill arrives from nowhere.
 
 ---
 
@@ -519,8 +913,28 @@ the driver, not the order type**.
 - `backend/app/main.py` — `create_all` (44 — **tables only**) and
   `_ensure_added_columns` (47 — the `payment_timing` ALTER 111-117)
 - `frontend/src/pages/OrderQueue.jsx` — the status machine (135 — **hardcoded**),
-  the served-but-unpaid (193)
-- `frontend/src/pages/Kitchen.jsx` — the filter (266), the type chip (900)
+  the next-step helper (134), the last-step wording (142), the served-but-unpaid
+  (193), the delivery filter (199), the type label (959)
+- `frontend/src/pages/Kitchen.jsx` — the **status filter (121)**, the ready-stays rule
+  (268), the type chips (362, 459, 900)
+- `frontend/src/pages/Settings.jsx` — the settings tabs (25 — the
+  `{id, labelKey, icon, feature}` shape), the delivery switch's current home (1203)
+- `frontend/src/config/navItems.js` — the one navigation list (the
+  `{path, icon, labelKey, minRole, feature}` shape)
+- `frontend/src/hooks/useFeatures.jsx` — the feature constants (139), the fallback
+  list (9), the tab name as the gate key (45)
+- `frontend/src/utils/paymentModes.js` — `isLiveOrder` (47), `canAdvanceOrder`
+- `frontend/src/utils/businessType.js` — the last-step wording (38)
+- `backend/app/routes/loyalty.py` — the tenant from the venue (236-255), the
+  registration-enabled check (257-265)
+- `backend/app/routes/outlet_settings.py` — the Geoapify geocode (359-362), the
+  connected payment account (317)
+- `backend/app/routes/competitors.py` — the Geoapify places, the search and the
+  reverse geocode (707, 731, 763, 778)
+- `backend/requirements.txt` — `qrcode==7.4.2` (7)
+- `website_api/website_api.db` — the live `features` rows (the highest sort_order 38
+  and three rows share it, the highest id 40, **no delivery row**), the
+  `plan_features` counts (Starter 20, Basic 24, Pro 30, Enterprise 40)
 - `website_api/app/core/seed_features.py` — the feature rows (18-45) and the
   **empty-table guard** (10-12 — **the seed never re-runs**)
 - `website_api/app/routes/admin.py` — the customer features endpoint (1001 — the
