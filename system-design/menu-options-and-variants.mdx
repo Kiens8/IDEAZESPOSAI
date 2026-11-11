@@ -1620,7 +1620,55 @@ log long before this change.
 
 ---
 
-#### 4. What phase 6 does NOT do
+#### 4. The picker went blank for Spring Rolls — the `&locale=` bug
+
+On Nov 11 Kens sent a **screenshot** of the guest's modal for **Spring
+Rolls**: the modal opened, the quantity and the price were there, and the
+**picker was gone**. The API answered fine when it was curled by hand —
+so this was a **browser** bug, and the screenshot was the proof.
+
+**The cause** — the translation patch (§7.1j) introduced `localeQuery()`,
+and it appended `&locale=en` to a URL that had **no query string yet**:
+
+```
+GET /api/menu/items/1/options&locale=en     ← no "?" → no route → 404
+```
+
+The path matched no route, so the answer was a `404`, so `payload` was
+`null`, so `has_choices` was `false`, so the picker was **not drawn**. The
+**old free-text remarks box** was already hidden by phase 6 — so the guest
+saw a modal with **no way to choose anything at all**.
+
+**The fix** — `localeQuery(url)` now picks the separator by the URL it is
+given: `?` for a **bare path**, `&` when the URL already carries a query
+string. All **three** affected call sites in `js/choices.js` were fixed. The
+PWA was rebuilt and the version bumped **2.6.24 → 2.6.25**; the live app
+served the corrected file (`js/choices.js?v=2.6.25`, MD5
+`1374cf3a47f139ee0427ad8b0496f0b6`).
+
+**The proof** — the browser, against the **live** app:
+
+- `scripts/phase6_picker_check.js` — **25/25** — the whole phase 6 flow
+  again, green after the fix;
+- `scripts/pos_picker_locale_check.js` — **7/7** — the focused regression
+  check: the browser's own call is now
+  `200 GET /api/menu/items/1/options?locale=en`, the **Spring Rolls** modal
+  shows **two sizes** (`Big`, `Normal`), **one `Sauce` group**, **two
+  choices** (`Chili`, `Mayo`) and the **server's** price (`$6.00`);
+- `scripts/pos_picker_locale_control.js` — the **negative control**: the fix
+  reverted in a **scratch copy** → **5** checks **fail** and **2** pass, the
+  **four** fix-covering assertions among them; the **untouched** copy passes
+  **7/7**. The scratch tree was removed and the live app was proven
+  **unchanged**.
+
+**The lesson** — *a helper that appends to a URL must know whether the URL
+already has a query string.* `localeQuery()` was correct for the two call
+sites that already had a query and wrong for the one that did not — and
+**one** wrong call site was enough to hide the whole picker. The rule the
+probes carry now: **a screen is proved by the screen** — the curl said
+`200` and the screen said "no picker", and the screen was right.
+
+#### 5. What phase 6 does NOT do
 
 - the **legacy `modifications`** (the free-text list) was **phase 7** →
   **built** (Nov 11, §7.1l);
@@ -1635,7 +1683,7 @@ log long before this change.
 
 ---
 
-#### 5. Three lessons the probes carry now
+#### 6. Three lessons the probes carry now
 
 1. **A key that ships in a client bundle makes every field it can read
    public.** The `customer_app_key` is inside the PWA's own JavaScript —
