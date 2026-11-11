@@ -692,8 +692,9 @@ edits **one** recipe per dish, `GET/PUT /api/inventory/recipes/{menu_item_id}`):
 
 Each phase is usable on its own and leaves the system working. Phases **0**
 — **4**, **4b**, **5**, **6** and **8** are **built** (Nov 9–11,
-2026) — **7** is still to come (and it is **optional** by its own
-wording). The **translated choices** (the sizes,
+2026) — and **7** is **built** too (Nov 11 — §7.1l; it stayed
+**optional** by its own wording, so it was built last and on request).
+The **translated choices** (the sizes,
 the groups and the choices) were added on top of phase 6 (§7.1j —
 a **display** patch — the schema did not change).
 
@@ -707,7 +708,7 @@ a **display** patch — the schema did not change).
 | **4b** | **the management API + the screen** | the tenant can **create** a size, a group, a choice and the links — the write routes + the panel on the menu screen **proved by a browser** | medium | 4 | **DONE** — Nov 10, 2026 (§7.1e, §7.1f) |
 | **5** | **the counter's picker** | the staff's cart: the groups, the choices, the price | medium | 2 | **DONE** — Nov 10, 2026 (§7.1g) |
 | **6** | **the customer app's picker** | the guest's modal: the groups, the choices, the live price | medium | 2 | **DONE** — Nov 11, 2026 (§7.1h) |
-| **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group (or stays as it is — the dish keeps working either way) | low | 1 | **Proposed** — optional |
+| **7** | **the migration of the legacy `modifications`** | the old free-text list becomes a "Remarks" group (or stays as it is — the dish keeps working either way) | low | 1 | **DONE** — Nov 11, 2026 (§7.1l) — one "Remarks" group **per dish** — mirror (the default) or consume — the **ledger** makes the rollback exact — **47/47** with a **negative control** |
 | **8** | **the reports' variant breakdown** | the menu mix by variant | low | 4 | **DONE** — Nov 11, 2026 (§7.1k) — the breakdown beside the dish table — one loop, two tables — the coverage is published — **43/43** with a **negative control** |
 
 **The order matters in one place only:** the recipe and the costing (4) come
@@ -1405,7 +1406,8 @@ price** is the picker's price, the live data is untouched afterwards and
 #### 3. What phase 5 does NOT do
 
 - the **guest's modal** (the PWA) is **phase 6** — **built** (Nov 11, §7.1h);
-- the **legacy `modifications`** (the free-text list) is **phase 7**;
+- the **legacy `modifications`** (the free-text list) was **phase 7** →
+  **built** (Nov 11, §7.1l);
 - the **reports' variant breakdown** is **phase 8**;
 - the picker **does not** change the money rule — the server resolves the
   price (phase 0 — the add-on's price comes from the menu).
@@ -1620,7 +1622,8 @@ log long before this change.
 
 #### 4. What phase 6 does NOT do
 
-- the **legacy `modifications`** (the free-text list) is **phase 7**;
+- the **legacy `modifications`** (the free-text list) was **phase 7** →
+  **built** (Nov 11, §7.1l);
 - the **reports' variant breakdown** is **phase 8**;
 - the picker **does not** change the money rule — the server resolves the
   price (phase 0 — the add-on's price comes from the menu);
@@ -2051,6 +2054,146 @@ disagree, and the check proves it.
 
 ---
 
+### 7.1l The patch for phase 7 (the legacy `modifications` → the "Remarks" group) — **BUILT**
+
+**Status: built, proved and live (Nov 11, 2026).**
+
+Phase 7 was **optional** by its own wording — the dish keeps working either
+way — and Kens authorized it on Nov 11 ("proceed implement phase 7 now").
+It is now **done**: the legacy free-text list can become a real **"Remarks"
+option group**, per dish, and it can be taken back again.
+
+**Nothing in the live menu moved** — all 16 live dishes already carried an
+**empty** legacy list, so the migration had nothing to fold. The code is
+live; the data was never in play.
+
+#### 1. Two modes, and the default is the safe one
+
+The settled question was: does the list **move** into the group, or does the
+group **mirror** it? The answer is **both**, explicitly:
+
+| The mode | What it does | Who calls it |
+|---|---|---|
+| **Mirror** (the default) | the legacy list **stays on the dish**; the structured group **follows** it | the **write path** — every dish save |
+| **Consume** | the legacy list **moves into** the group and the dish column is emptied | the **operator** only — `scripts/pos_phase7_migrate.py --mode=consume` |
+
+Mirror is the default because the management screen's **chips editor** round
+trips the legacy list — a consume-on-save would silently empty the tenant's
+own field the first time they edited anything. **Consume** is the explicit
+operator move, and only that empties the column.
+
+#### 2. The group is the dish's OWN — never a shared outlet group
+
+The rule that would have leaked the most: **one `Remarks` group per dish**.
+A shared per-outlet "Remarks" group would let **dish A's notes appear on
+dish B** — the customer would order the soup and get the steak's
+instructions.
+
+So the migrated group is:
+
+- **one per dish** — a second dish never shares it;
+- attached to **its dish only**;
+- `variant_id = NULL` — a remark applies to **every size** of the dish;
+- `min_select = 0` — **optional**, the dish is orderable without a remark;
+- `max_select = the number of remarks` — the legacy list was
+  **multi-select**, so many picks stay legal;
+- **one zero-price option per legacy string** — the remark is a remark, it
+  never moves the price.
+
+#### 3. The ledger — the rollback can only remove what the migration created
+
+`menu_modification_migrations` (the model `MenuModificationMigration`,
+`backend/app/models/menu_modifications.py`) records **exactly** what the
+migration made: the `group_id`, the `option_ids`, the `link_ids`, the
+**original** legacy strings and the **folded** strings, whether the list was
+**consumed**, the `max_select` it set, and the `status`.
+
+The ledger is what makes the rollback **honest**: it deletes **only** the
+option ids and the link ids the migration itself created — a choice the
+tenant adds into the migrated group afterwards is **not** in `option_ids`, so
+it **survives** the rollback, with its link to the dish.
+
+Two rules the work found and fixed:
+
+- **the ledger row stays after a rollback** (`status = 'rolled_back'`,
+  `group_id = NULL`). Deleting the row made the **next dish save re-create
+  the migration** — the rollback did not stick. `group_id` is nullable so a
+  removed group can be recorded without a dangling reference.
+- **if a tenant-created option remains in the migrated group, the group and
+  the dish link remain** and only the migration-owned options go.
+
+#### 4. The write path folds it — inside a savepoint, best-effort, never breaking the dish
+
+`MenuService.create_menu_item` and `MenuService.update_menu_item` call
+`fold_legacy_modifications(db, item)` **after** `db.flush()` and **before**
+the caller's commit, so the dish's id exists.
+
+The fold runs inside a **SQLAlchemy savepoint**:
+
+- it **never commits** the caller's session;
+- a **failure** rolls the savepoint back and leaves the dish exactly as it
+  was — a fold must never break a menu save;
+- an **empty** legacy list is **inert** — it never deletes an existing
+  migrated group or its options;
+- a dish **without** a legacy list is **untouched** — no group, no ledger
+  row, and it takes the old path exactly;
+- a dish whose tenant **already owns** a group named `Remarks` is a
+  **hand-off** — the migration steps aside (no takeover, no duplication).
+
+The **savepoint rule is the load-bearing one**: a best-effort helper that
+commits the caller's session silently discards the caller's own write when
+it fails. The check proves the caller's uncommitted write is **rolled back
+with** the fold and survives a **failing** fold.
+
+#### 5. The operator tool — dry-run by default, copy by default
+
+`backend/scripts/pos_phase7_migrate.py`:
+
+- `--dry-run` — report what would happen, change nothing;
+- `--live` — write to the live database (the default is a **copy** in
+  `/tmp`);
+- `--outlet` / `--item` — target one outlet or one dish;
+- `--mode=mirror` (default) / `--mode=consume`;
+- `--rollback` — undo the migration, **only** what it created.
+
+#### 6. The proof
+
+- the durable check `scripts/pos_phase7_check.py` — **47 passed, 0 failed**
+  (own fixtures, the user's rows fingerprinted, the **live database byte
+  for byte the same** `bdf738141668d99f:1003520`);
+- the **negative control** `scripts/pos_phase7_control.py` — the fix reverted
+  in a **scratch copy** (each revert matched exactly once, the reverted
+  source proven to still **compile**) → **25** fix-covering checks **fail**
+  and the **17** unrelated ones stay **green** — the revert is surgical; the
+  live tree, the live database and the running server proven untouched.
+
+The check covers: per-dish isolation and no cross-dish leakage, the optional
+multi-select and its maximum, zero pricing, `variant_id = NULL`,
+idempotency, the empty-list non-deletion, the tenant-owned-`Remarks`
+hand-off, consume mode and the exact rollback, the preservation of
+tenant-created options and links, the rollback **sticking** across later
+saves, the savepoint isolation, the existing orders and their frozen
+`order_items.modifications` staying untouched, the fixture cleanup, and the
+live database's integrity.
+
+#### 7. What phase 7 does NOT do
+
+- it does **not** migrate anything in the live menu — **no** live dish
+  carried a legacy list, so **0** ledger rows exist;
+- it does **not** touch the **existing orders** — their frozen
+  `order_items.modifications` are untouched, and the reprint still prints
+  them;
+- it does **not** change the **money rule** — the migrated remarks cost
+  **nothing** and the server still resolves every price;
+- it does **not** translate the remarks — the **business language** is
+  frozen, exactly like the snapshot (§7.1j.3);
+- it does **not** manage the tenant's **own** `Remarks` group — a tenant who
+  already has one is a hand-off, not a takeover;
+- it does **not** build the **tenant-facing translation management** — that
+  is still **§8 Q7**.
+
+---
+
 ### 7.2 The order line's new shape
 
 ```jsonc
@@ -2117,7 +2260,11 @@ snapshot keeps it).
 - a dish with no variant and no group behaves exactly as today (the price is the
   dish's price, the recipe is the dish's recipe, the ticket is the dish's name);
 - the legacy `modifications` list stays and is printed as it is today (the
-  ESC/POS path) — the phase 7 turns it into a "Remarks" group if Kens wants;
+  ESC/POS path) — the **phase 7** turns it into a "Remarks" group
+  (**built**, Nov 11 — §7.1l): the group **mirrors** the list on every dish
+  save, and only the operator's explicit **consume** move empties the
+  column. No live dish carried a legacy list, so **0** ledger rows exist and
+  no live data moved;
 - the **existing orders** are untouched — their `modifications` JSON is still
   there and the reprint still prints it.
 
@@ -2133,7 +2280,7 @@ snapshot keeps it).
 | 5 (the counter's picker) | **three days** | the UI — the counter's speed is the acceptance test |
 | 6 (the customer app's picker) | **two days** | the modal (the HTML is there) — **done** (Nov 11) |
 | 8 (the reports' variant breakdown) | **half a day** | **done** (Nov 11) — the breakdown + the coverage (§7.1k) |
-| 7 (the migration of the legacy `modifications`) | **one day** | optional — the dish keeps working either way |
+| 7 (the migration of the legacy `modifications`) | **one day** | **done** (Nov 11) — the mirror/consume fold, the ledger and the rollback (§7.1l) |
 
 **Roughly three and a half weeks of work** for the whole thing, or **one day** for
 phase 0 alone (the money hole).
@@ -2254,7 +2401,7 @@ all with a unit cost. And the thirteen places that take the recipe by `menu_item
 
 ## 10. The summary of the state
 
-*Nov 11, 2026 — phases 0, 1, 2, 3, 4, 4b, 5, 6 and 8 are built, probed and live — and the **translated choices** (the sizes, the groups, the choices) are **built and live** on top of phase 6 (§7.1j — the read half; the tenant-facing **management** of them is **not built** → §8 Q7).*
+*Nov 11, 2026 — phases 0, 1, 2, 3, 4, 4b, 5, 6, 7 and 8 are built, probed and live — and the **translated choices** (the sizes, the groups, the choices) are **built and live** on top of phase 6 (§7.1j — the read half; the tenant-facing **management** of them is **not built** → §8 Q7).*
 
 | # | The item | The state |
 |---|---|---|
@@ -2264,7 +2411,7 @@ all with a unit cost. And the thirteen places that take the recipe by `menu_item
 | 4 | The variant recipes + the option's ingredient deltas + the frozen cost | **BUILT ** (Nov 10) — the variant's recipe TABLES (phase 1) — the snapshot holds the ingredient deltas (phase 2) — the API for the size's recipe — the deduction reads the FROZEN stock — the cost is frozen — the reports say `mixed` when they mix |
 | 5 | The counter's picker | **BUILT** — Nov 10, 2026 (§7.1g) — the panel (`frontend/src/components/pos/ChoicePicker.jsx`) + the cart's line + the wiring (`pages/StaffOrder.jsx`) + **one read for the whole outlet** (`GET /api/menu/options-catalog`) — **proved by a browser** (`scripts/pos_picker_screen_check.js` — the price moves, the cart shows the choices, the order holds the snapshot) — and it found **an empty till for an admin** (the session read once at mount → **fixed**) — and the **kiosk** (the full-screen till) is **fixed** (Nov 11 — the picker did not open there and its cart dropped the choices → both fixed → **16/16** with a **negative control**, §7.1g) |
 | 6 | The customer app's picker | **BUILT** — Nov 11, 2026 (§7.1h) — the picker (`customer-app/js/choices.js` — **one module**, and `app.js` holds no picker logic) + the modal + the cart + the three languages (en / km / zh) + the **preview mode** (`enforce_rules=false`) + the **cart's price fixed** (`_choices_unit_price` — the same resolver) + the **leak closed** (`strip_internal` — the guest's key reads **no** internal field) — **proved by a browser** (`scripts/phase6_picker_check.js` — **25/25**) **and by the API** (`scripts/phase6_leak_check.py` — **29/29**) |
-| 7 | The legacy `modifications` → the "Remarks" group | **Proposed** — optional |
+| 7 | The legacy `modifications` → the "Remarks" group | **BUILT** — Nov 11, 2026 (§7.1l) — one **"Remarks" group per dish** (never a shared outlet group — that would leak dish A's notes onto dish B) — the group **mirrors** the legacy list on every dish save (the default, so the tenant's chips editor still round-trips) and only the operator's explicit **consume** empties the column — one **zero-price** option per legacy string, `min_select = 0`, `max_select = the option count` (the legacy list was multi-select), `variant_id = NULL` (a remark applies to every size) — the **ledger** (`menu_modification_migrations`) records exactly what the migration made, so the rollback removes **only** the migration's own options and links (a tenant's own choice survives) and restores the legacy list **exactly** — the fold runs in a **savepoint**, never commits the caller's session and never breaks a dish save — the operator tool (`scripts/pos_phase7_migrate.py`) is **dry-run by default** and works on a **copy** unless `--live` — **proved**: the durable check (`scripts/pos_phase7_check.py` — **47/47** — own fixtures, the user's rows fingerprinted, the live database byte for byte the same) **with a negative control** (`scripts/pos_phase7_control.py` — **25** fix-covering checks fail on a reverted copy and the **17** unrelated ones stay green) — **no live data moved** (no live dish carried a legacy list) |
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** — the patch is **built, probed and live** (Nov 9, 2026) — §7.1 |
 | 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move | **BUILT** — the probe is **built and green** (**54 checks** — 16 of 16 dishes unchanged) — phase 1 — and **repaired** (Nov 11 — it had gone **stale** when the tenant built their own menu → **12 failures** that were **not** a regression → now green against **today's** live menu **and** a phase-1-shaped copy, §7.1a) |
 | 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed | **BUILT** — the tables (phase 1) — the API + the deduction + the editor (phase 4) — §7.1d |
