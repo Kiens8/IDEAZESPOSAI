@@ -1619,14 +1619,11 @@ log ✓ long before this change ✓.
 - the **reports' variant breakdown** ✓ is **phase 8** ✓;
 - the picker **does not** change the money rule ✓ — the server resolves the
   price ✓ (phase 0 ✓ ✓ — the add-on's price comes from the menu ✓);
-- the **absolute-priced variant** is still an open edge ✓ — `variant_unit_price()`
-  ✓ treats `variant.price` ✓ as the **absolute** price ✓ when it is set ✓ and
-  as `base + price_delta` ✓ when it is null ✓, but `options_catalog` ✓ does not
-  send `variant.price` ✓ and the **staff's** `ChoicePicker.jsx` ✓ only does the
-  delta form ✓ → an absolute-priced variant would show and price **wrong** for
-  the staff ✓. **No live variant uses an absolute price** ✓ (the live data ✓:
-  two variants ✓, both `price = null` ✓) → it is an edge the tenant could walk
-  into ✓, not a live bug ✓ — it belongs to a small follow-up ✓.
+- the **absolute-priced variant** ✓ — ~~is still an open edge ✓~~ → **closed
+  Nov 11 ✓✓** (§7.1i ✓✓): the catalog publishes the size's own price ✓
+  (`effective_price` ✓ / `effective_delta` ✓) and the **charge path** prices a
+  line that carries choices from the **menu** ✓ — so the counter's picker ✓ and
+  the order ✓ can no longer disagree with the resolver ✓✓.
 
 ---
 
@@ -1643,6 +1640,103 @@ log ✓ long before this change ✓.
 3. **A probe is not a screen, and a read that answers 200 is not a read that is
    allowed.** ✓✓ Both of the bugs above were found by asking the **live** API
    what a guest can see ✓, not by reading the code ✓✓.
+
+---
+
+### 7.1i The patch for the absolute-priced variant (the staff picker + the charge path) — **BUILT** ✓✓
+
+**Status: built, proved by a browser and live (Nov 11, 2026 ✓✓).**
+
+§7.1h left one edge open ✓: a size that carries a price **of its own**
+(`variant.price` ✓) is the **absolute** price of the line ✓ — not the dish's
+price plus a delta ✓. The resolver already knew that ✓
+(`variant_unit_price()` ✓), but **two** things did not ✓:
+
+1. the **catalog** did not publish the size's own price ✓ → the staff's picker
+   ✓ could only do the delta form ✓ → an absolute-priced size would **show**
+   the wrong price ✓;
+2. the **charge path** took the **client's** arithmetic as the money on a line
+   that carries choices ✓ → the counter's own picker (dish + delta) could
+   become the price the guest is charged ✓.
+
+Both are closed ✓, and the **rule now lives in one place** ✓.
+
+---
+
+#### 1. The rule, in one place ✓
+
+`backend/app/services/line_pricing.py` ✓ — **one module, two paths** ✓
+(`POST /promotions/calculate` ✓ and `POST /orders/` ✓ both ask it ✓), so the
+cart's number and the order's number **cannot disagree** ✓:
+
+- a line **without** choices keeps the old path **exactly** ✓ (§4.4 ✓) — the
+  counter's price is the counter's price ✓, a guest's price is ignored ✓, the
+  dish's price is the fallback ✓;
+- a line **with** choices (a size ✓, a choice ✓, or both ✓) is priced by the
+  **menu** ✓ — the resolver's rule ✓: the size's own price if it has one ✓,
+  otherwise the dish's price plus the size's delta ✓, and then the choices'
+  deltas ✓;
+- a **deliberate** price is a field of its own — `price_override` ✓. The
+  ordinary `price` / `unit_price` of a line is the **client's** arithmetic ✓
+  (the picker adding the deltas ✓) and is **never** a deliberate act ✓.
+
+The override is honoured on **every** line ✓ (a dish without choices too ✓) —
+it is the right the counter has always had over a dish's price ✓, now written
+down ✓ instead of implied ✓. Only a **trusted** caller may use it ✓ (the staff
+key ✓): the guest's override is ignored ✓, and a value that is not a usable
+price (not a number ✓, negative ✓, NaN ✓, infinite ✓) is not an override ✓ —
+the menu's price stands ✓.
+
+#### 2. The catalog publishes the truth ✓
+
+`options_catalog()` ✓ now sends each size's own price ✓ — `effective_price` ✓
+(the price of ONE line that carries the size ✓) and `effective_delta` ✓ (the
+size's **contribution** to the dish's price ✓). The staff's `ChoicePicker.jsx` ✓
+**reads** those numbers ✓ — it never works the rule out for itself ✓ (§7.1g ✓).
+
+#### 3. The counter's deliberate price ✓
+
+The pencil next to the price in the cart ✓ (`frontend/src/components/pos/CartPanel.jsx` ✓
+→ `LinePrice` ✓) opens a field ✓: a finite, non-negative number becomes the
+line's `price_override` ✓, and **clearing** the field removes it ✓ — the menu's
+price stands again ✓. The cart shows **both** prices ✓ (the deliberate one ✓,
+the menu's struck through ✓) — the counter must see what the dish really
+costs ✓ next to what the guest is charged ✓. The three new i18n keys ✓
+(`cart.editPrice` ✓, `cart.savePrice` ✓, `cart.cancelPrice` ✓) went into
+**en** ✓, **zh** ✓ and **km** ✓.
+
+#### 4. The two proofs ✓✓
+
+- **`scripts/pos_choice_pricing_check.py` ✓** — the **durable** check ✓
+  (**39 checks ✓✓**, green against the live tree ✓): it owns its fixtures ✓
+  (its own dish ✓, its own sizes ✓, its own choices ✓ — on a **copy** of the
+  database ✓), it fingerprints the rows **the user owns** ✓ before and after ✓
+  (six tables ✓, every row unchanged ✓), it refuses to run on the live
+  database ✓, and it reads the **running** server too ✓ (the catalog ✓, the
+  guest's view ✓ — the price ✓, never the costing ✓). It covers: the picker
+  is told the truth ✓, the resolver's two forms ✓, the preview and the write
+  path **agree** ✓, the deliberate override ✓, a guest's override **ignored**
+  ✓, and the old path **not moving** ✓.
+- **`scripts/pos_choice_pricing_control.py` ✓** — the **negative control** ✓
+  (the check must fail without the fix ✓): it copies the source to a scratch
+  tree ✓, reverts **only** the fix ✓ (each replacement asserted to match
+  exactly once ✓) and runs the **same** check against the copy ✓ → **10 of the
+  fix-covering checks fail** ✓ and the **21** that do not cover the fix stay
+  green ✓ (the revert is surgical ✓). The live tree ✓, the live database ✓
+  and the running server are proven **untouched** ✓ afterwards ✓.
+- **`scripts/pos_staff_price_check.js` ✓** — **proved by a browser** ✓ (the
+  real till ✓, the real picker ✓, a **real order** ✓): the pencil opens ✓, the
+  deliberate price travels in **its own field** ✓ (`price_override = 7.25` ✓,
+  the ordinary `unit_price` untouched ✓), the **database** charges the
+  deliberate price ✓ (7.25 ✓) **and** the choices are **still frozen** ✓ (the
+  size ✓ and the option ✓), clearing the field puts the menu's price back ✓,
+  and the test order is **gone** afterwards ✓.
+
+**A lesson this patch carried** ✓ — the money hole was not in the resolver ✓
+(it was already right ✓); it was in the **two** places that **copied** its rule
+✓ — the picker ✓ and the charge path ✓. The fix is not that each copy is
+careful ✓; it is that **neither copies it any more** ✓ — the picker **reads**
+the server's numbers ✓ and the charge path **asks** the one resolver ✓.
 
 ---
 
@@ -1823,3 +1917,4 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 11 | **The menu management screen** — the groups, the choices and the sizes | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) — the write routes ✓ (the sizes ✓, the groups ✓, the choices ✓, the links ✓) + the panel on the menu screen ✓ (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — **the phase it never had** ✓ (4b ✓) |
 | 12 | **The screen proved by a browser** — and the plan compatibility ✓ | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1f ✓) — the browser check ✓ (`scripts/pos_menu_screen_check.js` ✓ — it found the missing permissions ✓, the missing size form ✓, the missing delete ✓ and a **cross-tenant leak** in the menu list ✓✓ — all fixed ✓✓) — and **a tenant without the Inventory plan** ✓ works exactly the same ✓ (the ingredient is an extra ✓, never a requirement ✓) |
 | 13 | **The reports' variant breakdown** (phase 8 ✓) | **NOT STARTED** ✗✗ — the phase table says *to come* ✓ (row 8 ✓ of §6 ✓) — and the §10 table had **no row for it** ✗✗ (fixed Nov 11 ✓) — the **data is already there** ✓: `order_items.variant_id` ✓ + `variant_name` ✓ and `order_item_options.variant_name` ✓ (15 live rows ✓) → so it is a **query-only** job ✓ (the menu mix ✓ rolls the dish up today ✓ — `backend/app/routes/reports.py` ✓ has **no** variant grouping ✓) — the cheapest part of the project ✓ (doc §5.3 ✓ calls it so ✓) |
+| 14 | **The absolute-priced variant (the staff picker + the charge path)** | **CLOSED** ✓✓ — Nov 11, 2026 ✓ (§7.1i ✓✓) — the rule in **one place** ✓ (`backend/app/services/line_pricing.py` ✓ — the preview ✓ and the write path ✓ both ask it ✓) — the catalog publishes the size's own price ✓ (`effective_price` ✓ / `effective_delta` ✓) and the picker **reads** it ✓ — the counter's deliberate price is a field of its own ✓ (`price_override` ✓, a guest's is ignored ✓) — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_pricing_check.py` ✓ — **39/39** ✓ — own fixtures ✓, the user's rows fingerprinted ✓) **with a negative control** ✓ (`scripts/pos_choice_pricing_control.py` ✓ — **10** fix-covering checks fail on a reverted copy ✓) **and by a browser** ✓ (`scripts/pos_staff_price_check.js` ✓ — a real order ✓ — the DB charges the deliberate price ✓ and the choices stay frozen ✓) |
