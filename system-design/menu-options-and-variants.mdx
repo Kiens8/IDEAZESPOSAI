@@ -829,10 +829,13 @@ it runs on every start ✓ and only when the column is really missing ✓.
    phase 5 ✓ and the guest's modal is phase 6 ✓) ✓ → nothing to change ✓.
 
 **The probe** (`scripts/pos_menu_options_probe.py` ✓ — against a **copy** of
-the database ✓): **55 checks, all green** ✓✓.
+the database ✓): **54 checks, all green** ✓✓ — against **today's** live menu ✓
+(Nov 11 ✓) **and** against a phase-1-shaped copy ✓.
 
 - the seven tables exist ✓ and the column is there ✓;
-- the new tables start **empty** ✓ — nothing was rewritten ✓;
+- **the tenant's own rows are never touched** ✓ — the probe fingerprints every
+  row the tenant owns ✓ and checks it again at the end ✓ (**nothing was
+  rewritten** ✓ — the probe's own rows are **additive** ✓);
 - **the compatibility gate (§4.4 ✓)** — for **every one of the 16 dishes** of
   the live menu ✓: the price ✓, the cost ✓, the grams ✓ and the ticket's
   lines ✓ are **identical** before and after ✓✓ ("a dish with no variant and
@@ -845,6 +848,53 @@ the database ✓): **55 checks, all green** ✓✓.
   group's own `min_select` ✓, more choices than `max_select` ✓, a choice that
   is not on the dish ✓, an unavailable choice ✓;
 - a dish without choices still answers the old way ✓.
+
+#### The probe was REPAIRED ✓✓ — it had gone stale ✓
+
+**The probe is the gate of every phase** ✓ (§6 ✓) — "not optional" ✓ — and it
+had **not been re-runnable since phase 4b** ✓✗✗. Kens asked what was still
+outstanding ✓; running it answered with **12 failures** ✓✗✗.
+
+**And the failures were not a regression ✓✓** — they were **stale fixtures**
+✓✓:
+
+| What failed | Why | Verdict |
+|---|---|---|
+| *the new tables start empty* ✓ (5 checks ✓) | the tenant has **built their own** menu since phase 4b ✓ — 2 sizes ✓, 1 group ✓, 2 choices ✓, 15 snapshot rows ✓ — so the tables are **not empty** any more ✓ | the **assertion** was stale ✓ |
+| *no variants (the dish has none)* ✓ (4 checks ✓) | the probe took `items[0]` ✓ and borrowed a live dish ✓ — and dish #1 ✓ (Spring Rolls ✓) is exactly the dish that now **has** the sizes ✓ and the Sauce group ✓ | the **fixture** was stale ✓ |
+| *the size / the groups are in the picker's data* ✓ (3 checks ✓) | the probe **counted** the tenant's rows ✓ as if they were its own ✓ — so `1 variant` ✓ became `3` ✓ | the **counting** was stale ✓ |
+
+**The proof that nothing had actually broken** ✓✓ — the probe run against a
+copy with the new tables emptied ✓ (the shape it was written for ✓) was
+**55/55 green** ✓✓ — and the **substantive** gate ✓ (every one of the 16 live
+dishes ✓ — the price ✓, the cost ✓, the grams ✓, the ticket's lines ✓
+**identical** before and after ✓) passed **16/16 against today's live menu**
+✓✓ even while the fixtures were failing ✓✓.
+
+**Fixed** ✓✓ (Nov 11 ✓) — the probe now survives a tenant who has actually
+used the product ✓:
+
+1. the **empty** assertion ✓ became a **fingerprint** ✓ — every row the tenant
+   owns ✓ is captured at the start ✓ and checked at the end ✓ (**still there** ✓,
+   **unchanged** ✓) → a **stronger** promise ✓ than "empty" ✓ (it holds for a
+   tenant with a full menu ✓, not only for a fresh one ✓);
+2. the probe **makes its own dish** ✓ (`__probe scratch dish__` ✓, in the copy
+   only ✓) instead of **borrowing** a tenant's ✓ — so the counts are the
+   probe's ✓ and the tenant's rows are never **edited** ✓;
+3. the dish "with no choices" ✓ is **found** ✓ (the first dish with no size ✓
+   and no group ✓) instead of **assumed** ✓ — and the outlet's own groups ✓
+   must not **leak** into it ✓ (a new check ✓).
+
+**Now green on both shapes** ✓✓ — **54/54** against today's live menu ✓ and
+**54/54** against a phase-1-shaped copy ✓ — and the live database was **never
+touched** ✓ (the probe refuses to run against it ✓, and the live menu still
+holds exactly its own 16 dishes ✓ and its 2 sizes ✓).
+
+**The lesson** ✓✓ — *a gate that cannot run is not a gate* ✓. The probe was
+green the day it was written ✓ and meaningless the day the tenant used the
+product ✓ — the checks did not fail ✓, they **stopped meaning anything** ✓.
+A test that borrows the world's data ✓ will one day be testing the world's
+data ✓ instead of its own ✓.
 
 **Live on the production path** ✓ (the live server, not a copy ✓): the guest's
 key reads a dish's choices (**200** ✓), the price preview answers the dish's
@@ -1767,7 +1817,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 6 | The customer app's picker | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1h ✓) — the picker ✓ (`customer-app/js/choices.js` ✓ — **one module** ✓, and `app.js` ✓ holds no picker logic ✓) + the modal ✓ + the cart ✓ + the three languages ✓ (en ✓ / km ✓ / zh ✓) + the **preview mode** ✓ (`enforce_rules=false` ✓) + the **cart's price fixed** ✓ (`_choices_unit_price` ✓ — the same resolver ✓) + the **leak closed** ✓ (`strip_internal` ✓ — the guest's key reads **no** internal field ✓) — **proved by a browser** ✓ (`scripts/phase6_picker_check.js` ✓ — **25/25** ✓) **and by the API** ✓ (`scripts/phase6_leak_check.py` ✓ — **29/29** ✓) |
 | 7 | The legacy `modifications` → the "Remarks" group | **Proposed** ✓✓ — optional ✗✗ |
 | 8 | **The add-on's price hole (§3.6)** | **CLOSED** ✓✓ — the patch is **built, probed and live** ✓✓ (Nov 9, 2026 ✓) — §7.1 ✓✓ |
-| 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **BUILT** ✓✓ — the probe is **built and green** ✓✓ (55 checks ✓ — 16 of 16 dishes unchanged ✓✓) — phase 1 ✓✓ — §7.1a ✓✓ |
+| 9 | **The compatibility guarantee (§4.4)** — the existing menu does not move ✓✓ | **BUILT** ✓✓ — the probe is **built and green** ✓✓ (**54 checks** ✓ — 16 of 16 dishes unchanged ✓✓) — phase 1 ✓✓ — and **repaired** ✓✓ (Nov 11 ✓ — it had gone **stale** ✓✗✗ when the tenant built their own menu ✓ → **12 failures** ✓ that were **not** a regression ✓✓ → now green against **today's** live menu ✓ **and** a phase-1-shaped copy ✓✓, §7.1a ✓✓) |
 | 10 | **The variant's recipe in its own tables (§4.1)** — the dish's recipe is never re-keyed ✓✓ | **BUILT** ✓✓ — the tables ✓✓ (phase 1 ✓✓) — the API ✓✓ + the deduction ✓✓ + the editor ✓✓ (phase 4 ✓✓) — §7.1d ✓✓ |
 | 11 | **The menu management screen** — the groups, the choices and the sizes | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1e ✓) — the write routes ✓ (the sizes ✓, the groups ✓, the choices ✓, the links ✓) + the panel on the menu screen ✓ (`frontend/src/components/menu/ItemChoicesModal.jsx` ✓) — **the phase it never had** ✓ (4b ✓) |
 | 12 | **The screen proved by a browser** — and the plan compatibility ✓ | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1f ✓) — the browser check ✓ (`scripts/pos_menu_screen_check.js` ✓ — it found the missing permissions ✓, the missing size form ✓, the missing delete ✓ and a **cross-tenant leak** in the menu list ✓✓ — all fixed ✓✓) — and **a tenant without the Inventory plan** ✓ works exactly the same ✓ (the ingredient is an extra ✓, never a requirement ✓) |
