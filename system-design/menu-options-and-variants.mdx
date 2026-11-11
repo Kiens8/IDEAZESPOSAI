@@ -697,8 +697,8 @@ wording ✓). The **translated choices** ✓ (the sizes ✓,
 the groups ✓ and the choices ✓) were added on top of phase 6 ✓ ✓✓ (§7.1j ✓✓ —
 a **display** patch ✓ — the schema did not change ✓).
 
-| # | The phase | What it adds | The risk | The dependency |
-|---|---|---|---|---|
+| # | The phase | What it adds | The risk | The dependency | The status |
+|---|---|---|---|---|---|
 | **0** | **the money hole** (§3.6) | the add-on's price comes from the menu, never from the request ✓ | low ✓ | none — **do this first** ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1 ✓) |
 | **1** | **the data + the read model** | the seven tables ✓, the menu routes that read the groups and the options ✓ (no UI change ✓) | low ✓ | — | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1a ✓) |
 | **2** | **the write path + the snapshot** | the order line accepts `variant_id` + `option_ids` + `notes` ✓, the server resolves the price ✓, the snapshot is written ✓ | medium ✓ | 1 ✓ | **DONE** ✓✓ — Nov 9, 2026 ✓ (§7.1b ✓) |
@@ -1819,8 +1819,11 @@ prose prompt that translates a dish's **description** ✓ would hand back a
 (`LABEL_PROMPT_TEMPLATE` ✓ in `backend/app/services/ai_translation.py` ✓) and
 their **own gate** ✓ (`is_valid_label()` ✓): an answer that came back as a
 sentence ✓, or with a full stop the source did not have ✓, or too long ✓, is
-**refused** ✓✓ — the English source stands ✓ and the bad answer is **not
-cached** ✓✓ (the next run asks again ✓).
+**refused** ✓✓ — and **two different places** hold the refusal ✓✓: the
+**model's cache** does **not** keep the bad answer ✓✓ (the next run asks again
+✓) and the **row** is stored with the **English source** ✓ and the status
+**`fallback`** ✓✓ — so the tenant can see what was **not** translated ✓✓
+(§7.1j.8 ✓).
 
 **Proved against the live model** ✓✓: eight real labels ✓ (`Big` ✓, `Normal` ✓,
 `Sauce` ✓, `Chili` ✓, `Mayo` ✓, `Extra egg` ✓, `No onion` ✓, `Less ice` ✓) in
@@ -1869,11 +1872,11 @@ Deployed ✓ (the backend restarted ✓) and the **real** choices of the live
 branch ✓ backfilled ✓ — `Big` ✓ / `Normal` ✓ / `Sauce` ✓ / `Chili` ✓ / `Mayo` ✓
 — in **zh** ✓ and **km** ✓✓. The live picker answers ✓✓:
 
-| The guest's language | The size | The group | The choice |
-|---|---|---|---|
-| **zh** ✓ | `大份` ✓ | `酱汁` ✓ | `辣椒酱` ✓ |
-| **km** ✓ | `ធំ` ✓ | `ស៊ូស` ✓ | `ម្ទឹស` ✓ |
-| **no locale** ✓ (the staff's view ✓) | `Big` ✓ | `Sauce` ✓ | `Chili` ✓ |
+| The guest's language | The size `Big` ✓ | The size `Normal` ✓ | The group `Sauce` ✓ | The choice `Chili` ✓ | The choice `Mayo` ✓ |
+|---|---|---|---|---|---|
+| **zh** ✓ | `大份` ✓ | `普通份` ✓ | `酱汁` ✓ | `辣椒酱` ✓ | `蛋黄酱` ✓ |
+| **km** ✓ | `ធំ` ✓ | `ធម្មតា` ✓ | `ស៊ូស` ✓ | `ម្ទឹស` ✓ | `ម៉ាយ៉ូ` ✓ |
+| **no locale** ✓ (the staff's view ✓) | `Big` ✓ | `Normal` ✓ | `Sauce` ✓ | `Chili` ✓ | `Mayo` ✓ |
 
 The live price answer is right ✓✓ — `3.00` (the dish ✓) `+ 3.00` (the size ✓)
 `+ 0.50` (the choice ✓) `= 6.50` ✓✓ — **and** it carries the localised names ✓✓.
@@ -1894,6 +1897,43 @@ the fix is that **every** read point asks ✓✓, and the **proof** is that the
 - it does **not** change the **prices** ✓ — the ids ✓, the money ✓ and the rules
   ✓ are untouched ✓✓;
 - it does **not** change the **schema** ✓✓.
+
+#### 8. The tenant's side — the read half is built ✓✓, the **manage** half is **not** ✓✗
+
+**The read half is built and live** ✓✓ — that is the half the **guest** sees ✓✓:
+the picker's **three** endpoints ✓ answer in the guest's language ✓✓, and the
+live branch's own labels are backfilled ✓✓ — **ten** rows ✓ (five labels ✓ ×
+**two** locales ✓) — **every one** of them reads **`done`** ✓✓.
+
+**The write half is the machine's only** ✓✓ — and this is the honest gap ✓✗:
+
+- the **only** route that writes a translation is
+  `POST /api/menu/translations/backfill` ✓ (`menu:write` ✓) — it asks the
+  model ✓, runs the gate ✓ and stores the answer ✓✓;
+- there is **no** route that edits **one** translation by hand ✓✗ — no `PUT` ✓,
+  no `PATCH` ✓, no delete ✓;
+- there is **no** screen that shows a translation ✓✗ — the menu management
+  screen ✓ (`ItemChoicesModal.jsx` ✓) writes the **sizes** ✓, the **groups** ✓
+  and the **choices** ✓ in the **business language** ✓✓ and it never shows the
+  localised name ✓✓.
+
+So the tenant can make the guest's menu **translated** ✓✓ — but if the model
+picks a **wrong word** ✓ (and it will ✓ — `Extra egg` ✓ is not `Extra eggs` ✓),
+the tenant cannot **fix** it without a developer ✓✓ — the only lever today is
+to change the **English source** ✓ and re-run the backfill ✓✓.
+
+**And the `fallback` status is stored but unseen** ✓✗ — a refused label is
+written with the status `fallback` ✓✓ (and the English source ✓) so the tenant
+**can** see what was not translated ✓ — but only by reading the **database**
+✓✓, because **no screen reads it** ✓✗.
+
+**So the honest answer to "is the tenant-facing management of the translations
+in scope?"** ✓ — the **read** half is **in** ✓✓ and **live** ✓✓; the **manage**
+half is **not built** ✓✗ and it needs **Kens's** call ✓✓ — because it is a
+**screen** decision ✓ (a new tab on the menu screen ✓? a panel on the choices
+modal ✓?) and not a technical one ✓✓.
+
+That is the **one** open question this patch leaves ✓ — see **§8 Q7** ✓✓.
 
 ---
 
@@ -2126,11 +2166,48 @@ menu is never the thing being tested ✓).
    guest's picker is the face of the business ✓ — both were built ✓.
 6. ~~**The translations** (en / zh / km ✓) — the variants and the options would want
    their own translation table ✓. Is it in this project or a later one ✓?~~ ✓✓ —
-   **answered: in this project** ✓ — **built** ✓✓ (Nov 11, 2026 ✓ — §7.1j ✓✓) —
-   and **no new table was needed** ✓✓: `menu_content_translations.content_type` ✓
-   is free-form ✓, so the three new content types ✓ (`menu_variant` ✓,
-   `menu_option_group` ✓, `menu_option` ✓) drop into the table that was already
-   there ✓ — the dish's name and the category's name ✓ had made it already ✓.
+   **answered: in this project** ✓ — **built** ✓✓ **and live** ✓✓ (Nov 11, 2026 ✓
+   — §7.1j ✓✓) — and **no new table was needed** ✓✓:
+   `menu_content_translations.content_type` ✓ is free-form ✓, so the three new
+   content types ✓ (`menu_variant` ✓, `menu_option_group` ✓, `menu_option` ✓)
+   drop into the table that was already there ✓ — the dish's name and the
+   category's name ✓ had made it already ✓.
+
+   **The live behaviour, stated plainly ✓✓:** the **sizes** ✓, the **groups** ✓
+   and the **choices** ✓ **are** translated ✓✓ — the guest's picker ✓, the
+   catalog ✓ and the price answer ✓ all answer in the guest's language ✓✓, and
+   the live branch's own labels are backfilled ✓✓ (ten rows ✓ — five labels ✓
+   × two locales ✓ — every one **`done`** ✓✓). The **staff's** picker still
+   reads the **business language** ✓✓ (by design ✓ — §7.1j.3 ✓) and the
+   **snapshot** still freezes the **English** names ✓✓ (the write path is never
+   localised ✓✓). **Proved** ✓✓ by `scripts/pos_choice_translation_check.py` ✓
+   (**64/64** ✓) with a **negative control** ✓
+   (`scripts/pos_choice_translation_control.py` ✓ — **16** fix-covering checks
+   fail on a reverted copy ✓) ✓✓.
+
+   **The half that is NOT built** ✓✗ — the **tenant-facing management** of those
+   translations ✓: there is **no** route to edit one translation by hand ✓✗ and
+   **no** screen that shows one ✓✗ — only the model's backfill ✓
+   (`POST /api/menu/translations/backfill` ✓). That is **Q7** ✓✓ below ✓.
+7. **Does the tenant need to manage the translations by hand?** ✓ — the **read**
+   half is **built and live** ✓✓ (§7.1j ✓✓ — the guest sees the translated
+   sizes ✓, groups ✓ and choices ✓ today ✓), but the **manage** half is **not
+   built** ✓✗ (§7.1j.8 ✓): there is **no** `PUT`/`PATCH` route ✓✗ for a
+   single translation ✓ and **no** screen ✓✗ that shows one ✓ — the tenant
+   cannot hand-correct a **wrong** word ✓ (the model's pick ✓) and cannot see
+   the **`fallback`** rows ✓ (the labels that were refused ✓) without reading
+   the database ✓✓.
+
+   **The proposal** ✓: a **small panel on the choices modal** ✓ (the one the
+   tenant already opens to edit the sizes ✓ and the groups ✓ — §7.1e ✓) that
+   shows each label's **source** ✓ and its **translation per locale** ✓, with a
+   **single field** to correct it ✓✓ — plus the **backfill** as the **"translate
+   it for me"** button ✓✓. It reuses the table that is already there ✓ and the
+   outlet-scoped rule ✓ — so the **schema does not change** ✓✓ and the **cost
+   is one route and one panel** ✓✓. **The recommendation** ✓: build it ✓ —
+   the machine will get it wrong ✓, and a tenant who cannot fix it will blame
+   the app ✓✓. **This one is Kens's call** ✓✓ — the read half already works ✓✓
+   and needs nothing ✓.
 
 ---
 
@@ -2177,7 +2254,7 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 
 ## 10. The summary of the state
 
-*Nov 11, 2026 — phases 0, 1, 2, 3, 4, 4b, 5 and 6 are built, probed and live ✓✓.*
+*Nov 11, 2026 — phases 0, 1, 2, 3, 4, 4b, 5, 6 and 8 are built, probed and live ✓✓ — and the **translated choices** ✓ (the sizes ✓, the groups ✓, the choices ✓) are **built and live** ✓✓ on top of phase 6 ✓✓ (§7.1j ✓✓ — the read half ✓✓; the tenant-facing **management** of them is **not built** ✓✗ → §8 Q7 ✓✓).*
 
 | # | The item | The state |
 |---|---|---|
@@ -2195,4 +2272,4 @@ all with a unit cost ✓. And the thirteen places that take the recipe by `menu_
 | 12 | **The screen proved by a browser** — and the plan compatibility ✓ | **BUILT** ✓✓ — Nov 10, 2026 ✓ (§7.1f ✓) — the browser check ✓ (`scripts/pos_menu_screen_check.js` ✓ — it found the missing permissions ✓, the missing size form ✓, the missing delete ✓ and a **cross-tenant leak** in the menu list ✓✓ — all fixed ✓✓) — and **a tenant without the Inventory plan** ✓ works exactly the same ✓ (the ingredient is an extra ✓, never a requirement ✓) |
 | 13 | **The reports' variant breakdown** (phase 8 ✓) | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1k ✓✓) — the **menu mix** ✓ answers with `variant_items` ✓ (one row per **(dish, size)** pair ✓) + `variant_totals` ✓ (the coverage ✓) — the **data was already frozen** ✓ (phase 2 ✓: `order_items.variant_id` ✓ + `variant_name` ✓) → so it stayed **query-only** ✓✓ (no new table ✓, no migration ✓, no write path touched ✓✓) — **one loop** ✓, **two tables** ✓ → they **cannot disagree** ✓✓ (the dish rollup's numbers do not move ✓✓) — the size's name is the **frozen** business language ✓✓ (never translated ✓) — the screen says **what the breakdown covers** ✓✓ ("6 of the 11 items sold" ✓ — the 5 without a size are **named** ✓) — the cost rules do not move ✓✓ (frozen ✓ / recipe ✓ / estimate ✓ / `mixed` ✓ / unknown stays unknown ✓) — the browser holds **no** report rule ✓✓ — **proved** ✓✓: the durable check ✓ (`scripts/pos_report_variant_check.py` ✓ — **43/43** ✓ — own fixtures ✓, the user's rows fingerprinted ✓, the live database untouched ✓) **with a negative control** ✓ (`scripts/pos_report_variant_control.py` ✓ — **22** fix-covering checks fail on a reverted copy ✓ and the **16** unrelated ones stay green ✓) + the **live edge** ✓ |
 | 14 | **The absolute-priced variant (the staff picker + the charge path)** | **CLOSED** ✓✓ — Nov 11, 2026 ✓ (§7.1i ✓✓) — the rule in **one place** ✓ (`backend/app/services/line_pricing.py` ✓ — the preview ✓ and the write path ✓ both ask it ✓) — the catalog publishes the size's own price ✓ (`effective_price` ✓ / `effective_delta` ✓) and the picker **reads** it ✓ — the counter's deliberate price is a field of its own ✓ (`price_override` ✓, a guest's is ignored ✓) — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_pricing_check.py` ✓ — **39/39** ✓ — own fixtures ✓, the user's rows fingerprinted ✓) **with a negative control** ✓ (`scripts/pos_choice_pricing_control.py` ✓ — **10** fix-covering checks fail on a reverted copy ✓) **and by a browser** ✓ (`scripts/pos_staff_price_check.js` ✓ — a real order ✓ — the DB charges the deliberate price ✓ and the choices stay frozen ✓) |
-| 15 | **The translated choices (the sizes, the groups, the choices)** | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1j ✓✓) — **no new table** ✓✓ (`menu_content_translations.content_type` ✓ is free-form ✓ — three new types ✓: `menu_variant` ✓, `menu_option_group` ✓, `menu_option` ✓) — the names move ✓ and **only** the names ✓ (the ids ✓, the prices ✓, the rules ✓ untouched ✓) — the **snapshot keeps the business language** ✓✓ (the write path is never localised ✓) while the guest's picker ✓, the catalog ✓ and the price answer ✓ are localised ✓ — the staff's picker deliberately sends **no** locale ✓✓ — the choices get their **own short-label prompt** ✓ + their **own gate** ✓ (a sentence is refused ✓, the bad answer is not cached ✓) — the guest app asks in the guest's language ✓ and the picker reloads when the language changes ✓ — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_translation_check.py` ✓ — **64/64** ✓ — own fixtures ✓, the user's rows fingerprinted ✓, the **route edge** checked ✓) **with a negative control** ✓ (`scripts/pos_choice_translation_control.py` ✓ — **16** fix-covering checks fail on a reverted copy ✓) — **live** ✓✓ (the real choices backfilled ✓ in zh ✓ and km ✓) |
+| 15 | **The translated choices (the sizes, the groups, the choices)** | **BUILT** ✓✓ — Nov 11, 2026 ✓ (§7.1j ✓✓) — **no new table** ✓✓ (`menu_content_translations.content_type` ✓ is free-form ✓ — three new types ✓: `menu_variant` ✓, `menu_option_group` ✓, `menu_option` ✓) — the names move ✓ and **only** the names ✓ (the ids ✓, the prices ✓, the rules ✓ untouched ✓) — the **snapshot keeps the business language** ✓✓ (the write path is never localised ✓) while the guest's picker ✓, the catalog ✓ and the price answer ✓ are localised ✓ — the staff's picker deliberately sends **no** locale ✓✓ — the choices get their **own short-label prompt** ✓ + their **own gate** ✓ (a sentence is refused ✓, the bad answer is not cached ✓) — the guest app asks in the guest's language ✓ and the picker reloads when the language changes ✓ — **proved** ✓✓: the durable check ✓ (`scripts/pos_choice_translation_check.py` ✓ — **64/64** ✓ — own fixtures ✓, the user's rows fingerprinted ✓, the **route edge** checked ✓) **with a negative control** ✓ (`scripts/pos_choice_translation_control.py` ✓ — **16** fix-covering checks fail on a reverted copy ✓) — **live** ✓✓ (the real choices backfilled ✓ in zh ✓ and km ✓ — **ten** rows ✓, every one **`done`** ✓✓) — and the **read half is done** ✓✓ — while the **tenant-facing management** of the translations is **NOT built** ✓✗ (no hand-edit route ✓✗, no screen ✓✗ — only the model's backfill ✓) → **§8 Q7** ✓✓ |
