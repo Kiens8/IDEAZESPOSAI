@@ -576,9 +576,31 @@ allowlist is **refused**, not merely un-approved.
 Vera's two allowlist entries are the two wrappers:
 
 ```
-/srv/openclaw/vera/bin/vera-exec *
-/srv/openclaw/vera/bin/vera-issue *
+/srv/openclaw/vera/bin/vera-exec
+/srv/openclaw/vera/bin/vera-issue
 ```
+
+**The pattern form is not free choice — it was got wrong once and cost a full
+verification cycle.** The allowlist matcher globs each pattern against the
+**resolved executable path** of the command segment, not against the command
+line. The intuitive entry `/srv/openclaw/vera/bin/vera-exec *` therefore matches
+*nothing*: the resolved path is `/srv/openclaw/vera/bin/vera-exec`, and the
+trailing ` *` can never be satisfied by it. An entry that matches no path is
+silently inert — it does not error, it just never fires. The first attempt at
+this verification therefore showed the two wrappers being refused with
+`exec denied: allowlist miss` while unrelated built-in safe bins (`head`,
+`tail`, `wc`, `test`, `pwd`) sailed through, which reads exactly like a
+misconfigured allowlist rather than a wrong glob. The working form is the bare
+resolved path, with no argument suffix:
+
+```bash
+openclaw approvals allowlist add --agent vera "/srv/openclaw/vera/bin/vera-exec"
+openclaw approvals allowlist add --agent vera "/srv/openclaw/vera/bin/vera-issue"
+```
+
+Both entries now report `Last Used` in `openclaw approvals get`, which is the
+cheap confirmation that a pattern actually fires — a never-matching pattern
+never shows a use.
 
 So Vera's shell is not "a shell that should not do bad things" — it is a shell
 with exactly **two** commands in it, both of which are root-owned files that
@@ -591,14 +613,27 @@ So `vera-exec` is what makes the command run as `vera` (§5.3), and the two leve
 compose: the allowlist decides *what* may run, the wrapper decides *as whom*.
 
 **Verified end to end, with Vera herself as the actor** — not by reading the
-config:
+config. Run as a real `vera` subagent against the live allowlist:
 
 | Attempt | Expected | Observed |
 |---|---|---|
-| `vera-exec git -C …/POS_AI log --oneline -1` | allowed, prints the pinned SHA | allowed, prints `db381ac …` |
-| `vera-exec cat …/POS_AI/backend/app/routes/order.py` (live tree) | denied by the OS | *Permission denied* |
-| `cat /etc/hostname` (no wrapper) | refused by the allowlist | refused by the runtime |
-| `head -c 100 …/POS_AI/…` (no wrapper) | refused by the allowlist | refused by the runtime |
+| `vera-exec git -C …/src/POS_AI log --oneline -1` | allowed, prints the pinned SHA | **exit 0** — `db381ac Initial commit: POS AI platform (backend, website API, POS, customer app, sites)` |
+| `vera-exec git -C …/mydoc/Projects/POS_AI log --oneline -1` (live tree) | denied by the OS | **exit 128** — `fatal: cannot change to '/root/.openclaw/workspace/mydoc/Projects/POS_AI': Permission denied` |
+| `cat /etc/hostname` (no wrapper) | refused by the allowlist | **never executed** — `Error: exec denied: allowlist miss` |
+| `cat …/POS_AI/backend/app/routes/order.py` (no wrapper) | refused by the allowlist | **never executed** — `Error: exec denied: allowlist miss` |
+
+**The two denials are enforced by two different layers, and that distinction is
+the point.** Steps 3 and 4 were refused by the **OpenClaw exec policy**, before
+any process was spawned — no shell ever saw the command. Step 2 was *allowed by
+the policy* (the wrapper is on the allowlist) and then refused by the **OS**,
+because the wrapper had already dropped to the unprivileged `vera` identity and
+`/root` is not traversable by it. Policy denied the command; the filesystem
+denied the path. Both are needed, and neither alone would be sufficient: the
+policy keeps an unwrapped command from being typed at all, while the privilege
+drop is what keeps the wrapper's own arguments from reaching the live tree.
+
+The live product tree was independently confirmed untouched after the run: still
+at pinned `db381ac…`, zero dirty files.
 
 ### 5.7 The binding, the Telegram account, and the severity labels
 
@@ -902,12 +937,14 @@ OpenClaw's automation support (cron, stream, condition-watcher, webhook, hook) a
      `--agent "*"` applies one rule fleet-wide.
    - **A blanket `exec` allowance is not acceptable for an unattended agent.** The
      exec allowlist is the belt to the `--tools` braces.
-   - **The allowlist must also cover issue filing.** Vera files issues over the
-     GitHub REST API with `curl` through `exec` (the `gh` CLI is not installed on
-     this host), so the per-agent exec allowlist has to pin exactly that call —
-     `curl -X POST https://api.github.com/repos/Kiens8/POS_AI/issues` — or the
-     allowlist that protects the live tree also silently prevents the trigger from
-     firing.
+   - **The allowlist must also cover issue filing.** Vera files issues against the
+     GitHub REST API, but **not** by calling `curl` through `exec` — `curl` is not
+     on the allowlist and must not be. The allowlist pins the **root-owned
+     `vera-issue` wrapper** (`/srv/openclaw/vera/bin/vera-issue`) as the second
+     and last entry, and that wrapper is what performs the REST call with the
+     operator's credential (§7.7). The `gh` CLI is not installed on this host.
+     The two allowlist entries are therefore exactly the two wrappers, and
+     nothing else (§5.6).
 2. **The root-privileged jobs must not run as the agent at all.** The live-DB
    integrity check, the sandbox database copy and the source refresh are **command
    payloads**, not agent jobs: `--command "<shell>"` runs `sh -lc <shell>` on the
