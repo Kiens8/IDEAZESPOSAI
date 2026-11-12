@@ -558,7 +558,10 @@ write product code" into "she cannot run a command that would".** See §5.6.
     56. This is the *resolved grant list*.
   - **Live depth-0 catalog: 43 OpenClaw tools.** What Vera's running session
     actually exposes is smaller, because `deny` and runtime availability gating
-    remove tools from the surface after the grant list is resolved.
+    remove tools from the surface after the grant list is resolved. The measured
+    depth-0 catalog was `toolCount=43` with `has_message=true`, and its native
+    tool list is `exec`, `message`, `sessions_yield`, `view_image`, `wait` — so
+    `message` is directly callable, not merely reachable through `exec`.
   - The **43 is the authoritative number** for *"what can Vera actually call"*,
     and it was read off the live session rather than inferred. It still contains
     `message`, and it still contains no `openclaw`, no `nodes`, no `computer`, no
@@ -738,19 +741,25 @@ channel telegram` — the messaging tool's account list is resolved against the
 calling agent's own view, not the raw channel config. This is *correct*
 behaviour, not a gap: it is what guarantees Lumi cannot speak as Vera in the
 group. Vera reaches the group through her **own** account (verified: her
-`message_id: 6` post in `ideazes-office`, and a later escalation-path check that
-returned `messageId: "10"` for `chatId: "-5583541067"`). A side effect is that a
-**depth-1 subagent spawned by Vera has no `message` tool at all** — a live probe
-inside such a subagent returned exactly `Unknown tool: message`, and
-`catalog.search("message")` there matched only `sessions_history`,
-`sessions_list`, `sessions_search` and `sessions_spawn` across a 28-tool catalog,
-with no messaging entry. Two independent probes reached the same conclusion.
+`message_id: 6` post in `ideazes-office`, and a later escalation-path check
+that returned `{"ok": true, "messageId": "10", "chatId": "-5583541067"}`).
+A side effect is that a **depth-1 subagent spawned by Vera has no `message`
+tool at all** — the two independent probes of that surface both returned
+exactly `Unknown tool: message`, and neither was able to transmit anything to
+`-5583541067`. The two probes enumerated the catalog at **28** and **32**
+tools respectively, with no messaging entry in either (`catalog.search`
+matching only `sessions_history`, `sessions_list`, `sessions_search` and
+`sessions_spawn`). The native tool list there is `exec`, `wait`,
+`sessions_yield`, `view_image` — note that `message` is present in the
+depth-0 native list and absent here.
 
 ⚠️ **Escalations must therefore be sent by Vera's depth-0 session, not by a
 subagent on her behalf.** A depth-1 subagent cannot escalate: it has no
 messaging tool, so the send simply cannot happen from there. This is a property
 of the tool surface, not a prompt, and it does not change the design — the
-escalation flow is a depth-0 responsibility.
+escalation flow is a depth-0 responsibility. The depth-0 send above is the
+proven path, and it used a **native** `message` call rather than any
+`exec`, catalog, CLI or RPC workaround.
 
 **The Telegram account.** Vera's bot is a **second account inside the same
 Gateway**, not a second Gateway:
@@ -1166,7 +1175,7 @@ https://github.com/Kiens8/POS_AI/issues/1
 | **A test script writes to a live database** | Critical | Non-root identity + copy databases + `DATABASE_URL` override + checksum guard (§6) |
 | **A regression run disturbs production** | Critical | Dedicated sandbox ports; production ports (`8000/9000/3001/5000/8080`) are never touched |
 | **An unattended agent misuses `exec`** | High | Per-job `--tools` allow-list + per-agent exec allowlist limited to the harness commands; no blanket `exec` |
-| **Vera cannot send the escalation** | High | `message` is **not** in the `coding` profile — it must be added via `alsoAllow` (§5.5). **Live-proven**: Vera's depth-0 session sent to group `-5583541067` and returned `messageId: "10"`, `chatId: "-5583541067"`. Note the limit — a **depth-1 subagent cannot send it** (§5.7); escalation must originate from the depth-0 session |
+| **Vera cannot send the escalation** | High | `message` is **not** in the `coding` profile — it must be added via `alsoAllow` (§5.5). **Live-proven**: Vera's depth-0 session sent to group `-5583541067` and returned `{"ok": true, "messageId": "10", "chatId": "-5583541067"}`. Note the limit — a **depth-1 subagent cannot send it** (§5.7); escalation must originate from the depth-0 session |
 | **Vera reconfigures the Gateway or reloads plugins** | High | `openclaw` is genuinely absent from `coding` (§5.5). `gateway` and `plugins` **are** present in the profile — the protection is their operational gates, confirmed by live probe: `gateway` exposes only `update.run` (owner-request or operator-scheduled), and `plugins` returns `{"gated": true}` |
 | **Doc drift goes unnoticed** | Medium | Nightly drift check against the fingerprint manifest |
 | **Vera publishes unreviewed public text** | High | Publishing is a separate human-approved step (§7.4) |
@@ -1326,5 +1335,6 @@ the post-reload inbound arrived, and it is removed rather than left to mislead.
 question: the regression suite on day one (§7, item 5) and the webhook trigger
 (§7, item 10) are both still ⏸️. The escalation path itself is proven:
 Vera's depth-0 session reached group `-5583541067` and returned
-`messageId: "10"` — with the caveat, verified by direct probe, that a **depth-1
-subagent has no `message` tool** and therefore cannot perform that send.
+`{"ok": true, "messageId": "10", "chatId": "-5583541067"}` — with the caveat,
+verified by two independent probes, that a **depth-1 subagent has no `message`
+tool** and therefore cannot perform that send.
