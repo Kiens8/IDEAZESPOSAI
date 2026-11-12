@@ -176,20 +176,31 @@ escalation lands there.
   Vera's identity in the group is unambiguous and so Vera can be removed without
   touching Lumi's channel. It runs as its **own Telegram account** inside the same
   Gateway (`channels.telegram.accounts.vera`), sharing no token with Lumi's account.
-- **Group ID:** **`-5583541067`**. ⚠️ **Not yet reachable — and the reason is
-  wider than one bot.** The id came from Kens directly (he read it out of the
-  Telegram client), so it is the right id. But a `getChat` against it was run
-  with **both** bot tokens in turn, and **both** return `Bad Request: chat not
-  found` — which is Telegram's answer for a chat the caller is not a member of.
-  So it is not only `@ideazes_verabot` that is missing; **`@OpenCFinAgentBot`
-  (Lumi's bot) is not in the group either.** Both bots have to be added.
-  **Operator action: add `@ideazes_verabot` *and* `@OpenCFinAgentBot` to
-  `ideazes-office`.**
-  The configuration side is already done: the group is allowlisted for **both**
-  accounts (`channels.telegram.groups` and the `vera` account's own `groups`),
-  `groupAllowFrom` is `["7229468912"]` on both, and `requireMention: true` is
-  set, so the send works the moment the bots are members — no further config
-  change is needed.
+- **Group ID:** **`-5583541067`** — the `ideazes-office` group, and it is
+  **live**. Both bots are members: `@ideazes_verabot` joined at `02:42:47` and
+  `@OpenCFinAgentBot` at `02:43:04` on 2026-11-13 (both confirmed by Telegram's
+  own `new_chat_participant` service messages in the group's message cache).
+  The escalation path is verified end to end: a send through the Gateway's
+  runtime credentials to `-5583541067` returned **`messageId: 15720`**, and
+  Vera's own account posted to the group as `@ideazes_verabot` (`message_id: 6`).
+  The config side needed no further change — the group is allowlisted for
+  **both** accounts (`channels.telegram.groups` and the `vera` account's own
+  `groups`), `groupAllowFrom` is `["7229468912"]` on both, and
+  `requireMention: true` is set.
+
+  ⚠️ **A false negative worth recording, because it nearly went into this
+  document as fact.** An earlier probe ran `getChat` against the group with both
+  bot tokens and got `Bad Request: chat not found` from both, which reads
+  exactly like "neither bot is a member". It was not. The same probe's `getMe`
+  call *also* failed for both tokens — and `getMe` succeeds for **any** valid
+  bot token regardless of group membership. A failing `getMe` is therefore the
+  signature of an **invalid token**, not of a missing chat. The probe was
+  reading the token out of `openclaw.json`, where it exists only as an
+  unresolvable `SecretRef`, so it was sending a placeholder. **The lesson:
+  never infer membership from a `getChat` failure without first checking that
+  `getMe` succeeds on the same token.** The trustworthy signal is a send
+  attempted with the runtime's own resolved credentials, and that send now
+  succeeds.
 - **Bot token:** **supplied and stored.** It was written into the protected
   secret store as `VERA_TELEGRAM_BOT_TOKEN` (`--kind secret`, write-only) and
   wired into the config as a **SecretRef** — `{"source":"store","provider":"default","id":"VERA_TELEGRAM_BOT_TOKEN"}`.
@@ -660,15 +671,21 @@ either reading of the resolution rules:
 ]
 ```
 
-⚠️ **One live wrinkle, recorded honestly.** The `/start` message Kens sent to
-`@ideazes_verabot` was handled by **`main`**, not by Vera — it created the session
-`agent:main:telegram:vera:direct:7229468912`. The reason is ordering, not
-configuration: that message arrived **before** the Gateway had published the new
-account and binding (the log shows the `vera` Telegram account restarting with
-`reason: config-reload` *after* the message). Reordering the bindings was done
-anyway, so the first match in the array is also the most specific one. A fresh
-inbound to `@ideazes_verabot` after publication must be checked to confirm Vera
-now owns it; that check is listed in §9 as outstanding rather than claimed as done.
+⚠️ **One historical wrinkle, recorded honestly.** The `/start` message Kens sent
+to `@ideazes_verabot` was handled by **`main`**, not by Vera — it created the
+session `agent:main:telegram:vera:direct:7229468912`. The reason is ordering,
+not configuration: that message arrived **before** the Gateway had published the
+new account and binding (the log shows the `vera` Telegram account restarting
+with `reason: config-reload` *after* the message). Reordering the bindings was
+done anyway, so the first match in the array is also the most specific one.
+
+**That wrinkle is now resolved by a real inbound.** At `02:50:29` on
+2026-11-13 a live message arrived on Vera's Telegram account and was handled by
+**`agent=vera`** — session `agent:vera:telegram:direct:7229468912`,
+`created_via: channel`, with `last_interaction_at` set — and Vera replied under
+her own bot identity (`@ideazes_verabot`, `🔎 Vera` prefix). The published
+Gateway honours the binding, confirmed by the running system rather than by
+inference.
 
 **The resolution order was verified against the runtime's own resolver**, not
 assumed. Loading the shipped `resolveAgentRoute` and running it against the live
@@ -681,9 +698,20 @@ assumed. Loading the shipped `resolveAgentRoute` and running it against the live
 | Main's account → Kens (DM) | `main` | `binding.channel` | `agent:main:telegram:direct:7229468912` |
 | Main's account → the group | `main` | `binding.channel` | `agent:main:telegram:group:-5583541067` |
 
-So the exact-account binding **does** win over the `main` wildcard — that part is
-settled. What remains is a single real inbound through the published Gateway,
-which only Kens can generate by messaging `@ideazes_verabot`.
+So the exact-account binding **does** win over the `main` wildcard, and both
+group sessions now exist on the running system (`agent:vera:telegram:group:-5583541067`
+and `agent:main:telegram:group:-5583541067`).
+
+⚠️ **One deliberate consequence worth knowing.** From a `main` session, the
+`message` tool refuses `accountId: "vera"` with `Unknown account "vera" for
+channel telegram` — the messaging tool's account list is resolved against the
+calling agent's own view, not the raw channel config. This is *correct*
+behaviour, not a gap: it is what guarantees Lumi cannot speak as Vera in the
+group. Vera reaches the group through her **own** account (verified: her
+`message_id: 6` post in `ideazes-office`). A side effect is that a **depth-1
+subagent spawned by Vera has no `message` tool at all** — the catalog exposes 32
+tools with no messaging entry — so escalation messages must be sent by Vera's
+depth-0 session, not by a subagent on her behalf.
 
 **The Telegram account.** Vera's bot is a **second account inside the same
 Gateway**, not a second Gateway:
@@ -1135,8 +1163,8 @@ https://github.com/Kiens8/POS_AI/issues/1
 | Severity labels | ✅ **Built** | `vera:p1`, `vera:p2`, `vera:p3` created on `Kiens8/POS_AI` |
 | The first real issue | ✅ **Filed** | Issue #1, `vera:p3`, filed through `vera-issue` by the wrapper (§7.7) |
 | Agent registration | ✅ **Built** | `openclaw agents add vera --workspace /srv/openclaw/vera --model minimax/MiniMax-M3.1-Flash --non-interactive`; identity `Vera 🔎` (§5.4) |
-| **The bots' membership of `ideazes-office`** | ❌ **Outstanding — operator action** | The group id `-5583541067` is correct (Kens read it from the Telegram client) and the group is allowlisted for **both** accounts. But `getChat` with **both** bot tokens returns `chat not found`, so **neither `@ideazes_verabot` nor `@OpenCFinAgentBot` is a member**. Add **both** bots to the group and the escalation path works with no config change (§4.1) |
-| **A fresh inbound confirming Vera owns her account** | ⚠️ **Routing proven; one live inbound still owed** | The `/start` Kens sent to `@ideazes_verabot` was handled by `main`, because it arrived before the Gateway published the new account and binding. The routing itself is now proven with the runtime's own resolver against the live config: Vera's account resolves to `agent=vera` (`matchedBy=binding.account`, session `agent:vera:telegram:direct:7229468912`), while the `main` wildcard resolves to `agent=main` — the exact account binding correctly wins over the wildcard. What is still missing is one **real** inbound to confirm the published Gateway honours it (§5.7) |
+| **The bots' membership of `ideazes-office`** | ✅ **Verified live** | Both bots are in the group: `@ideazes_verabot` joined at `02:42:47` and `@OpenCFinAgentBot` at `02:43:04` (2026-11-13), confirmed by Telegram's own `new_chat_participant` service messages. A send through the runtime credentials returned **`messageId: 15720`**, and Vera's own account posted to the group as `@ideazes_verabot` (`message_id: 6`, her join intro). Both accounts hold a group session — `agent:vera:telegram:group:-5583541067` and `agent:main:telegram:group:-5583541067` (§4.1) |
+| **A fresh inbound confirming Vera owns her account** | ✅ **Verified live** | A real inbound on Vera's account at `02:50:29` was handled by **`agent=vera`** — session `agent:vera:telegram:direct:7229468912`, `created_via: channel`, with `last_interaction_at` set — and Vera replied under her own bot identity (`@ideazes_verabot`, `🔎 Vera` prefix). The account binding is confirmed end to end by the running Gateway, not just by the resolver (§5.7) |
 | `bwrap` / `firejail` / Docker / Podman | ❌ **Absent** | Unchanged. Docker's `:ro` bind mounts remain unavailable. The kernel read-only bind mount is what replaced them (§5.3) |
 | Landlock | ⚠️ Symbols present, no native backend | Not relied upon |
 | `gh` CLI | ❌ **Not installed** | Not needed — the `vera-issue` wrapper calls the REST API with `curl` |
