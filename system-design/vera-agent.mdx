@@ -1,12 +1,13 @@
 # Vera — the QA, documentation and support agent for the Ideazes POS AI platform
 
-**Document Version:** 1.1
+**Document Version:** 1.2
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — nothing in this document has been built; no agent, no bot, no cron and no file in the production tree has been changed · **v1.0 (Nov 12, 2026): the first complete proposal — Vera's identity and mandate, the physical workspace layout, the shared Playwright install, the full automation flow (change detection → regression → docs publication → Telegram support → group escalation), and the isolation model that keeps Vera out of product code and away from the live databases** · **v1.1 (Nov 12, 2026): the tool policy is now VERIFIED against the runtime, and it changed the design — `agents.entries.<id>.tools.profile` is a real per-agent key, the `coding` profile does NOT contain the `message` tool, so a naive `coding` profile would have silently broken every Telegram escalation. §5.5 specifies the corrected profile (`coding` + `alsoAllow: ["message"]` + an explicit `deny` list), §5.4 uses the bundled `reviewer` role as Vera's seed, and §7.6 replaces the vague "pin the exec allowlist" with the real per-job `--tools` allow-list and the root-owned `--command` payload**
+**Status:** **Proposal** — nothing in this document has been built; no agent, no bot, no cron and no file in the production tree has been changed · **v1.0 (Nov 12, 2026): the first complete proposal — Vera's identity and mandate, the physical workspace layout, the shared Playwright install, the full automation flow (change detection → regression → docs publication → Telegram support → group escalation), and the isolation model that keeps Vera out of product code and away from the live databases** · **v1.1 (Nov 12, 2026): the tool policy is now VERIFIED against the runtime, and it changed the design — `agents.entries.<id>.tools.profile` is a real per-agent key, the `coding` profile does NOT contain the `message` tool, so a naive `coding` profile would have silently broken every Telegram escalation. §5.5 specifies the corrected profile (`coding` + `alsoAllow: ["message"]` + an explicit `deny` list), §5.4 uses the bundled `reviewer` role as Vera's seed, and §7.6 replaces the vague "pin the exec allowlist" with the real per-job `--tools` allow-list and the root-owned `--command` payload** · **v1.2 (Nov 12, 2026): the product source is now a private Git repository (`Kiens8/POS_AI`), and that changes the design in three places — §7.2 replaces the fingerprint manifest with a real git commit diff, §7.6 and the new §7.7 make the **GitHub issue** the trigger (Vera files it, Lumi fixes it), and §5.3 replaces the bind projection with a read-only clone at a pinned SHA, which means Vera never sees the live working tree, its secrets or its databases at all**
 
 > **Related** → `delivery-app.mdx` (the delivery storefront — the surface Vera will
 > regress first once it ships) · `order-flow-standards.mdx` §8 · `program-changes/`
-> (the per-surface change records Vera will read to detect what changed)
+> (the per-surface change records Vera will read to detect what changed) ·
+> `Kiens8/POS_AI` (the private product repository — the trigger's new home, §7.7)
 
 ---
 
@@ -98,7 +99,7 @@ becomes the literal statement of her no-write boundary (§5.3).
 
 | Job | What it means concretely | Output |
 |---|---|---|
-| **Regression testing** | Run the existing test suites and the new E2E harness against a **sandbox copy** of the databases, after any change to any surface | A pass/fail report per surface, with the failing assertion and the artefact |
+| **Regression testing** | Run the existing test suites and the new E2E harness against a **sandbox copy** of the databases, after any change to any surface | A pass/fail report per surface, with the failing assertion and the artefact; on failure, a **GitHub issue** in the product repository (§7.7) |
 | **E2E browser testing** | Drive the real customer journey with Playwright: order → payment → fulfilment; admin → menu → pricing; delivery order → driver handover | Screenshots, traces, and a per-step verdict |
 | **Documentation** | Keep the public Mintlify docs true to the code; publish change notes; detect doc drift | A doc commit in the docs repo, or a drift report |
 | **First-line support** | Answer tenant questions from the published documentation and the live system state | A reply in the tenant's channel |
@@ -107,6 +108,8 @@ becomes the literal statement of her no-write boundary (§5.3).
 ### 3.2 Explicitly out of scope
 
 - **Writing product code** — not even a one-line fix
+- **Fixing what she finds** — she files the issue (§7.7); the fix belongs to `main`,
+  which is the agent that holds write access to the product source
 - **Deploying to production** — she verifies what is deployed
 - **Deciding product scope** — she reports, the humans decide
 - **Touching the live databases** — no write, ever (§6)
@@ -166,6 +169,7 @@ Surface   : admin app
 Tenant    : <tenant> (<tenant_id>)
 Symptom   : <one sentence, in plain language>
 Evidence  : <test name / URL / screenshot / trace>
+Issue     : <#number and URL in Kiens8/POS_AI, or "not filed">
 Repro     : <the exact steps>
 Suspected : <file:line or "unknown">
 Impact    : <money / data / blocked / degraded>
@@ -282,11 +286,11 @@ identity** that Vera will run as.
 
 Vera needs to read the product source. She must never write it.
 
-**The mechanism: a read-only bind projection.**
+**The mechanism (v1.2): a read-only clone at a pinned commit.**
 
 ```
-/srv/openclaw/vera/sandbox/src   →  bind of
-/root/.openclaw/workspace/mydoc/Projects/POS_AI   (read-only, for kens)
+git clone --no-checkout https://github.com/Kiens8/POS_AI /srv/openclaw/vera/sandbox/src
+git -C /srv/openclaw/vera/sandbox/src checkout --detach <pinned-sha>
 ```
 
 The host has **no `bwrap`, `bubblewrap`, `firejail`, Docker or Podman** — verified.
@@ -298,11 +302,16 @@ sandbox backend was established during the checks.
 
 1. **Run Vera as the non-root `kens` identity.** `kens` has no write permission on
    `/root/.openclaw/workspace/mydoc/Projects/POS_AI` — the POSIX permissions on that
-   tree already deny it. This is the real boundary, and it is enforced by the OS, not
-   by a prompt
-2. **Expose the source to `kens` read-only** via a bind mount, or via a
-   `root`-owned copy refreshed by a root cron into
-   `/srv/openclaw/vera/sandbox/src` with mode `r-xr-xr-x`
+   tree already deny it, and in fact `kens` cannot even traverse `/root` (verified:
+   `/root` is mode `0700` owned by `root`, so `ls` as `kens` returns *Permission
+   denied*). This is the real boundary, and it is enforced by the OS, not by a prompt
+2. **Give `kens` a clone, refreshed by a root cron.** The root-owned refresh clones
+   the repository into `/srv/openclaw/vera/sandbox/src` and checks out a pinned SHA,
+   owned by `kens` and readable by it. A **clone of the committed tree is not the
+   live tree**, so it contains none of the ignored live files — no `backend/.env`,
+   no `website_api/.env.test`, no `frontend/.env`, no SQLite database, no built
+   `dist/` — which means **Vera never sees a secret and never has a path to a live
+   database**
 3. **Keep OpenClaw's own guards on as defence in depth.** The two guards are
    independent, and the runtime states this explicitly: *"apply_patch is
    workspace-contained by configuration. Both `tools.exec.applyPatch.workspaceOnly`
@@ -321,6 +330,14 @@ sandbox backend was established during the checks.
    Vera gets containment. The policy checker expects exactly this: the
    `policy/tools-fs-workspace-only-required` rule is scoped to `agentIds` and its
    fix hint is *"Set tools.fs.workspaceOnly=true"*.
+
+> **The destructive-git hazard, and why the clone matters.** In the live tree,
+> `git clean -xfd` would remove **70** paths: every live `.env`, every live `*.db`
+> including the WAL and SHM files, the built `admin/dist/` and `site/.next/` trees,
+> and every `node_modules/`. That is a production outage in one command. The
+> destructive commands (`git clean`, `git checkout`, `git reset`, `git stash`,
+> `git restore`, `git rm`) therefore stay **banned in the live tree**, and the clone
+> means Vera works on a checkout where there is nothing to lose.
 
 > **Honest limitation:** a **session permission policy takes precedence over the
 > config** when one is present — the runtime resolves the filesystem posture from
@@ -522,7 +539,7 @@ default behaviour.
 ```
                   ┌──────────────────────────────────────────┐
                   │            CHANGE DETECTION              │
-                  │  program-changes/ + source mtime + git    │
+                  │  git diff (primary) + program-changes/   │
                   └───────────────────┬──────────────────────┘
                                       │  what changed? which surfaces?
                                       ▼
@@ -538,36 +555,54 @@ default behaviour.
               │  Mintlify publish │      │  P1/P2 immediate       │
               └───────────────────┘      │  P3 batched            │
                                          └────────────────────────┘
+
+              ┌────────────────────────────────────────────────┐
+              │  ON FAILURE — THE TRIGGER (v1.2, §7.7)          │
+              │  Vera files a GitHub issue in Kiens8/POS_AI    │
+              │            ↓                                   │
+              │  Lumi (main) takes the issue and fixes it      │
+              │            ↓                                   │
+              │  branch + PR → merge → deploy → re-verify      │
+              └────────────────────────────────────────────────┘
 ```
 
 ### 7.2 Change detection — how Vera knows something changed
 
-**The problem:** the POS source at
-`/root/.openclaw/workspace/mydoc/Projects/POS_AI` **is not a Git repository** — there
-is no `.git` directory in it, and the whole `mydoc/` tree is excluded from the
-workspace's `.gitignore` because it holds live secrets and SQLite databases. So
-"watch the repo" is not available today.
+**Changed in v1.2 — the source is now a Git repository.** The product source at
+`/root/.openclaw/workspace/mydoc/Projects/POS_AI` is the root of its own repository:
+remote `https://github.com/Kiens8/POS_AI`, branch `main`, **private**, first commit
+`db381ac`, **597 tracked files** (verified live). The `mydoc/` tree is still excluded
+from the *workspace* repository's `.gitignore`, so the two histories are separate and
+the workspace index no longer carries a gitlink to it.
 
-**Three proposed detection signals, in order of reliability:**
+**This removes the reason the fingerprint manifest existed.** A commit diff is a
+strictly better change signal than a path + mtime + size manifest: it is exact, it
+is attributed, and it carries a message. The manifest survives only as a fallback
+for the uncommitted edits that live in the working tree.
 
-1. **The `program-changes/` records.** The docs repo already carries per-surface
+**Three detection signals, in order of reliability:**
+
+1. **The git commit diff.** A new commit on `main` names exactly which files
+   changed, and the changed files map to surfaces by directory: `backend/` → API,
+   `website_api/` → Website API, `admin/` → Admin app, `frontend/` → POS frontend,
+   `customer-app/` → Customer order app, `site/` → Site, `delivery/` → Delivery app
+   (when it ships), `database/` → schema and seed. This is now the **primary** signal
+   for *what* changed
+2. **The `program-changes/` records.** The docs repo already carries per-surface
    change records. Each change to a surface is expected to add a record naming the
    surface, the nature of the change and the surfaces affected. Vera reads the
-   newest record and derives the affected surface set. This is **the authoritative
-   signal**, because it is written by the humans who made the change
-2. **A source-tree fingerprint.** A manifest of path + mtime + size over the product
-   tree (excluding `node_modules`, `.git` and `*.db`), stored per run. A diff
-   between manifests yields the changed files, and the changed files map to
-   surfaces by directory: `backend/` → API, `website_api/` → Website API,
-   `admin/` → Admin app, `posai-frontend/` → POS frontend, `customer-app/` →
-   Customer order app, `site/` → Site, `delivery/` → Delivery app
+   newest record and derives the affected surface set. This remains **the
+   authoritative signal for *intent*** — the git diff says what moved, the record
+   says why and what it was supposed to do. The two are complementary, not
+   competing
 3. **A nightly full sweep regardless**, so a change that slipped past 1 and 2 is
    still caught the next day
 
 **On `inotify`:** neither `inotifywait` nor `pyinotify` is installed, and the
-product tree has roughly **2,926 files** (excluding `node_modules`, `.git` and
-`*.db`) across about **1.5 GB**. So a filesystem watcher is not proposed here — the
-fingerprint manifest is simpler, survives reboots, and needs no new daemon. If
+product tree has roughly **2,938 files** (excluding `node_modules`, `.git` and
+`*.db`) across about **432 MB** without `node_modules`; the committed source is
+**597 files**. So a filesystem watcher is not proposed here — the git diff is
+simpler, survives reboots, needs no new daemon, and needs no manifest file. If
 inotify is wanted later, `pip install pyinotify` is the only dependency.
 
 ### 7.3 The regression run
@@ -597,9 +632,12 @@ Per run:
 ### 7.4 Documentation publication
 
 - The Mintlify site lives in the docs repo at
-  `/root/.openclaw/workspace/ideazesposai` — a **git submodule** of the workspace
-  with remote `https://github.com/Kiens8/IDEAZESPOSAI.git`, published at
-  `https://docs.ideazes.com`
+  `/root/.openclaw/workspace/ideazesposai` — a **standalone repository with its own
+  `.git` and its own remote** `https://github.com/Kiens8/IDEAZESPOSAI.git`, published
+  at `https://docs.ideazes.com`. It was previously tracked by the workspace as a
+  gitlink; that gitlink was removed on Nov 12, 2026, because the workspace
+  repository should not record a commit id for a repository it does not own. The
+  docs repo's own history and remote are untouched
 - **The `system-design/` folder is ignored by Mintlify through `.mintignore`** —
   verified live: `system-design/delivery-app` and `system-design/renewal-system`
   both return **404**, and the public nav shows only Getting Started, Site, POS
@@ -611,8 +649,9 @@ Per run:
   published nav. Her output is a **commit in the docs repo** (or a drift report),
   published on its own cadence — the design-doc publishing pattern already proven
   in this repo (the v1.4 and v1.5 delivery document commits `d26d273` and
-  `76eb119`, with the workspace gitlink commits `bb7d7494` and the v1.5 gitlink
-  commit, are the precedent)
+  `76eb119`, with the workspace commits `bb7d7494` and `44ca5e7f`, are the
+  precedent — the latter two were gitlink bumps while that link existed, and the
+  link itself is now gone)
 - **Publication is a separate, human-approved step.** Vera proposes the doc
   change; a human publishes it. Publishing unreviewed text to a public site is a
   worse failure mode than a stale page.
@@ -645,6 +684,7 @@ OpenClaw's automation support (cron, stream, condition-watcher, webhook, hook) a
 | **Sandbox refresh + live-DB integrity check** | `0 0 * * *` Asia/Kuala_Lumpur | **command payload**, no agent | — (runs `sh -lc`) | P1 to the group on any change |
 | **Doc drift check** | `0 4 * * *` Asia/Kuala_Lumpur | cron, agent `vera` | `--tools "read exec"` | Drift report, no ping |
 | **Weekly full sweep** | Sunday `0 3 * * 0` | cron, agent `vera` | `--tools "exec read"` | Summary to the group |
+| **Issue intake → Lumi** | every 10m | cron, agent `main` | `--tools "exec read"` | The issue link in the group; the fix itself is an attended session on `main` (§7.7) |
 
 **Two constraints on unattended runs, both from the verified facts:**
 
@@ -664,6 +704,12 @@ OpenClaw's automation support (cron, stream, condition-watcher, webhook, hook) a
      `--agent "*"` applies one rule fleet-wide.
    - **A blanket `exec` allowance is not acceptable for an unattended agent.** The
      exec allowlist is the belt to the `--tools` braces.
+   - **The allowlist must also cover issue filing.** Vera files issues over the
+     GitHub REST API with `curl` through `exec` (the `gh` CLI is not installed on
+     this host), so the per-agent exec allowlist has to pin exactly that call —
+     `curl -X POST https://api.github.com/repos/Kiens8/POS_AI/issues` — or the
+     allowlist that protects the live tree also silently prevents the trigger from
+     firing.
 2. **The root-privileged jobs must not run as the agent at all.** The live-DB
    integrity check, the sandbox database copy and the source refresh are **command
    payloads**, not agent jobs: `--command "<shell>"` runs `sh -lc <shell>` on the
@@ -687,6 +733,69 @@ by the memory and backup jobs, so **02:00 is a poor choice** and Vera's nightly
 regression is proposed for **23:30** instead, with the integrity check immediately
 after it.
 
+### 7.7 The issue → fix → verify loop
+
+**This is the change v1.2 makes to the trigger.** Previously the only way out of a
+failed regression was an escalation *message* to a Telegram group: a human read it
+and decided what to do. A repository turns that message into a **tracked work item**
+with an owner, a state and a diff, and it gives the fixer — `main`, the agent that
+is allowed to write product code — something concrete to work from that is not a
+chat message.
+
+**The contract:**
+
+1. **Vera files the issue.** On a P1–P3 failure she creates an issue in
+   `Kiens8/POS_AI`, labelled by severity (`vera:p1`, `vera:p2`, `vera:p3`), with the
+   §4.3 escalation format as the body — so the issue and the Telegram message carry
+   identical content and no information exists in only one of them. The issue title
+   names the surface and the symptom. Vera never edits product code; the issue *is*
+   the fix request
+2. **The group is still told.** P1 and P2 are posted to the group immediately, now
+   with the issue link; P3 is batched hourly, as before. The issue is the record; the
+   group is the alarm
+3. **Lumi picks it up.** `main` polls the repository's open issues for the `vera:*`
+   labels and takes the oldest unclaimed P1/P2 first. It reproduces the failure
+   against the same sandbox the regression used (§6.2 Layer 3), fixes the source,
+   and **verifies the fix with the same suite that failed**
+4. **The fix is a reviewable artefact.** The change lands on a **branch with a pull
+   request** against `main`, not as a bare commit to `main`, so the diff that fixed
+   a tenant outage is reviewable after the fact
+5. **The deploy is a separate step.** Merging to `main` and restarting the affected
+   pm2 service is the deploy, because **the live tree is the repository checkout**
+   (§5.3). That step is deliberately **not** part of the unattended loop
+6. **Vera re-verifies.** After the deploy she re-runs the failing suite. Only a
+   green re-run closes the issue, and she comments the result on it. A fix that
+   does not turn the suite green does not close the issue
+
+**How `main` learns about the issue.** Two mechanisms are possible and they are not
+equivalent:
+
+- **Polling (proposed).** A cron job reads the repository's open issues through the
+  GitHub REST API and acts on the ones carrying a `vera:*` label. Everything stays
+  on the host, no endpoint is exposed, and the cost is the polling interval. This
+  is the mechanism the v1.2 job table assumes
+- **A GitHub webhook into the Gateway (not available today).** OpenClaw supports
+  inbound webhook hooks — a `hooks` block with `enabled`, a dedicated `token`, a
+  dedicated `path` and an `allowedAgentIds` allow-list, authenticated with
+  `Authorization: Bearer <token>` — and they are the right shape for a push
+  trigger. **But the Gateway currently binds to loopback** (`127.0.0.1:18789`,
+  verified live), so GitHub cannot reach it, and `hooks` today holds only the
+  `internal` entries. A webhook trigger therefore needs a deliberate exposure
+  decision from Kens, and it is not proposed
+
+**The credential this needs, and it does not exist yet.** Filing an issue requires
+**issues** permission on `Kiens8/POS_AI`. The fine-grained PAT already stored at
+`/root/.git-credentials` returns **403 *Resource not accessible by personal access
+token*** on the issues API for that repository, even though it holds `triage` and
+`admin` on the repository itself. A separate token with **Issues: read and write on
+that one repository** is required — scoped to nothing else — and it must be stored
+as a SecretRef rather than written into a repository or a script.
+
+**One thing the loop cannot do.** `kens` cannot read `/root/.git-credentials`
+(mode `0600`, owned by `root`, and `/root` itself is `0700`), so Vera's clone and her
+issue token cannot both come from the credential the workspace already uses. The
+root-owned refresh cron clones; the issue token is delivered to `kens` separately.
+
 ---
 
 ## 8. Failure modes and the honest risks
@@ -704,6 +813,9 @@ after it.
 | **The `/srv` layout is adopted but the identity is not** | Critical | The identity change is the boundary; without it the layout is decoration |
 | **Browser cache drift** | Low | One shared cache path, pinned Playwright version `1.64.1` |
 | **Escalation to a wrong or unknown group id** | Medium | Group id is a required input before any job is created |
+| **An unattended fix edits production source** | High | The intake job is read-only; the fix is an attended session on `main`, and the deploy (merge + restart) is a separate human-approved step (§7.7) |
+| **A destructive git command runs in the live tree** | Critical | `git clean -xfd` there removes 70 paths including every live `.env` and `*.db`; the destructive commands stay banned (§5.3) and Vera works on a clone |
+| **Vera's issue credential leaks** | High | Fine-grained to one repository, stored as a SecretRef, and the issue body carries no credential (§7.7) |
 
 ---
 
@@ -718,6 +830,9 @@ after it.
 | `bwrap` / `firejail` / Docker / Podman | **All absent** | Rely on the non-root identity + read-only projection |
 | Landlock | Kernel symbols present | No native backend established — not relied upon |
 | Vera's bot token | **Not supplied** | Needed before the group can exist |
+| GitHub **issues** access to `Kiens8/POS_AI` | **Not granted** — the stored fine-grained PAT returns 403 on the issues API for that repository | Create a token with Issues: read + write on that one repository; store it as a SecretRef, never in a repo or a script |
+| `gh` CLI | **Not installed** | Use the REST API through `curl`, or install `gh` for the issue workflow |
+| Read access to the private repository, for `kens` | The stored credential is root-only (`/root/.git-credentials`, mode `0600`, and `/root` is `0700`) | The root-owned refresh cron clones the repository and hands `kens` the result |
 | Telegram group id | **Not known** | Needed before any escalation job is created |
 | `inotifywait` / `pyinotify` | Absent | Not required — fingerprint manifest instead |
 | Per-agent tool policy | The mechanism exists (`agents.entries.<id>.tools.profile` / `alsoAllow` / `deny` / `fs`) and the fleet already uses it (`main` → `full`) | Set Vera's entry to `coding` + `alsoAllow: ["message"]` + `deny: ["apply_patch","write","edit"]` + `fs.workspaceOnly: true` (§5.5) |
@@ -733,10 +848,11 @@ after it.
 | **1. Workspace** | `/srv` layout, shared Playwright install and browser cache, agent registration | 0.5–1 day |
 | **2. Regression runner** | Sandbox service orchestration, the 8 + 18 API suites, artefact collection | 2–3 days |
 | **3. E2E harness** | Playwright suites for admin, POS frontend, customer order app | 3–5 days |
-| **4. Change detection** | `program-changes` reader + fingerprint manifest + surface mapping | 1–2 days |
+| **4. Change detection** | `program-changes` reader + git commit diff + surface mapping | 0.5–1 day |
 | **5. Docs pipeline** | Drift detection, doc change proposals, publication workflow | 2–3 days |
 | **6. Support + escalation** | Bot, group, severity routing, message format, answer logging | 2–3 days |
-| **7. Delivery app coverage** | Once the delivery app ships | 2–3 days |
+| **7. Issue → fix loop** | Issue intake, severity labels, the PR flow, the deploy boundary, re-verification | 1–2 days |
+| **8. Delivery app coverage** | Once the delivery app ships | 2–3 days |
 
 **Phase 0 is not optional.** A testing agent that can corrupt the live books is
 worse than no agent at all.
@@ -761,10 +877,13 @@ worse than no agent at all.
 5. **Regression runner** — the API suites green against the sandbox
 6. **E2E harness** — the three shipped surfaces
 7. **Change detection + nightly jobs** — with the per-job `--tools` allow-list set
-   on each
-8. **Docs pipeline** — drift detection first, publication proposals after
-9. **Telegram support + escalation** — once the bot token and the group id exist
-10. **Delivery app coverage** — when it ships
+   on each, and the git commit diff as the primary signal
+8. **Issue → fix loop** — issue creation from the §4.3 format, the severity labels,
+   the intake job, the branch-and-PR flow, and the re-verification step. Requires the
+   issues-scoped token from §9
+9. **Docs pipeline** — drift detection first, publication proposals after
+10. **Telegram support + escalation** — once the bot token and the group id exist
+11. **Delivery app coverage** — when it ships
 
 ---
 
@@ -792,3 +911,13 @@ worse than no agent at all.
    point is faster and better-aligned than authoring from scratch, but it means
    Vera's soul inherits *"careful, independent review"* language. Keep the seed
    and rewrite it, or start clean?
+8. **How much of the fix loop may run unattended** — the intake can be a read-only
+   cron, but the fix writes to the live tree and the deploy restarts a live
+   service. Should a P1 be picked up and fixed automatically, or should the issue
+   wait for a human to open the fixing session?
+9. **Who may merge the fix and restart the service** — the proposal makes the
+   merge and the restart a human-approved step, on the grounds that the live tree
+   is the deployment. Is that the right line, or should a green re-run be enough
+   to merge and deploy unattended?
+10. **The webhook trigger** — the Gateway is loopback-bound today, so the loop
+    runs on polling. Is exposing a hook endpoint for push delivery worth it?
