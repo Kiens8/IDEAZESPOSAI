@@ -1,8 +1,8 @@
 # Vera — the QA, documentation and support agent for the Ideazes POS AI platform
 
-**Document Version:** 1.3
+**Document Version:** 1.4
 **Owner:** Ideazes POS AI
-**Status:** **Built — phases 0–2 are live.** The `vera` service account, the read-only pinned clone, the privilege-dropping and issue-filing wrappers, the `vera` OpenClaw agent, her Telegram bot `@ideazes_verabot`, the three severity labels and the first filed issue all exist and were proven live. Phases 3–8 (the regression runner, the E2E harness, the nightly jobs, the docs pipeline and the delivery-app coverage) are still to build · **v1.0 (Nov 12, 2026): the first complete proposal — Vera's identity and mandate, the physical workspace layout, the shared Playwright install, the full automation flow (change detection → regression → docs publication → Telegram support → group escalation), and the isolation model that keeps Vera out of product code and away from the live databases** · **v1.1 (Nov 12, 2026): the tool policy is now VERIFIED against the runtime, and it changed the design — `agents.entries.<id>.tools.profile` is a real per-agent key, the `coding` profile does NOT contain the `message` tool, so a naive `coding` profile would have silently broken every Telegram escalation. §5.5 specifies the corrected profile (`coding` + `alsoAllow: ["message"]` + an explicit `deny` list), §5.4 uses the bundled `reviewer` role as Vera's seed, and §7.6 replaces the vague "pin the exec allowlist" with the real per-job `--tools` allow-list and the root-owned `--command` payload** · **v1.2 (Nov 12, 2026): the product source is now a private Git repository (`Kiens8/POS_AI`), and that changes the design in three places — §7.2 replaces the fingerprint manifest with a real git commit diff, §7.6 and the new §7.7 make the **GitHub issue** the trigger (Vera files it, Lumi fixes it), and §5.3 replaces the bind projection with a read-only clone at a pinned SHA, which means Vera never sees the live working tree, its secrets or its databases at all** · **v1.3 (Nov 13, 2026): this document is now a record of what was BUILT and PROVEN, not a proposal. Three of its predictions were wrong and are corrected here — §5.3 replaces the `kens` identity with a dedicated `vera` service account plus a read-only bind mount (the kernel now enforces the boundary, not POSIX permissions alone), §7.7 supersedes the "a second, Issues-scoped token is required" claim (the stored PAT works once its Issues grant is in place — no second token), and §3.3 drops delivery-order testing until the delivery feature exists. The real paths, the real config and the live proofs are in §5.1, §5.4, §5.5 and §9**
+**Status:** **Built — phases 0–2 are live.** The `vera` service account, the read-only pinned clone, the privilege-dropping and issue-filing wrappers, the `vera` OpenClaw agent, her Telegram bot `@ideazes_verabot`, the three severity labels and the first filed issue all exist and were proven live. Phases 3–8 (the regression runner, the E2E harness, the nightly jobs, the docs pipeline and the delivery-app coverage) are still to build · **v1.0 (Nov 12, 2026): the first complete proposal — Vera's identity and mandate, the physical workspace layout, the shared Playwright install, the full automation flow (change detection → regression → docs publication → Telegram support → group escalation), and the isolation model that keeps Vera out of product code and away from the live databases** · **v1.1 (Nov 12, 2026): the tool policy is now VERIFIED against the runtime, and it changed the design — `agents.entries.<id>.tools.profile` is a real per-agent key, the `coding` profile does NOT contain the `message` tool, so a naive `coding` profile would have silently broken every Telegram escalation. §5.5 specifies the corrected profile (`coding` + `alsoAllow: ["message"]` + an explicit `deny` list), §5.4 uses the bundled `reviewer` role as Vera's seed, and §7.6 replaces the vague "pin the exec allowlist" with the real per-job `--tools` allow-list and the root-owned `--command` payload** · **v1.2 (Nov 12, 2026): the product source is now a private Git repository (`Kiens8/POS_AI`), and that changes the design in three places — §7.2 replaces the fingerprint manifest with a real git commit diff, §7.6 and the new §7.7 make the **GitHub issue** the trigger (Vera files it, Lumi fixes it), and §5.3 replaces the bind projection with a read-only clone at a pinned SHA, which means Vera never sees the live working tree, its secrets or its databases at all** · **v1.3 (Nov 13, 2026): this document is now a record of what was BUILT and PROVEN, not a proposal. Three of its predictions were wrong and are corrected here — §5.3 replaces the `kens` identity with a dedicated `vera` service account plus a read-only bind mount (the kernel now enforces the boundary, not POSIX permissions alone), §7.7 supersedes the "a second, Issues-scoped token is required" claim (the stored PAT works once its Issues grant is in place — no second token), and §3.3 drops delivery-order testing until the delivery feature exists. The real paths, the real config and the live proofs are in §5.1, §5.4, §5.5 and §9** · **v1.4 (Nov 13, 2026): the exec boundary is now PROBED, not inferred — and the advisory it raises is documented rather than silenced. §5.6 gains the two probes that decide the model: the Gateway spawns `exec` as `[shell, …, command]`, so a shell redirect would be applied by the outer **root** shell before the wrapper dropped privileges — but a top-level redirect is refused before dispatch (`exec denied: allowlist miss`) and a redirect nested inside the wrapper runs as uid 995 and is refused by the kernel (`Permission denied`). A determined command can therefore write only where the `vera` identity may write. The `doctor.exec_filesystem_policy` advisory is documented with its live values, recorded as **accepted by design** (advisory only, no fixer, so it reappears on every lint), and its generic remedy explicitly rejected: denying `exec`/`process` would delete the test harness, and `sandbox.mode: "all"` cannot silence the check for a `gateway`-hosted exec and has no backend on this host. §5.5 also records that `terminal` is in Vera's live catalog as a write surface the advisory never counts, bounded by one-time operator approval**
 
 > **Related** → `delivery-app.mdx` (the delivery storefront — the surface Vera will
 > regress first once it ships) · `order-flow-standards.mdx` §8 · `program-changes/`
@@ -576,7 +576,22 @@ write product code" into "she cannot run a command that would".** See §5.6.
     A determined command through `exec` can still write files, because `exec`
     runs a shell. This deny list is a strong second layer, not the boundary —
     the boundary remains the non-root identity and the read-only projection (§5.3).
+    **Probed and sharpened (§5.6):** such a write is bounded by **uid 995**, not
+    by root and not by this deny list. A top-level redirect is refused before
+    dispatch; a nested one runs as `vera` and the kernel refuses it. A
+    determined command can write inside the space the `vera` identity may write,
+    and nowhere else.
 - **`fs: { workspaceOnly: true }`** — per agent, so Lumi's posture is untouched.
+- **`terminal` is present, and it is a write surface the advisory does not
+  model.** Vera's live depth-0 catalog (43 tools) contains `terminal`, which
+  types into a shared operator terminal via its `input` action. It is bounded
+  three ways: it only manages terminals an operator opened from the Control UI
+  panel (none exist in a Telegram session), its `input` action requires
+  **one-time operator approval** whenever the resolved exec policy mode is not
+  `full`, and `allow-always` is an explicitly unavailable decision — so it can
+  never be pre-authorised for unattended use. Worth stating because
+  `openclaw doctor` does not count it: the `doctor.exec_filesystem_policy` check
+  compares only `write`/`edit`/`apply_patch` against `exec`/`process` (§5.6).
 - **Genuinely absent:** `openclaw`, `nodes`, `computer` and `mobile_ui` are not in
   the `coding` profile, so they are not in Vera's profile. She cannot delegate
   OpenClaw setup and repair, and she cannot drive a desktop or a paired node.
@@ -687,6 +702,114 @@ drop is what keeps the wrapper's own arguments from reaching the live tree.
 
 The live product tree was independently confirmed untouched after the run: still
 at pinned `db381ac…`, zero dirty files.
+
+**A third case was probed, because it is the one that could have broken the whole
+model.** Everything above tests a *path*. It does not test a *shell construct*.
+The Gateway's `exec` spawns as `[shell, …, command]`, so the command string is
+evaluated by an outer shell running as **root** — and a redirection (`> file`) is
+a shell construct that the outer shell would apply itself, before the wrapper
+ever dropped privileges. If that were reachable, the entire two-layer argument
+above would have been decoration.
+
+It is not reachable, and it took two probes to establish that, because the two
+shapes fail for two different reasons.
+
+| Attempt | Expected | Observed |
+|---|---|---|
+| `vera-exec echo REDIR_PROBE > /root/vera-redirect-probe.txt` | the outer root shell would apply the redirect | **never executed** — `Error: exec denied: allowlist miss` |
+| `vera-exec echo REDIR_OK > /srv/openclaw/vera/state/redirect-probe.txt` | same | **never executed** — `Error: exec denied: allowlist miss` |
+| `vera-exec sh -c 'echo NESTED_PROBE > /root/vera-nested-probe.txt'` | the inner shell inherits uid 995; the kernel refuses | **exit 2** — `sh: 1: cannot create /root/vera-nested-probe.txt: Permission denied` |
+| `vera-exec sh -c 'echo NESTED_OK > /srv/openclaw/vera/state/nested-probe.txt'` | writes inside her own workspace | **exit 0** — file created, owned `vera:vera` |
+
+**Why the first two never ran at all.** The runtime's allowlist analysis
+classifies a shell file-redirect as a construct it refuses to analyze (the
+`redirect` risk kind), so the command cannot be matched against the bare-path
+allowlist pattern and is refused before dispatch — the refusal is reported
+verbatim as `exec denied: allowlist miss`. The outer root shell therefore never
+gets to interpret the redirection.
+
+**Why the third ran and still could not write.** Here the redirect is *inside* a
+quoted argument, so the top-level command is still the allowlisted wrapper and
+it is dispatched. But the nested shell inherits the identity the wrapper dropped
+to — uid 995 — and the kernel refuses the write. The same construct aimed at
+her own workspace succeeds, and the file is owned by `vera:vera`.
+
+**So the honest version of the §5.5 caveat is sharper than the caveat itself.**
+§5.5 says a determined command through `exec` can still write files, because
+`exec` runs a shell. That is true, and the probe adds the missing half: such a
+write is bounded by **uid 995**, not by root and not by the tool policy. A
+determined command can write files — inside the space the `vera` identity may
+write, and nowhere else. Two layers, two different mechanisms, same outcome.
+
+Verified independently from `root` after the probes: zero `*probe*` files
+anywhere on the host except the one inside `/srv/openclaw/vera/state`, which was
+removed; the live product tree still at pinned `db381ac…` with zero dirty
+files.
+
+**The `doctor.exec_filesystem_policy` advisory, and why its generic fix is wrong
+here.** `openclaw doctor --lint` reports one advisory against Vera's scope, and
+it is worth documenting precisely because it is *correct as stated* and *wrong
+as a remedy*. Its live values:
+
+```
+checkId: doctor.exec_filesystem_policy     severity: warn
+scope:   agents.entries.vera.tools
+Runtime tools: exec, process; disabled filesystem tools: write, edit, apply_patch.
+Effective exec host is "gateway" with sandbox.mode="off" and workspaceAccess="none".
+```
+
+The check is a generic invariant: *if the three mutating file tools are all
+denied but a runtime tool is available, that runtime tool can still write.* It
+keys on **tool grants only** — `MUTATING_FS_TOOLS` (`write`, `edit`,
+`apply_patch`) against `RUNTIME_TOOLS` (`exec`, `process`) — and it never looks
+at the exec allowlist, the privilege drop, or the filesystem permissions. So for
+Vera it is true and harmless: her entire `exec` surface is two root-owned
+wrappers that drop to uid 995.
+
+**It is advisory only.** `collectExecFilesystemPolicyWarnings` produces the
+warning and nothing consumes it — there is no fixer path for this check id, so
+`openclaw doctor --fix` will not change it. It will reappear on every lint run
+until the design changes. That is the intended state, not an oversight.
+
+**Neither half of the generic remediation may be applied:**
+
+1. *"For read-only agents, also deny `exec`/`process`."* Vera is not a read-only
+   agent; `exec` is her function. Denying it deletes the test harness and leaves
+   a QA agent that cannot run tests.
+2. *"otherwise use sandbox mode `all` with workspaceAccess `ro` or `none`."*
+   This cannot work for Vera even if we wanted it. The check's own skip
+   condition is `sandbox.mode === "all" && execHost !== "gateway" && execHost !==
+   "node" && sandbox.workspaceAccess !== "rw"`. Vera's `exec.host` is
+   `"gateway"`, so that skip can never fire for her and the warning would
+   persist even under `sandbox.mode: "all"`. Independently, this host has no
+   sandbox backend to honour it — `bwrap`, `firejail`, Docker and Podman are
+   all absent (§9).
+
+So the advisory is **accepted and left open**, and the residual risk is
+recorded rather than silenced.
+
+**What the advisory under-counts: `terminal`.** The check models exactly two
+runtime tools, `exec` and `process`. Vera's live depth-0 catalog also contains
+**`terminal`**, which is a write-capable surface — its `input` action types
+into a shared operator terminal — and the advisory never sees it. Three things
+bound it, and they are worth stating because the advisory does not:
+
+- `terminal` manages only terminals an operator opened from the Control UI
+  panel, discovered via `list`. In a Telegram session there are none.
+- Its `input` action is gated: when the resolved exec policy mode is not
+  `full`, it requires **one-time operator approval**, and `allow-always` is
+  explicitly listed as an unavailable decision — so it can never be
+  pre-authorised for unattended use.
+- `process` is scope-bound: its session filter is
+  `!scopeKey || session?.scopeKey === scopeKey`, so Vera can only drive
+  sessions started inside her own scope. It cannot widen what `exec` was
+  allowed to start.
+
+The accurate summary of Vera's write surface is therefore: `exec` is bounded by
+an allowlist of two wrappers; those wrappers drop to uid 995; `process` cannot
+widen the set of sessions `exec` may start; and `terminal` requires a human to
+approve each input. The advisory is directionally right — `exec` *can* write —
+and its remedy is wrong for this design, and it misses one tool.
 
 ### 5.7 The binding, the Telegram account, and the severity labels
 
@@ -1174,7 +1297,8 @@ https://github.com/Kiens8/POS_AI/issues/1
 |---|---|---|
 | **A test script writes to a live database** | Critical | Non-root identity + copy databases + `DATABASE_URL` override + checksum guard (§6) |
 | **A regression run disturbs production** | Critical | Dedicated sandbox ports; production ports (`8000/9000/3001/5000/8080`) are never touched |
-| **An unattended agent misuses `exec`** | High | Per-job `--tools` allow-list + per-agent exec allowlist limited to the harness commands; no blanket `exec` |
+| **An unattended agent misuses `exec`** | High | Per-job `--tools` allow-list + per-agent exec allowlist limited to the harness commands; no blanket `exec`. **Probed live**: a top-level shell redirect is refused before dispatch (`exec denied: allowlist miss`), and a redirect nested inside the wrapper runs as uid 995 and is refused by the kernel (`Permission denied`) — so a determined command can write only where the `vera` identity may write (§5.6) |
+| **`doctor.exec_filesystem_policy` fires on Vera's scope** | Low | Accepted by design and left open — advisory only, no fixer, so it reappears on every lint. Its generic remedy is wrong here: denying `exec`/`process` would delete the test harness, and `sandbox.mode: "all"` cannot silence it for a `gateway`-hosted exec and has no backend on this host (§5.6) |
 | **Vera cannot send the escalation** | High | `message` is **not** in the `coding` profile — it must be added via `alsoAllow` (§5.5). **Live-proven**: Vera's depth-0 session sent to group `-5583541067` and returned `{"ok": true, "messageId": "10", "chatId": "-5583541067"}`. Note the limit — a **depth-1 subagent cannot send it** (§5.7); escalation must originate from the depth-0 session |
 | **Vera reconfigures the Gateway or reloads plugins** | High | `openclaw` is genuinely absent from `coding` (§5.5). `gateway` and `plugins` **are** present in the profile — the protection is their operational gates, confirmed by live probe: `gateway` exposes only `update.run` (owner-request or operator-scheduled), and `plugins` returns `{"gated": true}` |
 | **Doc drift goes unnoticed** | Medium | Nightly drift check against the fingerprint manifest |
