@@ -1,0 +1,794 @@
+# Vera — the QA, documentation and support agent for the Ideazes POS AI platform
+
+**Document Version:** 1.1
+**Owner:** Ideazes POS AI
+**Status:** **Proposal** — nothing in this document has been built; no agent, no bot, no cron and no file in the production tree has been changed · **v1.0 (Nov 12, 2026): the first complete proposal — Vera's identity and mandate, the physical workspace layout, the shared Playwright install, the full automation flow (change detection → regression → docs publication → Telegram support → group escalation), and the isolation model that keeps Vera out of product code and away from the live databases** · **v1.1 (Nov 12, 2026): the tool policy is now VERIFIED against the runtime, and it changed the design — `agents.entries.<id>.tools.profile` is a real per-agent key, the `coding` profile does NOT contain the `message` tool, so a naive `coding` profile would have silently broken every Telegram escalation. §5.5 specifies the corrected profile (`coding` + `alsoAllow: ["message"]` + an explicit `deny` list), §5.4 uses the bundled `reviewer` role as Vera's seed, and §7.6 replaces the vague "pin the exec allowlist" with the real per-job `--tools` allow-list and the root-owned `--command` payload**
+
+> **Related** → `delivery-app.mdx` (the delivery storefront — the surface Vera will
+> regress first once it ships) · `order-flow-standards.mdx` §8 · `program-changes/`
+> (the per-surface change records Vera will read to detect what changed)
+
+---
+
+## 1. The short answer
+
+**One agent named Vera, three capabilities — test, document, support — because the
+public documentation is the agent's product and the live system is the source of truth
+for it.**
+
+**The principle that decides every scope question:**
+> **Vera never writes product code. Vera proves the product behaves as documented,
+> keeps the documentation true, and escalates to the humans what she cannot resolve.**
+
+**The three jobs are not three agents.** Split them and you get three truths drifting
+apart plus a support bot quoting last quarter's docs. Testing proves the system still
+behaves as documented; documentation records what the system actually does; support
+answers from the documentation and escalates what it cannot.
+
+**Vera is one OpenClaw agent** (`vera`) with:
+
+- **Identity:** Vera — the verifier. Deliberately *not* a builder and *not* a
+  decision-maker.
+- **Model:** `minimax/MiniMax-M2.7` (the same model as Lumi and the heartbeat agent).
+- **Mandate:** regression testing, documentation maintenance, and first-line tenant
+  support with escalation to a Telegram group.
+- **Hard boundary:** **no write access to product source and no write access to the
+  live databases** — enforced at the OS level, not by prompting.
+
+---
+
+## 2. Identity
+
+### 2.1 Name, role, temperament
+
+- **Name:** Vera
+- **Role:** QA, documentation and support agent for the whole Ideazes POS AI platform
+- **Archetype:** the careful auditor who reads the code before she touches the
+  system, and who is *honest* above all — a failing test reported clearly is worth
+  more to Kens than a green run she cannot vouch for
+- **Voice:** precise, factual, short. She reports what happened, with the evidence
+  attached. She never says "looks good" about something she did not run, and she never
+  softens a failure to be pleasant
+- **Emoji:** 🔎 · **Symbol:** the checkmark-not-tick — she verifies, she does not
+  approve
+
+### 2.2 The `SOUL.md` and `IDENTITY.md` to be created (proposed content, not written)
+
+`/srv/openclaw/agents/vera/agent/SOUL.md` — proposed principles:
+
+1. **The system is the source of truth.** If the code and the documentation
+   disagree, the code wins and the documentation is a defect to be reported, not
+   silently rewritten.
+2. **Never claim a result she did not observe.** A skipped test is a skipped test, not
+   a pass.
+3. **Never touch product code.** Report the defect, name the file and line, propose
+   the fix — do not write it.
+4. **Escalate fast and with context.** A block on a live tenant is escalated
+   immediately with the reproduction, not at the end of the day.
+5. **The customer never sees internal jargon.** Tenant-facing answers are plain
+   language; internal escalation messages are precise and technical.
+
+`/srv/openclaw/agents/vera/agent/IDENTITY.md` — proposed fields: name Vera, nature
+"a verification and documentation agent", mission "keep the Ideazes POS AI
+platform honestly documented and honestly tested", vibe "watchful, unfussy,
+unflappable", and the explicit rule "**Vera reports; humans decide**".
+
+> These files are **not written by this proposal**. They are the first implementation
+> step (§11), written by Lumi, in Vera's own agent directory — not in the workspace
+> of another agent.
+
+**The seed is already on disk.** OpenClaw ships a bundled **`reviewer`** role
+template (`--role reviewer`) whose charter is almost exactly Vera's: *"Check
+artifacts against requirements and report actionable findings with evidence"*, with
+the operating rules *"Review authority alone does not authorize changing the
+artifact"*, *"Never claim an unrun check passed"*, and the approval gate *"Never send
+messages outside the assigned team workflow, publish, purchase, delete, or change
+production without the human's approval."*
+
+The proposal is therefore **not** to author a soul from scratch but to **seed from
+`--role reviewer` and then correct it** — the identity becomes Vera, and the role's
+standing rule *"review authority alone does not authorize changing the artifact"*
+becomes the literal statement of her no-write boundary (§5.3).
+
+---
+
+## 3. Responsibilities
+
+### 3.1 In scope
+
+| Job | What it means concretely | Output |
+|---|---|---|
+| **Regression testing** | Run the existing test suites and the new E2E harness against a **sandbox copy** of the databases, after any change to any surface | A pass/fail report per surface, with the failing assertion and the artefact |
+| **E2E browser testing** | Drive the real customer journey with Playwright: order → payment → fulfilment; admin → menu → pricing; delivery order → driver handover | Screenshots, traces, and a per-step verdict |
+| **Documentation** | Keep the public Mintlify docs true to the code; publish change notes; detect doc drift | A doc commit in the docs repo, or a drift report |
+| **First-line support** | Answer tenant questions from the published documentation and the live system state | A reply in the tenant's channel |
+| **Escalation** | Hand anything she cannot resolve, or anything with money, data or outage risk, to the team group | A structured escalation message in the Telegram group |
+
+### 3.2 Explicitly out of scope
+
+- **Writing product code** — not even a one-line fix
+- **Deploying to production** — she verifies what is deployed
+- **Deciding product scope** — she reports, the humans decide
+- **Touching the live databases** — no write, ever (§6)
+- **Refunds, credits, subscription changes or anything with financial effect** —
+  escalated, never executed by the agent
+
+### 3.3 The surfaces she must cover
+
+The complete SaaS POS, as it exists today plus what is coming:
+
+| Surface | Where it runs | How she reaches it |
+|---|---|---|
+| Backend API | `127.0.0.1:8000` → `https://api.ideazes.com` | HTTP tests + copy-database fixtures |
+| Website API | `127.0.0.1:9000` | HTTP tests + copy-database fixtures |
+| Site (landing) | `127.0.0.1:5000` → `https://site.ideazes.com` | HTTP + Playwright |
+| Admin app | `127.0.0.1:3001` → `https://admin.ideazes.com` | Playwright |
+| POS frontend | `https://app.ideazes.com` → `/var/www/html/posai-frontend/dist` | Playwright |
+| Customer order app | `127.0.0.1:8080` → `https://order.ideazes.com` → `/var/www/html/posai-customer` | Playwright + HTTP |
+| Delivery app | **not built** — the future surface | Playwright once it ships |
+| Public docs | `https://docs.ideazes.com` | HTTP + repo check |
+
+---
+
+## 4. The escalation target
+
+### 4.1 The group
+
+Kens intends to create a Telegram group containing **Kens, Lumi and Vera**. Every
+escalation lands there.
+
+- **Group name:** `ideazes-support` (proposed)
+- **Bot:** a new Telegram bot for Vera, `@ideazes_verabot` (proposed). It is a
+  **separate bot** from Lumi's, so Vera's identity in the group is unambiguous and
+  so Vera can be removed without touching Lumi's channel
+- **Group ID:** **not yet known** — required before implementation. It is obtained by
+  adding Vera's bot to the group and reading the chat id from the bot's
+  `getUpdates` response, or from the OpenClaw binding at setup time
+- **Bot token:** **not yet supplied** — it will be stored through the masked secret
+  flow (`secrets request`), never echoed into a session or a file in the workspace
+
+### 4.2 What gets escalated, and how fast
+
+| Severity | Trigger | Response |
+|---|---|---|
+| **P1 — money or data** | Balance discrepancy, payment mismatch, failed settlement, corruption, tenant data loss | **Immediate** escalation, group notified at once, no self-remediation |
+| **P2 — tenant-blocking** | A tenant cannot order, cannot pay, cannot log in, cannot print | **Immediate** escalation |
+| **P3 — degradation** | A surface works but is wrong (wrong total, wrong tax, missing item) | Escalated with the reproduction, batched hourly |
+| **P4 — documentation** | Docs contradict the code, or a doc gap | Doc defect ticket, no group ping |
+| **P5 — question** | A tenant question the docs answer | Vera answers, no escalation |
+
+### 4.3 Escalation message format
+
+```
+🔎 VERA ESCALATION  [P1 | P2 | P3]
+
+Surface   : admin app
+Tenant    : <tenant> (<tenant_id>)
+Symptom   : <one sentence, in plain language>
+Evidence  : <test name / URL / screenshot / trace>
+Repro     : <the exact steps>
+Suspected : <file:line or "unknown">
+Impact    : <money / data / blocked / degraded>
+Safeguard : <what Vera did NOT touch>
+Status    : <investigating | blocked on X | resolved by Y>
+```
+
+**Safeguard** is mandatory in every escalation. It is the field that states what Vera
+left alone — so the team knows the blast radius is exactly what she says it is.
+
+### 4.4 Group discipline
+
+- The group is **escalation-only**. Routine progress stays in Vera's own log and in
+  the docs; the group should be quiet when nothing is wrong
+- Vera **mentions Kens explicitly** for P1 and P2, and posts silently for P3
+- Vera **never posts secrets** — no tokens, no database contents, no customer PII
+  beyond the tenant name and id
+- The group is **allowlisted** as a destination so no unrelated conversation traffic
+  is routed into it
+
+---
+
+## 5. Physical path of the workspace
+
+This is the part that decides whether the whole thing is safe. Three separate
+concerns must not share a directory:
+
+1. Vera's own workspace and agent directory (her identity, her memory, her logs)
+2. The shared Playwright install and browser cache (Lumi's and Vera's — one copy)
+3. The product source (read-only, and preferably not even visible)
+
+### 5.1 The proposed layout
+
+```
+/srv/openclaw/                              ← root-owned, world-readable
+│
+├── agents/
+│   └── vera/
+│       ├── agent/                          ← Vera's agentDir (SOUL, IDENTITY, skills)
+│       │   └── workshop-skills/            ← skills Vera learns, in her own directory
+│       └── workspace/                      ← Vera's workspace
+│           ├── MEMORY.md                   ← her curated memory
+│           ├── memory/                     ← her daily logs
+│           └── GOALS.md / PROJECTS.md
+│
+├── vera/                                   ← Vera's working area, owned by kens
+│   ├── workspace/                          ← writable scratch: reports, artefacts
+│   │   ├── reports/<date>/<run-id>/
+│   │   │   ├── junit-backend.xml
+│   │   │   ├── e2e-<surface>/<step>.png
+│   │   │   ├── traces/<run-id>.zip
+│   │   │   └── summary.md
+│   │   └── logs/
+│   ├── sandbox/                            ← the guarded test environment
+│   │   ├── db/                             ← COPIES of the databases (never the originals)
+│   │   │   ├── pos_ai.db
+│   │   │   └── website_api.db
+│   │   └── src/                            ← a READ-ONLY bind of the product source
+│   └── tmp/                                ← Playwright artefacts, reports
+│
+├── shared/
+│   └── playwright/                         ← the shared Playwright install
+│       ├── package.json
+│       ├── node_modules/
+│       └── package-lock.json
+│
+└── .cache/ms-playwright/                   ← the shared browser cache
+    ├── chromium-1248/
+    ├── chromium_headless_shell-1248/
+    └── ffmpeg-1013/
+```
+
+### 5.2 Why each path, and what was verified
+
+**`/srv` as the new root.** `/srv` **exists and is writable** on this host, and — this
+is the deciding fact — `/root` is `drwx------ root:root`, so **the non-root user
+`kens` (uid 1000, gid 1000, groups: 1000 + 27/sudo) cannot traverse `/root` at
+all**. Today the Playwright browsers live at `/root/.cache/ms-playwright` and the
+POS source lives at `/root/.openclaw/workspace/mydoc/Projects/POS_AI` — **both
+invisible to a non-root agent process.** Moving Vera's whole world to `/srv`
+removes `/root` from her picture entirely. This is the single most important
+structural decision in this document.
+
+**Ownership.** `/srv/openclaw/vera/**` and `/srv/openclaw/shared/**` are owned by
+`kens`; `/srv/openclaw/agents/vera/**` is owned by root and read-only to `kens`.
+Root runs `sudo -u kens` non-interactively; `kens`'s own `sudo` requires a password,
+so **every automated trigger must be scheduled as root** (§7.6).
+
+**The shared Playwright install.** The verified facts:
+
+- Playwright **`1.64.1` is globally installed at `/usr/lib/node_modules/playwright`**
+- A workspace copy exists at
+  `/root/.openclaw/workspace/scripts/node_modules/playwright`, and
+  `/root/.openclaw/workspace/scripts/package.json` declares `"playwright": "^1.64.1"`
+- **`/tmp/pw_items.json` is leftover fixture data — it is NOT a Playwright
+  installation.** There is no install under `/tmp`
+- Chromium `1248`, Chromium headless shell `1248` and FFmpeg `1013` are installed
+  under `/root/.cache/ms-playwright`, and they **match Playwright 1.64.1**
+- **The whole browser cache is unreachable to non-root `kens`** because `/root` is
+  `drwx------`
+
+The proposal therefore installs **one** Playwright for the whole fleet:
+
+```
+/srv/openclaw/shared/playwright        ← npm package (owned by kens)
+/srv/openclaw/.cache/ms-playwright     ← browser binaries (owned by kens)
+```
+
+and points both Lumi and Vera at it via `PLAYWRIGHT_BROWSERS_PATH=/srv/openclaw/.cache/ms-playwright`.
+One copy, one version, one cache to maintain — and **reachable by the non-root
+identity** that Vera will run as.
+
+### 5.3 The read-only projection of the product source
+
+Vera needs to read the product source. She must never write it.
+
+**The mechanism: a read-only bind projection.**
+
+```
+/srv/openclaw/vera/sandbox/src   →  bind of
+/root/.openclaw/workspace/mydoc/Projects/POS_AI   (read-only, for kens)
+```
+
+The host has **no `bwrap`, `bubblewrap`, `firejail`, Docker or Podman** — verified.
+Docker bind mounts with `:ro` are an OpenClaw feature, but there is no Docker on
+this host to use them. The kernel does expose Landlock symbols, but no native
+sandbox backend was established during the checks.
+
+**Therefore the practical mechanism on this host is:**
+
+1. **Run Vera as the non-root `kens` identity.** `kens` has no write permission on
+   `/root/.openclaw/workspace/mydoc/Projects/POS_AI` — the POSIX permissions on that
+   tree already deny it. This is the real boundary, and it is enforced by the OS, not
+   by a prompt
+2. **Expose the source to `kens` read-only** via a bind mount, or via a
+   `root`-owned copy refreshed by a root cron into
+   `/srv/openclaw/vera/sandbox/src` with mode `r-xr-xr-x`
+3. **Keep OpenClaw's own guards on as defence in depth.** The two guards are
+   independent, and the runtime states this explicitly: *"apply_patch is
+   workspace-contained by configuration. Both `tools.exec.applyPatch.workspaceOnly`
+   (default true) and `tools.fs.workspaceOnly` impose this independently, so
+   clearing one can leave the other in force. `tools.exec.mode` does not affect
+   it."*
+   - `tools.exec.applyPatch.workspaceOnly` — **default `true`**
+   - `tools.fs.workspaceOnly` — **default `false`**, and it governs `read`, `write`,
+     `edit` and `apply_patch` together
+
+   **Both are settable per agent.** The runtime resolves the filesystem policy as
+   *agent-level first, global second*: `resolveAgentConfig(cfg, agentId)?.tools?.fs`
+   is consulted before `cfg.tools.fs`. So Vera's entry gets
+   `tools.fs.workspaceOnly: true` **per agent**, which is strictly better than
+   setting it globally for the whole fleet — Lumi keeps her current posture and
+   Vera gets containment. The policy checker expects exactly this: the
+   `policy/tools-fs-workspace-only-required` rule is scoped to `agentIds` and its
+   fix hint is *"Set tools.fs.workspaceOnly=true"*.
+
+> **Honest limitation:** a **session permission policy takes precedence over the
+> config** when one is present — the runtime resolves the filesystem posture from
+> the session policy if present, and only otherwise from `tools.fs.workspaceOnly`.
+> So a session opened with a permissive mode can widen the boundary for that
+> session. This is why the OpenClaw config is **defence in depth, never the primary
+> boundary.** The primary boundary is the **non-root execution identity plus the
+> read-only projection**. If the OS-level boundary is ever wrong, the prompt-level
+> boundary is what is left — which is why the OS boundary comes first.
+
+### 5.4 The agent registration that follows from this
+
+`openclaw agents add` supports `--workspace`, `--agent-dir`, `--model`, `--bind`
+and `--role` (all verified against `openclaw agents add --help`). The proposed
+registration:
+
+```
+openclaw agents add vera \
+  --role reviewer \
+  --workspace /srv/openclaw/agents/vera/workspace \
+  --agent-dir /srv/openclaw/agents/vera/agent \
+  --model minimax/MiniMax-M2.7 \
+  --bind telegram:<verabot-token-ref>
+```
+
+`--role reviewer` seeds the workspace `AGENTS.md`, the `SOUL.md` body and an
+`IDENTITY.md` from the bundled template; Lumi then rewrites the identity to Vera's
+and the soul to Vera's five principles (§2). The identity can also be set from the
+command line afterwards with `openclaw agents set-identity --agent vera --name Vera
+--emoji "🔎" --theme "..."`, or from a file with `--from-identity`.
+
+The fleet today is `main` (Lumi, workspace `/root/.openclaw/workspace`, model
+`minimax/MiniMax-M2.7`, tool profile `full`) and `heartbeat` (workspace
+`/root/.openclaw/agents/heartbeat/workspace`, same model). Vera is the third
+agent, and the first with a **non-root, source-isolated** workspace and a **pinned
+tool policy**.
+
+### 5.5 The tool policy — the part that decides whether this is safe
+
+**This section is the reason the design changed after v1.0.** The mechanism is
+real and per-agent, and the obvious choice is wrong.
+
+**What was verified.** `agents.entries.<id>.tools` accepts `profile`, `allow`,
+`alsoAllow`, `deny`, `fs`, `exec`, `sandbox` and more — all confirmed against the
+live config schema. The fleet already uses the per-agent override: `main` carries
+`tools.profile: "full"` while the global default is `coding`.
+
+**The four built-in profiles, measured against the runtime:**
+
+| Profile | Tools | `exec` | `read`/`write` | **`message`** | `gateway`/`plugins` |
+|---|---|---|---|---|---|
+| `minimal` | 3 | no | no | **no** | `gateway` only |
+| `coding` | 55 | **yes** | **yes** | **NO** | yes |
+| `messaging` | 21 | no | no | yes | `gateway` only |
+| `full` | all | yes | yes | yes | yes |
+
+**The trap.** The `coding` profile **does not contain the `message` tool** — the
+`message` tool lives in the `messaging` profile. A Vera built on `coding` alone
+would have been **silently unable to send the escalation message** that the entire
+group-escalation design depends on. The failure would not have been an error; it
+would have been a quiet agent that never posts, and the team would have read that
+as "no failures tonight" rather than "the escalations never went out".
+
+**The fix.** `coding` plus a narrow additive grant:
+
+```json
+"vera": {
+  "workspace": "/srv/openclaw/agents/vera/workspace",
+  "agentDir": "/srv/openclaw/agents/vera/agent",
+  "model": "minimax/MiniMax-M2.7",
+  "identity": { "name": "Vera" },
+  "tools": {
+    "profile": "coding",
+    "alsoAllow": ["message"],
+    "deny": ["apply_patch", "write", "edit"],
+    "fs": { "workspaceOnly": true }
+  }
+}
+```
+
+**Line by line:**
+
+- **`profile: "coding"`** — gives `exec`, `read`, the web tools, memory, sessions
+  and the automation tool. It is the narrowest profile that can actually run a
+  test suite.
+- **`alsoAllow: ["message"]`** — adds the one tool the escalation flow needs.
+  `alsoAllow` is the correct mechanism: it is *merged on top of* the profile, and
+  the runtime warns that configured tool sections *"no longer implicitly widen the
+  profile"* and must be granted explicitly. Measured result: **56 tools** — the
+  `coding` set plus `message`, and still no `openclaw`, no `nodes`, no `computer`,
+  no `mobile_ui`.
+- **`deny: ["apply_patch", "write", "edit"]`** — **Vera cannot write product code
+  through the file tools at all.** This is not a prompt; it is the tool policy
+  refusing to offer the tool. Note the ordering: `deny` is applied *after* the
+  profile and `alsoAllow` are merged, so it wins over the profile's grant of
+  `write`/`edit`/`apply_patch`. Vera still gets `read` and `ls` — she must be able
+  to inspect the code she is testing.
+  - **Caveat, stated honestly:** `deny` removes the *tool*, not the *filesystem*.
+    A determined command through `exec` can still write files, because `exec`
+    runs a shell. This deny list is a strong second layer, not the boundary —
+    the boundary remains the non-root identity and the read-only projection (§5.3).
+- **`fs: { workspaceOnly: true }`** — per agent, so Lumi's posture is untouched.
+- **Deliberately absent:** `gateway`, `plugins`, `openclaw`, `nodes`, `computer`,
+  `mobile_ui` are not in `coding`, so they are not in Vera's profile. She cannot
+  reconfigure the Gateway, reload plugins, or drive a desktop. An agent that can
+  restart its own Gateway can defeat any boundary you put around it.
+
+**Why not `full`?** `full` is `allow: ["*"]` — it would hand Vera the `gateway`
+tool (*"Update OpenClaw"*), `plugins` (*"Manage and reload plugins"*) and
+`openclaw` (*"Delegate OpenClaw setup and repair"*). An unattended agent with
+those is a self-modifying agent. The main agent has `full` because Lumi is
+interactive and trusted; Vera is neither.
+
+**Why not `messaging`?** It has `message` but no `exec` and no `read` — she could
+post to the group and nothing else. A tester who cannot run the tests is not a
+tester.
+
+---
+
+## 6. The live-database guard
+
+**This section exists because it is the highest-consequence risk in the whole
+proposal, and it is already latent in the current test scripts.**
+
+### 6.1 What was found
+
+- `backend/app/core/config.py` hard-codes
+  `sqlite:////root/.openclaw/workspace/mydoc/Projects/POS_AI/database/pos_ai.db`
+- `website_api/app/core/config.py` hard-codes
+  `sqlite:////root/.openclaw/workspace/mydoc/Projects/POS_AI/website_api/website_api.db`
+- **`website_api/scripts/test_promotion.py`** opens `website_api.db` with a plain
+  `sqlite3.connect(ROOT / "website_api.db")` — **read-write** — and then runs
+  `UPDATE plan_prices ...` and `UPDATE subscription_plans ...` and commits. It also
+  promotes and demotes plans through the live admin flow
+- **`website_api/scripts/test_newuser.py`** opens the POS database with a normal
+  `sqlite3.connect` (not `mode=ro`) and contains **tenant deletion** logic, including
+  cascade cleanup across roughly twenty tables
+- Test inventory: **8** backend test files, **18** website API test files, and
+  approximately **121** test/check/probe scripts under
+  `/root/.openclaw/workspace/scripts`. `pytest` is **not installed**; `pip 24.0` is
+
+**A testing agent pointed at these scripts would corrupt live tenant data.** This is
+not hypothetical — `test_promotion.py` mutates live subscription pricing on every run.
+
+### 6.2 The guard, in layers
+
+**Layer 1 — OS identity (the real one).** Vera runs as `kens`. The live databases
+live under `/root/...`, which `kens` cannot traverse. The write is **impossible at
+the filesystem level**, not merely discouraged.
+
+**Layer 2 — a sandbox copy, and only ever the copy.** Every test run gets fresh
+copies:
+
+```
+cp pos_ai.db      /srv/openclaw/vera/sandbox/db/pos_ai.db
+cp website_api.db /srv/openclaw/vera/sandbox/db/website_api.db
+```
+
+and the services under test are pointed at the copies.
+
+**Layer 3 — the env override that makes it possible.** Both `config.py` files use
+`pydantic_settings.BaseSettings`, so **`DATABASE_URL` is overridable by environment
+variable** without editing a line of product code. The test harness sets:
+
+```
+DATABASE_URL=sqlite:////srv/openclaw/vera/sandbox/db/pos_ai.db
+DATABASE_URL=sqlite:////srv/openclaw/vera/sandbox/db/website_api.db
+```
+
+This is the single most valuable finding for this design: **the live-DB risk can be
+removed without touching product code**, which keeps the "no changes to product
+code" promise intact.
+
+**Layer 4 — the hard-coded scripts.** Some scripts bypass the config entirely and
+hard-code the path. For those, the fix is a **wrapper that rewrites the path at
+invocation time** (a copy of the script in the sandbox with the path substituted),
+**never an edit to the original in the production tree**.
+
+**Layer 5 — the nightly guard.** A root cron runs a checksum of the live database
+files before and after every Vera run. Any change in mtime or hash raises a **P1
+escalation** immediately.
+
+### 6.3 The rule
+
+> **Vera never opens the live databases. Not read-write, not to "just check
+> something", not with a `mode=ro` URI as a shortcut — because `mode=ro` in one
+> script is often the *first* half of a script whose second half writes.**
+
+Read-only inspection of the live state is a **human** action, or a **separate,
+explicitly authorised** read-only job with its own tool policy — never Vera's
+default behaviour.
+
+---
+
+## 7. The automation flow
+
+### 7.1 The whole picture
+
+```
+                  ┌──────────────────────────────────────────┐
+                  │            CHANGE DETECTION              │
+                  │  program-changes/ + source mtime + git    │
+                  └───────────────────┬──────────────────────┘
+                                      │  what changed? which surfaces?
+                                      ▼
+                  ┌──────────────────────────────────────────┐
+                  │         REGRESSION RUN (sandbox)          │
+                  │  copy DBs → run suites → Playwright E2E   │
+                  └───────────────────┬──────────────────────┘
+                                      │  verdict
+                        ┌─────────────┴─────────────┐
+                        ▼                           ▼
+              ┌───────────────────┐      ┌────────────────────────┐
+              │   DOC UPDATE      │      │   ESCALATION (Telegram)│
+              │  Mintlify publish │      │  P1/P2 immediate       │
+              └───────────────────┘      │  P3 batched            │
+                                         └────────────────────────┘
+```
+
+### 7.2 Change detection — how Vera knows something changed
+
+**The problem:** the POS source at
+`/root/.openclaw/workspace/mydoc/Projects/POS_AI` **is not a Git repository** — there
+is no `.git` directory in it, and the whole `mydoc/` tree is excluded from the
+workspace's `.gitignore` because it holds live secrets and SQLite databases. So
+"watch the repo" is not available today.
+
+**Three proposed detection signals, in order of reliability:**
+
+1. **The `program-changes/` records.** The docs repo already carries per-surface
+   change records. Each change to a surface is expected to add a record naming the
+   surface, the nature of the change and the surfaces affected. Vera reads the
+   newest record and derives the affected surface set. This is **the authoritative
+   signal**, because it is written by the humans who made the change
+2. **A source-tree fingerprint.** A manifest of path + mtime + size over the product
+   tree (excluding `node_modules`, `.git` and `*.db`), stored per run. A diff
+   between manifests yields the changed files, and the changed files map to
+   surfaces by directory: `backend/` → API, `website_api/` → Website API,
+   `admin/` → Admin app, `posai-frontend/` → POS frontend, `customer-app/` →
+   Customer order app, `site/` → Site, `delivery/` → Delivery app
+3. **A nightly full sweep regardless**, so a change that slipped past 1 and 2 is
+   still caught the next day
+
+**On `inotify`:** neither `inotifywait` nor `pyinotify` is installed, and the
+product tree has roughly **2,926 files** (excluding `node_modules`, `.git` and
+`*.db`) across about **1.5 GB**. So a filesystem watcher is not proposed here — the
+fingerprint manifest is simpler, survives reboots, and needs no new daemon. If
+inotify is wanted later, `pip install pyinotify` is the only dependency.
+
+### 7.3 The regression run
+
+**On demand (a change was detected) and nightly (a full sweep).**
+
+Per run:
+
+1. **Prepare the sandbox** — fresh copies of both databases into
+   `/srv/openclaw/vera/sandbox/db/`, run as `kens`
+2. **Point the services at the copies** — via the `DATABASE_URL` environment
+   override (§6.2 Layer 3), on a **separate port set** so the running production
+   services on `8000 / 9000 / 3001 / 5000 / 8080` are never disturbed
+3. **Run the API suites** — the 8 backend test files and the 18 website API test
+   files, via `pytest` (**not installed — `pip install pytest` is a prerequisite**)
+   or via the existing standalone-script style
+4. **Run the E2E harness** — Playwright against the sandbox ports:
+   - admin app: login → outlet → menu → pricing → plan gate
+   - POS frontend: order → discount → tax → payment → receipt
+   - customer order app: browse → cart → checkout → online payment (Malaysia only)
+   - delivery app: **skipped until it ships**
+5. **Collect artefacts** — JUnit XML, screenshots, Playwright traces, and a
+   `summary.md` verdict per surface
+6. **Verify the live databases are untouched** — compare the live DB checksums
+   against the pre-run baseline (§6.2 Layer 5)
+
+### 7.4 Documentation publication
+
+- The Mintlify site lives in the docs repo at
+  `/root/.openclaw/workspace/ideazesposai` — a **git submodule** of the workspace
+  with remote `https://github.com/Kiens8/IDEAZESPOSAI.git`, published at
+  `https://docs.ideazes.com`
+- **The `system-design/` folder is ignored by Mintlify through `.mintignore`** —
+  verified live: `system-design/delivery-app` and `system-design/renewal-system`
+  both return **404**, and the public nav shows only Getting Started, Site, POS
+  Frontend, Customer App, Billing & Subscription, API, Troubleshooting, Admin App.
+  **So this document and every other design document are internal and are never
+  published** — Vera's own design work is invisible to tenants, which is the
+  correct default
+- Vera's documentation job is therefore **public**: user-facing pages under the
+  published nav. Her output is a **commit in the docs repo** (or a drift report),
+  published on its own cadence — the design-doc publishing pattern already proven
+  in this repo (the v1.4 and v1.5 delivery document commits `d26d273` and
+  `76eb119`, with the workspace gitlink commits `bb7d7494` and the v1.5 gitlink
+  commit, are the precedent)
+- **Publication is a separate, human-approved step.** Vera proposes the doc
+  change; a human publishes it. Publishing unreviewed text to a public site is a
+  worse failure mode than a stale page.
+
+### 7.5 Support and escalation
+
+- Vera answers a tenant question by: searching the published docs → checking the
+  live system's state → answering from what she found, with the documentation
+  reference
+- If the answer is not derivable, or the situation is P1/P2/P3, she escalates to the
+  group with the §4.3 format
+- Vera **does not** execute refunds, credits, plan changes or data edits
+- Every answer is logged to
+  `/srv/openclaw/vera/workspace/logs/support-YYYY-MM-DD.md` so the humans can
+  review what she told tenants
+
+### 7.6 The trigger mechanics
+
+OpenClaw's automation support (cron, stream, condition-watcher, webhook, hook) and
+`openclaw automations add` were both verified. Relevant flags:
+`--name`, `--cron`, `--tz`, `--message`, `--script`, `--script-timeout-seconds`,
+`--session`, `--tools`, `--model`, `--to`, `--keep-after-run`, `--trigger-once`.
+
+**The proposed jobs:**
+
+| Job | Schedule | Type | Tools | Delivers to |
+|---|---|---|---|---|
+| **Nightly full regression** | `30 23 * * *` Asia/Kuala_Lumpur | cron, agent `vera` | `--tools "exec read"` | Vera's own log + group only on failure |
+| **Change-triggered regression** | on a change record lands | condition-watcher, agent `vera` | `--tools "exec read"` | same |
+| **Sandbox refresh + live-DB integrity check** | `0 0 * * *` Asia/Kuala_Lumpur | **command payload**, no agent | — (runs `sh -lc`) | P1 to the group on any change |
+| **Doc drift check** | `0 4 * * *` Asia/Kuala_Lumpur | cron, agent `vera` | `--tools "read exec"` | Drift report, no ping |
+| **Weekly full sweep** | Sunday `0 3 * * 0` | cron, agent `vera` | `--tools "exec read"` | Summary to the group |
+
+**Two constraints on unattended runs, both from the verified facts:**
+
+1. **Automation jobs inherit the owning agent's tool policy.** An unattended agent
+   with `exec` and a loose policy is exactly the shape of accident we are trying to
+   prevent. There are now **two real, verified levers**, and the proposal uses
+   both:
+   - **Per-job tool allow-list.** `openclaw automations add --tools <list>` takes
+     an explicit list (e.g. `--tools "exec read"`, and `""` disables all tools).
+     This is the tighter of the two, because it is scoped to the job rather than
+     to the agent. Vera's nightly regression gets `--tools "exec read"` — enough
+     to run the harness and read the results, and nothing else.
+   - **Per-agent exec allowlist.** `openclaw approvals allowlist add --agent vera
+     "<glob>"` pins the *commands* that may run unattended — the test runners,
+     the Playwright invocation, the copy script — and nothing else. The glob
+     syntax is supported (`~/Projects/**/bin/rg` is the documented example), and
+     `--agent "*"` applies one rule fleet-wide.
+   - **A blanket `exec` allowance is not acceptable for an unattended agent.** The
+     exec allowlist is the belt to the `--tools` braces.
+2. **The root-privileged jobs must not run as the agent at all.** The live-DB
+   integrity check, the sandbox database copy and the source refresh are **command
+   payloads**, not agent jobs: `--command "<shell>"` runs `sh -lc <shell>` on the
+   Gateway, with `--command-cwd` and repeatable `--command-env` for the
+   environment. That keeps them **root-owned and out of the agent's tool policy
+   entirely** — there is no model in the loop to widen their permissions, because
+   there is no model in the loop at all. This is strictly better than asking an
+   agent to run them.
+
+The runtime constraint from §5.3 applies here with full force: because `kens`'s own
+`sudo` requires a password while root can run `sudo -u kens` non-interactively,
+**the root-owned command payloads run as root, and they drop to `kens` explicitly
+where the sandbox work needs it** — `sudo -u kens -H <harness command>`. That
+keeps the file copies owned by the identity that will actually read them.
+
+The existing automations are `heartbeat:heartbeat` (every 30m, agent `heartbeat`),
+`memory-core:memory-dr...` (cron `0 3 * * *`, agent `main`) and `Daily OpenClaw DB
+Backup` (cron `30 4 * * * @ Asia/Kuala_Lumpur`, agent `main`). Vera's jobs are
+proposed to run in the gaps — the nightly window of 02:00–04:30 is currently taken
+by the memory and backup jobs, so **02:00 is a poor choice** and Vera's nightly
+regression is proposed for **23:30** instead, with the integrity check immediately
+after it.
+
+---
+
+## 8. Failure modes and the honest risks
+
+| Risk | Severity | Mitigation |
+|---|---|---|
+| **A test script writes to a live database** | Critical | Non-root identity + copy databases + `DATABASE_URL` override + checksum guard (§6) |
+| **A regression run disturbs production** | Critical | Dedicated sandbox ports; production ports (`8000/9000/3001/5000/8080`) are never touched |
+| **An unattended agent misuses `exec`** | High | Per-job `--tools` allow-list + per-agent exec allowlist limited to the harness commands; no blanket `exec` |
+| **Vera cannot send the escalation** | High | `message` is **not** in the `coding` profile — it must be added via `alsoAllow` (§5.5), and proven by a live test before any job is created |
+| **Vera reconfigures the Gateway or reloads plugins** | High | `profile: "coding"` excludes `gateway`, `plugins` and `openclaw` (§5.5) |
+| **Doc drift goes unnoticed** | Medium | Nightly drift check against the fingerprint manifest |
+| **Vera publishes unreviewed public text** | High | Publishing is a separate human-approved step (§7.4) |
+| **Escalation spam** | Medium | Group is escalation-only; severity gates the ping; P4/P5 never ping |
+| **The `/srv` layout is adopted but the identity is not** | Critical | The identity change is the boundary; without it the layout is decoration |
+| **Browser cache drift** | Low | One shared cache path, pinned Playwright version `1.64.1` |
+| **Escalation to a wrong or unknown group id** | Medium | Group id is a required input before any job is created |
+
+---
+
+## 9. Environment prerequisites
+
+| Item | Status | Action |
+|---|---|---|
+| Playwright `1.64.1` | Present globally at `/usr/lib/node_modules/playwright`; also in `workspace/scripts/node_modules` | Move a copy to `/srv/openclaw/shared/playwright`; set `PLAYWRIGHT_BROWSERS_PATH` for both Lumi and Vera |
+| Browser binaries `1248 / 1248 / 1013` | Present at `/root/.cache/ms-playwright` | Re-install to `/srv/openclaw/.cache/ms-playwright`, owned by `kens` |
+| `pytest` | **Not installed** (`pip 24.0` is) | `pip install pytest` in a `kens`-owned venv under `/srv/openclaw/vera` |
+| Non-root `kens` user | Present (uid 1000, gid 1000, groups 1000 + 27/sudo) | Use as Vera's execution identity |
+| `bwrap` / `firejail` / Docker / Podman | **All absent** | Rely on the non-root identity + read-only projection |
+| Landlock | Kernel symbols present | No native backend established — not relied upon |
+| Vera's bot token | **Not supplied** | Needed before the group can exist |
+| Telegram group id | **Not known** | Needed before any escalation job is created |
+| `inotifywait` / `pyinotify` | Absent | Not required — fingerprint manifest instead |
+| Per-agent tool policy | The mechanism exists (`agents.entries.<id>.tools.profile` / `alsoAllow` / `deny` / `fs`) and the fleet already uses it (`main` → `full`) | Set Vera's entry to `coding` + `alsoAllow: ["message"]` + `deny: ["apply_patch","write","edit"]` + `fs.workspaceOnly: true` (§5.5) |
+| Bundled `reviewer` role | Present at `openclaw/docs/reference/templates/roles/reviewer/` | Use `--role reviewer` as Vera's seed, then rewrite the identity (§2) |
+
+---
+
+## 10. Estimated effort
+
+| Phase | Work | Rough size |
+|---|---|---|
+| **0. Guard** | Non-root identity, copy databases, `DATABASE_URL` override, checksum guard, wrapper for the hard-coded scripts | **1–2 days — and it comes first, always** |
+| **1. Workspace** | `/srv` layout, shared Playwright install and browser cache, agent registration | 0.5–1 day |
+| **2. Regression runner** | Sandbox service orchestration, the 8 + 18 API suites, artefact collection | 2–3 days |
+| **3. E2E harness** | Playwright suites for admin, POS frontend, customer order app | 3–5 days |
+| **4. Change detection** | `program-changes` reader + fingerprint manifest + surface mapping | 1–2 days |
+| **5. Docs pipeline** | Drift detection, doc change proposals, publication workflow | 2–3 days |
+| **6. Support + escalation** | Bot, group, severity routing, message format, answer logging | 2–3 days |
+| **7. Delivery app coverage** | Once the delivery app ships | 2–3 days |
+
+**Phase 0 is not optional.** A testing agent that can corrupt the live books is
+worse than no agent at all.
+
+---
+
+## 11. The implementation order, when Kens approves
+
+1. **Guard** — non-root `kens` identity, sandbox database copies, the
+   `DATABASE_URL` override, the checksum check, and wrappers for the hard-coded
+   scripts. *Nothing else starts until this is live.*
+2. **Workspace** — `/srv/openclaw` layout, shared Playwright + browser cache, and
+   `openclaw agents add vera --role reviewer` with
+   `--model minimax/MiniMax-M2.7`
+3. **Identity** — Vera's `SOUL.md` and `IDENTITY.md` written into
+   `/srv/openclaw/agents/vera/agent/` by Lumi, then reviewed by Kens
+4. **Tool policy** — the per-agent entry from §5.5, applied **before** anything
+   runs: `coding` + `alsoAllow: ["message"]` + the `deny` list +
+   `fs.workspaceOnly: true`. **Prove it**: send one real message to the group and
+   confirm one real `apply_patch` is refused. A policy that has never been
+   exercised is not a policy
+5. **Regression runner** — the API suites green against the sandbox
+6. **E2E harness** — the three shipped surfaces
+7. **Change detection + nightly jobs** — with the per-job `--tools` allow-list set
+   on each
+8. **Docs pipeline** — drift detection first, publication proposals after
+9. **Telegram support + escalation** — once the bot token and the group id exist
+10. **Delivery app coverage** — when it ships
+
+---
+
+## 12. Open questions for Kens
+
+1. **The bot token and the group id** — both are required before the escalation half
+   of this design can be built. Which bot account, and when the group is created?
+2. **Which surfaces Vera may run against live** — the design assumes *none*: the
+   E2E harness runs against the sandbox copies. Should a thin read-only smoke test
+   against production be permitted as a separate job with its own policy?
+3. **Who approves documentation publication** — this design proposes that Vera
+   proposes and a human publishes. Is a per-tenant or per-surface auto-publish
+   acceptable for anything?
+4. **The nightly window** — the proposal avoids 02:00–04:30 because the memory and
+   backup jobs live there. Is 23:30 acceptable, or should Vera's nightly run be
+   later?
+5. **The regression scope on day one** — all 8 + 18 API suites, or a chosen
+   critical subset first?
+6. **Vera's write capability** — the proposal denies `write`, `edit` and
+   `apply_patch` outright, so every report and artefact is produced by the
+   harness through `exec` rather than by Vera herself. That is the safest posture
+   and it costs a little flexibility. Should Vera instead be allowed to `write`
+   **inside her own workspace only** (which `fs.workspaceOnly` already enforces)?
+7. **The `reviewer` seed** — using the bundled `reviewer` role as Vera's starting
+   point is faster and better-aligned than authoring from scratch, but it means
+   Vera's soul inherits *"careful, independent review"* language. Keep the seed
+   and rewrite it, or start clean?
