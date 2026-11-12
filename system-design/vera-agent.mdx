@@ -551,9 +551,18 @@ write product code" into "she cannot run a command that would".** See §5.6.
 - **`alsoAllow: ["message"]`** — adds the one tool the escalation flow needs.
   `alsoAllow` is the correct mechanism: it is *merged on top of* the profile, and
   the runtime warns that configured tool sections *"no longer implicitly widen the
-  profile"* and must be granted explicitly. Measured result: **56 tools** — the
-  `coding` set plus `message`, and still no `openclaw`, no `nodes`, no `computer`,
-  no `mobile_ui`.
+  profile"* and must be granted explicitly. Two different numbers matter here, and
+  conflating them is how this kind of claim goes stale:
+  - **Profile-level grants: 56.** The `coding` profile contributes 55 tool ids
+    (counted from the runtime's own catalog) and `alsoAllow` adds `message` for
+    56. This is the *resolved grant list*.
+  - **Live depth-0 catalog: 43 OpenClaw tools.** What Vera's running session
+    actually exposes is smaller, because `deny` and runtime availability gating
+    remove tools from the surface after the grant list is resolved.
+  - The **43 is the authoritative number** for *"what can Vera actually call"*,
+    and it was read off the live session rather than inferred. It still contains
+    `message`, and it still contains no `openclaw`, no `nodes`, no `computer`, no
+    `mobile_ui`.
 - **`deny: ["apply_patch", "write", "edit"]`** — **Vera cannot write product code
   through the file tools at all.** This is not a prompt; it is the tool policy
   refusing to offer the tool. Note the ordering: `deny` is applied *after* the
@@ -565,16 +574,37 @@ write product code" into "she cannot run a command that would".** See §5.6.
     runs a shell. This deny list is a strong second layer, not the boundary —
     the boundary remains the non-root identity and the read-only projection (§5.3).
 - **`fs: { workspaceOnly: true }`** — per agent, so Lumi's posture is untouched.
-- **Deliberately absent:** `gateway`, `plugins`, `openclaw`, `nodes`, `computer`,
-  `mobile_ui` are not in `coding`, so they are not in Vera's profile. She cannot
-  reconfigure the Gateway, reload plugins, or drive a desktop. An agent that can
-  restart its own Gateway can defeat any boundary you put around it.
+- **Genuinely absent:** `openclaw`, `nodes`, `computer` and `mobile_ui` are not in
+  the `coding` profile, so they are not in Vera's profile. She cannot delegate
+  OpenClaw setup and repair, and she cannot drive a desktop or a paired node.
+  An agent that can restart its own Gateway can defeat any boundary you put
+  around it.
 
-**Why not `full`?** `full` is `allow: ["*"]` — it would hand Vera the `gateway`
-tool (*"Update OpenClaw"*), `plugins` (*"Manage and reload plugins"*) and
-`openclaw` (*"Delegate OpenClaw setup and repair"*). An unattended agent with
-those is a self-modifying agent. The main agent has `full` because Lumi is
-interactive and trusted; Vera is neither.
+- **`gateway` and `plugins` are a correction, not a grant.** An earlier draft of
+  this document claimed they were *"deliberately absent"* from `coding`. That was
+  **false**, and it is corrected here because it is a security-relevant claim.
+  Measured from the runtime catalog: the `coding` profile **does** contain both
+  `gateway` and `plugins`. What actually protects Vera is not their absence but
+  their *operational gates*, both confirmed by live read-only probes:
+  - `gateway` exposes exactly one action, `update.run`, and the runtime
+    describes it as requiring *"an explicit owner request or operator-scheduled
+    update"*. It is not a general-purpose status or config reader.
+  - `plugins` with `action="list"` returned `{"gated": true}` — the tool is
+    present but gated, and the plugin-management path is a human-approved
+    operation.
+  - The genuinely load-bearing controls remain `deny` on the file tools and the
+    non-root identity; `gateway` and `plugins` are a second layer, not the
+    boundary (§5.6).
+
+**Why not `full`?** `full` is `allow: ["*"]` — a wildcard, not a list, so the
+difference from `coding` is everything `coding` leaves out. Concretely it adds
+`openclaw` (*"Delegate OpenClaw setup and repair"*), `nodes`, `computer` and
+`mobile_ui`, and it removes any reliance on the profile boundary for
+`gateway`/`plugins` at all. An unattended agent that can delegate its own
+reconfiguration is a self-modifying agent. The main agent has `full` because Lumi
+is interactive and trusted; Vera is neither. Note that `gateway` and `plugins`
+were *not* part of this argument even before the correction — they are present
+in `coding` too.
 
 **Why not `messaging`?** It has `message` but no `exec` and no `read` — she could
 post to the group and nothing else. A tester who cannot run the tests is not a
@@ -708,10 +738,19 @@ channel telegram` — the messaging tool's account list is resolved against the
 calling agent's own view, not the raw channel config. This is *correct*
 behaviour, not a gap: it is what guarantees Lumi cannot speak as Vera in the
 group. Vera reaches the group through her **own** account (verified: her
-`message_id: 6` post in `ideazes-office`). A side effect is that a **depth-1
-subagent spawned by Vera has no `message` tool at all** — the catalog exposes 32
-tools with no messaging entry — so escalation messages must be sent by Vera's
-depth-0 session, not by a subagent on her behalf.
+`message_id: 6` post in `ideazes-office`, and a later escalation-path check that
+returned `messageId: "10"` for `chatId: "-5583541067"`). A side effect is that a
+**depth-1 subagent spawned by Vera has no `message` tool at all** — a live probe
+inside such a subagent returned exactly `Unknown tool: message`, and
+`catalog.search("message")` there matched only `sessions_history`,
+`sessions_list`, `sessions_search` and `sessions_spawn` across a 28-tool catalog,
+with no messaging entry. Two independent probes reached the same conclusion.
+
+⚠️ **Escalations must therefore be sent by Vera's depth-0 session, not by a
+subagent on her behalf.** A depth-1 subagent cannot escalate: it has no
+messaging tool, so the send simply cannot happen from there. This is a property
+of the tool surface, not a prompt, and it does not change the design — the
+escalation flow is a depth-0 responsibility.
 
 **The Telegram account.** Vera's bot is a **second account inside the same
 Gateway**, not a second Gateway:
@@ -1127,8 +1166,8 @@ https://github.com/Kiens8/POS_AI/issues/1
 | **A test script writes to a live database** | Critical | Non-root identity + copy databases + `DATABASE_URL` override + checksum guard (§6) |
 | **A regression run disturbs production** | Critical | Dedicated sandbox ports; production ports (`8000/9000/3001/5000/8080`) are never touched |
 | **An unattended agent misuses `exec`** | High | Per-job `--tools` allow-list + per-agent exec allowlist limited to the harness commands; no blanket `exec` |
-| **Vera cannot send the escalation** | High | `message` is **not** in the `coding` profile — it must be added via `alsoAllow` (§5.5), and proven by a live test before any job is created |
-| **Vera reconfigures the Gateway or reloads plugins** | High | `profile: "coding"` excludes `gateway`, `plugins` and `openclaw` (§5.5) |
+| **Vera cannot send the escalation** | High | `message` is **not** in the `coding` profile — it must be added via `alsoAllow` (§5.5). **Live-proven**: Vera's depth-0 session sent to group `-5583541067` and returned `messageId: "10"`, `chatId: "-5583541067"`. Note the limit — a **depth-1 subagent cannot send it** (§5.7); escalation must originate from the depth-0 session |
+| **Vera reconfigures the Gateway or reloads plugins** | High | `openclaw` is genuinely absent from `coding` (§5.5). `gateway` and `plugins` **are** present in the profile — the protection is their operational gates, confirmed by live probe: `gateway` exposes only `update.run` (owner-request or operator-scheduled), and `plugins` returns `{"gated": true}` |
 | **Doc drift goes unnoticed** | Medium | Nightly drift check against the fingerprint manifest |
 | **Vera publishes unreviewed public text** | High | Publishing is a separate human-approved step (§7.4) |
 | **Escalation spam** | Medium | Group is escalation-only; severity gates the ping; P4/P5 never ping |
@@ -1252,8 +1291,9 @@ whose live tree holds the production books.
    Vera files; `main` fixes on a branch and opens a pull request; a human merges
    and deploys. Nothing in the fix loop is unattended, by design.
 9. **Who may merge the fix and restart the service** — ✅ **answered: a human,
-   always.** Unchanged from v1.2 and now backed by the mechanism: Vera has no
-   `gateway` or `plugins` tool, and her `exec` cannot reach a merge.
+   always.** Unchanged from v1.2 and now backed by the mechanism: `openclaw` is
+   absent from Vera's profile, the `gateway` tool exposes only the owner-gated
+   `update.run` action, `plugins` is gated, and her `exec` cannot reach a merge.
 10. **The webhook trigger** — ⏸️ **still open.** The Gateway is loopback-bound, so
     the loop runs on polling. No exposure decision has been requested.
 
@@ -1273,10 +1313,18 @@ whose live tree holds the production books.
   client. Not yet filed — it needs one more check of the customer-app create path
   to confirm the shape of the fix before it becomes an issue.
 
-**What is still unverified, stated plainly.** The claim that a **fresh inbound**
-to `@ideazes_verabot` now routes to Vera and not to `main` has **not** been
-confirmed live. The binding is written, the exact-account binding precedes the
-wildcard, and the Gateway logged the `vera` account starting with
-`reason: config-reload` — but the one inbound that has arrived so far predates
-that publication. It is a single message to the bot, and it is the last
-outstanding proof in this document.
+**The fresh-inbound routing claim — now verified live.** The claim that a
+**fresh inbound** to `@ideazes_verabot` routes to Vera and not to `main` was the
+last outstanding proof in this document, and it is now confirmed. A Vera-account
+inbound arriving at **02:50:29** was handled by `agent=vera`, in session
+`agent:vera:telegram:direct:7229468912`, and Vera replied under
+`@ideazes_verabot` with the `🔎 Vera` prefix. The earlier draft's claim that
+the only inbound *"predates that publication"* was stale — it was written before
+the post-reload inbound arrived, and it is removed rather than left to mislead.
+
+**What remains genuinely open** is stated elsewhere and is not a routing
+question: the regression suite on day one (§7, item 5) and the webhook trigger
+(§7, item 10) are both still ⏸️. The escalation path itself is proven:
+Vera's depth-0 session reached group `-5583541067` and returned
+`messageId: "10"` — with the caveat, verified by direct probe, that a **depth-1
+subagent has no `message` tool** and therefore cannot perform that send.
