@@ -1,8 +1,8 @@
 # Vera — the QA, documentation and support agent for the Ideazes POS AI platform
 
-**Document Version:** 1.2
+**Document Version:** 1.3
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — nothing in this document has been built; no agent, no bot, no cron and no file in the production tree has been changed · **v1.0 (Nov 12, 2026): the first complete proposal — Vera's identity and mandate, the physical workspace layout, the shared Playwright install, the full automation flow (change detection → regression → docs publication → Telegram support → group escalation), and the isolation model that keeps Vera out of product code and away from the live databases** · **v1.1 (Nov 12, 2026): the tool policy is now VERIFIED against the runtime, and it changed the design — `agents.entries.<id>.tools.profile` is a real per-agent key, the `coding` profile does NOT contain the `message` tool, so a naive `coding` profile would have silently broken every Telegram escalation. §5.5 specifies the corrected profile (`coding` + `alsoAllow: ["message"]` + an explicit `deny` list), §5.4 uses the bundled `reviewer` role as Vera's seed, and §7.6 replaces the vague "pin the exec allowlist" with the real per-job `--tools` allow-list and the root-owned `--command` payload** · **v1.2 (Nov 12, 2026): the product source is now a private Git repository (`Kiens8/POS_AI`), and that changes the design in three places — §7.2 replaces the fingerprint manifest with a real git commit diff, §7.6 and the new §7.7 make the **GitHub issue** the trigger (Vera files it, Lumi fixes it), and §5.3 replaces the bind projection with a read-only clone at a pinned SHA, which means Vera never sees the live working tree, its secrets or its databases at all**
+**Status:** **Built — phases 0–2 are live.** The `vera` service account, the read-only pinned clone, the privilege-dropping and issue-filing wrappers, the `vera` OpenClaw agent, her Telegram bot `@ideazes_verabot`, the three severity labels and the first filed issue all exist and were proven live. Phases 3–8 (the regression runner, the E2E harness, the nightly jobs, the docs pipeline and the delivery-app coverage) are still to build · **v1.0 (Nov 12, 2026): the first complete proposal — Vera's identity and mandate, the physical workspace layout, the shared Playwright install, the full automation flow (change detection → regression → docs publication → Telegram support → group escalation), and the isolation model that keeps Vera out of product code and away from the live databases** · **v1.1 (Nov 12, 2026): the tool policy is now VERIFIED against the runtime, and it changed the design — `agents.entries.<id>.tools.profile` is a real per-agent key, the `coding` profile does NOT contain the `message` tool, so a naive `coding` profile would have silently broken every Telegram escalation. §5.5 specifies the corrected profile (`coding` + `alsoAllow: ["message"]` + an explicit `deny` list), §5.4 uses the bundled `reviewer` role as Vera's seed, and §7.6 replaces the vague "pin the exec allowlist" with the real per-job `--tools` allow-list and the root-owned `--command` payload** · **v1.2 (Nov 12, 2026): the product source is now a private Git repository (`Kiens8/POS_AI`), and that changes the design in three places — §7.2 replaces the fingerprint manifest with a real git commit diff, §7.6 and the new §7.7 make the **GitHub issue** the trigger (Vera files it, Lumi fixes it), and §5.3 replaces the bind projection with a read-only clone at a pinned SHA, which means Vera never sees the live working tree, its secrets or its databases at all** · **v1.3 (Nov 13, 2026): this document is now a record of what was BUILT and PROVEN, not a proposal. Three of its predictions were wrong and are corrected here — §5.3 replaces the `kens` identity with a dedicated `vera` service account plus a read-only bind mount (the kernel now enforces the boundary, not POSIX permissions alone), §7.7 supersedes the "a second, Issues-scoped token is required" claim (the stored PAT works once its Issues grant is in place — no second token), and §3.3 drops delivery-order testing until the delivery feature exists. The real paths, the real config and the live proofs are in §5.1, §5.4, §5.5 and §9**
 
 > **Related** → `delivery-app.mdx` (the delivery storefront — the surface Vera will
 > regress first once it ships) · `order-flow-standards.mdx` §8 · `program-changes/`
@@ -17,6 +17,14 @@
 public documentation is the agent's product and the live system is the source of truth
 for it.**
 
+> **Status (v1.3): the guard, the workspace and the channel are built and proven.**
+> Vera exists as an OpenClaw agent with her own workspace, her own service account,
+> a read-only pinned clone of the product, a two-command exec allowlist, a Telegram
+> bot, three severity labels, and a first filed issue. The regression runner, the
+> E2E harness, the nightly jobs and the docs pipeline are not built. **Nothing yet
+> runs unattended.** The full status table is §9; the order and what each step
+> proved is §11.
+
 **The principle that decides every scope question:**
 > **Vera never writes product code. Vera proves the product behaves as documented,
 > keeps the documentation true, and escalates to the humans what she cannot resolve.**
@@ -30,7 +38,9 @@ answers from the documentation and escalates what it cannot.
 
 - **Identity:** Vera — the verifier. Deliberately *not* a builder and *not* a
   decision-maker.
-- **Model:** `minimax/MiniMax-M2.7` (the same model as Lumi and the heartbeat agent).
+- **Model:** `minimax/MiniMax-M3.1-Flash`. Vera's work is running tests and reading code, not
+  reasoning about product strategy, so she runs on the fast, cheap model. Lumi and the
+  heartbeat agent stay on `minimax/MiniMax-M2.7`.
 - **Mandate:** regression testing, documentation maintenance, and first-line tenant
   support with escalation to a Telegram group.
 - **Hard boundary:** **no write access to product source and no write access to the
@@ -53,9 +63,14 @@ answers from the documentation and escalates what it cannot.
 - **Emoji:** 🔎 · **Symbol:** the checkmark-not-tick — she verifies, she does not
   approve
 
-### 2.2 The `SOUL.md` and `IDENTITY.md` to be created (proposed content, not written)
+### 2.2 The `SOUL.md` and `IDENTITY.md` (now written)
 
-`/srv/openclaw/agents/vera/agent/SOUL.md` — proposed principles:
+**These files exist.** They are at `/srv/openclaw/vera/` — her **workspace** root,
+not her agentDir, because the persona files are workspace files (§5.1). Lumi
+authored them directly rather than seeding a role template (§5.4), and the
+scaffolded `BOOTSTRAP.md` was removed.
+
+`/srv/openclaw/vera/SOUL.md` — the five principles, as written:
 
 1. **The system is the source of truth.** If the code and the documentation
    disagree, the code wins and the documentation is a defect to be reported, not
@@ -69,17 +84,21 @@ answers from the documentation and escalates what it cannot.
 5. **The customer never sees internal jargon.** Tenant-facing answers are plain
    language; internal escalation messages are precise and technical.
 
-`/srv/openclaw/agents/vera/agent/IDENTITY.md` — proposed fields: name Vera, nature
-"a verification and documentation agent", mission "keep the Ideazes POS AI
-platform honestly documented and honestly tested", vibe "watchful, unfussy,
-unflappable", and the explicit rule "**Vera reports; humans decide**".
+`/srv/openclaw/vera/IDENTITY.md` — as written: name **Vera**, role *"QA and support
+agent for the IDEAZES POS AI platform"*, vibe *"Precise, evidence-first, quietly
+persistent. I report what I observed, not what I hoped would happen"*, emoji 🔎, and
+the explicit rule *"I am not the fixer — `main` fixes what I file, on a branch, as a
+pull request. I never write product code."*
 
-> These files are **not written by this proposal**. They are the first implementation
-> step (§11), written by Lumi, in Vera's own agent directory — not in the workspace
-> of another agent.
+Alongside them, `/srv/openclaw/vera/AGENTS.md` (her operating manual — the
+workspace map, the two wrapper commands, her job, and her hard boundaries) and
+`/srv/openclaw/vera/USER.md` (Kens: product owner, MYT, evidence-first reporting).
 
-**The seed is already on disk.** OpenClaw ships a bundled **`reviewer`** role
-template (`--role reviewer`) whose charter is almost exactly Vera's: *"Check
+The identity is also set in the config: `agents.entries.vera.identity` is
+`{"name":"Vera","emoji":"🔎"}`.
+
+**The template that was considered, and not used.** OpenClaw ships a bundled
+**`reviewer`** role template whose charter is almost exactly Vera's: *"Check
 artifacts against requirements and report actionable findings with evidence"*, with
 the operating rules *"Review authority alone does not authorize changing the
 artifact"*, *"Never claim an unrun check passed"*, and the approval gate *"Never send
@@ -100,9 +119,9 @@ becomes the literal statement of her no-write boundary (§5.3).
 | Job | What it means concretely | Output |
 |---|---|---|
 | **Regression testing** | Run the existing test suites and the new E2E harness against a **sandbox copy** of the databases, after any change to any surface | A pass/fail report per surface, with the failing assertion and the artefact; on failure, a **GitHub issue** in the product repository (§7.7) |
-| **E2E browser testing** | Drive the real customer journey with Playwright: order → payment → fulfilment; admin → menu → pricing; delivery order → driver handover | Screenshots, traces, and a per-step verdict |
+| **E2E browser testing** | Drive the real customer journey with Playwright: site registration → plan submission; POS login → feature testing; customer order app → order → payment → fulfilment. **Delivery ordering is excluded until the delivery feature is built** (§3.3) | Screenshots, traces, and a per-step verdict |
 | **Documentation** | Keep the public Mintlify docs true to the code; publish change notes; detect doc drift | A doc commit in the docs repo, or a drift report |
-| **First-line support** | Answer tenant questions from the published documentation and the live system state | A reply in the tenant's channel |
+| **First-line support** | Answer tenant and new-customer questions from the **published documentation** and **read-only API calls**. Never from a live database query (§6). No separate support agent — Vera does this too | A reply in the tenant's channel |
 | **Escalation** | Hand anything she cannot resolve, or anything with money, data or outage risk, to the team group | A structured escalation message in the Telegram group |
 
 ### 3.2 Explicitly out of scope
@@ -128,7 +147,18 @@ The complete SaaS POS, as it exists today plus what is coming:
 | Admin app | `127.0.0.1:3001` → `https://admin.ideazes.com` | Playwright |
 | POS frontend | `https://app.ideazes.com` → `/var/www/html/posai-frontend/dist` | Playwright |
 | Customer order app | `127.0.0.1:8080` → `https://order.ideazes.com` → `/var/www/html/posai-customer` | Playwright + HTTP |
-| Delivery app | **not built** — the future surface | Playwright once it ships |
+| Delivery app | **not built** — the future surface | **Nothing to test yet.** Vera must not test a delivery order until the feature exists; the *delivery order type* inside the existing system is a different thing and is testable (§3.3) |
+
+> **Two different things named "delivery" — do not conflate them.** (a) The
+> **delivery storefront**, the separate customer-facing web app with the driver
+> roster and map routing — that is `system-design/delivery-app.mdx` v1.5, still a
+> **Proposal**, **not built, nothing to test**. (b) The **delivery order type**
+> inside the existing system — that exists today: the backend carries
+> `order_type: str = "dine_in" # dine_in, takeaway, delivery`, the POS frontend
+> carries `PAYMENT_ORDER_TYPES = ['dine_in','takeaway','delivery']`, and the
+> customer app carries a delivery button. **(b) is in scope for testing. (a) is
+> not, until it ships.** A finding in (b) is reported as a defect in the existing
+> system; Vera never pretends (a) was tested.
 | Public docs | `https://docs.ideazes.com` | HTTP + repo check |
 
 ---
@@ -140,15 +170,22 @@ The complete SaaS POS, as it exists today plus what is coming:
 Kens intends to create a Telegram group containing **Kens, Lumi and Vera**. Every
 escalation lands there.
 
-- **Group name:** `ideazes-support` (proposed)
-- **Bot:** a new Telegram bot for Vera, `@ideazes_verabot` (proposed). It is a
-  **separate bot** from Lumi's, so Vera's identity in the group is unambiguous and
-  so Vera can be removed without touching Lumi's channel
-- **Group ID:** **not yet known** — required before implementation. It is obtained by
-  adding Vera's bot to the group and reading the chat id from the bot's
-  `getUpdates` response, or from the OpenClaw binding at setup time
-- **Bot token:** **not yet supplied** — it will be stored through the masked secret
-  flow (`secrets request`), never echoed into a session or a file in the workspace
+- **Group name:** `ideazes-office`
+- **Bot:** a separate Telegram bot for Vera, **`@ideazes_verabot`** (bot id
+  `9137021970`). It is a **separate bot** from Lumi's (`@OpenCFinAgentBot`), so
+  Vera's identity in the group is unambiguous and so Vera can be removed without
+  touching Lumi's channel. It runs as its **own Telegram account** inside the same
+  Gateway (`channels.telegram.accounts.vera`), sharing no token with Lumi's account.
+- **Group ID:** **`-5583541067`**. ⚠️ **Not yet reachable.** The id is correct, but
+  the bot is not a member of the group yet, so a send returns
+  `chat not found`. **Operator action: add `@ideazes_verabot` to `ideazes-office`.**
+  The group is already allowlisted in Vera's account config, so the send will work
+  the moment the bot is a member — no further config change is needed.
+- **Bot token:** **supplied and stored.** It was written into the protected
+  secret store as `VERA_TELEGRAM_BOT_TOKEN` (`--kind secret`, write-only) and
+  wired into the config as a **SecretRef** — `{"source":"store","provider":"default","id":"VERA_TELEGRAM_BOT_TOKEN"}`.
+  The literal token is not in `openclaw.json`, not in any file in the workspace, and
+  not in any command's argv. It is readable by nothing, including Vera.
 
 ### 4.2 What gets escalated, and how fast
 
@@ -201,179 +238,243 @@ concerns must not share a directory:
 2. The shared Playwright install and browser cache (Lumi's and Vera's — one copy)
 3. The product source (read-only, and preferably not even visible)
 
-### 5.1 The proposed layout
+### 5.1 The layout that was built
 
 ```
-/srv/openclaw/                              ← root-owned, world-readable
-│
-├── agents/
-│   └── vera/
-│       ├── agent/                          ← Vera's agentDir (SOUL, IDENTITY, skills)
-│       │   └── workshop-skills/            ← skills Vera learns, in her own directory
-│       └── workspace/                      ← Vera's workspace
-│           ├── MEMORY.md                   ← her curated memory
-│           ├── memory/                     ← her daily logs
-│           └── GOALS.md / PROJECTS.md
-│
-├── vera/                                   ← Vera's working area, owned by kens
-│   ├── workspace/                          ← writable scratch: reports, artefacts
-│   │   ├── reports/<date>/<run-id>/
-│   │   │   ├── junit-backend.xml
-│   │   │   ├── e2e-<surface>/<step>.png
-│   │   │   ├── traces/<run-id>.zip
-│   │   │   └── summary.md
-│   │   └── logs/
-│   ├── sandbox/                            ← the guarded test environment
-│   │   ├── db/                             ← COPIES of the databases (never the originals)
-│   │   │   ├── pos_ai.db
-│   │   │   └── website_api.db
-│   │   └── src/                            ← a READ-ONLY bind of the product source
-│   └── tmp/                                ← Playwright artefacts, reports
-│
-├── shared/
-│   └── playwright/                         ← the shared Playwright install
-│       ├── package.json
-│       ├── node_modules/
-│       └── package-lock.json
-│
-└── .cache/ms-playwright/                   ← the shared browser cache
-    ├── chromium-1248/
-    ├── chromium_headless_shell-1248/
-    └── ffmpeg-1013/
+/srv/openclaw/                              <- root-owned, 0755
+└── vera/                                   <- owned by the `vera` service account
+    │
+    ├── src/                                <- the pinned clone
+    │   └── POS_AI/                         <- bind-mounted READ-ONLY (ro bind mount)
+    ├── e2e/
+    │   └── venv/                           <- isolated python env: pytest 9.2.0, playwright 1.65.1
+    ├── browsers/                           <- chromium-1254 + chromium_headless_shell-1254
+    ├── artifacts/                          <- screenshots, traces, issue bodies she writes
+    ├── db/sandbox/                         <- sandbox database COPIES (never the originals)
+    ├── logs/                               <- her run logs
+    ├── queue/                              <- work items awaiting her
+    ├── state/                              <- her git config + runtime state
+    ├── bin/                                <- ROOT-OWNED wrappers, 0755 root:root
+    │   ├── vera-exec                      <- drops privileges to `vera`; refuses the live tree
+    │   └── vera-issue                     <- files an issue with the operator's credential
+    │
+    ├── AGENTS.md                           <- her persona - the workspace root IS her workspace
+    ├── SOUL.md
+    ├── IDENTITY.md
+    └── USER.md
 ```
+
+Her **agentDir** is `/root/.openclaw/agents/vera/agent` (root-owned, `0700`) — it is
+**not** under `/srv`. That is the one part of the v1.2 layout that changed, and it
+changed because v1.2 conflated two different things: an agent's *workspace* (where
+her persona and her working area live) and its *agentDir* (where OpenClaw keeps
+that agent's auth store and session state). They are separate by design, and the
+auth store must not be shared with another agent.
 
 ### 5.2 Why each path, and what was verified
 
-**`/srv` as the new root.** `/srv` **exists and is writable** on this host, and — this
-is the deciding fact — `/root` is `drwx------ root:root`, so **the non-root user
-`kens` (uid 1000, gid 1000, groups: 1000 + 27/sudo) cannot traverse `/root` at
-all**. Today the Playwright browsers live at `/root/.cache/ms-playwright` and the
-POS source lives at `/root/.openclaw/workspace/mydoc/Projects/POS_AI` — **both
-invisible to a non-root agent process.** Moving Vera's whole world to `/srv`
-removes `/root` from her picture entirely. This is the single most important
-structural decision in this document.
+**The `vera` service account, not `kens`.** v1.2 proposed running Vera as the
+existing `kens` user. That was wrong for two reasons, both now fixed:
 
-**Ownership.** `/srv/openclaw/vera/**` and `/srv/openclaw/shared/**` are owned by
-`kens`; `/srv/openclaw/agents/vera/**` is owned by root and read-only to `kens`.
-Root runs `sudo -u kens` non-interactively; `kens`'s own `sudo` requires a password,
-so **every automated trigger must be scheduled as root** (§7.6).
+- `kens` is a **human login account** with a password and `sudo` in group 27. A
+  testing agent that runs as a human account inherits that human's authority — and
+  Vera's whole job is to run unattended against a live system.
+- `kens` is **not** an identity the OpenClaw process belongs to. The Gateway runs
+  as `root`, so the only way Vera can run as anything else is for the privilege drop
+  to happen **inside the command**.
 
-**The shared Playwright install.** The verified facts:
-
-- Playwright **`1.64.1` is globally installed at `/usr/lib/node_modules/playwright`**
-- A workspace copy exists at
-  `/root/.openclaw/workspace/scripts/node_modules/playwright`, and
-  `/root/.openclaw/workspace/scripts/package.json` declares `"playwright": "^1.64.1"`
-- **`/tmp/pw_items.json` is leftover fixture data — it is NOT a Playwright
-  installation.** There is no install under `/tmp`
-- Chromium `1248`, Chromium headless shell `1248` and FFmpeg `1013` are installed
-  under `/root/.cache/ms-playwright`, and they **match Playwright 1.64.1**
-- **The whole browser cache is unreachable to non-root `kens`** because `/root` is
-  `drwx------`
-
-The proposal therefore installs **one** Playwright for the whole fleet:
+So there is now a dedicated system account:
 
 ```
-/srv/openclaw/shared/playwright        ← npm package (owned by kens)
-/srv/openclaw/.cache/ms-playwright     ← browser binaries (owned by kens)
+vera:x:995:986:Vera QA agent (OpenClaw):/home/vera:/usr/sbin/nologin
 ```
 
-and points both Lumi and Vera at it via `PLAYWRIGHT_BROWSERS_PATH=/srv/openclaw/.cache/ms-playwright`.
-One copy, one version, one cache to maintain — and **reachable by the non-root
-identity** that Vera will run as.
+created with `useradd --system --no-create-home --shell /usr/sbin/nologin` and
+locked (`passwd -S vera` reports `L`). It has **no login shell, no password and no
+home directory** — it exists only to be a filesystem identity, and it is not a
+person.
+
+**OpenClaw has no per-agent OS-user switch.** That was verified against the
+documentation and the runtime, and it is precisely why the enforcement is a wrapper
+rather than a config key. The Gateway's `exec` always runs as the Gateway's own
+user; the drop to `vera` happens inside `/srv/openclaw/vera/bin/vera-exec`, and
+that wrapper is one of only **two** commands in Vera's exec allowlist.
+
+**`/srv` as the root, because `/root` is a wall.** `/root` is
+`drwx------ root:root`, so no non-root identity can traverse it. The live product
+tree lives at `/root/.openclaw/workspace/mydoc/Projects/POS_AI` — therefore
+**invisible to `vera`**, verified by running `sudo -u vera cat` against it and
+getting *Permission denied*. That single fact is the boundary, and it is enforced
+by the kernel rather than by a sentence in a prompt.
+
+**The browser cache is Vera's own, not shared.** v1.2 proposed one shared
+`/srv/openclaw/.cache/ms-playwright`. In the event Vera's runtime is **Python**
+Playwright, because the project's test suites are Python:
+
+- `e2e/venv` — a dedicated venv holding **pytest 9.2.0** and **playwright 1.65.1**.
+  Creating it required `apt install python3.12-venv` first: the venv module was
+  present but `ensurepip` was not, so the first attempt failed outright.
+- `browsers/` — `chromium-1254` and `chromium_headless_shell-1254`, installed by
+  `playwright install chromium` **as the `vera` user** into Vera's own directory.
+
+Note the revision: the Node Playwright in the workspace is `1.64.1` and wants
+chromium `1248`, while the Python Playwright is `1.65.1` and wants `1254`. Copying
+the `1248` build across would have produced a browser/runtime mismatch, so the
+matching build was installed for the version actually in use. A browser launch was
+then verified **as `vera`** — it rendered a page and returned its text.
+
+**Why `/srv/openclaw/vera` and not a folder inside the product tree.** A workspace
+under the product tree would have put Vera's writable directory next to the live
+source, in the same permission neighbourhood, and would have made the "her tree vs
+the live tree" distinction a matter of discipline rather than of ownership. Under
+`/srv`, her tree is owned by `vera`, the live tree is owned by `root` and hidden
+behind `/root`, and the two cannot be confused even by accident.
+
 
 ### 5.3 The read-only projection of the product source
 
 Vera needs to read the product source. She must never write it.
 
-**The mechanism (v1.2): a read-only clone at a pinned commit.**
+**The mechanism (v1.3): a dedicated `vera` identity, a pinned clone, a read-only
+bind mount, and a root-owned privilege-dropping wrapper.** Three layers, each of
+which fails independently.
+
+**1 — The identity.** Vera's shell commands run as `vera` (uid 995), not `root` and
+not `kens`. `vera` cannot traverse `/root` (mode `0700`), so the live product tree
+is not merely unwritable for her — it is **invisible**.
+
+**2 — The read-only projection.** The product source reaches Vera as a **clone of
+the committed tree at a pinned SHA**, never as the live working tree:
 
 ```
-git clone --no-checkout https://github.com/Kiens8/POS_AI /srv/openclaw/vera/sandbox/src
-git -C /srv/openclaw/vera/sandbox/src checkout --detach <pinned-sha>
+git clone --no-checkout https://github.com/Kiens8/POS_AI /srv/openclaw/vera/src/POS_AI
+git -C /srv/openclaw/vera/src/POS_AI checkout --detach db381ac93c71220a008b3d98c72eeaca280c26d1
+mount --bind        /srv/openclaw/vera/src /srv/openclaw/vera/src
+mount -o remount,bind,ro /srv/openclaw/vera/src
 ```
 
-The host has **no `bwrap`, `bubblewrap`, `firejail`, Docker or Podman** — verified.
-Docker bind mounts with `:ro` are an OpenClaw feature, but there is no Docker on
-this host to use them. The kernel does expose Landlock symbols, but no native
-sandbox backend was established during the checks.
+The `ro` bind mount is what makes the projection read-only **at the kernel level** —
+not "owned by someone else so we hope", but `EROFS` from the filesystem itself.
+`findmnt` confirms `ro,relatime`.
 
-**Therefore the practical mechanism on this host is:**
+A clone of the committed tree is not the live tree: it contains none of the ignored
+live files — no `backend/.env`, no `website_api/.env.test`, no `frontend/.env`, no
+SQLite database, no built `dist/`. **Vera never sees a secret and never has a path
+to a live database.**
 
-1. **Run Vera as the non-root `kens` identity.** `kens` has no write permission on
-   `/root/.openclaw/workspace/mydoc/Projects/POS_AI` — the POSIX permissions on that
-   tree already deny it, and in fact `kens` cannot even traverse `/root` (verified:
-   `/root` is mode `0700` owned by `root`, so `ls` as `kens` returns *Permission
-   denied*). This is the real boundary, and it is enforced by the OS, not by a prompt
-2. **Give `kens` a clone, refreshed by a root cron.** The root-owned refresh clones
-   the repository into `/srv/openclaw/vera/sandbox/src` and checks out a pinned SHA,
-   owned by `kens` and readable by it. A **clone of the committed tree is not the
-   live tree**, so it contains none of the ignored live files — no `backend/.env`,
-   no `website_api/.env.test`, no `frontend/.env`, no SQLite database, no built
-   `dist/` — which means **Vera never sees a secret and never has a path to a live
-   database**
-3. **Keep OpenClaw's own guards on as defence in depth.** The two guards are
-   independent, and the runtime states this explicitly: *"apply_patch is
-   workspace-contained by configuration. Both `tools.exec.applyPatch.workspaceOnly`
-   (default true) and `tools.fs.workspaceOnly` impose this independently, so
-   clearing one can leave the other in force. `tools.exec.mode` does not affect
-   it."*
-   - `tools.exec.applyPatch.workspaceOnly` — **default `true`**
-   - `tools.fs.workspaceOnly` — **default `false`**, and it governs `read`, `write`,
-     `edit` and `apply_patch` together
+**3 — The wrapper.** `/srv/openclaw/vera/bin/vera-exec` is `0755 root:root`, refuses
+to run as anyone but root, refuses to run inside the live product tree, and then
+drops to `vera`:
 
-   **Both are settable per agent.** The runtime resolves the filesystem policy as
-   *agent-level first, global second*: `resolveAgentConfig(cfg, agentId)?.tools?.fs`
-   is consulted before `cfg.tools.fs`. So Vera's entry gets
-   `tools.fs.workspaceOnly: true` **per agent**, which is strictly better than
-   setting it globally for the whole fleet — Lumi keeps her current posture and
-   Vera gets containment. The policy checker expects exactly this: the
-   `policy/tools-fs-workspace-only-required` rule is scoped to `agentIds` and its
-   fix hint is *"Set tools.fs.workspaceOnly=true"*.
+```bash
+exec /usr/bin/setpriv --reuid=vera --regid=vera --init-groups --inh-caps=-all \
+  env HOME=/srv/openclaw/vera \
+      PLAYWRIGHT_BROWSERS_PATH=/srv/openclaw/vera/browsers \
+      PATH=/srv/openclaw/vera/e2e/venv/bin:/usr/local/bin:/usr/bin:/bin \
+      VIRTUAL_ENV=/srv/openclaw/vera/e2e/venv \
+      GIT_CONFIG_GLOBAL=/srv/openclaw/vera/state/gitconfig \
+      "$@"
+```
 
-> **The destructive-git hazard, and why the clone matters.** In the live tree,
+**What was proven, and how.**
+
+| Check | Command | Result |
+|---|---|---|
+| `vera` cannot read the live tree | `sudo -u vera cat .../POS_AI/backend/app/routes/order.py` | *Permission denied* — the tree is invisible to her |
+| `vera` can read her own clone | `sudo -u vera head -c 120 /srv/openclaw/vera/src/POS_AI/backend/app/routes/order.py` | the source came back |
+| `vera` cannot write the clone | `sudo -u vera touch .../POS_AI/WRITE_TEST` | *Permission denied* |
+| the clone is read-only for **everyone** | `touch /srv/openclaw/vera/src/.writetest` (as root) | *Read-only file system* |
+
+**The destructive-git commands, tested one by one against the real clone:**
+
+| Command | Exit | Message |
+|---|---|---|
+| `git clean -xfd` | 0 | no-op — the tree was already clean and the mount is `ro` |
+| `git checkout -- .` | 128 | *fatal: Unable to create '.../.git/index.lock': Read-only file system* |
+| `git reset --hard` | 128 | same |
+| `git stash` | 1 | refused |
+| `git restore .` | 128 | same |
+| `git rm -rf .` | 128 | same |
+
+After all six, the clone was still at `db381ac…`, still **597** tracked files, still
+**zero** dirty files. `git clean` exiting 0 is not a hole: it had nothing to remove
+and the read-only mount would have refused it anyway.
+
+> **Why the destructive commands stay banned in the live tree.** In the live tree,
 > `git clean -xfd` would remove **70** paths: every live `.env`, every live `*.db`
 > including the WAL and SHM files, the built `admin/dist/` and `site/.next/` trees,
-> and every `node_modules/`. That is a production outage in one command. The
-> destructive commands (`git clean`, `git checkout`, `git reset`, `git stash`,
-> `git restore`, `git rm`) therefore stay **banned in the live tree**, and the clone
-> means Vera works on a checkout where there is nothing to lose.
+> and every `node_modules/`. That is a production outage in one command. Vera
+> cannot reach that tree at all, so the hazard is **closed by construction** rather
+> than by a rule.
 
-> **Honest limitation:** a **session permission policy takes precedence over the
-> config** when one is present — the runtime resolves the filesystem posture from
-> the session policy if present, and only otherwise from `tools.fs.workspaceOnly`.
-> So a session opened with a permissive mode can widen the boundary for that
-> session. This is why the OpenClaw config is **defence in depth, never the primary
-> boundary.** The primary boundary is the **non-root execution identity plus the
-> read-only projection**. If the OS-level boundary is ever wrong, the prompt-level
-> boundary is what is left — which is why the OS boundary comes first.
+**One practical wrinkle, and how it was handled.** Git refuses to operate on a
+repository whose ownership differs from the invoking user (*"dubious ownership"*"),
+and the clone is root-owned. Vera therefore gets her own git config at
+`/srv/openclaw/vera/state/gitconfig`, with `safe.directory` set for the clone. It
+contains no credential and grants no write access — `git log` works, `git clean`
+still cannot write.
+
+**Honest limitation, unchanged from v1.2.** A **session permission policy takes
+precedence over the config** when one is present. So the OpenClaw config is
+**defence in depth, never the primary boundary**. The primary boundary is the
+**non-root execution identity plus the read-only bind mount**. If the OS-level
+boundary is ever wrong, the prompt-level boundary is what is left — which is why
+the OS boundary comes first.
+
 
 ### 5.4 The agent registration that follows from this
 
-`openclaw agents add` supports `--workspace`, `--agent-dir`, `--model`, `--bind`
-and `--role` (all verified against `openclaw agents add --help`). The proposed
-registration:
+**This is the command that was actually run:**
 
 ```
 openclaw agents add vera \
-  --role reviewer \
-  --workspace /srv/openclaw/agents/vera/workspace \
-  --agent-dir /srv/openclaw/agents/vera/agent \
-  --model minimax/MiniMax-M2.7 \
-  --bind telegram:<verabot-token-ref>
+  --workspace /srv/openclaw/vera \
+  --model minimax/MiniMax-M3.1-Flash \
+  --non-interactive --json
 ```
 
-`--role reviewer` seeds the workspace `AGENTS.md`, the `SOUL.md` body and an
-`IDENTITY.md` from the bundled template; Lumi then rewrites the identity to Vera's
-and the soul to Vera's five principles (§2). The identity can also be set from the
-command line afterwards with `openclaw agents set-identity --agent vera --name Vera
---emoji "🔎" --theme "..."`, or from a file with `--from-identity`.
+which returned:
+
+```json
+{ "agentId": "vera", "name": "vera",
+  "workspace": "/srv/openclaw/vera",
+  "agentDir": "/root/.openclaw/agents/vera/agent",
+  "model": "minimax/MiniMax-M3.1-Flash" }
+```
+
+**Three deviations from v1.2's proposed command, each for a concrete reason.**
+
+- **`--role reviewer` was not used.** The bundled role templates would have seeded
+  an `AGENTS.md`, a `SOUL.md` body and an `IDENTITY.md` — but `--role`, like
+  `--agent-dir`, `--bind` and the interactive wizard, **holds exclusive state
+  ownership and requires the Gateway to be stopped**. Vera was added with
+  `--non-interactive --workspace` instead, which works against the running Gateway,
+  and Lumi then **authored her four persona files directly** (`AGENTS.md`,
+  `SOUL.md`, `IDENTITY.md`, `USER.md`) and removed the scaffolded `BOOTSTRAP.md`.
+  The result is better anyway: v1.2's proposal was to *correct* a reviewer
+  template into Vera, and writing her charter directly is clearer than correcting
+  someone else's.
+- **`--agent-dir` was not passed**, because the default OpenClaw chose is already
+  the right one: `/root/.openclaw/agents/vera/agent`, root-owned and `0700`. A
+  shared `agentDir` would mix two agents' credentials — the auth store is
+  per-agent by design.
+- **`--bind` was not used**, for the same Gateway-stopped reason. The binding was
+  written afterwards with `openclaw config set bindings …` (see §5.5).
 
 The fleet today is `main` (Lumi, workspace `/root/.openclaw/workspace`, model
-`minimax/MiniMax-M2.7`, tool profile `full`) and `heartbeat` (workspace
-`/root/.openclaw/agents/heartbeat/workspace`, same model). Vera is the third
-agent, and the first with a **non-root, source-isolated** workspace and a **pinned
-tool policy**.
+`minimax/MiniMax-M2.7`, tool profile `full`), `heartbeat` (workspace
+`/root/.openclaw/agents/heartbeat/workspace`, model `minimax/MiniMax-M2.7`) and
+**`vera`** (workspace `/srv/openclaw/vera`, model `minimax/MiniMax-M3.1-Flash`).
+Vera is the third agent, and the first with a **source-isolated, non-root-owned
+workspace** and a **pinned tool policy**.
+
+**One addition the design did not anticipate:** `main` cannot spawn `vera` unless
+it is named. `sessions_spawn` refused with *"agentId is not allowed for
+sessions_spawn (allowed: main)"*, because `agents.entries.main.subagents.allowAgents`
+defaults to `main` alone. It is now `["main","vera"]`, so Lumi can delegate a QA
+task to Vera and get her findings back — the intended division of labour, with the
+delegation flowing *down* the permission gradient.
+
 
 ### 5.5 The tool policy — the part that decides whether this is safe
 
@@ -405,18 +506,22 @@ as "no failures tonight" rather than "the escalations never went out".
 
 ```json
 "vera": {
-  "workspace": "/srv/openclaw/agents/vera/workspace",
-  "agentDir": "/srv/openclaw/agents/vera/agent",
-  "model": "minimax/MiniMax-M2.7",
+  "workspace": "/srv/openclaw/vera",
+  "agentDir": "/root/.openclaw/agents/vera/agent",
+  "model": "minimax/MiniMax-M3.1-Flash",
   "identity": { "name": "Vera" },
   "tools": {
     "profile": "coding",
     "alsoAllow": ["message"],
     "deny": ["apply_patch", "write", "edit"],
-    "fs": { "workspaceOnly": true }
+    "fs": { "workspaceOnly": true },
+    "exec": { "host": "gateway", "mode": "allowlist" }
   }
 }
 ```
+
+**The `exec` line is new in v1.3, and it is the piece that turns "she should not
+write product code" into "she cannot run a command that would".** See §5.6.
 
 **Line by line:**
 
@@ -454,6 +559,99 @@ interactive and trusted; Vera is neither.
 **Why not `messaging`?** It has `message` but no `exec` and no `read` — she could
 post to the group and nothing else. A tester who cannot run the tests is not a
 tester.
+
+### 5.6 The exec policy — why the tool policy alone was not enough
+
+v1.2 already said, honestly, that `deny` removes the *tool* and not the
+*filesystem*: *"a determined command through `exec` can still write files, because
+`exec` runs a shell."* v1.3 closes that gap, and it turned out to need **two**
+levers rather than one.
+
+**Lever 1 — the exec mode is `allowlist`, not `full`.** The runtime distinguishes
+these sharply: `security: "allowlist"` means *"run only allowlisted commands
+without asking"*, while `security: "full"` means *"do not require an allowlist
+match"*. With `askFallback: deny` (the default), a command that is not on the
+allowlist is **refused**, not merely un-approved.
+
+Vera's two allowlist entries are the two wrappers:
+
+```
+/srv/openclaw/vera/bin/vera-exec *
+/srv/openclaw/vera/bin/vera-issue *
+```
+
+So Vera's shell is not "a shell that should not do bad things" — it is a shell
+with exactly **two** commands in it, both of which are root-owned files that
+cannot be edited by the identity running them. A plain `cat /etc/hostname` typed
+by Vera is refused by the runtime before it reaches a shell.
+
+**Lever 2 — the wrapper drops privileges.** `allowlist` restricts *which command
+is run*; it does not change *who runs it*. The Gateway's `exec` runs as `root`.
+So `vera-exec` is what makes the command run as `vera` (§5.3), and the two levers
+compose: the allowlist decides *what* may run, the wrapper decides *as whom*.
+
+**Verified end to end, with Vera herself as the actor** — not by reading the
+config:
+
+| Attempt | Expected | Observed |
+|---|---|---|
+| `vera-exec git -C …/POS_AI log --oneline -1` | allowed, prints the pinned SHA | allowed, prints `db381ac …` |
+| `vera-exec cat …/POS_AI/backend/app/routes/order.py` (live tree) | denied by the OS | *Permission denied* |
+| `cat /etc/hostname` (no wrapper) | refused by the allowlist | refused by the runtime |
+| `head -c 100 …/POS_AI/…` (no wrapper) | refused by the allowlist | refused by the runtime |
+
+### 5.7 The binding, the Telegram account, and the severity labels
+
+**The binding.** `main` holds `accountId: "*"` and Vera holds the exact
+`accountId: "vera"`. The runtime resolves in a fixed order — peer → guild/team →
+**exact accountId** → `accountId: "*"` → sole-agent fallback — so Vera's exact
+match wins for her account and `main` keeps everything else. The exact-account
+binding is listed **first** in the array as well, so the ordering is correct under
+either reading of the resolution rules:
+
+```json
+"bindings": [
+  { "agentId": "vera", "match": { "channel": "telegram", "accountId": "vera" } },
+  { "agentId": "main", "match": { "channel": "telegram", "accountId": "*" } }
+]
+```
+
+⚠️ **One live wrinkle, recorded honestly.** The `/start` message Kens sent to
+`@ideazes_verabot` was handled by **`main`**, not by Vera — it created the session
+`agent:main:telegram:vera:direct:7229468912`. The reason is ordering, not
+configuration: that message arrived **before** the Gateway had published the new
+account and binding (the log shows the `vera` Telegram account restarting with
+`reason: config-reload` *after* the message). Reordering the bindings was done
+anyway, so the first match in the array is also the most specific one. A fresh
+inbound to `@ideazes_verabot` after publication must be checked to confirm Vera
+now owns it; that check is listed in §9 as outstanding rather than claimed as done.
+
+**The Telegram account.** Vera's bot is a **second account inside the same
+Gateway**, not a second Gateway:
+
+```json
+"channels": { "telegram": {
+  "defaultAccount": "default",
+  "accounts": { "vera": {
+    "enabled": true,
+    "name": "Vera",
+    "botToken": { "source": "store", "provider": "default", "id": "VERA_TELEGRAM_BOT_TOKEN" },
+    "dmPolicy": "allowlist",   "allowFrom": ["7229468912"],
+    "groupPolicy": "allowlist", "groupAllowFrom": ["7229468912"],
+    "groups": { "-5583541067": { "requireMention": true } },
+    "responsePrefix": "🔎 Vera",
+    "joinIntro": true
+  } }
+} }
+```
+
+Note `defaultAccount: "default"` — with two accounts configured, OpenClaw
+otherwise falls back to the first normalised account id and `openclaw doctor`
+warns. The bot token is a **SecretRef**, never a literal.
+
+**The severity labels.** `vera:p1`, `vera:p2` and `vera:p3` were created on
+`Kiens8/POS_AI` and all three now exist alongside GitHub's defaults. They were
+filed with the same PAT that Lumi already uses — see §7.7.
 
 ---
 
@@ -783,18 +981,53 @@ equivalent:
   `internal` entries. A webhook trigger therefore needs a deliberate exposure
   decision from Kens, and it is not proposed
 
-**The credential this needs, and it does not exist yet.** Filing an issue requires
-**issues** permission on `Kiens8/POS_AI`. The fine-grained PAT already stored at
-`/root/.git-credentials` returns **403 *Resource not accessible by personal access
-token*** on the issues API for that repository, even though it holds `triage` and
-`admin` on the repository itself. A separate token with **Issues: read and write on
-that one repository** is required — scoped to nothing else — and it must be stored
-as a SecretRef rather than written into a repository or a script.
+**The credential: v1.2 was wrong about this, and v1.3 corrects it.** v1.2 said the
+stored PAT "returns 403 *Resource not accessible by personal access token* on the
+issues API for that repository, even though it holds `triage` and `admin` on the
+repository itself", and concluded that a **separate, Issues-scoped token** was
+required.
 
-**One thing the loop cannot do.** `kens` cannot read `/root/.git-credentials`
-(mode `0600`, owned by `root`, and `/root` itself is `0700`), so Vera's clone and her
-issue token cannot both come from the credential the workspace already uses. The
-root-owned refresh cron clones; the issue token is delivered to `kens` separately.
+**That conclusion was wrong, and so was the reasoning behind it.** `triage` and
+`admin` are *repository roles*, not *token scopes* — mixing them up is what
+produced the wrong answer. The real cause of the 403 was a single missing grant:
+**Issues: read and write on `Kiens8/POS_AI`**. Once Kens added that grant to the
+**existing** PAT, the same credential works for everything, verified live:
+
+```
+GET /repos/Kiens8/POS_AI/issues  -> 200
+GET /repos/Kiens8/POS_AI/pulls   -> 200
+GET /repos/Kiens8/POS_AI/labels  -> 200
+```
+
+**There is no second token, and none is needed.** The stored credential stays in
+`/root/.git-credentials` (mode `0600`, root-only, outside both repositories), and
+the root-owned `vera-issue` wrapper reads it at run time, uses it, and never
+persists or prints it.
+
+> **One detail that cost a debugging cycle, recorded because it will bite again.**
+> The credential store holds the token as the **password** field of
+> `https://<user>:<PAT>@github.com` — **not** as the username. An extraction that
+> takes the username returns a valid-looking string that authenticates as **401
+> Bad credentials**. The wrapper now takes the password field, with a fallback for
+> a single-token store entry.
+
+**How Vera files an issue without ever seeing the credential.** She cannot read
+`/root/.git-credentials` (mode `0600`, owned by `root`, and `/root` itself is
+`0700`), and she must not be able to. The credential never leaves the root-owned
+wrapper: `/srv/openclaw/vera/bin/vera-issue` is `0755 root:root`, refuses to run as
+anyone but root, reads the PAT at run time, POSTs to the GitHub API, prints only
+the issue URL and number, and discards the token. Vera calls it as one of her two
+allowlisted commands.
+
+**Proven live.** The wrapper filed issue **#1** against `Kiens8/POS_AI` with the
+`vera:p3` label — a real defect found by reading the pinned clone (the
+`allow_delivery` default disagrees across five layers of the stack, §12) — and
+returned:
+
+```
+https://github.com/Kiens8/POS_AI/issues/1
+1
+```
 
 ---
 
@@ -815,32 +1048,48 @@ root-owned refresh cron clones; the issue token is delivered to `kens` separatel
 | **Escalation to a wrong or unknown group id** | Medium | Group id is a required input before any job is created |
 | **An unattended fix edits production source** | High | The intake job is read-only; the fix is an attended session on `main`, and the deploy (merge + restart) is a separate human-approved step (§7.7) |
 | **A destructive git command runs in the live tree** | Critical | `git clean -xfd` there removes 70 paths including every live `.env` and `*.db`; the destructive commands stay banned (§5.3) and Vera works on a clone |
-| **Vera's issue credential leaks** | High | Fine-grained to one repository, stored as a SecretRef, and the issue body carries no credential (§7.7) |
+| **Vera's issue credential leaks** | Low | The PAT never leaves the root-owned `vera-issue` wrapper: it is read at run time, used, and discarded, and Vera cannot read `/root/.git-credentials`. There is **no second token** to leak — the same credential the workspace already uses, with its Issues grant (§7.7) |
+| **Vera runs a command she was not meant to** | Low | `exec.mode: allowlist` with exactly two entries — the two wrappers — and `askFallback: deny`, so anything else is refused by the runtime before a shell sees it (§5.6) |
+| **The `vera` identity is given shell access elsewhere** | Low | `vera` has `/usr/sbin/nologin`, a locked password, no home directory, and no membership of any privileged group. It exists only to be a filesystem identity (§5.2) |
 
 ---
 
 ## 9. Environment prerequisites
 
-| Item | Status | Action |
-|---|---|---|
-| Playwright `1.64.1` | Present globally at `/usr/lib/node_modules/playwright`; also in `workspace/scripts/node_modules` | Move a copy to `/srv/openclaw/shared/playwright`; set `PLAYWRIGHT_BROWSERS_PATH` for both Lumi and Vera |
-| Browser binaries `1248 / 1248 / 1013` | Present at `/root/.cache/ms-playwright` | Re-install to `/srv/openclaw/.cache/ms-playwright`, owned by `kens` |
-| `pytest` | **Not installed** (`pip 24.0` is) | `pip install pytest` in a `kens`-owned venv under `/srv/openclaw/vera` |
-| Non-root `kens` user | Present (uid 1000, gid 1000, groups 1000 + 27/sudo) | Use as Vera's execution identity |
-| `bwrap` / `firejail` / Docker / Podman | **All absent** | Rely on the non-root identity + read-only projection |
-| Landlock | Kernel symbols present | No native backend established — not relied upon |
-| Vera's bot token | **Not supplied** | Needed before the group can exist |
-| GitHub **issues** access to `Kiens8/POS_AI` | **Not granted** — the stored fine-grained PAT returns 403 on the issues API for that repository | Create a token with Issues: read + write on that one repository; store it as a SecretRef, never in a repo or a script |
-| `gh` CLI | **Not installed** | Use the REST API through `curl`, or install `gh` for the issue workflow |
-| Read access to the private repository, for `kens` | The stored credential is root-only (`/root/.git-credentials`, mode `0600`, and `/root` is `0700`) | The root-owned refresh cron clones the repository and hands `kens` the result |
-| Telegram group id | **Not known** | Needed before any escalation job is created |
-| `inotifywait` / `pyinotify` | Absent | Not required — fingerprint manifest instead |
-| Per-agent tool policy | The mechanism exists (`agents.entries.<id>.tools.profile` / `alsoAllow` / `deny` / `fs`) and the fleet already uses it (`main` → `full`) | Set Vera's entry to `coding` + `alsoAllow: ["message"]` + `deny: ["apply_patch","write","edit"]` + `fs.workspaceOnly: true` (§5.5) |
-| Bundled `reviewer` role | Present at `openclaw/docs/reference/templates/roles/reviewer/` | Use `--role reviewer` as Vera's seed, then rewrite the identity (§2) |
+**Status as of v1.3. "Built" means it was done and verified live, not planned.**
 
----
+| Item | Status | Note |
+|---|---|---|
+| Dedicated non-root identity | ✅ **Built** | `vera` — system account, uid 995, `/usr/sbin/nologin`, password locked, no home. It replaces v1.2's proposed `kens` (§5.2) |
+| Playwright runtime | ✅ **Built** | Python `playwright 1.65.1` in `/srv/openclaw/vera/e2e/venv`. v1.2 had proposed a shared *npm* install; the project's suites are Python, so the runtime is Python |
+| Browser binaries | ✅ **Built** | `chromium-1254` + `chromium_headless_shell-1254` in `/srv/openclaw/vera/browsers`, installed **as `vera`**. A browser launch was verified as `vera` |
+| `pytest` | ✅ **Built** | `pytest 9.2.0` in the same venv. Required `apt install python3.12-venv` first — `ensurepip` was absent |
+| Read-only projection | ✅ **Built** | Clone of `Kiens8/POS_AI` at `db381ac…`, `ro` bind mount, `findmnt` confirms `ro` |
+| Root-owned wrappers | ✅ **Built** | `vera-exec` (privilege drop) and `vera-issue` (credential), both `0755 root:root`, both refusing non-root callers |
+| Per-agent tool policy | ✅ **Built** | `coding` + `alsoAllow: ["message"]` + `deny: ["write","edit","apply_patch"]` + `fs.workspaceOnly` + `exec.mode: allowlist` (§5.5, §5.6) |
+| Per-agent exec allowlist | ✅ **Built** | Exactly two entries: the two wrappers (§5.6) |
+| Vera's bot token | ✅ **Built** | Stored as `VERA_TELEGRAM_BOT_TOKEN` in the protected secret store (`--kind secret`, write-only), wired in as a **SecretRef**. The literal token is nowhere in the config, the workspace, or any argv |
+| Vera's Telegram account | ✅ **Built** | `channels.telegram.accounts.vera` — DM allowlist `7229468912`, group allowlist `-5583541067`, `requireMention: true` |
+| GitHub issues access to `Kiens8/POS_AI` | ✅ **Resolved — no second token** | v1.2 said a separate Issues-scoped token was required. It was not: the **same** PAT works once its Issues grant is in place. `issues`/`pulls`/`labels` all return `200` (§7.7) |
+| Severity labels | ✅ **Built** | `vera:p1`, `vera:p2`, `vera:p3` created on `Kiens8/POS_AI` |
+| The first real issue | ✅ **Filed** | Issue #1, `vera:p3`, filed through `vera-issue` by the wrapper (§7.7) |
+| Agent registration | ✅ **Built** | `openclaw agents add vera --workspace /srv/openclaw/vera --model minimax/MiniMax-M3.1-Flash --non-interactive`; identity `Vera 🔎` (§5.4) |
+| **The bot's membership of `ideazes-office`** | ❌ **Outstanding — operator action** | The group id `-5583541067` is correct and allowlisted, but a send returns `chat not found` because `@ideazes_verabot` is **not yet a member**. Add the bot to the group and the escalation path works with no config change |
+| **A fresh inbound confirming Vera owns her account** | ❌ **Outstanding — verification** | The `/start` Kens sent to `@ideazes_verabot` was handled by `main`, because it arrived before the Gateway published the new account and binding. A fresh inbound must be checked (§5.7) |
+| `bwrap` / `firejail` / Docker / Podman | ❌ **Absent** | Unchanged. Docker's `:ro` bind mounts remain unavailable. The kernel read-only bind mount is what replaced them (§5.3) |
+| Landlock | ⚠️ Symbols present, no native backend | Not relied upon |
+| `gh` CLI | ❌ **Not installed** | Not needed — the `vera-issue` wrapper calls the REST API with `curl` |
+| `inotifywait` / `pyinotify` | ❌ **Absent** | Unchanged and not needed — the git commit diff replaced the fingerprint manifest (§7.2) |
+| The bundled `reviewer` role | ➖ **Deliberately not used** | `--role` requires the Gateway to be stopped. Vera's four persona files were authored directly instead (§5.4) |
+| The regression runner and the E2E harness | ❌ **Not built** | Phases 2–3. Vera can run commands and drive a browser, but no suite exists yet |
+| The nightly jobs | ❌ **Not built** | Phase 4. Nothing runs unattended yet — and that is the safe order |
+
 
 ## 10. Estimated effort
+
+> **The original v1.0 estimate, retained for reference.** It was written before the
+> build and has not been re-baselined. What actually happened is §11; phases 0–2
+> landed in a single session on Nov 13, 2026, and phases 3–8 are untouched.
 
 | Phase | Work | Rough size |
 |---|---|---|
@@ -859,65 +1108,86 @@ worse than no agent at all.
 
 ---
 
-## 11. The implementation order, when Kens approves
+## 11. The implementation order — what has actually happened
 
-1. **Guard** — non-root `kens` identity, sandbox database copies, the
-   `DATABASE_URL` override, the checksum check, and wrappers for the hard-coded
-   scripts. *Nothing else starts until this is live.*
-2. **Workspace** — `/srv/openclaw` layout, shared Playwright + browser cache, and
-   `openclaw agents add vera --role reviewer` with
-   `--model minimax/MiniMax-M2.7`
-3. **Identity** — Vera's `SOUL.md` and `IDENTITY.md` written into
-   `/srv/openclaw/agents/vera/agent/` by Lumi, then reviewed by Kens
-4. **Tool policy** — the per-agent entry from §5.5, applied **before** anything
-   runs: `coding` + `alsoAllow: ["message"]` + the `deny` list +
-   `fs.workspaceOnly: true`. **Prove it**: send one real message to the group and
-   confirm one real `apply_patch` is refused. A policy that has never been
-   exercised is not a policy
-5. **Regression runner** — the API suites green against the sandbox
-6. **E2E harness** — the three shipped surfaces
-7. **Change detection + nightly jobs** — with the per-job `--tools` allow-list set
-   on each, and the git commit diff as the primary signal
-8. **Issue → fix loop** — issue creation from the §4.3 format, the severity labels,
-   the intake job, the branch-and-PR flow, and the re-verification step. Requires the
-   issues-scoped token from §9
-9. **Docs pipeline** — drift detection first, publication proposals after
-10. **Telegram support + escalation** — once the bot token and the group id exist
-11. **Delivery app coverage** — when it ships
+**Phases 0–2 are done and proven. Phases 3–8 are not started.**
 
----
+| # | Phase | Status | Evidence |
+|---|---|---|---|
+| 0 | **Guard** — the non-root identity, the read-only projection, the privilege-dropping and issue-filing wrappers | ✅ **Done** | §5.2, §5.3, §5.6 |
+| 1 | **Workspace** — the `/srv/openclaw/vera` layout, the Python Playwright runtime, the browser cache, the agent registration, the persona files | ✅ **Done** | §5.1, §5.4 |
+| 2 | **Channel** — the bot token as a SecretRef, the Telegram account, the binding, the severity labels | ✅ **Done** (one operator action outstanding: adding the bot to the group) | §4.1, §5.7 |
+| 2b | **Identity** — `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md` | ✅ **Done** | `/srv/openclaw/vera/*.md` |
+| 3 | **Regression runner** — sandbox service orchestration, the API suites, artefact collection | ❌ Not built | — |
+| 4 | **E2E harness** — the Playwright suites for admin, POS frontend, customer order app | ❌ Not built | — |
+| 5 | **Change detection + nightly jobs** — git commit diff, `program-changes` reader, per-job `--tools` allow-list | ❌ Not built | — |
+| 6 | **Issue → fix loop** — the intake job, the branch-and-PR flow, the re-verification step | ⚠️ **Half built** — the *filing* half works (issue #1 exists); the *fix* half is `main`'s job and is still manual | §7.7 |
+| 7 | **Docs pipeline** — drift detection, then publication proposals | ❌ Not built | — |
+| 8 | **Delivery app coverage** | ❌ Not built — and **not buildable yet**: the delivery storefront is still a Proposal. Vera must not test a delivery order until it exists | §3.3 |
 
-## 12. Open questions for Kens
+**The order was the point.** The guard came first, so that by the time anything runs
+unattended, the identity, the read-only projection and the exec allowlist were
+already in force. Nothing in phases 3–5 has been built, so **nothing yet runs
+unattended against the live system** — which is the correct state for a system
+whose live tree holds the production books.
 
-1. **The bot token and the group id** — both are required before the escalation half
-   of this design can be built. Which bot account, and when the group is created?
-2. **Which surfaces Vera may run against live** — the design assumes *none*: the
-   E2E harness runs against the sandbox copies. Should a thin read-only smoke test
-   against production be permitted as a separate job with its own policy?
-3. **Who approves documentation publication** — this design proposes that Vera
-   proposes and a human publishes. Is a per-tenant or per-surface auto-publish
-   acceptable for anything?
-4. **The nightly window** — the proposal avoids 02:00–04:30 because the memory and
-   backup jobs live there. Is 23:30 acceptable, or should Vera's nightly run be
-   later?
-5. **The regression scope on day one** — all 8 + 18 API suites, or a chosen
-   critical subset first?
-6. **Vera's write capability** — the proposal denies `write`, `edit` and
-   `apply_patch` outright, so every report and artefact is produced by the
-   harness through `exec` rather than by Vera herself. That is the safest posture
-   and it costs a little flexibility. Should Vera instead be allowed to `write`
-   **inside her own workspace only** (which `fs.workspaceOnly` already enforces)?
-7. **The `reviewer` seed** — using the bundled `reviewer` role as Vera's starting
-   point is faster and better-aligned than authoring from scratch, but it means
-   Vera's soul inherits *"careful, independent review"* language. Keep the seed
-   and rewrite it, or start clean?
-8. **How much of the fix loop may run unattended** — the intake can be a read-only
-   cron, but the fix writes to the live tree and the deploy restarts a live
-   service. Should a P1 be picked up and fixed automatically, or should the issue
-   wait for a human to open the fixing session?
-9. **Who may merge the fix and restart the service** — the proposal makes the
-   merge and the restart a human-approved step, on the grounds that the live tree
-   is the deployment. Is that the right line, or should a green re-run be enough
-   to merge and deploy unattended?
-10. **The webhook trigger** — the Gateway is loopback-bound today, so the loop
-    runs on polling. Is exposing a hook endpoint for push delivery worth it?
+
+## 12. Questions, and their answers
+
+**The v1.2 open questions, now answered.**
+
+1. **The bot token and the group id** — ✅ **answered.** The bot is
+   `@ideazes_verabot` (id `9137021970`), stored as a SecretRef. The group is
+   `ideazes-office`, id `-5583541067`. The group id is correct but the bot is not
+   yet a member, so the last step is operational: add it (§4.1).
+2. **Which surfaces Vera may run against live** — ✅ **answered: none.** The E2E
+   harness runs against sandbox copies. No read-only smoke test against production
+   was requested or built. The live tree is not even visible to her.
+3. **Who approves documentation publication** — ⏸️ **still open.** Nothing has been
+   published; the docs pipeline (phase 7) does not exist. The proposal stands:
+   Vera proposes, a human publishes.
+4. **The nightly window** — ⏸️ **still open, and not yet actionable.** There is no
+   nightly job to schedule. The proposal stands: avoid 02:00–04:30 MYT.
+5. **The regression scope on day one** — ⏸️ **still open.** No suite exists yet.
+6. **Vera's write capability** — ✅ **answered by the implementation, and it is
+   stricter than proposed.** `write`, `edit` and `apply_patch` are denied outright,
+   and `exec` is limited to two wrapper commands. She produces artefacts through
+   the harness running under `exec`, not through the file tools. The question of
+   *"may she write inside her own workspace?"* was effectively answered by building
+   the wrapper instead: she can write there **as `vera`**, with the kernel's
+   permission, and nowhere else.
+7. **The `reviewer` seed** — ✅ **answered: start clean.** `--role` requires the
+   Gateway to be stopped, and authoring her four persona files directly turned out
+   to be both simpler and clearer than correcting someone else's charter (§5.4).
+8. **How much of the fix loop may run unattended** — ✅ **answered: none of it.**
+   Vera files; `main` fixes on a branch and opens a pull request; a human merges
+   and deploys. Nothing in the fix loop is unattended, by design.
+9. **Who may merge the fix and restart the service** — ✅ **answered: a human,
+   always.** Unchanged from v1.2 and now backed by the mechanism: Vera has no
+   `gateway` or `plugins` tool, and her `exec` cannot reach a merge.
+10. **The webhook trigger** — ⏸️ **still open.** The Gateway is loopback-bound, so
+    the loop runs on polling. No exposure decision has been requested.
+
+**The defects found while building this, which are now in the product's backlog.**
+
+- **Issue #1 (`vera:p3`)** — the `allow_delivery` default disagrees across five
+  layers of the stack. `backend/app/routes/order.py:674` returns
+  `allow_delivery: true` for an outlet with no `OutletSettings` row, while the
+  model column, the settings-update path, all five business presets and the
+  customer app's own default all say `false`. Because the customer app reads that
+  endpoint, a guest can be shown a **Delivery** order type on an outlet that never
+  enabled it. Found by reading the pinned clone; no delivery order was created and
+  no delivery flow was exercised.
+- **Server-side `order_type` is not validated against the outlet's enabled order
+  types.** `create_order` checks `dine_in` for a table requirement and then writes
+  whatever `order_type` it was given. `allow_delivery` is enforced only in the
+  client. Not yet filed — it needs one more check of the customer-app create path
+  to confirm the shape of the fix before it becomes an issue.
+
+**What is still unverified, stated plainly.** The claim that a **fresh inbound**
+to `@ideazes_verabot` now routes to Vera and not to `main` has **not** been
+confirmed live. The binding is written, the exact-account binding precedes the
+wildcard, and the Gateway logged the `vera` account starting with
+`reason: config-reload` — but the one inbound that has arrived so far predates
+that publication. It is a single message to the bot, and it is the last
+outstanding proof in this document.
