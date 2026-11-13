@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.11
+**Document Version:** 1.12
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -61,6 +61,28 @@ hardcodes NO plan**: the assignment lives in `plan_features`, the default is one
 (the Inventory precedent), and moving the module is a data change, not a code change
 (§9.10). → **and §3.2 now lists EVERY screen we propose — the POS's eight and the
 customer's nine, the settings tab first.**
+
+**v1.12 (Nov 14, 2026): the EIGHTH round — THE RULE: a delivery order must belong to
+a customer of the tenant.** Kens's ask: *"I think 1 rules for delivery type must be
+customer belong to tenant's customer. This is as your recommendation."* → **and the
+live code turns that sentence into three enforceable clauses**: the member is a
+`dining_customers` row (`models/loyalty.py:47`) whose `customer_id` **is the tenant's
+restaurant group** (`models/loyalty.py:55` — `nullable=False`) → → **clause 1 — the
+tenant scope is by `customer_id`, NEVER by phone**, because the unique index is
+`(customer_id, phone)` (`models/loyalty.py:51`) → **so the same phone exists in two
+tenants** → **and a member of another tenant must never be linkable** → → **clause 2 —
+the walk-in row is EXCLUDED** (`phone != 'WALKIN'` — the house convention,
+`loyalty.py:814-816`, the same exclusion used in `vouchers.py` and `ai/__init__.py`) →
+**because a walk-in has no phone to receive the tracking link and no login** → → **so
+a delivery can never ride the walk-in member** → → **clause 3 — the check is the
+SPLIT-BILL precedent, verbatim** (`order.py:1104-1113` — *"The member has to belong to
+the same restaurant group as the order … a payer from another tenant would burn
+another restaurant's points"*, and the refusal is **404 "This member does not belong
+to the restaurant"**) → → **so the counter inherits a check the house already
+trusts** → **and the delivery is now the ONE order type where a member is
+REQUIRED** (dine-in and takeaway stay optional) → **so every delivery has a customer
+side — the map, the live tracking and the history are now guaranteed, not a
+maybe** (§4.3, §9.12).
 
 **v1.11 (Nov 14, 2026): the SEVENTH round — one entitlement, TWO doors, and the
 counter path spelled out.** Kens's asks: *fold the staff-side plan gate into the
@@ -570,7 +592,7 @@ first (the tenant's own back office), then the customer's nine.
 | 1 | **Settings → Delivery** (the tab) | the POS **Settings** screen — **and that screen is already OUTLET-scoped** (`useOutletId()` → `/api/settings/{outlet_id}`) → **so this tab is a per-outlet tab** | the **`allow_delivery` switch** · the fees (the flat fee, the minimum, the free threshold) · the radius · the allowed payment modes (prepay / COD) · the ETA base + max · the customer-registration switch · **the QR** (the slug, the URL, the branded PNG, copy / WhatsApp / download) · the preview (the logo, the name, the colour) | the `delivery` feature row (the tab's `feature` string) |
 | 2 | **Delivery Management** | a **nav** screen (`navItems.js`, after Orders) | today's deliveries — the leg's chip, the driver, the ETA, the fee · the **driver roster** · the fees quick edit · the coverage | the `delivery_management` feature row |
 | 3 | **Delivery Zones** | a tab inside Delivery Management | the managed postcode list (the name, the postcodes, the fee) | the `delivery_zones` feature row |
-| 4 | **the staff order screen** | the existing screen (`StaffOrder.jsx`) | the **Delivery** order-type button · the address field · the delivery-fee line · the driver picker → **and this is the COUNTER door — one of the two (§4.3)** | the `delivery` feature row **AND** `allow_delivery` (today: the flag only — §9.7, **closed in v1.11** — §9.11) |
+| 4 | **the staff order screen** | the existing screen (`StaffOrder.jsx`) | the **Delivery** order-type button · the address field · the delivery-fee line · the driver picker · **the MEMBER step — required for a delivery** (§4.3.1) → **and this is the COUNTER door — one of the two (§4.3)** | the `delivery` feature row **AND** `allow_delivery` (today: the flag only — §9.7, **closed in v1.11** — §9.11) |
 | 5 | **the kitchen screen** | the existing screen | the delivery type chip (never "Takeaway") · the delivery leg's third arm | the order's type |
 | 6 | **the order queue** | the existing screen | the delivery filter · the leg's next-step buttons (Assign driver → Out for delivery → Delivered) · the settlement rule (§4.1) | the order's type |
 | 7 | **the driver link** | **one page, not an app** (a signed token in the URL) | Start / Arrived / Delivered · the live pings · the cash claim | the per-order signed token (§12) |
@@ -874,10 +896,48 @@ carries a member** (`dining_customer_id`) → **so the customer gets the map, th
 tracking, the ETA and the history** → → **a counter order has no member**
 (`models.py:224` — nullable) → → **so the customer gets NOTHING on their phone** — no
 map, no tracking, no history → **the tenant tracks it on the Delivery Management
-screen** → **and the fix is one field**: the order already accepts
-`dining_customer_id` (`order.py:262`) → **so the staff may LINK the member** (the
-customer is in the tenant's loyalty list) → **and then the customer gets the tracking
-link too** → **that is open question 22.**
+screen** → → **v1.12 CLOSES THIS: the member is REQUIRED on a delivery** →
+**the rule is below** → **and it is one field**: the order already accepts
+`dining_customer_id` (`order.py:262`) → **the staff link the member** → **and the
+customer gets the tracking link too**.
+
+#### 4.3.1 THE RULE — a delivery order must belong to a customer of the tenant
+
+**Kens's decision (v1.12):** *"1 rules for delivery type must be customer belong to
+tenant's customer."* → **stated as an invariant the server enforces:**
+
+> **A delivery order MUST carry a `dining_customer_id` whose member belongs to the
+> tenant's own restaurant group. A delivery order with no member is REFUSED. A
+> delivery order whose member belongs to another tenant is REFUSED.**
+
+**and the live code gives that sentence three enforceable clauses:**
+
+| # | the clause | the live proof |
+|---|---|---|
+| **1** | **the tenant scope is `customer_id` — NEVER the phone** | the member table is `dining_customers` (`models/loyalty.py:47`) → `customer_id` = "Restaurant group" (`models/loyalty.py:55` — `nullable=False`) → and the unique index is **`(customer_id, phone)`** (`models/loyalty.py:51` — *"Unique constraint: phone must be unique per restaurant (customer_id)"*) → **so the SAME phone number exists in two different tenants** → **so a phone lookup alone could attach ANOTHER tenant's member** → **the member picker at the counter searches scoped by the outlet's `customer_id`** |
+| **2** | **the walk-in member is EXCLUDED** | the house excludes it by phone — `AND phone != 'WALKIN'` (`loyalty.py:814-816` — *"the house convention used in vouchers.py and ai/__init__.py"* rather than a hardcoded id) → **and a walk-in has no phone to receive the tracking link and no login** → **so a delivery can never ride the walk-in member** → **the delivery's member search skips it, and the server rejects it** |
+| **3** | **the check is the SPLIT-BILL precedent, verbatim** | `order.py:1104-1113` — *"The member has to belong to the same restaurant group as the order — a payer from another tenant would burn another restaurant's points"* → and the refusal is **HTTP 404, "This member does not belong to the restaurant"** → **so the delivery reuses the house's own check and its own wording** |
+
+**What the rule changes:**
+- **the delivery becomes the ONE order type where a member is REQUIRED** — dine-in and
+  takeaway stay optional (`models.py:224` stays nullable) → **so the POS's own
+  validation must branch on `order_type`**: a delivery with no member is refused;
+- **the counter's staff screen gains a member step** — the phone lookup, scoped by the
+  outlet's `customer_id` (§4.3.1 clause 1), **excluding the walk-in** (clause 2) → **and
+  the found member's phone is pre-filled into the address block** → **so the customer
+  is identified before the order is submitted**;
+- **and now EVERY delivery has a customer side** → **the map, the live tracking, the
+  ETA and the history are guaranteed on every delivery order** → → **not a maybe for
+  the PWA orders and a maybe for the counter orders — always** → **which is what makes
+  the tracking worth building** → **and it gives the PWA order and the counter order
+  the SAME customer experience**, which was the whole point of the two doors (§4.3);
+- **and the loyalty story closes too**: the delivery's points now land on a real
+  member of the tenant — **the same reason the split-bill path guards the payer**
+  (`order.py:1104-1113`).
+
+**and the one caveat, stated honestly:** this makes the counter delivery **slower to
+enter** — the staff must identify the customer → → **and that is a cost the tenant
+accepts**, because the alternative is a delivery the customer can never track.
 
 → **and the entitlement guards BOTH doors** — the PWA's login gate (§5.1) **and the
 counter's Delivery button** (§9.11) → → **one entitlement, two doors, one order**
@@ -1136,7 +1196,7 @@ prove ownership (the order token — **a new field**, or the existing
 |---|---|---|
 | **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium |
-| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) | medium |
+| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) | medium |
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium |
@@ -1250,14 +1310,18 @@ delivery tenant has them** (§11.1).
     the delivery** — it asks the plan list for the **tab name** (§5.1) → → **so the
     flexibility is free, as long as we keep asking the feature list** (§9.10).
 22. **A counter-entered delivery — does the customer get the map and the live
-    tracking?** — **no, not today**: the PWA order carries a member
-    (`dining_customer_id`) and a counter order usually does not (`models.py:224` —
-    nullable) → **so the customer gets nothing on their phone** → → **the fix is one
-    field**: the order already accepts `dining_customer_id` (`order.py:262`) → **so
-    should the staff be able to LINK the member** (the customer is in the tenant's
-    loyalty list) → **then the customer gets the tracking link too** → → **or is a
-    counter delivery deliberately "tenant-tracked, not customer-tracked"?**
-    (§4.3, §9.11)
+    tracking?** → **ANSWERED in v1.12 — YES, and the member is REQUIRED.** Kens's
+    decision: *"1 rules for delivery type must be customer belong to tenant's
+    customer."* → **a delivery order MUST carry a `dining_customer_id` whose member
+    belongs to the tenant's restaurant group** → **and the live code gives that
+    sentence three clauses**: the scope is **`customer_id`, never the phone** (the
+    unique index is `(customer_id, phone)` — `models/loyalty.py:51` — so the same
+    phone exists in two tenants) → the **walk-in is excluded** (`phone != 'WALKIN'` —
+    `loyalty.py:814-816`) → and the check is the **split-bill precedent**
+    (`order.py:1104-1113` — 404 *"This member does not belong to the restaurant"*) →
+    **so the delivery becomes the one order type where a member is mandatory** →
+    **and every delivery therefore has the map, the live tracking, the ETA and the
+    history** (§4.3.1, §9.12)
 23. **At the counter, who picks the payment mode?** — **today nobody picks**: the staff
     screen **derives** it (`StaffOrder.jsx:769` — `modeFor(settings?.payment_timing,
     orderType)`) → **so a counter delivery is always the outlet's single configured
@@ -1393,7 +1457,7 @@ proposed (Nov 12, 2026). What the code said:**
 | **prepay AND COD together** | the timing map is **one mode per order type** (`resolve_mode` — `payment_modes.py:182`) → and `prepay_online` is refused **for the whole map** by one global lock whose stated reason is *"the customer app has no checkout"* (`LOCKED_MODES` — `payment_modes.py:47`) — **a reason that is false for the delivery app and true for the in-venue app** | **the lock becomes PER ORDER TYPE** → and the customer's choice is validated against the outlet's allow-list → **no new column** (the mode is already a per-order snapshot — `models.py:255`) (§4.2) |
 | **how the driver marks the delivery done** | the leg write is not in the code yet, but the money write IS behind `staff:orders:write` (`order.py:1013`) → **a driver must not be able to mark money in** → and the cashier's "mark as paid" already awards the points idempotently (`order.py:1047-1055`) | **the leg is the driver's write, the money is the staff's write** → the POS does both, and the driver link does only the leg (§12) |
 | **the map and live tracking on the PWA** | the Geoapify geocode and the places search are already integrated (`outlet_settings.py:359-362`, `competitors.py:707-775`) → the backend already draws PNGs with `qrcode` + `Pillow` (`requirements.txt:7-8`) → **and there is no WhatsApp helper anywhere in the codebase** | the map + the ETA ship on **every** plan (one route request per order, no driver GPS) → the live marker was Enterprise in v1.6 → **v1.8 made it core** (§11.1) → **the share row is a plain `wa.me` deep link** — nothing to integrate (§3, §11.1) |
-| **the customer must register and belong to the tenant** | the loyalty register already derives the tenant from the VENUE and refuses a mismatched customer (`loyalty.py:327-333`) → but its registration-enabled check reads the tenant's **FIRST outlet** (`loyalty.py:335-343`) → and the switch defaults to **off** (`models.py:483`) → and `create_guest_token` already exists (`guest_session.py:51`) | the delivery sign-up copies the derivation, reads **the slug's outlet**, and **the Delivery tab surfaces the registration switch** — because delivery registration is MANDATORY → the order carries `dining_customer_id`, and the server checks the member belongs to the tenant (the split-bill precedent — `order.py:1104-1113`) (§3, §5) |
+| **the customer must register and belong to the tenant** | the loyalty register already derives the tenant from the VENUE and refuses a mismatched customer (`loyalty.py:327-333`) → but its registration-enabled check reads the tenant's **FIRST outlet** (`loyalty.py:335-343`) → and the switch defaults to **off** (`models.py:483`) → and `create_guest_token` already exists (`guest_session.py:51`) | the delivery sign-up copies the derivation, reads **the slug's outlet**, and **the Delivery tab surfaces the registration switch** — because delivery registration is MANDATORY → the order carries `dining_customer_id`, and the server checks the member belongs to the tenant (the split-bill precedent — `order.py:1104-1113`) → **and v1.12 makes that check MANDATORY for the delivery order type at BOTH doors** (§4.3.1) (§3, §5) |
 
 **And three facts the v1.6 work turned up:**
 - **the shared status route has no whitelist** (`order.py:340` — a bare `str`) → **so
@@ -1558,6 +1622,33 @@ app, never tiered) → **and the screens are listed** (§3.2).
   recorded before the handover loses its button** → **the delivery's own settlement
   rule covers both doors** (§4.1).
 
+### 9.12 The v1.12 review — the member rule, and why the house already had it
+
+**Kens's eighth round was checked against the live code before anything was proposed
+(Nov 14, 2026).**
+
+| the comment | what the live code said | the design consequence |
+|---|---|---|
+| **"1 rules for delivery type must be customer belong to tenant's customer"** | the member table is `dining_customers` (`models/loyalty.py:47`) → `customer_id` = "Restaurant group" (`models/loyalty.py:55`) → **and the unique index is `(customer_id, phone)`** (`models/loyalty.py:51`) → **so the same phone exists in two tenants** | the tenant scope is **`customer_id`, NEVER the phone** → the counter's member picker searches scoped by the outlet's `customer_id` (§4.3.1 clause 1) |
+| **the same** | the house already excludes the walk-in member — `AND phone != 'WALKIN'` (`loyalty.py:814-816` — *"the house convention used in vouchers.py and ai/__init__.py"* rather than a hardcoded id) | the **walk-in is excluded** → a walk-in has no phone to receive the tracking link and no login → **a delivery can never ride the walk-in member** (clause 2) |
+| **the same** | the house already checks a member's tenant on the split-bill path — `order.py:1104-1113` — *"a payer from another tenant would burn another restaurant's points"*, and the refusal is **404 "This member does not belong to the restaurant"** | the delivery **reuses the house's own check and its own wording** → no new security model is invented (clause 3) |
+
+**and the rule's three consequences:**
+- **the delivery becomes the ONE order type where a member is REQUIRED** → the
+  `dining_customer_id` column stays nullable for dine-in and takeaway
+  (`models.py:224`) → **the POS validation branches on `order_type`**;
+- **the counter gains a member step** — the phone lookup scoped by the outlet's
+  `customer_id`, excluding the walk-in → **and the found member's phone pre-fills the
+  address block** → **so the customer is identified before submission**;
+- **every delivery now has a customer side** → **the map, the live tracking, the ETA
+  and the history are guaranteed on EVERY delivery order** → → **not a maybe for the
+  PWA and a maybe for the counter — always** → **which is what makes the tracking
+  worth building, and it gives both doors the SAME customer experience** (§4.3).
+
+**and the cost, stated honestly:** the counter delivery is **slower to enter** — the
+staff must identify the customer → → **the tenant accepts that cost**, because the
+alternative is a delivery the customer can never track.
+
 ---
 
 ## 10. Kens's comments — the answers
@@ -1614,6 +1705,12 @@ Inventory:**
 |---|---|---|
 | **20 — fold the staff-side plan gate into the document** | **done** — the counter's Delivery button is gated on the **flag alone** today (`StaffOrder.jsx:775`, `:1313` — `allowed: settings?.allow_delivery !== false`) and the settings it reads are **not** plan-gated (`order.py:655`) → **so a tenant without the entitlement still sees a Delivery button** → **the staff side now asks the same feature list the PWA login asks** → **one entitlement, two doors** | §3.1 · §4.3 · §6 · §9.11 |
 | **21 — can the customer order a delivery at the counter, or only through the delivery PWA?** | **BOTH** — the delivery is a **first-class order type in the shared schema** (`order.py:262`) and the counter already renders the button (`StaffOrder.jsx:775`) → **one order type, two doors, one flow** → **and the two honest differences are now on the record**: the counter **has no payment-mode chooser** today (the staff screen derives the mode — `StaffOrder.jsx:769`) and the counter order **has no member** by default → so the customer gets no map and no tracking → **open questions 22 and 23** | §4.3 · §8 Q22 · §8 Q23 · §9.11 |
+
+**Round eight (Nov 14, 2026) — the member rule:**
+
+| the comment | the answer | where |
+|---|---|---|
+| **22 — "1 rules for delivery type must be customer belong to tenant's customer"** | **LOCKED as an invariant**: a delivery order MUST carry a `dining_customer_id` whose member belongs to the tenant's restaurant group → **and the live code gives it three clauses**: the scope is **`customer_id`, never the phone** (`models/loyalty.py:51` — the same phone exists in two tenants) → the **walk-in is excluded** (`loyalty.py:814-816`) → and the check is the **split-bill precedent** (`order.py:1104-1113` — 404 *"This member does not belong to the restaurant"*) → **so the delivery is the one order type where a member is mandatory** → **and every delivery therefore has the map, the live tracking, the ETA and the history** | §4.3.1 · §8 Q22 · §9.12 |
 
 ### 10.1 The delivery settings tab
 
@@ -1927,7 +2024,9 @@ is the convenience.**
   outlet answer (`allow_delivery` 709), the status route (949 — **no whitelist**
   ), the payments endpoint (1013 — **staff-gated**), the cancellation list (1287
   and 1359) → **and the shared settings endpoint (655 — `require_shared_permission`,
-  NOT plan-gated → the counter's gate gap)** (§9.11)
+  NOT plan-gated → the counter's gate gap)** (§9.11) → **and the member's tenant
+  check (1104-1113 — the split-bill precedent, 404 "This member does not belong to
+  the restaurant")** (§4.3.1, §9.12)
 - `backend/app/services/order_service.py` — the delivery address in the write path
   (505), the mode stamped per order (551), the payment write (791)
 - `backend/app/services/payment_modes.py` — `ORDER_TYPES` (36), the locked online mode
@@ -1978,7 +2077,8 @@ is the convenience.**
   (2035), the online payment (2051, 2106), the method chooser (2134), the order
   polling (2165) → **and the client-side feature fetch that FAILS OPEN**
   (571, 579 — *"Default to enabled for demo"*)
-- `backend/app/routes/loyalty.py` — the tenant from the venue (327-333), the
+- `backend/app/routes/loyalty.py` — the tenant-scoped member list (814-816 — **the
+  walk-in exclusion, `phone != 'WALKIN'`**), the tenant from the venue (327-333), the
   registration-enabled check (335-343)
 - `backend/app/routes/outlet_settings.py` — the Geoapify geocode (359-362), the
   connected payment account (317)
@@ -2019,7 +2119,9 @@ is the convenience.**
   claims, the `loyalty_guest` purpose) → **and its 30-day TTL**
   (`GUEST_TOKEN_TTL_DAYS` — 48 → **why the order-create re-check exists** → §5.1)
 - `backend/app/models/loyalty.py` — the member (`DiningCustomer` — 45, the table
-  `dining_customers` 47)
+  `dining_customers` 47) → **the tenant scope (55 — `customer_id` = "Restaurant
+  group", `nullable=False`)** → **the unique index (51 — `(customer_id, phone)`)**
+  → **the active flag (73)**
 - `backend/app/routes/customer_bff.py` — the customer app's settings route (174 — the
   branding, `customer_registration_enabled` 223)
 - `backend/app/routes/pwa.py` — the manifest theme (196), the guest order lookup (492),
