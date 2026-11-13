@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.13
+**Document Version:** 1.14
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -88,6 +88,20 @@ copy of the PWA's checkout — it is the same three answers, read by the tenant*
 (`models.py:423` — `{"dine_in": "postpay", "takeaway": "postpay"}`) → **so every
 delivery is "pay the driver" until the tenant says otherwise** → **which is the safe
 default and stays the default** (§4.2.1).
+
+**v1.14 (Nov 14, 2026): the TENTH round — PHASE 0 and PHASE 1 are DONE.** Kens's ask:
+*"You can start phase 0 and phase 1. After done just update the phase number and actual
+changes in the document."* → **so this round is not a design round: the two phases are
+BUILT** → **Phase 0 — the four `features` rows (sort orders 39-42) and their
+`plan_features` rows are LIVE** (a migration script that is idempotent and re-runnable:
+it creates the missing rows, corrects a drifted one, re-enables a disabled assignment
+and never removes one) → **and Phase 1 — "the core" — is LIVE**: the two columns (the
+idempotent ALTER), the two tables (the leg and the roster), the server's fee and the
+member rule → → **and the build found three things the design had not settled** — the
+**enforcement boundary** (the counter's walk-in default vs the member rule), the **tax
+treatment of the fee** (outside the tax base, a separate line on the paper) and the
+**receipt** (the fee has to be PRINTED or the paper does not add up) → → **and every
+claim below is anchored to the code that shipped** (§7.1, §9.14).
 
 **v1.12 (Nov 14, 2026): the EIGHTH round — THE RULE: a delivery order must belong to
 a customer of the tenant.** Kens's ask: *"I think 1 rules for delivery type must be
@@ -1292,15 +1306,15 @@ prove ownership (the order token — **a new field**, or the existing
 
 ## 7. The phases
 
-| Phase | What | Size |
-|---|---|---|
-| **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small |
-| **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium |
-| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium |
-| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** |
-| **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium |
-| **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium |
-| **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium |
+| Phase | What | Size | Status |
+|---|---|---|---|
+| **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small | **✅ DONE (v1.14)** — the four rows are LIVE (ids 41-44, sort orders 39-42) and assigned to Enterprise (`plan_features` 408-411) by an idempotent migration script (§7.1) |
+| **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium | **✅ DONE (v1.14)** — the two columns, the two tables, the server's fee, the member rule and the receipt line are LIVE (§7.1, §9.14) |
+| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium | **next** |
+| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | planned |
+| **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | planned |
+| **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | planned |
+| **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium | planned |
 
 **The order matters** — the core → the staff side → the storefront → the money:
 **the POS must be able to deliver before the customer can order delivery**.
@@ -1311,6 +1325,37 @@ every plan (§11.1).
 → **but the customer's MAP and ETA are NOT in that phase** — they need the route and the
 geocode only → **so they ship with the storefront (phase 3)** → **and every Enterprise
 delivery tenant has them** (§11.1).
+
+### 7.1 What Phase 0 and Phase 1 ACTUALLY changed (v1.14)
+
+**Phase 0 — the plan rows (pure data):**
+
+| what | where |
+|---|---|
+| the idempotent migration script — it creates the missing rows, **corrects a drifted one**, **re-enables a disabled assignment** and **never removes** an existing assignment | `website_api/scripts/migrate_delivery_features.py` (with `--check`) |
+| the four `features` rows — ids **41-44**, sort orders **39-42** (`delivery` · `delivery_management` · `delivery_zones` · `delivery_analytics`) | the website API's database |
+| the four `plan_features` rows — ids **408-411** → **Enterprise** (plan id 4, slug `enterprise`) | the website API's database |
+
+**Phase 1 — the core (the backend, the money and the paper):**
+
+| the file | what changed |
+|---|---|
+| **`backend/app/models/delivery.py`** (new) | **`DeliveryDriver`** — the tenant's roster (`customer_id` is the tenant) · **`DeliveryOrder`** — the LEG: one row per delivery order (`order_id` UNIQUE), the status, the driver + its name/phone snapshot, **the fee**, the radius, the ETA, the address, the timestamps |
+| **`backend/app/models/models.py`** | `Outlet.delivery_slug` (nullable) + the UNIQUE index `ux_outlets_delivery_slug` · `OutletSettings.delivery_settings` (JSON, nullable) · `Order.delivery` (the one-to-one leg) |
+| **`backend/app/core/delivery_schema.py`** (new) | the idempotent ALTER for the two columns + the unique index — **in its own module**, so it can be proved on an isolated database and never touches the live one in a test |
+| **`backend/app/main.py`** | the delivery models are registered **before** `create_all()` · the ALTER runs on every boot |
+| **`backend/app/services/delivery_service.py`** (new) | the settings normalisation (the money is validated on the write) · the fee · the free threshold · the minimum · **the member rule** · the slug → outlet → tenant resolution |
+| **`backend/app/services/order_pricing.py`** | the reprice **keeps the fee** — the snapshot, so a tenant who changes the fee mid-service never moves the orders in flight |
+| **`backend/app/services/order_service.py`** | the create computes the fee and creates **the leg in the SAME transaction** as the order |
+| **`backend/app/routes/order.py`** | the member rule at the create · `delivery_fee` on the order response · the cancel takes the fee away with the order |
+| **`backend/app/routes/outlet_settings.py`** | `delivery_settings` is **validated on the write** — a broken number is refused, not stored |
+| **`frontend/src/hooks/useReceiptPrinter.js`** | **the fee is a line on the paper** — between the tax and the total |
+| the three `orders.json` locales | `receipt.deliveryFee` (en · zh · km) |
+| **`backend/scripts/test_delivery_core.py`** (new) | **45 checks** — the schema and the ALTER, the slug, the fee rules, the member rules, the leg, the total, the reprice and the cancel |
+
+**and the live database** — the POS database now carries the two columns, the two tables
+and the unique index (`outlets.delivery_slug` · `outlet_settings.delivery_settings` ·
+`delivery_orders` · `delivery_drivers` · `ux_outlets_delivery_slug`).
 
 ---
 
@@ -1778,6 +1823,83 @@ alternative is a delivery the customer can never track.
 **and the honest cost:** the counter staff pick one extra thing on a delivery order →
 → **and the benefit is that the tenant does not have to be wrong about its own
 customers** — one setting serves both doors.
+
+### 9.14 The v1.14 build review — Phase 0 and Phase 1 are DONE
+
+**Kens's tenth round was not a design round: *"You can start phase 0 and phase 1. After
+done just update the phase number and actual changes in the document."* → so both
+phases are BUILT, and the build settled three things the design had left open.**
+
+#### 9.14.1 The enforcement boundary — the counter's walk-in default
+
+**The design (§4.3.1, §9.12) says the delivery is the ONE order type where a member is
+REQUIRED, and the walk-in row is EXCLUDED.** → **and the live code says the counter
+screen defaults an order's member to the venue's walk-in member** (`StaffOrder.jsx:648`
+— the counter sends the walk-in id when nobody is picked) → → **so arming the walk-in
+rule at the counter in phase 1 would break the counter's delivery flow with a rule the
+counter CANNOT yet satisfy** — and the screen that makes it satisfiable (the counter's
+MEMBER step — the phone lookup that excludes the walk-in) **is phase 2** (§7).
+
+**so the rule was split, and the split is ONE flag on ONE server function:**
+
+| the clause | the counter door | the customer door (the delivery PWA) |
+|---|---|---|
+| **no member at all** | **refused** (404) | **refused** (404) |
+| **a member of another tenant** | **refused** (404) | **refused** (404) |
+| **the walk-in member** | **allowed in phase 1** — the counter's member step is phase 2 | **refused** (400) — the PWA's customer is always a registered member |
+
+→ **the wording is the house's own, verbatim** — **404 "This member does not belong to
+the restaurant"** — the split-bill precedent (§9.12), NOT the generic 403 the order
+create used for a cross-tenant member → → **and the tenant is checked by the member's
+`customer_id`, never by the phone** (§9.12, clause 1) → → **and the whole thing is one
+function** (`delivery_service.require_delivery_member`) → **so phase 2 is the screen plus
+one flag** — no rewrite, no second rule.
+
+#### 9.14.2 The tax treatment of the fee — outside the tax base
+
+**The design says the fee is in the order's total, and §5.4 says the sales tab and the
+orders tab must agree to the cent.** → **and the money of an order is computed in ONE
+place** (`order_pricing.compute_totals` — the subtotal, the discount, the tax on the
+amount the guest PAYS, the total) → **so the fee had to be given ONE treatment, and
+the same one in the pricing, on the receipt and in the reports.**
+
+**the treatment that shipped:** → **the fee is a FLAT charge that sits OUTSIDE the tax
+base** — the tax of an order is the tax of its **food** → → **the fee is added AFTER the
+food total** (`total = the food total + the fee`) → → **and it is a SEPARATE line
+everywhere** → → **and it is NOT a line item** — an `OrderItem` has a **non-null**
+`menu_item_id` (`models.py`), so a fee line would need a fake menu row → → **so the fee
+is a SNAPSHOT FIELD on the leg** (`delivery_orders.fee`) → → **and the leg is the ONLY
+place the delivery's money lives** — the shared order row stays clean (§3).
+
+**and the snapshot means:** → **a reprice KEEPS the fee** (the fee the order was given
+— a tenant who changes their fee mid-service never moves the orders in flight — the
+same rule the payment mode snapshot follows) → → **a cancelled order takes the fee
+away** (a cancelled order is worth nothing, and the paper must not show a fee the
+total does not carry) → → **and the historical orders do not move when the settings
+change** — the fee is read from the leg, never recomputed from the settings.
+
+#### 9.14.3 The receipt — the fee has to be PRINTED
+
+**The design said the fee is in the total. → and the receipt prints the SUBTOTAL, the
+DISCOUNT, the TAX and the TOTAL — and nothing else** → **so without one more line the
+paper would NOT add up**: the total is the food total plus the fee, and the fee was
+nowhere on the paper.
+
+→ **so the fee is a line on the paper** — between the tax and the total — **in every
+receipt format** (the browser print, the ESC/POS network and Bluetooth printers, and
+the PDF) → → **and it is in all three locales** (`receipt.deliveryFee` — en · zh · km) →
+→ **and it only appears when there IS a fee** — an order without a delivery prints
+exactly as it printed before.
+
+#### 9.14.4 What phase 1 did NOT change — on purpose
+
+| what | why |
+|---|---|
+| **the counter's delivery flow** | the member step is phase 2 — phase 1 must not break the counter |
+| **the screens** | the Delivery tab, the Delivery Management screen and the PWA are phases 2 and 3 — phase 1 touches NO screen except the receipt's new line |
+| **the entitlement gate** | the gate is a phase 2/3 thing — **and the plan rows are already live**, so the gate can be switched on without a data change |
+| **the delivery address** | **NOT required yet** — the counter has no address field (that is the phase 2 staff screen), so requiring it would break the counter's delivery order. The address is stored when it is given |
+| **the legacy delivery order** | the one live delivery order predates the leg → it has no leg and no fee → **it keeps the total it has** (`delivery_fee_snapshot` returns 0 for an order without a leg) |
 
 ---
 
