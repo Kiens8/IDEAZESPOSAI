@@ -1,8 +1,17 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.6
+**Document Version:** 1.7
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)**
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
+lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
+until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
+subscribing gives the tenant the TAB, not the delivery (the feature is per TENANT, the
+flag is per OUTLET: §3.1) → and the live code found three things the round surfaced: the
+Order tab has a SECOND delivery control (the per-type payment-timing row — it moves
+too), the POS's own fallback still says `allow_delivery: true` (the backend says
+`False` — the one default to fix), and the flag OUTLIVES a plan change (nothing resets
+it — so the storefront's gate is the feature AND the flag)**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -181,7 +190,7 @@ driver's name and phone on the order** → the customer can call them.
 | `restaurant_logo` | **yes** (`models.py:380`) |
 | `brand_color` | **yes** (`models.py:383`) |
 | `operating_hours` | **yes** (`models.py:390`) |
-| **the delivery SWITCH** (`allow_delivery`) | **yes — it EXISTS** (`models.py:456` · the settings screen `Settings.jsx:1203` · the customer app reads it `order.py:709` · the presets `business_presets.py`) |
+| **the delivery SWITCH** (`allow_delivery`) | **yes — it EXISTS** (`models.py:456` · the settings screen `Settings.jsx:1203` — **it moves to the Delivery tab** · the customer app reads it `order.py:709` · the presets `business_presets.py`) |
 | **the delivery ADDRESS** (`orders.delivery_address`) | **yes — it EXISTS** (`models.py:280` · carried through the write path `order_service.py:505`) |
 | **the storefront slug** (the PWA's URL) | **new** — one column on the outlet (`outlets.delivery_slug`, nullable, UNIQUE) |
 
@@ -311,6 +320,60 @@ nav screen is `{path, icon, labelKey, minRole, feature}` (`navItems.js`).
 → **the switch MOVES, it does not copy** — the delivery switch leaves the **Order**
 tab and lives in the **Delivery** tab → **one switch, one place, one field**
 (`outlet_settings.allow_delivery` — unchanged) → **there is no second switch.**
+
+### 3.1 The switch — where it lives, and when it may be ON
+
+**The rule (Kens, Nov 14, 2026) — one sentence, and one correction:**
+
+> the allow-delivery checkbox does not show in the **Order** tab → it belongs to the
+> new **Delivery** tab → **and the delivery is OFF until the tenant has subscribed the
+> feature and turned it on.**
+
+**The correction — subscribing the feature is not turning the delivery on.** There are
+**two gates**, and they sit at two different levels:
+
+| the gate | what it decides | the level | the live truth |
+|---|---|---|---|
+| **the plan feature** (`delivery`) | does the tenant have the delivery module at all | the **tenant** | the feature row decides it → the Delivery tab's `feature` string is compared **exactly** against the plan's tab names (`Settings.jsx:25` → `useFeatures.jsx:45-47` → `admin.py:1052` returns the row's `tab_name` as the name) |
+| **the outlet flag** (`outlet_settings.allow_delivery`) | does this outlet take delivery orders | the **outlet** | `models.py:456` (`default=False`) → off in every preset (`business_presets.py:41`) → the safe fallback is off (`order.py:681`) |
+
+→ **subscribing gives the tenant the TAB, not the delivery** → the flag stays off at
+every outlet → **the tenant turns it on, per outlet, inside the Delivery tab** → → a
+tenant with three outlets can deliver at one and not at the others → → and because the
+checkbox lives in the tab the feature gate controls, **a tenant without the feature
+never sees the tab and can never turn the flag on.**
+
+**The flag is not a decoration — three live things read it:**
+- `StaffOrder.jsx:775` / `:785` / `:1313` — the staff screen's **Delivery** order-type
+  button is gated on it → without it, every outlet would offer delivery;
+- `outlet_settings.py:335` — it builds `enabled_types`, the set that decides **which
+  order types the `payment_timing` map may name** → the delivery's payment entry only
+  exists while delivery is on → **and §4.2's customer choice sits on it**;
+- `order.py:709` — the customer app reads it to decide whether to offer the delivery
+  type (`customer-app/js/app.js:1367`).
+
+**And the Order tab has a SECOND delivery control — the payment-timing row.**
+`Settings.jsx:115-120` builds the per-type list and `:1257` renders it, and the
+delivery row is included when `allow_delivery === true` → **so moving only the
+checkbox would split the delivery's money settings across two tabs** → **the delivery's
+payment-timing row moves to the Delivery tab too** — or the Order tab's row is dropped
+and the Delivery tab owns the delivery's money settings (§4.2).
+
+**The default is OFF in the backend — and ON in the POS's own fallback.** The model
+(`models.py:456`), the presets (`business_presets.py:41`) and the safe fallback
+(`order.py:681`) all say **False**, but the POS's own settings fallback says
+**`allow_delivery: true`** (`useSettings.js:46`) → the staff screen shows **Delivery**
+before the settings have arrived → **it becomes `false`** → the house rule stands: a
+missing row must never sell a service the outlet did not ask for.
+
+**And the flag outlives the subscription.** Nothing resets it on a plan change — there
+is no `allow_delivery` anywhere in `website_api/` → **and the two paths that answer
+the flag are not plan-gated**: the staff screen reads the outlet's settings
+(`StaffOrder.jsx:775`), and the customer app reads the shared settings endpoint
+(`order.py:655` — `require_shared_permission`, not `require_plan_feature`) → → **so a
+downgraded tenant keeps selling delivery** → → **the effective rule is the feature AND
+the flag** → the delivery storefront answers **"is this outlet delivering?"** only when
+both are true.
 
 → **the QR is drawn by the SERVER** — the front end has **no QR library**
 (`frontend/package.json` — no qrcode) while the backend has **`qrcode==7.4.2`** and
@@ -797,6 +860,11 @@ them (§11.1).
 16. **Does the customer have to register before a delivery order?** — **yes** (Kens) →
     so the order carries `dining_customer_id` → and the tenant's registration switch
     must be on (§3, §5).
+17. **What happens to the delivery flag when the plan lapses?** — **nothing resets it**
+    (no `allow_delivery` anywhere in `website_api/`) → **so the storefront's gate is the
+    feature AND the flag** (§3.1) → **the question left is whether the tenant is told**
+    — a tenant whose plan lapsed still has **Delivery** switched on at its outlets, and
+    the tenant cannot see the tab to switch it off.
 
 ---
 
@@ -814,7 +882,7 @@ would have failed on day one** → they are corrected above and listed here.
 
 | The thing | Where | The truth |
 |---|---|---|
-| **the delivery SWITCH** | `outlet_settings.allow_delivery` (`models.py:456`) | **exists** — settings screen (`Settings.jsx:1203`), the customer app reads it (`order.py:709`), off in every preset (`business_presets.py`) |
+| **the delivery SWITCH** | `outlet_settings.allow_delivery` (`models.py:456`) | **exists** — settings screen (`Settings.jsx:1203` — **it moves to the Delivery tab**), the customer app reads it (`order.py:709`), off in every preset (`business_presets.py`) |
 | **the delivery ORDER TYPE** | `orders.order_type` (`order.py:262`) | **exists** — and `ORDER_TYPES` lists it (`payment_modes.py:36`) |
 | **the delivery ADDRESS** | `orders.delivery_address` (`models.py:280`) | **exists** — carried through the write path (`order_service.py:505`) |
 | the delivery FEE | — | **new** — nothing carries a fee today |
@@ -890,7 +958,7 @@ proposed (Nov 12, 2026). What the code said:**
 
 | The comment | What the live code said | The design consequence |
 |---|---|---|
-| **the delivery settings tab** | the switch **exists** (`outlet_settings.allow_delivery` — `models.py:456`) and it is **already rendered in the Order tab** (`Settings.jsx:1203`) → the settings tabs are a literal array of `{id, labelKey, icon, feature}` (`Settings.jsx:25`) and the `feature` string is compared **exactly** against the plan's tab names | **the switch moves, it does not copy** → one switch → and the new tab's `feature` string must be **"Delivery"** exactly |
+| **the delivery settings tab** | the switch **exists** (`outlet_settings.allow_delivery` — `models.py:456`) and it is **already rendered in the Order tab** (`Settings.jsx:1203`) → the settings tabs are a literal array of `{id, labelKey, icon, feature}` (`Settings.jsx:25`) and the `feature` string is compared **exactly** against the plan's tab names | **the switch moves, it does not copy** → one switch → and the new tab's `feature` string must be **"Delivery"** exactly → **and the default is OFF at two levels** — the feature (per tenant) and the flag (per outlet) → §3.1 |
 | **the delivery management screen** | the nav is **one list** (`navItems.js` — `{path, icon, labelKey, minRole, feature}`) and the queue **already** separates the delivery orders (`OrderQueue.jsx:199`) | **a nav screen, not a settings tab** → its own feature row |
 | **the `features` rows** | the live table's **highest sort_order is 38** (three rows share it), the **highest id is 40**, and **no delivery row exists** → the plans are Starter (20 features), Basic (24), Pro (30), Enterprise (40) | **six rows at 39-44** → and the gate key is the **`tab_name`** (`admin.py:1052`) |
 | **the sign-up and the login** | the loyalty register already derives the tenant from the venue (`loyalty.py:327-333`) and **rejects a mismatched customer tenant** → **but its registration-enabled check reads the tenant's FIRST outlet** (`loyalty.py:335-343`) | **the delivery copies the derivation** → **and the registration check must follow the slug's outlet** |
@@ -935,6 +1003,31 @@ proposed (Nov 12, 2026). What the code said:**
   `Payment`/`OrderPayment` write with a method of `cash`, and the leg's claim is a
   separate fact on the leg** (§12).
 
+### 9.7 The v1.7 review — the switch, its default, and its two gates
+
+**Kens's third round was checked against the live code before anything was proposed
+(Nov 14, 2026). What the code said:**
+
+| the comment | what the live code said | the design consequence |
+|---|---|---|
+| **the allow-delivery checkbox does not show in the Order tab** | the Order tab renders it at `Settings.jsx:1203` → **and it renders a SECOND delivery control** — the per-type payment-timing row (`Settings.jsx:115-120` → rendered at `:1257`), and the delivery row is in that list when the flag is on | the checkbox moves to the Delivery tab → **and the delivery's payment-timing row moves with it** (or the Order tab drops it and the Delivery tab owns the delivery's money settings) → **otherwise the delivery's config is split across two tabs** (§3.1, §4.2) |
+| **the delivery is OFF until the tenant subscribes the feature and turns it on** | the model (`models.py:456`), the presets (`business_presets.py:41`) and the safe fallback (`order.py:681`) are all **False** → **but the POS's own fallback is `true`** (`useSettings.js:46`) → and nothing resets the flag on a plan change (no `allow_delivery` anywhere in `website_api/`) | the flag is **per outlet** and the feature is **per tenant** → **subscribing gives the tenant the TAB, not the delivery** → the POS fallback becomes **False** → the storefront's gate is **the feature AND the flag** (§3.1) |
+
+**And three facts the round surfaced:**
+- **the staff screen's delivery button is gated on the FLAG, not on a plan feature**
+  (`StaffOrder.jsx:775`) → **and no `DELIVERY` constant exists in the front end yet**
+  (`useFeatures.jsx:140` — the constants are the house list) → **so the button's plan
+  gate has to be added, or a tenant that never bought the delivery still sees
+  **Delivery** on the staff screen**;
+- **the customer app's outlet answer is not plan-gated** (`order.py:655` —
+  `require_shared_permission("settings:read")`) → **so the flag alone answers it** →
+  **the delivery storefront must not reuse that endpoint** — it asks its own question
+  and answers it with **the feature AND the flag**;
+- **the in-venue guest app already has NO delivery chip** (`customer-app/js/app.js:1354`
+  — *"a chip without an address and a fee would be a broken flow"*) → **keep it that
+  way** → the delivery lives in its own storefront, and the Order tab's remaining
+  payment-timing rows are dine-in and takeaway only.
+
 ---
 
 ## 10. Kens's comments — the answers
@@ -963,7 +1056,10 @@ proposed (Nov 12, 2026). What the code said:**
 
 **The contents, in the order the tenant needs them:**
 1. **the switch** — `allow_delivery` (**moved** here from the Order tab — one switch,
-   one field, one place);
+   one field, one place) → **and it starts OFF** → **subscribing the `delivery` feature
+   gives the tenant this TAB, not the delivery** → the tenant turns the outlet on here,
+   per outlet → **and the flag outlives a plan change, so the storefront's gate is the
+   feature AND the flag** (§3.1);
 2. **the storefront** — the slug (auto-generated from the outlet's name, editable),
    the URL, and the **QR** (a server-drawn PNG) with a copy + a download;
 3. **the fees** — the flat fee, the minimum order, the free-delivery threshold;
@@ -1272,6 +1368,14 @@ is the convenience.**
 - `frontend/src/utils/paymentModes.js` — `isLiveOrder` (47), `canAdvanceOrder` (62),
   `availableModes` (79)
 - `frontend/src/utils/businessType.js` — the last-step wording (38)
+- `frontend/src/pages/StaffOrder.jsx` — the delivery order-type buttons (775, 785,
+  1313 — the gate is the FLAG, not a plan feature)
+- `frontend/src/hooks/useSettings.js` — the POS's own fallback defaults (46 —
+  `allow_delivery: true`, the one default that must become `false`)
+- `backend/app/services/business_presets.py` — the presets (`allow_delivery: False` — 41)
+- `backend/app/routes/reports.py` — the paid filter (145)
+- `customer-app/js/app.js` — the in-venue app has NO delivery chip (1354) and the
+  order-type gate (1367)
 - `backend/app/routes/loyalty.py` — the tenant from the venue (327-333), the
   registration-enabled check (335-343)
 - `backend/app/routes/outlet_settings.py` — the Geoapify geocode (359-362), the
