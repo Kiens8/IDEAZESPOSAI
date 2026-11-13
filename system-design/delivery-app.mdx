@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.9
+**Document Version:** 1.10
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -44,7 +44,23 @@ configuration in the world** → **the entitlement check at the login therefore 
 the Enterprise check** → **and the stale `allow_delivery` flags no longer leak
 delivery: a tenant that downgrades from Enterprise loses the entitlement, and the
 login gate refuses it** → **the honest cost: the delivery is no longer the Starter's
-hook** → **the Starter needs another one** (§8 Q19).
+hook** → **the Starter needs another hook** (§8 Q19).
+
+**v1.10 (Nov 14, 2026): the SIXTH round — the Delivery tab is an OUTLET settings
+tab, the plan assignment is DATA, and every screen is listed.** Kens's rules: *the
+delivery settings tab belongs in the outlet settings — the allow-delivery switch must
+be there, and the QR generation must be there too* → **and the live code agrees more
+strongly than expected: the POS's Settings screen is ALREADY outlet-scoped**
+(`useOutletId()` → `/api/settings/{outlet_id}`) → **so a "Delivery" tab there is
+automatically a PER-OUTLET tab** → **the switch, the fees, the slug and the QR all
+belong to one branch** (§3.2). → *we do not allow a plan downgrade currently* → **so
+the downgrade hole is NOT live** → **and the gate's real job is the subscription
+LAPSING** (cancelled / expired / overdue), which is live (§9.10). → *we are flexible
+to set the delivery features in any plan — it has to be flexible* → **so the design
+hardcodes NO plan**: the assignment lives in `plan_features`, the default is one plan
+(the Inventory precedent), and moving the module is a data change, not a code change
+(§9.10). → **and §3.2 now lists EVERY screen we propose — the POS's eight and the
+customer's nine, the settings tab first.**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -101,6 +117,13 @@ delivery at that outlet can access the delivery app.*
 customer's side never branches** → → **there is exactly ONE delivery app in the
 world** (§5.3).
 
+> **And the plan column is DATA, not code.** Every plan statement in this document
+> is a `plan_features` row → **so the module can sit on ANY plan** → **the default
+> is one plan (Enterprise — the Inventory precedent, §9.9)** → **and moving it is a
+> data change, not a code change** → → **and no line of the delivery code may assume
+> which plan carries it** — the gate asks the plan list for the **tab name**, never
+> for a plan id (§5.1, §9.10).
+
 > **The prices are NOT in this document — they are data.** The catalogue lives in the
 > **website API** (`plan_prices` — per currency, per billing cycle, with the
 > promotions and their end dates) and it **changes** → **a design document must
@@ -140,6 +163,9 @@ Enterprise**
 - **Delivery Management** — the driver roster, the live progress → **Enterprise**;
 - **Delivery Zones** — the postcode pricing → **Enterprise**;
 - **Delivery Analytics** — the delivery revenue, the fee per order → **Enterprise**.
+
+→ **and every line above is a `plan_features` row** → **so the whole module can move
+to another plan without a code change** (§9.10) →
 
 → **and nothing in the customer's app is paid SEPARATELY** → **the map, the ETA, the
 live marker and the promised windows are all inside the one entitlement** (§11.1) →
@@ -402,6 +428,30 @@ tab and lives in the **Delivery** tab → **one switch, one place, one field**
 > new **Delivery** tab → **and the delivery is OFF until the tenant has subscribed the
 > feature and turned it on.**
 
+**The second rule (Kens, Nov 14, 2026) — the tab is an OUTLET settings tab:**
+
+> the delivery settings tab belongs in the outlet settings → **the allow-delivery
+> switch must be there** → **and the QR generation must be there too.**
+
+→ **and the live code agrees — and more strongly than expected** → **the POS's
+Settings screen is ALREADY outlet-scoped**: it reads `useOutletId()` (`useSession.js:21`
+→ `resolveOutletId(session)`) and fetches `/api/settings/${outletId}`
+(`Settings.jsx:61`, `:85`) → **and the POS header carries an outlet switcher**
+(`App.jsx:59-107` — the staff pick the branch they are working in) → → **so the
+Settings screen already IS "the settings of the outlet I am working at"** → → **so a
+Delivery tab there is automatically a PER-OUTLET tab** → → **the switch, the fees, the
+slug, the QR and the storefront are all ONE branch's** → **one storefront and one QR
+per branch** (§8 Q8).
+
+→ **and the QR belongs in that tab for a concrete reason** — the QR encodes the
+tenant's own storefront (`https://order.ideazes.com/d/<slug>`) → **and the slug is
+per outlet** → → **so a QR drawn in a branch's tab points at THAT branch's
+storefront** → → **it cannot live anywhere else and still be right** → **and it is
+drawn by the SERVER** (the front end has no QR library; the backend has
+`qrcode==7.4.2` + `Pillow==10.2.0`) → **`GET /api/delivery/outlets/{outlet_id}/qr`**
+— the same shape as the payment QR (`/api/pwa/orders/{id}/pay-qr`,
+`/api/orders/{id}/pay-online/qr`).
+
 **The correction — subscribing the feature is not turning the delivery on.** There are
 **two gates**, and they sit at two different levels:
 
@@ -484,6 +534,44 @@ way to fill the delivery app, and this is the button that does it** (§5).
 5. **Delivery Management → the drivers** → add the tenant's drivers (a name and a
    phone);
 6. **done** — **the delivery is live**.
+
+### 3.2 The screens — the full inventory (what we propose)
+
+**Every screen the delivery feature adds or touches — nothing else.** The POS's eight
+first (the tenant's own back office), then the customer's nine.
+
+**A — the POS (the tenant's back office) — eight screens**
+
+| # | the screen | where it lives | what it does | the gate |
+|---|---|---|---|---|
+| 1 | **Settings → Delivery** (the tab) | the POS **Settings** screen — **and that screen is already OUTLET-scoped** (`useOutletId()` → `/api/settings/{outlet_id}`) → **so this tab is a per-outlet tab** | the **`allow_delivery` switch** · the fees (the flat fee, the minimum, the free threshold) · the radius · the allowed payment modes (prepay / COD) · the ETA base + max · the customer-registration switch · **the QR** (the slug, the URL, the branded PNG, copy / WhatsApp / download) · the preview (the logo, the name, the colour) | the `delivery` feature row (the tab's `feature` string) |
+| 2 | **Delivery Management** | a **nav** screen (`navItems.js`, after Orders) | today's deliveries — the leg's chip, the driver, the ETA, the fee · the **driver roster** · the fees quick edit · the coverage | the `delivery_management` feature row |
+| 3 | **Delivery Zones** | a tab inside Delivery Management | the managed postcode list (the name, the postcodes, the fee) | the `delivery_zones` feature row |
+| 4 | **the staff order screen** | the existing screen (`StaffOrder.jsx`) | the **Delivery** order-type button · the address field · the delivery-fee line · the driver picker | `allow_delivery` **and** the `delivery` feature row (today: the flag only — §9.7) |
+| 5 | **the kitchen screen** | the existing screen | the delivery type chip (never "Takeaway") · the delivery leg's third arm | the order's type |
+| 6 | **the order queue** | the existing screen | the delivery filter · the leg's next-step buttons (Assign driver → Out for delivery → Delivered) · the settlement rule (§4.1) | the order's type |
+| 7 | **the driver link** | **one page, not an app** (a signed token in the URL) | Start / Arrived / Delivered · the live pings · the cash claim | the per-order signed token (§12) |
+| 8 | **the delivery reports** | the existing reports screen | the delivery revenue · the fee per order · the orders per outlet | the `delivery_analytics` feature row |
+
+**B — the customer (the delivery PWA) — nine screens**
+
+| # | the screen | what the customer does | the gate |
+|---|---|---|---|
+| 1 | **the login / the sign-up** | signs in — or registers (mandatory) | **the entitlement check** → *"Sorry, this tenant didn't allow the delivery."* (§5.1) |
+| 2 | **the storefront / the menu** | the logo, the colour, the categories, the items, the hours, the delivery fee + the minimum | the outlet's settings (the branding) |
+| 3 | **the item** | the options, the variants, the quantity, the note | the menu |
+| 4 | **the cart** | the items, the quantities, the fee, the total | the customer's own cart |
+| 5 | **the checkout** | the name, the phone, the **address**, the **postcode** → **and the payment choice: pay online, or cash on delivery** | the outlet's allowed modes (§4.2) |
+| 6 | **the payment** | the DuitNow QR + the poll — the money lands (Malaysia only) | the connected account + the country rule (`payment_modes.py`) |
+| 7 | **the order status** | the kitchen steps → the delivery steps → the driver's name and phone → the ETA | the order token / `dining_customer_id` |
+| 8 | **the map + the live tracking** | the route, the ETA, the live driver marker — **for the whole delivery leg** | the order token |
+| 9 | **the order history** | the customer's own orders | the guest token |
+
+→ **and one page that is neither** — the **staff order screen** and the **kitchen** and
+the **queue** are screens we already have; the delivery adds an arm to them, not a
+new screen → → **so the DELIVERY's new screens are: ONE settings tab, ONE nav screen,
+ONE zones tab, the customer PWA's nine, and the driver link** → → **and the driver
+link is one page, not an app** (§2, §12).
 
 ---
 
@@ -744,6 +832,9 @@ it reaches the order's total → **the reports pick it up unchanged** (they filt
 already large) → **a new `delivery-app/`** sharing the API client and the i18n
 — **one codebase, one deployment**.
 
+→ **the customer's nine screens are listed in §3.2 (table B)** — this section is the
+**behaviour** behind them; §3.2 is the **inventory**.
+
 ### 5.1 The one gate — the delivery app's login
 
 **Kens's rule (Nov 14, 2026):** *we only check, while the customer logs into the
@@ -976,7 +1067,7 @@ prove ownership (the order token — **a new field**, or the existing
 
 | Phase | What | Size |
 |---|---|---|
-| **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on the ENTERPRISE plan** (the Inventory precedent — §9.9) — **BEFORE any route declares the gate** (§9) | small |
+| **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium |
 | **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) | medium |
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** |
@@ -1058,13 +1149,15 @@ delivery tenant has them** (§11.1).
 16. **Does the customer have to register before a delivery order?** — **yes** (Kens) →
     so the order carries `dining_customer_id` → and the tenant's registration switch
     must be on (§3, §5).
-17. **What happens to the delivery flag when the plan lapses?** — **nothing resets it**
-    (no `allow_delivery` anywhere in `website_api/`) → **so the storefront's gate is the
-    feature AND the flag** (§3.1) → **and v1.9 CLOSES the customer half**: the feature
-    is Enterprise-only → **a tenant that downgrades loses the entitlement** → **the
-    login gate refuses it** → **the stale flags cannot sell delivery** → **but the
-    tenant still cannot see the tab to switch its flag off** → **do we warn the
-    tenant?** (the tenant-side half of the same hole).
+17. **What happens to the delivery flag when the plan lapses?** — **the downgrade case
+    is CLOSED** (Kens: **plan downgrade is not allowed today**) → **so the live case is
+    the subscription LAPSING** — cancelled, expired or overdue → **the entitlement
+    follows the subscription, and the login gate refuses** (§5.1) → **and nothing
+    resets `allow_delivery`** (no `allow_delivery` anywhere in `website_api/`) → **but
+    a tenant that has lost the entitlement cannot see the tab to switch its flag off**
+    → **do we warn the tenant?** → **the clean fix is a nightly sweep** that turns the
+    flag off wherever the entitlement is gone (the tenant sees it the next morning,
+    and the storefront never sells a delivery it cannot deliver).
 18. **A customer who logged in BEFORE the tenant lapsed?** — **the guest token lives
     30 days** (`guest_session.py` — `GUEST_TOKEN_TTL_DAYS = 30`) → **so the login gate
     alone is a 30-day hole** → **the order-create route re-checks the same
@@ -1083,6 +1176,12 @@ delivery tenant has them** (§11.1).
     plan ever carries the delivery, the zones and the analytics are the rows that
     differentiate it → **but until then they are permission rows, not upsells** →
     **keep them, or collapse the module to one row?** (§9.9).
+21. **Which plan carries the delivery — and can we change it later?** — **the assignment
+    is DATA** (`plan_features`), so **yes, we can change it at any time** and nothing in
+    the code changes → **the default is one plan (Enterprise — the Inventory
+    precedent)** → **the rule is that no code may ask "is this tenant on plan X?" for
+    the delivery** — it asks the plan list for the **tab name** (§5.1) → → **so the
+    flexibility is free, as long as we keep asking the feature list** (§9.10).
 
 ---
 
@@ -1303,7 +1402,9 @@ before anything was proposed (Nov 14, 2026). What the code said:**
   delivered together;
 - **the subscription rows confirm the plan is a `subscription_plans` id** (1 Starter,
   2 Basic, 3 Pro, 4 Enterprise) → **so the delivery's `plan_features` insert targets
-  ONE id — 4** → **the smallest possible plan write** (phase 0);
+  ONE id — 4** → **the smallest possible plan write** (phase 0) → → **and because the
+  assignment is a row and not code, moving the module to another plan later is a DATA
+  change** (§9.10);
 - **and the downgrade hole gets smaller** — a tenant that downgrades from Enterprise
   loses the `delivery` row from its plan list → **the login gate refuses it** →
   **the stale `allow_delivery` flags can no longer sell delivery** → **the customer
@@ -1314,6 +1415,40 @@ before anything was proposed (Nov 14, 2026). What the code said:**
 the operation** → **which is a clean pitch** ("your own drivers, no commission, no
 marketplace") **but it is a narrower door** → **the Starter needs another hook**
 (§8 Q19).
+
+### 9.10 The v1.10 review — the outlet tab, the flexible plan, and the no-downgrade fact
+
+**Kens's sixth round was checked against the live code before anything was proposed
+(Nov 14, 2026). What the code said:**
+
+| the comment | what the live code said | the design consequence |
+|---|---|---|
+| **the delivery settings tab must be in the outlet settings — the allow-delivery switch and the QR generation must be there** | the POS's Settings screen is **already outlet-scoped**: `useOutletId()` (`useSession.js:21`) → `/api/settings/${outletId}` (`Settings.jsx:61`, `:85`) → and the header carries an **outlet switcher** (`App.jsx:59-107`) → **so "the settings of the outlet I am working at" is what the screen already is** | the Delivery tab is **per outlet by construction** → the switch, the fees, the slug and the QR all belong to one branch → **one storefront and one QR per branch** → and the QR route is `GET /api/delivery/outlets/{outlet_id}/qr` (§3.1, §3.2) |
+| **we do not allow a plan downgrade currently** | the plan-change route has a **downgrade branch** (`subscription.py:1389` — *"A downgrade (or the same price): there is nothing to collect — the plan changes below, right away"*) → **so the product rule and the route are not the same thing** | **the delivery gate must NOT lean on the no-downgrade rule for its correctness** → it reads the **subscription state** (cancelled / expired / overdue — `subscription_access.effective_access` with the 14-day grace and the 7-day warning) → **that case is live whether or not a downgrade is** (§5.1, §8 Q17) |
+| **we are flexible to set the delivery features in any plan — it has to be flexible** | the plan assignment is a **row** in `plan_features` → **there is no code that names a plan for the delivery** — the gate compares the **tab name** (`admin.py:1052`) | the design hardcodes **no plan** → **moving the module is a data change** → **and the rule that keeps it flexible: the gate asks the feature list, never the plan id** (§1, §9.9, §8 Q21) |
+| **list out the screens we propose — including the settings tab** | the POS screens we already have: `Settings.jsx` (the tabs), `StaffOrder.jsx`, `Kitchen.jsx`, `OrderQueue.jsx`, `OutletManagement.jsx` → and the delivery's own: the tab, the nav screen, the zones, the PWA, the driver link | **the full inventory is now §3.2** — **eight POS screens and nine customer screens**, and the delivery's genuinely NEW screens are **one settings tab, one nav screen, one zones tab, the PWA and the driver link** (§3.2) |
+
+**And three facts the v1.10 work turned up:**
+- **there is no separate "outlet settings" page to build** — the Settings screen is
+  the outlet's settings already → **so "put the delivery tab in the outlet settings"
+  costs ZERO new screens** → it is one more entry in the `SETTINGS_TABS` array
+  (`Settings.jsx:25-38` — the Inventory tab at `:38` is the exact shape) → **and the
+  tab is per outlet for free**, because the whole screen is;
+- **the outlet switcher in the header is the real multi-outlet story** — the staff
+  pick the branch they are working in (`App.jsx:84-107`) → **so the Delivery tab
+  follows the branch** → **the switch, the QR and the storefront in front of the staff
+  are always the branch they are actually operating** → **and a tenant with three
+  branches has three storefronts and three QRs**, each printed on that branch's menu
+  card;
+- **the QR route must take the OUTLET, not the tenant** — `GET
+  /api/delivery/outlets/{outlet_id}/qr` → **and it must return the branch's slug, not
+  the tenant's** → → **so the "one storefront per branch" rule is enforced by the
+  route's shape**, not by a convention.
+
+→ **and the honest summary of the round** — **the delivery is now three decisions**:
+**WHERE** it lives (an outlet settings tab + a nav screen) · **WHO** gets it (a
+`plan_features` row — data, so flexible) · **WHAT** the customer sees (one complete
+app, never tiered) → **and the screens are listed** (§3.2).
 
 ---
 
@@ -1356,14 +1491,26 @@ Inventory:**
 | **15 — only the customers of the tenant which subscribes Enterprise AND allows delivery at that outlet can access the delivery app** | **exactly the two gates the design already had** — the **Enterprise entitlement** (checked at the login, §5.1) **AND the outlet's `allow_delivery`** (§3.1) → **two messages, two levels**: "Sorry, this tenant didn't allow the delivery." for the tenant, "This branch is not accepting delivery orders right now." for the outlet → **and a downgrade now closes the customer side of the old hole** | §3.1 · §5.1 · §8 Q17 |
 | **and the honest consequence** | **the Starter loses the delivery's viral loop** → **the delivery is now sold to the tenant that already runs the operation** → **that is a narrower door and a cleaner pitch** → **and the Mapbox bill now lands on the plan priced to carry it** → **the Starter needs another hook** — that is the one open commercial decision | §1 · §8 Q19 · §11 |
 
+**Round six (Nov 14, 2026) — the outlet tab, the flexible plan, and the screens:**
+
+| the comment | the answer | where |
+|---|---|---|
+| **16 — the delivery settings tab must be in the outlet settings: the allow-delivery switch must be there, and the QR generation must be there too** | **it is an outlet tab — and it costs nothing new**, because the Settings screen is **already outlet-scoped** (`useOutletId()` → `/api/settings/{outlet_id}`) → **so the Delivery tab is per outlet by construction** → the switch, the fees, the slug, **the QR** and the preview are all that branch's → **one storefront and one QR per branch** → the QR route takes the outlet: `GET /api/delivery/outlets/{outlet_id}/qr` | §3.1 · §3.2 · §10.1 |
+| **17 — we do not allow a plan downgrade currently** | **recorded, and it closes the downgrade case** → **so the live case is the subscription LAPSING** (cancelled / expired / overdue) → **and the gate reads the subscription state for that** → **the flag is never reset by anything** → **so the open half is a nightly sweep that turns the flag off wherever the entitlement is gone** | §5.1 · §8 Q17 · §9.10 |
+| **18 — we are flexible to set the delivery features in any plan — it has to be flexible** | **it is flexible by construction** — the plan assignment is a `plan_features` row → **the default is one plan (Enterprise, the Inventory precedent)** → **moving it is a data change, not a code change** → **and the rule that keeps it flexible: the gate asks the plan list for the TAB NAME, never for a plan id** | §1 · §8 Q21 · §9.10 |
+| **19 — list out the screens we propose, including the settings tab** | **the full inventory is §3.2** — **eight POS screens** (the Delivery settings tab, Delivery Management, Delivery Zones, the staff order screen, the kitchen, the queue, the driver link, the delivery reports) **and nine customer screens** (the login, the menu, the item, the cart, the checkout, the payment, the order status, the map + tracking, the history) → **and the delivery's genuinely NEW screens are five**: the settings tab, the nav screen, the zones tab, the PWA and the driver link | §3.2 |
+
 ### 10.1 The delivery settings tab
+
+**This tab is an OUTLET settings tab** — the Settings screen is bound to the active
+outlet (`useOutletId()` → `/api/settings/${outletId}`), so **everything in it belongs
+to that branch** (§3.1, §9.10).
 
 **The contents, in the order the tenant needs them:**
 1. **the switch** — `allow_delivery` (**moved** here from the Order tab — one switch,
    one field, one place) → **and it starts OFF** → **subscribing the `delivery` feature
    gives the tenant this TAB, not the delivery** → the tenant turns the outlet on here,
-   per outlet → **and the flag outlives a plan change, so the storefront's gate is the
-   feature AND the flag** (§3.1);
+   per outlet → **and the storefront's gate is the feature AND the flag** (§3.1);
 2. **the storefront** — the slug (auto-generated from the outlet's name, editable),
    the URL, and the **QR** (a server-drawn PNG) with a copy + a download;
 3. **the fees** — the flat fee, the minimum order, the free-delivery threshold;
@@ -1690,6 +1837,11 @@ is the convenience.**
   Management entry copies that shape**
 - `frontend/src/hooks/useFeatures.jsx` — the feature constants (140), the fallback
   list (9), the tab name as the gate key (45)
+- `frontend/src/hooks/useSession.js` — `useOutletId` (21 → `resolveOutletId(session)`)
+  → **the live proof that the Settings screen is OUTLET-scoped** (§3.1, §9.10)
+- `frontend/src/App.jsx` — the header's **outlet switcher** (84-107 — the staff pick
+  the branch they work in) and the `/settings` route (487) → **the multi-outlet
+  story** (§3.1, §9.10)
 - `frontend/src/utils/paymentModes.js` — `isLiveOrder` (47), `canAdvanceOrder` (62),
   `availableModes` (79)
 - `frontend/src/utils/businessType.js` — the last-step wording (38)
@@ -1735,6 +1887,13 @@ is the convenience.**
   (`fetch_subscription_state` — the gate's second fact → §5.1)
 - `backend/app/services/subscription_gate.py` — the house's own access decision
   (`check_subscription_access` — reused, not reinvented → §5.1)
+- `website_api/app/routes/subscription.py` — the plan-change route
+  (`upgrade_subscription` — 1017) → **and its downgrade branch** (1389 — *"a downgrade
+  (or the same price): there is nothing to collect — the plan changes below, right
+  away"*) → **so the delivery gate must NOT rely on the no-downgrade rule** (§9.10)
+- `website_api/app/services/subscription_access.py` — `effective_access` (94 — the
+  14-day grace, the 7-day warning) → **the house's own answer for a lapsed
+  subscription** (§5.1, §9.10)
 - `backend/app/core/subscription_cache.py` — the subscription cache (the stale answer)
 - `backend/app/core/guest_session.py` — the guest token (51 — the `did`, `cid` and `pur`
   claims, the `loyalty_guest` purpose) → **and its 30-day TTL**
