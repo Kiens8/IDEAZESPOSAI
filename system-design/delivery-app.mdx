@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.8
+**Document Version:** 1.9
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -32,6 +32,20 @@ unchecked for every non-`user` caller — `auth.py:652` — and the delivery PWA
 with the public customer key) → **so the delivery app needs its own explicit check**
 (§5.1, §6, §9.8)**
 
+**v1.9 (Nov 14, 2026): the FIFTH round — the delivery is an ENTERPRISE module, sold
+like Inventory.** Kens's rule: *we can choose whether to assign this delivery feature
+to the plan. Let us just assign the delivery features to the Enterprise plan, like the
+inventory features. Then only the customers of a tenant that subscribes the Enterprise
+plan AND allows delivery at that outlet can access the delivery app.* → **so the plan
+decides WHO gets the delivery, not WHAT they get** → **the delivery module becomes
+four Enterprise-only feature rows (39-42), exactly the shape Inventory already has
+(8 rows, all Enterprise — §9.9)** → **and the customer app is now literally one
+configuration in the world** → **the entitlement check at the login therefore becomes
+the Enterprise check** → **and the stale `allow_delivery` flags no longer leak
+delivery: a tenant that downgrades from Enterprise loses the entitlement, and the
+login gate refuses it** → **the honest cost: the delivery is no longer the Starter's
+hook** → **the Starter needs another one** (§8 Q19).
+
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
 
@@ -54,29 +68,38 @@ no commission and no driver marketplace** — and the tenant's own drivers are a
 → **and the customer's WHOLE delivery app — the menu, the cart, the checkout, the
 kitchen status, the delivery status, the map and the live tracking — is ONE
 entitlement** (§5) → **so the thing we sell is the tenant's own operational depth**
-(the postcode zones, the analytics), **never the customer's experience** (§11.1).
+(the zones, the analytics), **never the customer's experience** (§11.1).
+→ **and since v1.9 that module sits on Enterprise** → **so the delivery is sold the
+way Inventory is sold** — to the tenant that is already running a real operation.
 
 **And the plan gating (the question) — mapped onto our REAL plans:**
 
-**And the plan gating (the question) — mapped onto our REAL plans — and v1.8 rewrote
-it: the delivery features are NOT distributed by the plan any more.**
+**And the plan gating (the question) — mapped onto our REAL plans — and v1.9 settled
+it: the delivery is ONE module on ONE plan.**
 
-**The rule (Kens, Nov 14, 2026):** *the delivery PWA is one product. It is not
-distributed by the plan. A tenant that has the delivery entitlement gets the WHOLE
-app — the menu, the cart, the checkout (pay online or cash on delivery), the order
-submit, the kitchen status, the delivery status, the map and the live tracking. The
-only check is at the delivery app's login.*
+**The rule (Kens, Nov 14, 2026):** *the delivery app must have the full features, and
+we should assign the delivery feature to the Enterprise plan like the inventory
+features. Then only the customers of a tenant that subscribes Enterprise AND allows
+delivery at that outlet can access the delivery app.*
 
-| Plan | The shape | The customer's delivery experience | The tenant's own depth |
-|---|---|---|---|
-| **Starter** | 1 outlet · 3 staff | **the FULL delivery app** — the order type, the storefront, the fee, the driver roster, the live progress, the map, the ETA and the live tracking | — |
-| **Basic** | 3 outlets · 10 staff | **the same, in full** (+ the outlets) | — |
-| **Pro** | 5 outlets · 25 staff | **the same, in full** | **Delivery Zones** (the postcode pricing) |
-| **Enterprise** | unlimited | **the same, in full** | the zones + **Delivery Analytics** (the delivery revenue, the fee per order) |
+**Two rules, and they answer different questions:**
+1. **the plan decides WHO gets the delivery** → **one plan (Enterprise) carries the
+   whole module** → **exactly the house's own pattern for Inventory** (§9.9);
+2. **the plan never decides WHAT they get** → **every entitled tenant's customer gets
+   the FULL app** — the menu, the cart, the checkout (pay online or cash on delivery),
+   the order submit, the kitchen status, the delivery status, the map and the live
+   tracking (§5.2, §5.3).
 
-→ **the third column is IDENTICAL in every row** → **that is the whole point of v1.8**
-→ **the fourth column is the tenant's back office** → **and it never changes a single
-customer-facing screen** (§5.3).
+| Plan | The shape | The delivery |
+|---|---|---|
+| **Starter** | 1 outlet · 3 staff | — **no delivery** |
+| **Basic** | 3 outlets · 10 staff | — **no delivery** |
+| **Pro** | 5 outlets · 25 staff | — **no delivery** |
+| **Enterprise** | unlimited | **the FULL delivery app** — the order type, the storefront, the fee, the driver roster, the live progress, the map, the ETA and the live tracking |
+
+→ **the delivery is an ENTERPRISE module, exactly like Inventory** → → **and the
+customer's side never branches** → → **there is exactly ONE delivery app in the
+world** (§5.3).
 
 > **The prices are NOT in this document — they are data.** The catalogue lives in the
 > **website API** (`plan_prices` — per currency, per billing cycle, with the
@@ -86,10 +109,10 @@ customer-facing screen** (§5.3).
 >
 > **The snapshot (for the reasoning below only — Nov 5 2026):** the **Starter is
 > free** (USD 0 / MYR 0) · Basic USD 10 / MYR 40 · Pro USD 20 / MYR 80
-> · Enterprise USD 50 / MYR 200 — **so the delivery on the Starter costs us
-> nothing and the free plan is the hook**.
+> · Enterprise USD 50 / MYR 200 — **and since v1.9 the delivery sits on Enterprise**
+> (**so the free plan is no longer the delivery's hook — §8 Q19**).
 
-**The split — what is in the core ("Delivery")**
+**The split — what is in the delivery module ("Delivery" — an Enterprise module)**
 - the delivery **order type** — just another order type (the address, the fee,
   the driver);
 - the **white-label storefront** — the branding fields **already exist**
@@ -111,23 +134,30 @@ customer-facing screen** (§5.3).
   they can happen in either order → **one delivery-aware rule** (§4.1) → **the shared
   machine is untouched**.
 
-**What is paid — and v1.8 narrowed it to the tenant's own back office**
-- **Delivery Zones** — the postcode pricing → **Pro**;
+**What is paid — and v1.9 narrowed it further: the WHOLE delivery module is
+Enterprise**
+- **Delivery** — the order type, the storefront, the customer app → **Enterprise**;
+- **Delivery Management** — the driver roster, the live progress → **Enterprise**;
+- **Delivery Zones** — the postcode pricing → **Enterprise**;
 - **Delivery Analytics** — the delivery revenue, the fee per order → **Enterprise**.
 
-→ **and nothing in the customer's app is paid** → **the map, the ETA, the live marker
-and the promised windows are all in the core entitlement** (§11.1) → → **the adoption
-argument holds even harder**: a tenant that switches to us **for the delivery** but has
-to pay for it loses the switch → **the customer experience is free on every plan** →
-**the paid tier is the tenant's own sophistication** (the zones, the analytics).
+→ **and nothing in the customer's app is paid SEPARATELY** → **the map, the ETA, the
+live marker and the promised windows are all inside the one entitlement** (§11.1) →
+→ **the adoption argument survives, but it MOVED**: a tenant that switches to us
+**for the delivery** has to be on Enterprise → **that is a real hurdle** → → **so the
+pitch to that tenant is not "delivery is free"** → **it is "your own drivers, no
+commission, no marketplace — and it comes with the operations module"** → **and the
+tenant that can afford it is exactly the tenant that already runs a real operation**
+(§9.9).
 
-**And the Starter argument — strengthened by the free Starter** — the delivery
+**And the Starter argument — and v1.9 retired it** — v1.8 argued that the delivery
 costs us **almost nothing on Starter** (one JSON column, the storefront reads the
-existing menu) → and the Starter is **free** → so the delivery is a
-**customer-acquisition feature** **and a viral loop**: the tenant's own
-customers order delivery → the tenant sees the orders arriving → the upgrade →
-**the zones and the analytics are the upgrade path** — **the
-delivery is the Starter's hook**.
+existing menu) → and the Starter is **free** → so the delivery was a
+**customer-acquisition feature** and the upgrade path → → **that argument is dead
+now**: the delivery is an **Enterprise** module → **the Starter carries no delivery
+at all** → → **so the Starter needs a DIFFERENT hook** → **and that is a commercial
+decision, not a design one** → **the honest statement is: the delivery is sold to
+the tenant that already runs the operation** (§8 Q19).
 
 **The feature rows (the house shape — `website_api/app/core/seed_features.py`):**
 
@@ -146,19 +176,30 @@ delivery is the Starter's hook**.
  "category": "delivery", "icon": "📊", "tab_name": "Delivery Analytics", "sort_order": 42},
 ```
 
-→ **the plan assignments** — `delivery` → **all four plans** ·
-`delivery_management` → **all four plans** · `delivery_zones` →
-**pro, enterprise** · `delivery_analytics` → **enterprise**.
+→ **the plan assignments — v1.9: ALL FOUR ON ENTERPRISE** — `delivery` →
+**enterprise** · `delivery_management` → **enterprise** · `delivery_zones` →
+**enterprise** · `delivery_analytics` → **enterprise**.
+
+→ **and that is exactly the Inventory precedent** — the live `features` table holds
+**eight** inventory rows (ids 33-40) and **every one of them is on Enterprise only**
+→ **the house already sells a whole module as one plan** → **the delivery follows
+the same rule** (§9.9).
 
 → **why FOUR rows and not one** — a feature row gates **ONE surface** → Kens asked
 for **two screens** → **the two screens need two rows** → and the tenant's own depth
 needs its own rows (the zones, the analytics) → **four rows in total**.
 
+→ **and the house does the same for Inventory** — **eight** rows for eight surfaces
+(ids 33-40: the ingredients, the recipes, the movements, the settings tab, the
+reports, the suppliers, the purchase orders, the transfers) → **one row per surface,
+all on one plan** → → **the delivery copies that shape exactly** (§9.9).
+
 → **and why TWO rows were RETIRED in v1.8** — `delivery_tracking` (the live driver
 marker) and `delivery_scheduling` (the promised windows) were **customer-facing** rows
 → **and v1.8's rule is that nothing customer-facing may be plan-tiered** → **so both
 folded INTO the core `delivery` entitlement** → **the customer's app is now one code
-path** (§5.3, §11.1).
+path** (§5.3, §11.1) → **and v1.9 removed the last tier question inside the app** →
+**there is only one plan that has the delivery at all**.
 
 > **The sort orders are 39-42 — the review found a collision** — the live `features`
 > table already **uses 21-24** (`tax` 21, `payment` 22, `receipt` 23,
@@ -198,7 +239,7 @@ path** (§5.3, §11.1).
 |---|---|
 | the **white-label storefront PWA** (the tenant's branding, the menu, the cart, the checkout, the kitchen status, the delivery status, the map, the live tracking) | a **marketplace** — the customers are the tenant's own |
 | the **delivery order type** in the core POS | a **driver APP** — the tenant's own drivers (the delivery ships a **one-page driver LINK**, not an app — §11.2, §12) |
-| the **fee settings** (the flat fee, the minimum, the free-delivery threshold, the radius) | **a tiered customer app** — the delivery PWA has **ONE code path**: the map, the route, the ETA, the live marker and the checkout are the same for every entitled tenant (§5.3, §11.1) |
+| the **fee settings** (the flat fee, the minimum, the free-delivery threshold, the radius) | **a tiered customer app** — the delivery PWA has **ONE code path**: the map, the route, the ETA, the live marker and the checkout are the same for every entitled tenant, and since v1.9 only ONE plan carries the delivery (§5.3, §11.1) |
 | the **driver assignment** (a name + a phone on the order) | a **courier matching engine** |
 | the **status flow** — a **parallel leg** on the order (assigned → out for delivery → delivered) **plus one delivery-aware settlement rule** (the handover and the money are two facts — §4.1), **the shared machine untouched** | **commission handling** — we take no commission |
 | the **prepay path** (the DuitNow QR / the online payment) | a **delivery schedule/dispatch optimiser** |
@@ -235,7 +276,7 @@ driver's name and phone on the order** → the customer can call them.
 | **the delivery settings** | `outlet_settings.delivery_settings` — a **column**, JSON, nullable | the fee, the minimum, the free threshold, the radius, the prepaid-only flag, the ETA |
 | **the delivery leg** | `delivery_orders` — a **table**, one row per delivery order | the leg's status, the driver (the id + the name/phone snapshot), the fee, the ETA, the geocode, the timestamps |
 | **the driver roster** | `delivery_drivers` — a **table** | **the tenant maintains a LIST** (add, edit, deactivate) → that is a table, never two fields on an order (§9.4 — v1.5 corrected this) |
-| **the coverage areas** | `delivery_zones` — a **table** (**Pro+**) | the postcode pricing → a maintained list (the core uses a **radius** instead — §3) |
+| **the coverage areas** | `delivery_zones` — a **table** (Enterprise) | the postcode pricing → a maintained list (the simple default is a **radius** instead — §3) |
 
 ```
 delivery_drivers      (the tenant's roster — tenant-scoped)
@@ -250,7 +291,7 @@ delivery_orders       (the leg — one row per delivery order)
   address_text, address_lat, address_lng,
   assigned_at, picked_up_at, delivered_at, created_at
 
-delivery_zones        (the Pro+ coverage areas — tenant-scoped, per outlet)
+delivery_zones        (the coverage areas — tenant-scoped, per outlet)
   id, customer_id, outlet_id, name, postcodes (JSON), fee, is_active, sort_order
 ```
 
@@ -318,8 +359,10 @@ decides the money.
 
 → **the zones moved OUT of the JSON** — v1.4 kept the postcode pricing inside the
 column → **but the tenant must MAINTAIN a list of them** (add, edit, remove a zone)
-→ a managed list is a **table** (`delivery_zones` — **Pro+**) → the core carries the
-**radius** instead (one number, no map, no geocode on the hot path).
+→ a managed list is a **table** (`delivery_zones` — **Enterprise**) → the simple default
+is the **radius** instead (one number, no map, no geocode on the hot path) → **both sit
+inside the same Enterprise module** → **so the radius versus the zones is a choice the
+TENANT makes, not a choice the plan makes.**
 
 > **But the column does need the ALTER — the review found it** — `create_all()`
 > (`main.py:44`) creates a **missing table** — it **never adds a column to an existing
@@ -364,7 +407,7 @@ tab and lives in the **Delivery** tab → **one switch, one place, one field**
 
 | the gate | what it decides | the level | the live truth |
 |---|---|---|---|
-| **the plan feature** (`delivery`) | does the tenant have the delivery module at all | the **tenant** | the feature row decides it → the Delivery tab's `feature` string is compared **exactly** against the plan's tab names (`Settings.jsx:25` → `useFeatures.jsx:45-47` → `admin.py:1052` returns the row's `tab_name` as the name) → **and the delivery PWA checks the SAME entitlement at its login** (§5.1) |
+| **the plan feature** (`delivery`) | does the tenant have the delivery module at all | the **tenant** | the feature row decides it → **since v1.9 only the ENTERPRISE plan carries the row** → the Delivery tab's `feature` string is compared **exactly** against the plan's tab names (`Settings.jsx:25` → `useFeatures.jsx:45-47` → `admin.py:1052` returns the row's `tab_name` as the name) → **and the delivery PWA checks the SAME entitlement at its login** (§5.1) |
 | **the outlet flag** (`outlet_settings.allow_delivery`) | does this outlet take delivery orders | the **outlet** | `models.py:456` (`default=False`) → off in every preset (`business_presets.py:41`) → the safe fallback is off (`order.py:681`) |
 
 → **subscribing gives the tenant the TAB, not the delivery** → the flag stays off at
@@ -726,7 +769,10 @@ check** (§6, §9.8).
    (`plan_features.fetch_plan_features()` → `plan_cache.get_features()`) → **the string
    is the tab name** (`admin.py:1052` hands the reader the `tab_name` under `name`) →
    **the check is `"Delivery" in the list`** → **and the reader is the same one the
-   staff app uses** → **one truth, two readers**;
+   staff app reads** → **one truth, two readers** → **and since v1.9 the row is on
+   Enterprise only → so this ONE check IS the Enterprise check** → **a tenant that
+   downgrades loses the entitlement, and the login gate refuses it** → **the stale
+   `allow_delivery` flags no longer leak delivery** (§3.1, §8 Q17);
 2. **the subscription** — the tenant's subscription state
    (`subscription_state.fetch_subscription_state()` →
    `subscription_cache.get_state()`) → **and the house's own decision**
@@ -751,6 +797,13 @@ can never express.**
    token lives **30 days** (`guest_session.py` — `GUEST_TOKEN_TTL_DAYS = 30`) →
    **so a customer who logged in before the tenant lapsed would otherwise keep
    ordering for a month** → **the login gate is the UX; the order gate is the truth.**
+
+→ **and the outlet's own switch is the third thing** — the tenant must have allowed
+delivery **at that outlet** (`outlet_settings.allow_delivery`) → **so a customer may
+log in to a tenant that has the delivery but reach an outlet that does not take
+delivery orders** → **that is the `outlet_not_delivering` message** (§3.1) → **the two
+levels stay distinct**: the **Enterprise plan** says the tenant HAS the delivery; the
+**outlet flag** says THIS branch takes delivery orders.
 
 **The messages** — the server returns a **machine code** and the app renders the
 **text** (the PWA is multi-lingual → the sentence belongs in the app's i18n):
@@ -796,11 +849,17 @@ exists.
 same screens, the same fields, the same choices. The plan is asked **once**, at the
 login (§5.1), and never again.
 
+→ **and since v1.9 that is no longer a rule we have to hold — it is a FACT**: only
+ONE plan carries the delivery → **there is exactly ONE configuration of the delivery
+app in the world** → **nothing to compare, nothing to branch on** → → **and the rule
+survives for the future**: if a second plan ever carries the delivery, the customer
+app must still be identical for both — **the plan decides WHO, never WHAT** (§1).
+
 **So the tenant's CONFIGURATION — not the tenant's plan — decides what the customer
 sees:**
-- the **fee** comes from the outlet's delivery settings (§3) → a tenant on the Starter
-  and a tenant on Enterprise run the SAME app; they just price it differently;
-- the **postcode zones** (Pro+) change the tenant's FEE MODEL — the customer still
+- the **fee** comes from the outlet's delivery settings (§3) → **every tenant that has
+  the delivery runs the SAME app**; they just price it differently;
+- the **postcode zones** change the tenant's FEE MODEL — the customer still
   sees one "delivery fee" line either way → **no extra screen, no extra field, no
   locked anything**;
 - the **analytics** (Enterprise) are the tenant's own reports → **they are not in the
@@ -874,7 +933,8 @@ customer key** → **every new route it calls needs all four**:
    `dining_customer_id` / the order token);
 2. **whose data?** → the tenant comes from the **session/slug** (never from a client
    parameter);
-3. **did they buy it?** → the tenant's plan must carry the delivery feature → **but the
+3. **did they buy it?** → the tenant's plan must carry the delivery feature →
+**which since v1.9 means the tenant is on ENTERPRISE** → **but the
    gate as it stands would REFUSE on day one — the review found it** — the gate compares
    the feature **name** against the plan's list (`auth.py:681`) and **raises 403**
    ("This feature is not included in your plan: Delivery") → **and the plan's list
@@ -916,13 +976,13 @@ prove ownership (the order token — **a new field**, or the existing
 
 | Phase | What | Size |
 |---|---|---|
-| **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **BEFORE any route declares the gate** (§9) | small |
+| **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on the ENTERPRISE plan** (the Inventory precedent — §9.9) — **BEFORE any route declares the gate** (§9) | small |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium |
 | **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) | medium |
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium |
-| **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, on every plan (§11.1) | medium |
-| **6 — the tenant's depth** | the zones (the postcode pricing — **Pro+**) · the analytics (**Enterprise**) → **and neither touches a customer-facing screen** (§5.3) | medium |
+| **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium |
+| **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium |
 
 **The order matters** — the core → the staff side → the storefront → the money:
 **the POS must be able to deliver before the customer can order delivery**.
@@ -931,8 +991,8 @@ and the money all in place → **and it is the only phase that buys a third-part
 bill** → **and since v1.8 it is NOT a plan row** — it ships with the entitlement on
 every plan (§11.1).
 → **but the customer's MAP and ETA are NOT in that phase** — they need the route and the
-geocode only → **so they ship with the storefront (phase 3)** → **and every entitled
-tenant has them** (§11.1).
+geocode only → **so they ship with the storefront (phase 3)** → **and every Enterprise
+delivery tenant has them** (§11.1).
 
 ---
 
@@ -941,9 +1001,11 @@ tenant has them** (§11.1).
 1. **Cash on delivery — the default?** — my pick: **allowed** (the tenant's driver
    collects) but **the tenant can require prepay** (`prepaid_only`) — my
    default: **allowed** (the Malaysian market expects it).
-2. **The zones — by postcode or by area name?** — **the core uses a radius** (one
-   number, no geocode on the hot path) and **Pro+ uses the postcodes** (the customer
-   types one → the fee) → **the zones became a table** (a managed list).
+2. **The zones — by postcode or by area name?** — **the default is a radius** (one
+   number, no geocode on the hot path) and **the managed alternative is the postcodes**
+   (the customer types one → the fee) → **the zones became a table** (a managed list)
+   → **and both sit inside the one Enterprise module** → **so this is a choice the
+   tenant makes, not a choice the plan makes.**
 3. **Does the delivery order carry a separate fee line?** — my pick: **yes** (a
    delivery-fee line item) → the invoice and the e-Invoice stay clean.
 4. **Do the tenants' customers get an account?** — **yes, and the v1.5 answer is
@@ -970,10 +1032,10 @@ tenant has them** (§11.1).
    (`delivery_drivers`) → **Kens's comment changed this**: a list the tenant
    *maintains* cannot live in two fields → and the order keeps a **snapshot** of the
    name and the phone, so the history survives an edit.
-10. **The coverage area — a radius or a polygon?** — **a radius in the core** (one
-    number) and **the postcode zones on Pro+** → a polygon needs a map editor and a
-    geocoder per vertex → **not before Pro** → **and the zones change the tenant's FEE
-    model, never a customer-facing screen** — the customer still sees one
+10. **The coverage area — a radius or a polygon?** — **a radius by default** (one
+    number) and **the postcode zones** as the managed alternative → a polygon needs a
+    map editor and a geocoder per vertex → **not yet** → **and the zones change the
+    tenant's FEE model, never a customer-facing screen** — the customer still sees one
     delivery-fee line either way (§5.3).
 11. **Where does the driver's live location come from?** — **three options** (§11) →
     my pick: **the driver link** for every entitled tenant, the tenant's own tracker
@@ -982,11 +1044,11 @@ tenant has them** (§11.1).
     **and it is no longer a tier question** (§11.1).
 12. **Which map and routing provider?** — **Geoapify for the geocoding (already
     integrated), Mapbox for the route, the ETA and the tiles** → §11.
-13. **Is the live driver marker on the free tier?** — **the question is gone** →
-    **v1.8 makes the whole delivery app one entitlement** → **the map, the ETA and the
-    live marker all ship with it, on every plan** → **so the marker is no longer a
-    paid tier** → **the paid depth is the tenant's own back office** (§1, §11.1) →
-    **and the honest risk stays the driver's cooperation** (§11.2).
+13. **Is the live driver marker on the free tier?** — **the question is dead twice
+    over** → **v1.8 made the whole delivery app one entitlement** (the map, the ETA and
+    the live marker all ship with it) → **and v1.9 put the entitlement on
+    Enterprise only** → **so there is no free tier to ask about** → **the honest risk
+    stays the driver's cooperation** (§11.2).
 14. **Does the driver's link write the money?** — **no** → the leg is the driver's, the
     money is the staff's (§12) → the driver may claim the cash they took, the staff
     record it.
@@ -998,20 +1060,29 @@ tenant has them** (§11.1).
     must be on (§3, §5).
 17. **What happens to the delivery flag when the plan lapses?** — **nothing resets it**
     (no `allow_delivery` anywhere in `website_api/`) → **so the storefront's gate is the
-    feature AND the flag** (§3.1) → **and v1.8 adds the customer-facing half**: the
-    login gate refuses a lapsed tenant with **"sorry this tenant didn't allow the
-    delivery"** (§5.1) → **but the tenant still cannot see the tab to switch its flag
-    off** → **do we warn the tenant?** (the tenant-side half of the same hole).
+    feature AND the flag** (§3.1) → **and v1.9 CLOSES the customer half**: the feature
+    is Enterprise-only → **a tenant that downgrades loses the entitlement** → **the
+    login gate refuses it** → **the stale flags cannot sell delivery** → **but the
+    tenant still cannot see the tab to switch its flag off** → **do we warn the
+    tenant?** (the tenant-side half of the same hole).
 18. **A customer who logged in BEFORE the tenant lapsed?** — **the guest token lives
     30 days** (`guest_session.py` — `GUEST_TOKEN_TTL_DAYS = 30`) → **so the login gate
     alone is a 30-day hole** → **the order-create route re-checks the same
     entitlement** (§5.1) → **the login gate is the UX; the order gate is the truth.**
-19. **The paid depth is now only the zones and the analytics — is that enough for
-    Enterprise?** — **a commercial question, not a design one** → **v1.8's rule is
-    that nothing customer-facing may be tiered** → **so an Enterprise the CUSTOMER can
-    see is not available to us** → **if we want a bigger Enterprise, it has to be a
-    tenant-side capability** (the dispatch console, the multi-outlet rules, the
-    reports) → **the open half: which ones do we build?** (§1, §11.1).
+19. **The delivery is Enterprise-only — so what IS the Starter's hook, and is the
+    delivery affordable at the Enterprise price?** — **a commercial question, not a
+    design one** → **the Starter loses the delivery's viral loop** (the tenant's own
+    customers order → the tenant sees the orders → the upgrade) → **and the Starter
+    needs a different hook** → **and the delivery's own running cost (the Mapbox
+    bill — ~$30 a month at 500 orders a day) now lands on the plan that is priced to
+    carry it** → **which is the first time the delivery's economics actually line up
+    with its price** (§1, §11).
+20. **The zones and the analytics now sit on Enterprise with everything else — do they
+    still earn their own rows?** — **the house says yes** (Inventory has eight rows,
+    all Enterprise — one per surface) → **and they keep the door open**: if a cheaper
+    plan ever carries the delivery, the zones and the analytics are the rows that
+    differentiate it → **but until then they are permission rows, not upsells** →
+    **keep them, or collapse the module to one row?** (§9.9).
 
 ---
 
@@ -1073,10 +1144,10 @@ the driver, not the order type**.
   , no courier matching → **all confirmed as the right call**;
 - **the plan split** — Starter / Basic / Pro / Enterprise → **the live plans are
   exactly those four** (Starter 20 features, Basic 24, Pro 30, Enterprise 40) → **but
-  the DELIVERY's split changed in v1.8** → **the customer's app is no longer split at
-  all** (§1, §5.3) → **the delivery adds 2 features to every plan, 1 more to Pro+ and
-  1 more to Enterprise** → **Starter 22 · Basic 26 · Pro 33 · Enterprise 44** after
-  the insert;
+  → **the DELIVERY's split changed in v1.8 and again in v1.9** → **the customer's app is
+  no longer split at all** (§1, §5.3) → **and since v1.9 all four delivery rows sit on
+  Enterprise** → **so the counts become Starter 20 · Basic 24 · Pro 30 · Enterprise
+  44** after the insert;
 - **the cancellation rule** — pending / confirmed / preparing → **matches the live
   `cancellable_statuses`** (`order.py:1287` and `1359`) and the customer app's own
   cancel (`pwa.py:618`);
@@ -1191,7 +1262,7 @@ proposed (Nov 12, 2026). What the code said:**
 | **the delivery app must contain the full features — the menu (the same as the order app), the cart, the checkout with pay online or cash on delivery, the order submit, then the kitchen status, then the delivery status — and the full map with live tracking through the whole delivery leg** | the customer app already has the menu (`customer-app/js/app.js:1282`), the order types (`:1328`), the cart (`:1538`), the payment-timing text (`:2035`), the online payment (`:2051`, `:2106`), the method chooser (`:2134`) and the order polling (`:2165`) → **the delivery PWA is the SAME app with the delivery order type** | the delivery app is a **separate entry point over the same components** → **no new ordering machinery** — the menu, the cart, the checkout and the payment are reused (§5.2) |
 | **checkout: pay online or cash on delivery** | the timing map is **one mode per order type** (`payment_modes.py:182`) and the `prepay_online` lock is global with a reason that is **false for the delivery app** (`payment_modes.py:47`) | the lock becomes **per order type** → the customer picks among the outlet's allowed modes (§4.2) → **and the choice is never a plan thing** (§5.3) |
 | **only check at the delivery app's login whether the tenant subscribed the delivery features; if not, show "sorry this tenant didn't allow the delivery"** | `require_plan_feature()` returns **unchecked** for every non-`user` caller (`auth.py:652`) → **and the delivery PWA calls with the public customer key** (`customer-app/js/app.js:11` — `customer_app_key`) → **so that dependency cannot gate the delivery app at all** | the delivery app needs **its own explicit server-side check** at the login — and **a second one on the order create**, because the guest token lives **30 days** (`guest_session.py` — `GUEST_TOKEN_TTL_DAYS = 30`) (§5.1) |
-| **the plan must not distribute the delivery PWA's features** | the only two customer-facing rows were `delivery_tracking` (the live marker) and `delivery_scheduling` (the promised windows) → **and the client cannot be trusted either**: the customer app's feature fetch **defaults to enabled** when the call fails (`customer-app/js/app.js:571`, `:579` — *"Default to enabled for demo"*) | **both rows are retired into the core entitlement** → **the PWA has ONE code path** → **the paid depth is the tenant's back office** — the zones (Pro+) and the analytics (Enterprise) (§1, §5.3, §11.1) |
+| **the plan must not distribute the delivery PWA's features** | the only two customer-facing rows were `delivery_tracking` (the live marker) and `delivery_scheduling` (the promised windows) → **and the client cannot be trusted either**: the customer app's feature fetch **defaults to enabled** when the call fails (`customer-app/js/app.js:571`, `:579` — *"Default to enabled for demo"*) | **both rows are retired into the core entitlement** → **the PWA has ONE code path** → **the paid depth is the tenant's back office** — the zones (Pro+) and the analytics (Enterprise) (§1, §5.3, §11.1) → **and v1.9 then put the whole module on Enterprise** (§9.9) |
 
 **And four facts the v1.8 work turned up:**
 - **the features endpoint does NOT look at the subscription's status** — it reads the
@@ -1210,6 +1281,40 @@ proposed (Nov 12, 2026). What the code said:**
   → **so the staff tab may still show** → **but the delivery app's own routes refuse
   anyway** → **the storefront's gate is the server's** (§6).
 
+### 9.9 The v1.9 review — the delivery follows the Inventory precedent
+
+**Kens's fifth round was checked against the live database and the live front end
+before anything was proposed (Nov 14, 2026). What the code said:**
+
+| the comment | what the live code said | the design consequence |
+|---|---|---|
+| **"we can choose whether to assign this delivery feature to the plan — let us just assign the delivery features to the Enterprise plan, like the inventory features"** | the live `features` table holds **eight** inventory rows (ids **33-40**: `inventory_ingredients`, `inventory_recipes`, `inventory_movements`, `Inventory`, `inventory_report`, `inventory_suppliers`, `inventory_purchase_orders`, `inventory_transfers`) → **and `plan_features` puts EVERY ONE of them on Enterprise** → **the house already sells a whole module as one plan** | the delivery copies that shape exactly → **four rows, 39-42, all on Enterprise** → **and the plan decides WHO gets the delivery, never WHAT they get** (§1, §9) |
+| **"only the customers of the tenant which subscribes Enterprise AND allows delivery at that outlet can access the delivery app"** | the tenant's entitlement is already one string (`"Delivery"`, the `tab_name` — `admin.py:1052`) → **and the outlet's own switch is a separate column** (`outlet_settings.allow_delivery` — `models.py:456`) → **the two were already distinct** | the login gate is **the entitlement** (→ Enterprise) **and the outlet's switch** → **two messages, two levels** (§5.1, §3.1) |
+| **the POS side must follow the same shape** | the Inventory settings tab is declared exactly like the Delivery tab would be: `{ id: 'inventory', labelKey: 'inventory', icon: Package, feature: 'Inventory' }` (`Settings.jsx:38`) → **one tab, one feature string** → and the Inventory **nav** carries **five** separate feature rows (`navItems.js:34-38` — `FEATURES.INVENTORY_INGREDIENTS`, `_RECIPES`, `_MOVEMENTS`, `INVENTORY_REPORT`, `_SUPPLIERS`) | the Delivery tab copies the Inventory tab's declaration → and the Delivery Management nav entry carries its own row → **one row per surface** (§9, §10.1) |
+
+**And four facts the v1.9 work turned up:**
+- **the four delivery rows all on Enterprise leaves the other three plans untouched**
+  → the live counts are Starter 20, Basic 24, Pro 30, Enterprise 40 → **after the
+  insert: Starter 20 · Basic 24 · Pro 30 · Enterprise 44** (§9.3);
+- **the Inventory module splits its category** — the settings-tab row is
+  `category = 'settings'` while the module's rows are `category = 'inventory'` → **the
+  delivery keeps ONE category (`delivery`) for all four rows** → the admin's feature
+  screen groups them together, which is a better fit for a module that is always
+  delivered together;
+- **the subscription rows confirm the plan is a `subscription_plans` id** (1 Starter,
+  2 Basic, 3 Pro, 4 Enterprise) → **so the delivery's `plan_features` insert targets
+  ONE id — 4** → **the smallest possible plan write** (phase 0);
+- **and the downgrade hole gets smaller** — a tenant that downgrades from Enterprise
+  loses the `delivery` row from its plan list → **the login gate refuses it** →
+  **the stale `allow_delivery` flags can no longer sell delivery** → **the customer
+  half of the old hole is closed** (§8 Q17).
+
+→ **and one commercial truth, stated plainly** — the Starter's hook was the delivery
+→ **it is not any more** → **the delivery is now sold to the tenant that already runs
+the operation** → **which is a clean pitch** ("your own drivers, no commission, no
+marketplace") **but it is a narrower door** → **the Starter needs another hook**
+(§8 Q19).
+
 ---
 
 ## 10. Kens's comments — the answers
@@ -1220,7 +1325,7 @@ proposed (Nov 12, 2026). What the code said:**
 |---|---|---|
 | **1 — the delivery settings tab: the switch on/off, the QR code (the URL path to the tenant's delivery app), the other related settings** | **a Settings tab** — the switch (the existing `allow_delivery`, **moved** into it), the QR + the storefront URL, the fees, the radius, the prepaid-only flag → **one feature row** (`delivery`) → the plan decides the tab | §3 · §10.1 |
 | **2 — the delivery management: the drivers, the delivery fees, the cover area, the related data and the progress of the current delivery status** | **a separate nav screen** (not a settings tab — it is live, not a configuration) — the driver roster, the fees, the coverage areas, today's deliveries with their live progress → **its own feature row** (`delivery_management`) | §3 · §10.2 |
-| **3 — add the screens into `website_api.db` → `features` so the plan decides which tenant can use them** | **four rows** since v1.8, sorted **39-42** — `delivery` and `delivery_management` on **all four plans**; the zones on **Pro+**; the analytics on **Enterprise** → and the gate key is the row's **`tab_name`** (`admin.py:1052`), so the two tab names are written exactly → **and the two customer-facing rows were retired** (§9.8) | §1 · §9 |
+| **3 — add the screens into `website_api.db` → `features` so the plan decides which tenant can use them** | **four rows**, sorted **39-42** — **and since v1.9 all four on ENTERPRISE** (the Inventory precedent — §9.9) → and the gate key is the row's **`tab_name`** (`admin.py:1052`), so the two tab names are written exactly → **and the two customer-facing rows were retired** in v1.8 (§9.8) | §1 · §9 |
 | **4 — the delivery PWA: a login and a sign-up; a signed-up customer becomes that tenant's customer; after the login the customer can order, submit and prepay** | **the tenant comes from the URL's slug** → the slug resolves the outlet → the outlet resolves the tenant → **the client never sends a tenant id** → the new delivery auth routes resolve the slug **server-side** and reuse the loyalty register's own logic → the customer is then a `customers` row of that tenant and carries `dining_customer_id` on the order | §5 · §10.3 |
 | **5 — the POS delivery order status flow: propose the best flow which does not go against the current ordering flow** | **a parallel leg** — the shared machine is **untouched** and `served` **is** the handover → **no new status values, no rewritten rule, no forked vocabulary** | §4 · §10.4 |
 
@@ -1230,7 +1335,7 @@ proposed (Nov 12, 2026). What the code said:**
 |---|---|---|
 | **6 — the order status flow for prepay and COD** | **the shared statuses stay; the delivery gets ONE settlement rule** — the handover and the money are two facts that may arrive in either order, and the order ends at the same state either way → **the live code proves the rule is needed** (today the money write jumps a delivery to `completed` while the food is on the road) | §4.1 |
 | **7 — prepay AND COD at the same time** | **the customer's choice** → the tenant's allow-list (`payment_modes`) → the order's mode is already a per-order snapshot → **the `prepay_online` lock becomes per order type** (its stated reason is false for the delivery app) | §4.2 |
-| **8 — how the driver marks the delivery successful** | **both, with a boundary** — the **POS** does the whole job on every plan (the driver link is a convenience, not a requirement) → the **driver link** moves the leg and claims the cash → **the money is the staff's write** | §12 |
+| **8 — how the driver marks the delivery successful** | **both, with a boundary** — the **POS** does the whole job on every tenant that has the delivery (the driver link is a convenience, not a requirement) → the **driver link** moves the leg and claims the cash → **the money is the staff's write** | §12 |
 | **9 — the map and the live tracking on the PWA** | **the map, the route and the ETA ship on EVERY plan** (they need no driver GPS and cost one route request per order) → **v1.8 moved the live driver marker into the entitlement too** → **so the whole customer app is one product** (§5.3, §11.1) | §11.1 |
 | **10 — the customer must register and belong to the tenant; the POS generates the QR and shares it** | **registration is mandatory on the delivery app** → the order carries `dining_customer_id` → **the Delivery tab** holds the QR + the **share row** (copy / WhatsApp / download) → the branded QR carries the tenant's logo → **and the tenant's registration switch must be on** | §3 · §5 |
 
@@ -1241,6 +1346,15 @@ proposed (Nov 12, 2026). What the code said:**
 | **11 — the delivery app must contain the full features: the menu (the same as the order app), the cart, the checkout with pay online or cash on delivery, the order submit, then the kitchen status, then the delivery status — and the full map and live tracking through the whole delivery leg** | **the whole app is ONE entitlement and ONE code path** — the journey is table §5.2, step by step → the menu, the cart and the payment are **reused from the customer app**, not rebuilt → **and the live tracking ships with the entitlement, not as a tier** | §5.2 · §5.3 · §11.1 |
 | **12 — only check at the delivery app's login whether the tenant subscribed the delivery features; if not, show "sorry this tenant didn't allow the delivery"** | **one server-side check at the login** → **the entitlement (the tab name) AND the subscription state** → **NOT `require_plan_feature()`** — it waves the customer key through (`auth.py:652`) → **and a second check on the order create**, because the guest token lives 30 days → **the message is Kens's sentence; the outlet's own switch gives a different one** | §5.1 · §6 · §9.8 |
 | **13 — the plan must not distribute the delivery PWA's features; it is too messy — it should be full access with one check at the login** | **agreed, and it is now structural** → **the two customer-facing feature rows are retired** (`delivery_tracking`, `delivery_scheduling`) → **the four rows are tenant-side only** → **the paid depth is the zones and the analytics** → **and the consequence is stated, not hidden**: the Enterprise tier's old headline (the live marker) is gone (§8 Q19) | §1 · §5.3 · §9.8 · §11.1 |
+
+**Round five (Nov 14, 2026) — the delivery becomes an ENTERPRISE module, like
+Inventory:**
+
+| the comment | the answer | where |
+|---|---|---|
+| **14 — we can choose whether to assign this delivery feature to the plan; let us just assign the delivery features to the Enterprise plan, like the inventory features** | **done, and it is the house's own pattern** — the live DB has **eight** inventory rows and **every one is on Enterprise** → the delivery gets **four** rows (39-42), **all on Enterprise** → **the plan decides WHO gets the delivery, never WHAT they get** → **the customer app is unchanged and still complete** | §1 · §9.9 |
+| **15 — only the customers of the tenant which subscribes Enterprise AND allows delivery at that outlet can access the delivery app** | **exactly the two gates the design already had** — the **Enterprise entitlement** (checked at the login, §5.1) **AND the outlet's `allow_delivery`** (§3.1) → **two messages, two levels**: "Sorry, this tenant didn't allow the delivery." for the tenant, "This branch is not accepting delivery orders right now." for the outlet → **and a downgrade now closes the customer side of the old hole** | §3.1 · §5.1 · §8 Q17 |
+| **and the honest consequence** | **the Starter loses the delivery's viral loop** → **the delivery is now sold to the tenant that already runs the operation** → **that is a narrower door and a cleaner pitch** → **and the Mapbox bill now lands on the plan priced to carry it** → **the Starter needs another hook** — that is the one open commercial decision | §1 · §8 Q19 · §11 |
 
 ### 10.1 The delivery settings tab
 
@@ -1253,8 +1367,8 @@ proposed (Nov 12, 2026). What the code said:**
 2. **the storefront** — the slug (auto-generated from the outlet's name, editable),
    the URL, and the **QR** (a server-drawn PNG) with a copy + a download;
 3. **the fees** — the flat fee, the minimum order, the free-delivery threshold;
-4. **the coverage** — the radius in km (0 = no limit) → **the postcode zones on
-   Pro+** (a separate tab);
+4. **the coverage** — the radius in km (0 = no limit) → **the postcode zones** (a
+   separate tab);
 5. **the money** — the prepaid-only switch (cash on delivery allowed or not);
 6. **the ETA** — the base estimate and the maximum (the provider's route refines it —
    §11);
@@ -1285,7 +1399,7 @@ a `feature` string compared **exactly** against the plan's tab names → the ent
    so the history survives an edit or a deactivation;
 3. **the fees** — the flat fee, the minimum, the free threshold (a quick edit — the
    settings tab holds the full form);
-4. **the coverage areas** — the radius (the core) and the postcode zones (Pro+).
+4. **the coverage areas** — the radius (the default) and the postcode zones (the managed list).
 
 → **the screen is feature-gated** — `navItems.js` — a nav entry
 (`{ path: '/delivery', icon: Bike, labelKey: 'nav.delivery', minRole: 'manager', feature: FEATURES.DELIVERY_MANAGEMENT }`)
@@ -1360,7 +1474,7 @@ the money is recorded (the postpay write) ────────────�
 |---|---|---|
 | **the address → the coordinates** | one per order | **Geoapify** (already integrated) |
 | **the coordinates → a place** (the address check) | one per order | **Geoapify** (already integrated) |
-| **is this address inside our coverage?** | a travel-time area | **Geoapify Isochrone API** (Pro+) |
+| **is this address inside our coverage?** | a travel-time area | **Geoapify Isochrone API** (Enterprise) |
 | **the route + the ETA** | one per order | **Mapbox Directions** |
 | **the map the customer looks at** | the tiles | **Mapbox GL JS** |
 | **the customer's MAP, the route and the ETA** | one route request per order | **Mapbox** — the tiles + Directions (**with the entitlement — §11.1**) |
@@ -1398,9 +1512,10 @@ the money is recorded (the postpay write) ────────────�
   $2/1,000);
 - the map loads: the customer's tracking page → **inside the free tier**;
 - → **the live tracking costs about the price of a coffee per order** → **and since
-  v1.8 it ships with the entitlement on EVERY plan** → **so the bill is spread across
-  every delivery tenant** (~$30 a month at 500 orders a day) → **which is a pricing
-  decision, not a design one** (§8 Q19).
+  v1.9 only ENTERPRISE tenants carry it** → **so the bill lands on the plan that is
+  priced to carry it** (~$30 a month at 500 orders a day) → **and the free Starter no
+  longer carries the map bill at all** → **which closes the cost question v1.8
+  opened** (§8 Q19).
 
 ### 11.1 The map AND the live tracking are CORE — one entitlement, one experience
 
@@ -1410,12 +1525,12 @@ full map and the live tracking.*
 
 → **so the split v1.6 drew (the map/ETA free, the MARKER paid) is gone** → **the map,
 the route, the ETA and the live driver marker all ship with the delivery
-entitlement** → **on every plan** → **because a customer-facing screen may not be
-tiered** (§5.3).
+entitlement** → **on every Enterprise tenant that has it** → **because a
+customer-facing screen may not be tiered** (§5.3).
 
 | the thing | does it need the driver's phone? | what it costs | the tier |
 |---|---|---|---|
-| **the map, the route and the ETA** | **no** | one Mapbox Directions request per order (~$2 per 1,000 → ~$30 a month at 500 orders a day) | **the entitlement** — every subscribed tenant |
+| **the map, the route and the ETA** | **no** | one Mapbox Directions request per order (~$2 per 1,000 → ~$30 a month at 500 orders a day) | **the entitlement** — every Enterprise tenant with the delivery on |
 | **the live driver MARKER** (the dot moving on the map) | **yes** | the driver's phone + the pings + the privacy work | **the entitlement** — the same row, no extra tier |
 
 → **the ETA without GPS is honest, not fake** → the route is the **outlet → customer**
@@ -1500,7 +1615,7 @@ frontend POS, or another tool?*
 the money** → **the tenant's cash flow is unchanged** → **and a COD delivery's two
 endings still land in either order** (§4.1).
 
-**Surface A — the POS (every plan, no new build).** The **Delivery Management** screen
+**Surface A — the POS (every Enterprise tenant that has the delivery, no new build).** The **Delivery Management** screen
 (§10.2) carries the leg's buttons: **Assign driver** → **Out for delivery** →
 **Delivered** → the same buttons, the same queue, the same server rules as today →
 **a tenant whose driver is also its staff needs nothing else** → **and this is the
@@ -1566,9 +1681,13 @@ is the convenience.**
   (268), the type chips (362, 459, 900)
 - `frontend/src/pages/Settings.jsx` — the settings tabs (25 — the
   `{id, labelKey, icon, feature}` shape), the delivery switch's current home (1203),
-  the `prepay_online` option (1274)
+  the `prepay_online` option (1274) → **and the Inventory tab (38) — the exact shape
+  the Delivery tab copies** (`{ id: 'inventory', labelKey: 'inventory', icon: Package,
+  feature: 'Inventory' }`)
 - `frontend/src/config/navItems.js` — the one navigation list (the
-  `{path, icon, labelKey, minRole, feature}` shape)
+  `{path, icon, labelKey, minRole, feature}` shape) → **and the Inventory nav entries
+  (34-38) — five surfaces, five feature rows, all Enterprise** → **the Delivery
+  Management entry copies that shape**
 - `frontend/src/hooks/useFeatures.jsx` — the feature constants (140), the fallback
   list (9), the tab name as the gate key (45)
 - `frontend/src/utils/paymentModes.js` — `isLiveOrder` (47), `canAdvanceOrder` (62),
@@ -1597,7 +1716,10 @@ is the convenience.**
   PIL factory)
 - `website_api/website_api.db` — the live `features` rows (the highest sort_order 38
   and three rows share it, the highest id 40, **no delivery row**), the
-  `plan_features` counts (Starter 20, Basic 24, Pro 30, Enterprise 40)
+  `plan_features` counts (Starter 20, Basic 24, Pro 30, Enterprise 40) → **the
+  INVENTORY PRECEDENT** (the eight inventory rows, ids 33-40, **every one on
+  Enterprise**) → **and the `subscription_plans` ids** (1 Starter, 2 Basic, 3 Pro,
+  4 Enterprise) → **so the delivery's `plan_features` insert targets ONE id — 4**
 - `website_api/app/core/seed_features.py` — the feature rows (18-45) and the
   **empty-table guard** (10-12 — **the seed never re-runs**)
 - `website_api/app/routes/admin.py` — the customer features endpoint (1001 — the
