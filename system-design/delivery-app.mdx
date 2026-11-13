@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.10
+**Document Version:** 1.11
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -61,6 +61,24 @@ hardcodes NO plan**: the assignment lives in `plan_features`, the default is one
 (the Inventory precedent), and moving the module is a data change, not a code change
 (§9.10). → **and §3.2 now lists EVERY screen we propose — the POS's eight and the
 customer's nine, the settings tab first.**
+
+**v1.11 (Nov 14, 2026): the SEVENTH round — one entitlement, TWO doors, and the
+counter path spelled out.** Kens's asks: *fold the staff-side plan gate into the
+document* → **and the question that came with it: can the customer order a delivery
+at the COUNTER, or only through the delivery PWA?** → **the answer is BOTH — and the
+live code settles it**: the delivery is a **first-class order type in the shared
+schema** (`order.py:262` — `order_type: str = "dine_in"  # dine_in, takeaway,
+delivery`) and **the counter already renders the Delivery button** (`StaffOrder.jsx:
+775`, `:1313`) → → **so it is ONE delivery order type with two doors in** → → **and
+the staff-side gate is now closed**: the counter's Delivery button is gated on the
+**flag alone** today (`allowed: settings?.allow_delivery !== false`) and the settings
+it reads are **not** plan-gated (`order.py:655`) → **so a tenant without the
+entitlement still sees a Delivery button at the counter** → → **the staff side now
+asks the SAME feature list the PWA login asks** → **one entitlement, two doors**
+(§4.3, §6, §9.11) → **and two honest differences between the doors are now on the
+record**: the counter has **no payment-mode chooser** (the staff screen *derives* the
+mode — `StaffOrder.jsx:769`) and the counter order has **no member** (so the customer
+gets no map and no tracking — §8 Q22).
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -468,7 +486,12 @@ never sees the tab and can never turn the flag on.**
 
 **The flag is not a decoration — three live things read it:**
 - `StaffOrder.jsx:775` / `:785` / `:1313` — the staff screen's **Delivery** order-type
-  button is gated on it → without it, every outlet would offer delivery;
+  button is gated on it → without it, every outlet would offer delivery → **and it is
+  gated on the FLAG ALONE** — `allowed: settings?.allow_delivery !== false` → **and the
+  settings it reads are not plan-gated** (`order.py:655` — `require_shared_permission`,
+  not `require_plan_feature`) → → **so a tenant without the delivery entitlement still
+  sees a Delivery button at the counter** → → **the staff side now asks the SAME
+  feature list the PWA login asks** (§4.3, §9.11);
 - `outlet_settings.py:335` — it builds `enabled_types`, the set that decides **which
   order types the `payment_timing` map may name** → the delivery's payment entry only
   exists while delivery is on → **and §4.2's customer choice sits on it**;
@@ -547,7 +570,7 @@ first (the tenant's own back office), then the customer's nine.
 | 1 | **Settings → Delivery** (the tab) | the POS **Settings** screen — **and that screen is already OUTLET-scoped** (`useOutletId()` → `/api/settings/{outlet_id}`) → **so this tab is a per-outlet tab** | the **`allow_delivery` switch** · the fees (the flat fee, the minimum, the free threshold) · the radius · the allowed payment modes (prepay / COD) · the ETA base + max · the customer-registration switch · **the QR** (the slug, the URL, the branded PNG, copy / WhatsApp / download) · the preview (the logo, the name, the colour) | the `delivery` feature row (the tab's `feature` string) |
 | 2 | **Delivery Management** | a **nav** screen (`navItems.js`, after Orders) | today's deliveries — the leg's chip, the driver, the ETA, the fee · the **driver roster** · the fees quick edit · the coverage | the `delivery_management` feature row |
 | 3 | **Delivery Zones** | a tab inside Delivery Management | the managed postcode list (the name, the postcodes, the fee) | the `delivery_zones` feature row |
-| 4 | **the staff order screen** | the existing screen (`StaffOrder.jsx`) | the **Delivery** order-type button · the address field · the delivery-fee line · the driver picker | `allow_delivery` **and** the `delivery` feature row (today: the flag only — §9.7) |
+| 4 | **the staff order screen** | the existing screen (`StaffOrder.jsx`) | the **Delivery** order-type button · the address field · the delivery-fee line · the driver picker → **and this is the COUNTER door — one of the two (§4.3)** | the `delivery` feature row **AND** `allow_delivery` (today: the flag only — §9.7, **closed in v1.11** — §9.11) |
 | 5 | **the kitchen screen** | the existing screen | the delivery type chip (never "Takeaway") · the delivery leg's third arm | the order's type |
 | 6 | **the order queue** | the existing screen | the delivery filter · the leg's next-step buttons (Assign driver → Out for delivery → Delivered) · the settlement rule (§4.1) | the order's type |
 | 7 | **the driver link** | **one page, not an app** (a signed token in the URL) | Start / Arrived / Delivered · the live pings · the cash claim | the per-order signed token (§12) |
@@ -824,6 +847,42 @@ offers `prepay_online` behind the connected-account switch (`Settings.jsx:1274`)
 it reaches the order's total → **the reports pick it up unchanged** (they filter on
 `payment_status == "paid"` — `reports.py:145`).
 
+### 4.3 The two doors — the counter and the PWA
+
+**Kens's question:** *so we allow the customer to order as delivery through the
+counter, or using the delivery PWA — is it?*
+
+→ **BOTH. And they produce the SAME order.**
+
+| | **the counter (the staff screen)** | **the delivery PWA** |
+|---|---|---|
+| **who orders** | the customer is on the phone or at the counter; **the staff enters it** | **the customer** orders for themselves |
+| **what creates the order** | the staff order screen (`StaffOrder.jsx`) → the **same** `OrderCreate` schema (`order.py:262` — `order_type: str = "dine_in"  # dine_in, takeaway, delivery`) → **the delivery is a first-class order type in the SAME route** | the PWA's own order route → **the same schema** |
+| **the order's shape** | `order_type = 'delivery'` + the address + the fee + the leg row | **identical** |
+| **the money** | the staff records it → **and the mode is DERIVED today** (`StaffOrder.jsx:769` — `modeFor(settings?.payment_timing, orderType)`) → **so the counter needs its own chooser** (§4.2) | **the customer chooses**: pay online, or cash on delivery (§4.2) |
+| **who sees the tracking** | the tenant, on the **Delivery Management** screen | the customer, on the **order status + the map** (§5.2) |
+| **the customer member** | **optional** — `dining_customer_id` is **nullable** (`models.py:224`) | **mandatory** — registration is required (§5) |
+
+→ **so it is ONE delivery order type with two doors in** → → **the kitchen, the leg,
+the driver, the settlement rule and the reports are the same either way** → → **and
+that is why the WhatsApp model works**: a tenant whose customers order by WhatsApp
+runs the **counter** path; a tenant whose customers scan the QR runs the **PWA** path
+→ **the tenant can run one, the other, or both** (§11.2).
+
+→ **and the ONE difference that matters — the customer's side** → **the PWA order
+carries a member** (`dining_customer_id`) → **so the customer gets the map, the live
+tracking, the ETA and the history** → → **a counter order has no member**
+(`models.py:224` — nullable) → → **so the customer gets NOTHING on their phone** — no
+map, no tracking, no history → **the tenant tracks it on the Delivery Management
+screen** → **and the fix is one field**: the order already accepts
+`dining_customer_id` (`order.py:262`) → **so the staff may LINK the member** (the
+customer is in the tenant's loyalty list) → **and then the customer gets the tracking
+link too** → **that is open question 22.**
+
+→ **and the entitlement guards BOTH doors** — the PWA's login gate (§5.1) **and the
+counter's Delivery button** (§9.11) → → **one entitlement, two doors, one order**
+(§6).
+
 ---
 
 ## 5. The customer app — the white-label PWA
@@ -888,6 +947,9 @@ can never express.**
    token lives **30 days** (`guest_session.py` — `GUEST_TOKEN_TTL_DAYS = 30`) →
    **so a customer who logged in before the tenant lapsed would otherwise keep
    ordering for a month** → **the login gate is the UX; the order gate is the truth.**
+4. **the COUNTER** → **the staff screen's Delivery button asks the SAME feature list**
+   (§9.11) → **and the order create re-checks** → → **so the entitlement guards BOTH
+   doors** — the PWA and the counter (§4.3).
 
 → **and the outlet's own switch is the third thing** — the tenant must have allowed
 delivery **at that outlet** (`outlet_settings.allow_delivery`) → **so a customer may
@@ -1055,6 +1117,11 @@ customer key** → **every new route it calls needs all four**:
    on the order create**, because the guest token lives **30 days**
    (`guest_session.py` — `GUEST_TOKEN_TTL_DAYS = 30`) → **the login gate is the UX;
    the order gate is the truth.**
+   → **and v1.11 adds the SECOND door** — the **counter** → **the staff screen's
+   Delivery button is gated on the FLAG ALONE** (`StaffOrder.jsx:775`, `:1313`) and
+   the settings it reads are **not** plan-gated (`order.py:655`) → **so a tenant
+   without the entitlement still sees a Delivery button** → → **the staff side asks
+   the same feature list** → **one entitlement, two doors, one order** (§4.3, §9.11).
 4. **does the UI agree?** → the tenant's plan, the nav, the PWA's visibility.
 
 **And the PWA's public key is NOT a staff credential** — the PWA's order routes must
@@ -1069,7 +1136,7 @@ prove ownership (the order token — **a new field**, or the existing
 |---|---|---|
 | **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium |
-| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) | medium |
+| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) | medium |
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium |
@@ -1182,6 +1249,22 @@ delivery tenant has them** (§11.1).
     precedent)** → **the rule is that no code may ask "is this tenant on plan X?" for
     the delivery** — it asks the plan list for the **tab name** (§5.1) → → **so the
     flexibility is free, as long as we keep asking the feature list** (§9.10).
+22. **A counter-entered delivery — does the customer get the map and the live
+    tracking?** — **no, not today**: the PWA order carries a member
+    (`dining_customer_id`) and a counter order usually does not (`models.py:224` —
+    nullable) → **so the customer gets nothing on their phone** → → **the fix is one
+    field**: the order already accepts `dining_customer_id` (`order.py:262`) → **so
+    should the staff be able to LINK the member** (the customer is in the tenant's
+    loyalty list) → **then the customer gets the tracking link too** → → **or is a
+    counter delivery deliberately "tenant-tracked, not customer-tracked"?**
+    (§4.3, §9.11)
+23. **At the counter, who picks the payment mode?** — **today nobody picks**: the staff
+    screen **derives** it (`StaffOrder.jsx:769` — `modeFor(settings?.payment_timing,
+    orderType)`) → **so a counter delivery is always the outlet's single configured
+    mode** → **but the PWA lets the customer choose** among the outlet's allowed modes
+    (§4.2) → → **the same allow-list, two choosers** → **the staff get a chooser for
+    the delivery type too, or the counter stays on the outlet's single mode?**
+    (§4.2, §4.3)
 
 ---
 
@@ -1450,6 +1533,31 @@ marketplace") **but it is a narrower door** → **the Starter needs another hook
 `plan_features` row — data, so flexible) · **WHAT** the customer sees (one complete
 app, never tiered) → **and the screens are listed** (§3.2).
 
+### 9.11 The v1.11 review — one entitlement, two doors
+
+**Kens's seventh round was checked against the live code before anything was proposed
+(Nov 14, 2026). What the code said:**
+
+| the comment | what the live code said | the design consequence |
+|---|---|---|
+| **fold the staff-side plan gate into the document** | the counter's Delivery button is gated on the **flag alone** — `allowed: settings?.allow_delivery !== false` (`StaffOrder.jsx:775` and `:1313`) → **and the settings it reads come from the shared endpoint** (`order.py:655` — `require_shared_permission("settings:read")`, **not** a plan gate) → **so a tenant without the delivery entitlement still sees a Delivery button at the counter** | the staff screen asks the **SAME feature list** the PWA login asks → **one entitlement, two doors** (§4.3, §6) |
+| **can the customer order a delivery at the counter, or only through the PWA?** | the delivery is a **first-class order type in the shared schema** (`order.py:262` — `order_type: str = "dine_in"  # dine_in, takeaway, delivery`) → **and the counter already renders the button** (`StaffOrder.jsx:775`) → **and the counter's mode is DERIVED** (`StaffOrder.jsx:769` — `modeFor(settings?.payment_timing, orderType)`) → **there is no chooser at the counter today** | **BOTH doors, one order** → **and the counter needs its own mode chooser** among the outlet's allowed modes → **otherwise a counter delivery is always the outlet's single configured mode** (§4.3, §8 Q23) |
+| **what does a counter delivery lack that a PWA delivery has?** | `dining_customer_id` is **nullable** (`models.py:224`) → **and the order create accepts it** (`order.py:262`) → **so a counter order CAN have a member — nobody sets one** | the customer gets **no map, no live tracking, no history** → **the fix is one field** — **the staff may link the member** → **open question 22** (§4.3) |
+
+**And three facts the v1.11 work turned up:**
+- **the delivery type is already in `ORDER_TYPES`** (`payment_modes.py:36`) → **so the
+  counter's delivery order needs no new type** — it is the same value the PWA uses →
+  **one order type, two doors**;
+- **`availableModes()` filters `prepay_online` out of the WHOLE product**
+  (`paymentModes.js:79`) — its stated reason is *"the customer app has no checkout, so
+  the option would be a promise the product cannot keep"* → **which is FALSE for the
+  delivery app** (§4.2) → **and false at the counter too** → **so the per-order-type
+  lock has to cover BOTH doors**;
+- **the staff screen's own rules gate on the money** (`isLiveOrder` —
+  `paymentModes.js:47`; `canAdvanceOrder` — `:62`) → **so a COD delivery whose cash is
+  recorded before the handover loses its button** → **the delivery's own settlement
+  rule covers both doors** (§4.1).
+
 ---
 
 ## 10. Kens's comments — the answers
@@ -1499,6 +1607,13 @@ Inventory:**
 | **17 — we do not allow a plan downgrade currently** | **recorded, and it closes the downgrade case** → **so the live case is the subscription LAPSING** (cancelled / expired / overdue) → **and the gate reads the subscription state for that** → **the flag is never reset by anything** → **so the open half is a nightly sweep that turns the flag off wherever the entitlement is gone** | §5.1 · §8 Q17 · §9.10 |
 | **18 — we are flexible to set the delivery features in any plan — it has to be flexible** | **it is flexible by construction** — the plan assignment is a `plan_features` row → **the default is one plan (Enterprise, the Inventory precedent)** → **moving it is a data change, not a code change** → **and the rule that keeps it flexible: the gate asks the plan list for the TAB NAME, never for a plan id** | §1 · §8 Q21 · §9.10 |
 | **19 — list out the screens we propose, including the settings tab** | **the full inventory is §3.2** — **eight POS screens** (the Delivery settings tab, Delivery Management, Delivery Zones, the staff order screen, the kitchen, the queue, the driver link, the delivery reports) **and nine customer screens** (the login, the menu, the item, the cart, the checkout, the payment, the order status, the map + tracking, the history) → **and the delivery's genuinely NEW screens are five**: the settings tab, the nav screen, the zones tab, the PWA and the driver link | §3.2 |
+
+**Round seven (Nov 14, 2026) — the staff-side gate, and the two doors:**
+
+| the comment | the answer | where |
+|---|---|---|
+| **20 — fold the staff-side plan gate into the document** | **done** — the counter's Delivery button is gated on the **flag alone** today (`StaffOrder.jsx:775`, `:1313` — `allowed: settings?.allow_delivery !== false`) and the settings it reads are **not** plan-gated (`order.py:655`) → **so a tenant without the entitlement still sees a Delivery button** → **the staff side now asks the same feature list the PWA login asks** → **one entitlement, two doors** | §3.1 · §4.3 · §6 · §9.11 |
+| **21 — can the customer order a delivery at the counter, or only through the delivery PWA?** | **BOTH** — the delivery is a **first-class order type in the shared schema** (`order.py:262`) and the counter already renders the button (`StaffOrder.jsx:775`) → **one order type, two doors, one flow** → **and the two honest differences are now on the record**: the counter **has no payment-mode chooser** today (the staff screen derives the mode — `StaffOrder.jsx:769`) and the counter order **has no member** by default → so the customer gets no map and no tracking → **open questions 22 and 23** | §4.3 · §8 Q22 · §8 Q23 · §9.11 |
 
 ### 10.1 The delivery settings tab
 
@@ -1804,13 +1919,15 @@ is the convenience.**
 - `backend/app/models/models.py` — the branding (`restaurant_name` 379,
   `restaurant_logo` 380, `brand_color` 383, `operating_hours` 390), the delivery
   switch (`allow_delivery` 456), the delivery address (`delivery_address` 280),
-  the member link (`dining_customer_id` 224), the order's own mode
+  the member link (`dining_customer_id` 224 — **nullable**), the order's own mode
   (`payment_mode` 255), the registration switch (`customer_registration_enabled` 483),
   `Payment` (352 — the `duitnow_qr` default 358)
-- `backend/app/routes/order.py` — the order type (`order_type` 262), the customer app's
+- `backend/app/routes/order.py` — the order type (`order_type` 262 — **the delivery
+  is a first-class type in the shared schema**), the customer app's
   outlet answer (`allow_delivery` 709), the status route (949 — **no whitelist**
   ), the payments endpoint (1013 — **staff-gated**), the cancellation list (1287
-  and 1359)
+  and 1359) → **and the shared settings endpoint (655 — `require_shared_permission`,
+  NOT plan-gated → the counter's gate gap)** (§9.11)
 - `backend/app/services/order_service.py` — the delivery address in the write path
   (505), the mode stamped per order (551), the payment write (791)
 - `backend/app/services/payment_modes.py` — `ORDER_TYPES` (36), the locked online mode
@@ -1843,10 +1960,13 @@ is the convenience.**
   the branch they work in) and the `/settings` route (487) → **the multi-outlet
   story** (§3.1, §9.10)
 - `frontend/src/utils/paymentModes.js` — `isLiveOrder` (47), `canAdvanceOrder` (62),
-  `availableModes` (79)
+  `availableModes` (79 — **it filters `prepay_online` out of the whole product**),
+  `modeFor` (70 — **the counter derives the mode**)
 - `frontend/src/utils/businessType.js` — the last-step wording (38)
 - `frontend/src/pages/StaffOrder.jsx` — the delivery order-type buttons (775, 785,
-  1313 — the gate is the FLAG, not a plan feature)
+  1313 — the gate is the FLAG, not a plan feature) → **and the mode is DERIVED**
+  (769 — `modeFor(settings?.payment_timing, orderType)`) → **so there is no chooser
+  at the counter** (§4.3, §9.11)
 - `frontend/src/hooks/useSettings.js` — the POS's own fallback defaults (46 —
   `allow_delivery: true`, the one default that must become `false`)
 - `backend/app/services/business_presets.py` — the presets (`allow_delivery: False` — 41)
