@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.12
+**Document Version:** 1.13
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -61,6 +61,33 @@ hardcodes NO plan**: the assignment lives in `plan_features`, the default is one
 (the Inventory precedent), and moving the module is a data change, not a code change
 (§9.10). → **and §3.2 now lists EVERY screen we propose — the POS's eight and the
 customer's nine, the settings tab first.**
+
+**v1.13 (Nov 14, 2026): the NINTH round — the COUNTER gets its payment-mode
+chooser.** Kens's ask: *"Ok. Follow your recommendation for counter payment mode
+chooser."* → **and the live code turned the recommendation into a SERVER change, not
+a UI change** → **because the server OWNS the mode today**: the order create stamps
+it from the outlet's map (`order_service.py:551` — `payment_mode = resolve_mode(
+outlet_settings, order_type)`) → → **and `create_order` takes NO `payment_mode`
+parameter at all** (`order_service.py:494-519`) → **so a chooser painted on the staff
+screen would be SILENTLY OVERWRITTEN by the server** → → **the counter's chooser is
+therefore a contract, not a control**: `create_order` gains a **per-order
+`payment_mode` override**, and the server **resolves the staff's choice against the
+outlet's ALLOWED set** → **the client picks from the list; the client never names a
+mode** (the house principle — the client never decides the money) → → **and the
+allow-list is ONE list for both doors** — the PWA's checkout and the counter's
+chooser read the **same** set → → **so the tenant configures once** (§4.2.1, §9.13).
+→ **and the three modes mean different things at the counter**: `postpay` = **pay the
+driver** (the driver's cash claim at the handover — §4.1) · `prepay_at_counter` = **pay
+now at the till** · `prepay_online` = **already paid online** → **the staff record
+that payment** (the staff-gated payments endpoint — `order.py:1013`) → **and the
+kitchen's gate releases the order** (`requires_payment_first` / `status_after_payment`
+— `payment_modes.py:127`, `:142`) → → **so the chooser at the counter is not a second
+copy of the PWA's checkout — it is the same three answers, read by the tenant** (§4.2.1).
+→ **and one live finding that makes it work**: a delivery order resolves to
+**`postpay` today by fallback** — the default map has **no `delivery` key**
+(`models.py:423` — `{"dine_in": "postpay", "takeaway": "postpay"}`) → **so every
+delivery is "pay the driver" until the tenant says otherwise** → **which is the safe
+default and stays the default** (§4.2.1).
 
 **v1.12 (Nov 14, 2026): the EIGHTH round — THE RULE: a delivery order must belong to
 a customer of the tenant.** Kens's ask: *"I think 1 rules for delivery type must be
@@ -592,7 +619,7 @@ first (the tenant's own back office), then the customer's nine.
 | 1 | **Settings → Delivery** (the tab) | the POS **Settings** screen — **and that screen is already OUTLET-scoped** (`useOutletId()` → `/api/settings/{outlet_id}`) → **so this tab is a per-outlet tab** | the **`allow_delivery` switch** · the fees (the flat fee, the minimum, the free threshold) · the radius · the allowed payment modes (prepay / COD) · the ETA base + max · the customer-registration switch · **the QR** (the slug, the URL, the branded PNG, copy / WhatsApp / download) · the preview (the logo, the name, the colour) | the `delivery` feature row (the tab's `feature` string) |
 | 2 | **Delivery Management** | a **nav** screen (`navItems.js`, after Orders) | today's deliveries — the leg's chip, the driver, the ETA, the fee · the **driver roster** · the fees quick edit · the coverage | the `delivery_management` feature row |
 | 3 | **Delivery Zones** | a tab inside Delivery Management | the managed postcode list (the name, the postcodes, the fee) | the `delivery_zones` feature row |
-| 4 | **the staff order screen** | the existing screen (`StaffOrder.jsx`) | the **Delivery** order-type button · the address field · the delivery-fee line · the driver picker · **the MEMBER step — required for a delivery** (§4.3.1) → **and this is the COUNTER door — one of the two (§4.3)** | the `delivery` feature row **AND** `allow_delivery` (today: the flag only — §9.7, **closed in v1.11** — §9.11) |
+| 4 | **the staff order screen** | the existing screen (`StaffOrder.jsx`) | the **Delivery** order-type button · the address field · the delivery-fee line · the driver picker · **the MEMBER step — required for a delivery** (§4.3.1) · **the PAYMENT-MODE chooser — the outlet's allowed modes** (§4.2.1) → **and this is the COUNTER door — one of the two (§4.3)** | the `delivery` feature row **AND** `allow_delivery` (today: the flag only — §9.7, **closed in v1.11** — §9.11) |
 | 5 | **the kitchen screen** | the existing screen | the delivery type chip (never "Takeaway") · the delivery leg's third arm | the order's type |
 | 6 | **the order queue** | the existing screen | the delivery filter · the leg's next-step buttons (Assign driver → Out for delivery → Delivered) · the settlement rule (§4.1) | the order's type |
 | 7 | **the driver link** | **one page, not an app** (a signed token in the URL) | Start / Arrived / Delivered · the live pings · the cash claim | the per-order signed token (§12) |
@@ -869,6 +896,79 @@ offers `prepay_online` behind the connected-account switch (`Settings.jsx:1274`)
 it reaches the order's total → **the reports pick it up unchanged** (they filter on
 `payment_status == "paid"` — `reports.py:145`).
 
+#### 4.2.1 The counter's chooser — the same allow-list, two doors
+
+**Kens's decision (v1.13):** *"follow your recommendation for counter payment mode
+chooser."* → **the counter DOES get a chooser** → **and the live code decides what
+that means.**
+
+**First — the finding that shapes everything: the SERVER owns the mode.**
+- the order create stamps the mode from the outlet's map — `order_service.py:551`:
+  `payment_mode = resolve_mode(outlet_settings, order_type)` → **and
+  `resolve_mode` reads ONE mode for the order type** (`payment_modes.py:185-207` —
+  `raw.get(order_type)`, missing → postpay, unknown → warn + postpay);
+- **`create_order` takes NO `payment_mode` parameter** (`order_service.py:494-519`) →
+  **so today the client cannot influence the mode at all**;
+- and the POS screen merely **mirrors** the server — `StaffOrder.jsx:769`:
+  `modeFor(settings?.payment_timing, orderType)` → **so a chooser painted on the
+  staff screen would be SILENTLY OVERWRITTEN by the server** → → **the chooser is
+  therefore a CONTRACT, not a control.**
+
+**so the proposal — four pieces:**
+
+| # | the piece | the shape |
+|---|---|---|
+| **1** | **the outlet's delivery settings gain the ALLOWED modes** | the same field §4.2 already proposed — the allowed set on the outlet's settings → **ONE list, read by BOTH doors** → **the PWA's checkout and the counter's chooser show the same answers** → **the tenant configures once** |
+| **2** | **`create_order` gains a per-order `payment_mode` override** | **and the server resolves it against the allow-list** → **the staff picks from the list; the staff never names a mode** → **a mode outside the list is REFUSED with a clear reason** → **the client's choice can never widen the tenant's money rules** |
+| **3** | **the default is the outlet's configured mode** | `payment_timing.delivery` remains the outlet's single configured mode → **so the chooser's default = that mode** → **and a tenant who allows only ONE mode sees NO chooser** (the derived mode IS the answer) → **the UI stays quiet for the simple case** |
+| **4** | **the snapshot semantics are UNCHANGED** | the chosen mode is **stamped on the order** (`models.py:251` — *"a SNAPSHOT of the outlet's payment_timing map at the moment the order was created"*; the kitchen's gate reads THE ORDER's mode, never the current setting) → → **so a tenant who changes the setting mid-service never moves the orders already in flight** → **and the delivery's settlement rule follows the ORDER's mode** (§4.1) |
+
+**and the three modes read differently at the counter — this is the part the staff
+actually see:**
+
+| the mode | at the counter it means | the flow |
+|---|---|---|
+| **`postpay`** | **pay the driver** (cash on delivery) | the order runs → **the driver claims the cash at the handover** (§4.1) |
+| **`prepay_at_counter`** | **pay now, at the till** | the customer pays before the kitchen starts → **the kitchen's gate waits for the money** (`requires_payment_first` — `payment_modes.py:127`) |
+| **`prepay_online`** | **already paid online** | the staff **record that payment** (the staff-gated payments endpoint — `order.py:1013`) → **the order is released** (`status_after_payment` — `payment_modes.py:142`) → **so the kitchen's gate lifts** |
+
+→ **and this is the same three answers the PWA offers** → **so the staff and the
+customer speak the same language about the money** → **which is the whole point of
+one allow-list, two choosers.**
+
+**and the lock must become PER ORDER TYPE — for both doors.** Today
+`availableModes()` filters `prepay_online` out of the **WHOLE product**
+(`paymentModes.js:79-81` — *"The modes a tenant may pick RIGHT NOW"*), and the
+backend refuses it for the whole map (`LOCKED_MODES` — `payment_modes.py:47-53`; the
+connected-account check — `outlet_settings.py:317`; the country rule —
+`ONLINE_COUNTRIES` — `payment_modes.py:72`) → **but the reason the lock prints is
+about the in-venue app** — *"the customer app has no checkout, so the option would be
+a promise the product cannot keep"* → → **that reason is FALSE for the delivery app,
+and it is FALSE at the counter** → → **so the lock becomes per order type**: the
+**delivery** may take `prepay_online` when the outlet is in **Malaysia** and has a
+**connected account** → **`dine_in` and `takeaway` stay locked** → **and the country
+rule stays PER OUTLET** (`ONLINE_COUNTRIES` — the same tenant may own a Malaysian
+outlet and another one somewhere else) → **and the settings write validates the
+delivery's list the same way it validates the map today** (`normalize_map` —
+`payment_modes.py:238`, called from `outlet_settings.py:339` — and note that
+`enabled_types` there **already includes `delivery`**, `outlet_settings.py:337-341`).
+
+**and the safe default is already in place.** The outlet's default map has **no
+`delivery` key** (`models.py:423` — `{"dine_in": "postpay", "takeaway": "postpay"}`)
+→ **so `resolve_mode` falls back to `postpay`** → **so every delivery is "pay the
+driver" until the tenant says otherwise** → **and that is the safe default: no
+delivery is ever accidentally pre-paid.** → **and the presets leave it that way on
+purpose** — *"the delivery entry, for example — delivery is switched on per tenant,
+and every preset leaves it off"* (`business_presets.py:139`) → **so a tenant turning
+delivery on gets the conservative mode first, and then chooses** (§4.2).
+
+**and the honest cost:** the counter staff pick one extra thing on a delivery order →
+→ **and the benefit is that the tenant does not have to be wrong about its own
+customers** — a tenant that allows both can take a cash delivery at the counter AND
+an online one at the door, **from one setting**.
+
+---
+
 ### 4.3 The two doors — the counter and the PWA
 
 **Kens's question:** *so we allow the customer to order as delivery through the
@@ -881,7 +981,7 @@ counter, or using the delivery PWA — is it?*
 | **who orders** | the customer is on the phone or at the counter; **the staff enters it** | **the customer** orders for themselves |
 | **what creates the order** | the staff order screen (`StaffOrder.jsx`) → the **same** `OrderCreate` schema (`order.py:262` — `order_type: str = "dine_in"  # dine_in, takeaway, delivery`) → **the delivery is a first-class order type in the SAME route** | the PWA's own order route → **the same schema** |
 | **the order's shape** | `order_type = 'delivery'` + the address + the fee + the leg row | **identical** |
-| **the money** | the staff records it → **and the mode is DERIVED today** (`StaffOrder.jsx:769` — `modeFor(settings?.payment_timing, orderType)`) → **so the counter needs its own chooser** (§4.2) | **the customer chooses**: pay online, or cash on delivery (§4.2) |
+| **the money** | the staff records it → **and the mode is DERIVED today** (`StaffOrder.jsx:769` — `modeFor(settings?.payment_timing, orderType)`) → **and v1.13 gives the counter a CHOOSER** (§4.2.1) — **but it is a contract, not a control**: the server owns the mode (`order_service.py:551`) and resolves the staff's choice against the outlet's allow-list | **the customer chooses**: pay online, or cash on delivery → **from the SAME allow-list** (§4.2, §4.2.1) |
 | **who sees the tracking** | the tenant, on the **Delivery Management** screen | the customer, on the **order status + the map** (§5.2) |
 | **the customer member** | **optional** — `dining_customer_id` is **nullable** (`models.py:224`) | **mandatory** — registration is required (§5) |
 
@@ -1196,7 +1296,7 @@ prove ownership (the order token — **a new field**, or the existing
 |---|---|---|
 | **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium |
-| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) | medium |
+| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium |
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium |
@@ -1322,13 +1422,18 @@ delivery tenant has them** (§11.1).
     **so the delivery becomes the one order type where a member is mandatory** →
     **and every delivery therefore has the map, the live tracking, the ETA and the
     history** (§4.3.1, §9.12)
-23. **At the counter, who picks the payment mode?** — **today nobody picks**: the staff
-    screen **derives** it (`StaffOrder.jsx:769` — `modeFor(settings?.payment_timing,
-    orderType)`) → **so a counter delivery is always the outlet's single configured
-    mode** → **but the PWA lets the customer choose** among the outlet's allowed modes
-    (§4.2) → → **the same allow-list, two choosers** → **the staff get a chooser for
-    the delivery type too, or the counter stays on the outlet's single mode?**
-    (§4.2, §4.3)
+23. **At the counter, who picks the payment mode?** → **ANSWERED in v1.13 — YES, the
+    staff get a chooser.** Kens's decision: *"follow your recommendation for counter
+    payment mode chooser."* → **but it is a CONTRACT, not a control**: the server owns
+    the mode (`order_service.py:551` — `resolve_mode(outlet_settings, order_type)`) and
+    `create_order` takes **no** `payment_mode` parameter today
+    (`order_service.py:494-519`) → **so a screen-only chooser would be silently
+    overwritten** → → **`create_order` gains a per-order `payment_mode` override,
+    resolved against the outlet's ALLOWED set** → **the staff pick from the list; they
+    never name a mode** → → **one allow-list, two doors** → **the default stays the
+    outlet's configured mode** (a one-mode tenant sees no chooser) → **and the
+    snapshot semantics are unchanged** → **and the three modes read differently at
+    the counter**: pay the driver / pay now at the till / already paid online (§4.2.1)
 
 ---
 
@@ -1649,6 +1754,31 @@ app, never tiered) → **and the screens are listed** (§3.2).
 staff must identify the customer → → **the tenant accepts that cost**, because the
 alternative is a delivery the customer can never track.
 
+### 9.13 The v1.13 review — the counter's chooser, and the server that owns the money
+
+**Kens's ninth round was checked against the live code before anything was proposed
+(Nov 14, 2026).**
+
+| the comment | what the live code said | the design consequence |
+|---|---|---|
+| **"follow your recommendation for counter payment mode chooser"** | the order create **stamps** the mode from the outlet's map — `order_service.py:551`: `payment_mode = resolve_mode(outlet_settings, order_type)` → **and `create_order` has NO `payment_mode` parameter** (`order_service.py:494-519`) → **and the POS merely mirrors it** (`StaffOrder.jsx:769` — `modeFor(...)`) | **a screen-only chooser would be SILENTLY OVERWRITTEN by the server** → **the chooser is a CONTRACT**: `create_order` gains a per-order override, **resolved against the outlet's allow-list** (§4.2.1) |
+| **the same** | `resolve_mode` reads **ONE** mode per order type (`payment_modes.py:185-207` — `raw.get(order_type)`) → **so an outlet is either all-prepay or all-COD** | the outlet's settings need an **ALLOWED set** for the delivery → **and it is the SAME set the PWA checkout shows** → **one list, two doors** |
+| **the same** | the mode is a **SNAPSHOT** stamped at creation (`models.py:251`) and **the kitchen's gate reads the ORDER's mode** | the chosen mode is stamped on the order → **a tenant who changes the setting mid-service never moves the orders in flight** → **and the delivery's settlement rule follows the ORDER's mode** (§4.1) |
+| **the same** | the default map has **no `delivery` key** (`models.py:423` — `{"dine_in": "postpay", "takeaway": "postpay"}`) → **and every preset leaves the delivery entry off** (`business_presets.py:139` — *"delivery is switched on per tenant, and every preset leaves it off"*) | **every delivery is "pay the driver" until the tenant says otherwise** → **the safe default, and it stays** |
+| **the lock** | `availableModes()` filters `prepay_online` out of the **WHOLE product** (`paymentModes.js:79-81`) and the backend refuses it for the whole map (`LOCKED_MODES` — `payment_modes.py:47-53`; the account check — `outlet_settings.py:317`; the country rule — `ONLINE_COUNTRIES` — `payment_modes.py:72`) → **and the printed reason is about the in-venue app** — *"the customer app has no checkout"* | the reason is **false for the delivery app AND at the counter** → **the lock becomes PER ORDER TYPE**: the delivery may take `prepay_online` when the outlet is in **Malaysia** with a **connected account**; `dine_in` and `takeaway` stay locked → **and `enabled_types` in the settings write already includes `delivery`** (`outlet_settings.py:337-341`) |
+
+**and the three modes read differently at the counter — the part the staff see:**
+
+| the mode | at the counter | the flow |
+|---|---|---|
+| **`postpay`** | **pay the driver** | the driver claims the cash at the handover (§4.1) |
+| **`prepay_at_counter`** | **pay now, at the till** | the kitchen's gate waits for the money (`requires_payment_first` — `payment_modes.py:127`) |
+| **`prepay_online`** | **already paid online** | the staff record the payment (`order.py:1013`) → the order is released (`status_after_payment` — `payment_modes.py:142`) |
+
+**and the honest cost:** the counter staff pick one extra thing on a delivery order →
+→ **and the benefit is that the tenant does not have to be wrong about its own
+customers** — one setting serves both doors.
+
 ---
 
 ## 10. Kens's comments — the answers
@@ -1711,6 +1841,12 @@ Inventory:**
 | the comment | the answer | where |
 |---|---|---|
 | **22 — "1 rules for delivery type must be customer belong to tenant's customer"** | **LOCKED as an invariant**: a delivery order MUST carry a `dining_customer_id` whose member belongs to the tenant's restaurant group → **and the live code gives it three clauses**: the scope is **`customer_id`, never the phone** (`models/loyalty.py:51` — the same phone exists in two tenants) → the **walk-in is excluded** (`loyalty.py:814-816`) → and the check is the **split-bill precedent** (`order.py:1104-1113` — 404 *"This member does not belong to the restaurant"*) → **so the delivery is the one order type where a member is mandatory** → **and every delivery therefore has the map, the live tracking, the ETA and the history** | §4.3.1 · §8 Q22 · §9.12 |
+
+**Round nine (Nov 14, 2026) — the counter's payment-mode chooser:**
+
+| the comment | the answer | where |
+|---|---|---|
+| **23 — "follow your recommendation for counter payment mode chooser"** | **LOCKED: the counter gets a chooser** → **but it is a CONTRACT, not a control** — the server owns the mode (`order_service.py:551`) and `create_order` takes **no** `payment_mode` parameter today (`order_service.py:494-519`) → **so `create_order` gains a per-order override, resolved against the outlet's ALLOWED set** → **the staff pick from the list; they never name a mode** → **one allow-list, two doors** → **the default stays the outlet's configured mode** (a one-mode tenant sees no chooser) → **and the snapshot semantics are unchanged** → **and at the counter the three modes read: pay the driver / pay now at the till / already paid online** | §4.2.1 · §8 Q23 · §9.13 |
 
 ### 10.1 The delivery settings tab
 
@@ -2017,7 +2153,9 @@ is the convenience.**
   `restaurant_logo` 380, `brand_color` 383, `operating_hours` 390), the delivery
   switch (`allow_delivery` 456), the delivery address (`delivery_address` 280),
   the member link (`dining_customer_id` 224 — **nullable**), the order's own mode
-  (`payment_mode` 255), the registration switch (`customer_registration_enabled` 483),
+  (`payment_mode` 255 — **the SNAPSHOT**), the registration switch (`customer_registration_enabled` 483),
+  the outlet's timing map (`payment_timing` 423 — **the default map has NO
+  `delivery` key → every delivery is `postpay` until the tenant says otherwise**),
   `Payment` (352 — the `duitnow_qr` default 358)
 - `backend/app/routes/order.py` — the order type (`order_type` 262 — **the delivery
   is a first-class type in the shared schema**), the customer app's
@@ -2028,11 +2166,16 @@ is the convenience.**
   check (1104-1113 — the split-bill precedent, 404 "This member does not belong to
   the restaurant")** (§4.3.1, §9.12)
 - `backend/app/services/order_service.py` — the delivery address in the write path
-  (505), the mode stamped per order (551), the payment write (791)
+  (505), the mode stamped per order (551 — **`resolve_mode(outlet_settings,
+  order_type)` — the server OWNS the mode**), the payment write (791) → **and
+  `create_order` takes NO `payment_mode` parameter** (494-519 — **so the counter
+  chooser needs a server-side override**, §4.2.1)
 - `backend/app/services/payment_modes.py` — `ORDER_TYPES` (36), the locked online mode
   (47), `ONLINE_COUNTRIES` (73), `country_supports_online` (96),
   `status_after_payment` (142), `is_order_finished` (159), `resolve_mode` (182),
-  `merge_map` (207), `normalize_map` (238)
+  `merge_map` (207), `normalize_map` (238), `resolve_mode` (185-207 — **one mode
+  per order type**), `requires_payment_first` (127),
+  `status_after_payment` (142)
 - `backend/app/middleware/auth.py` — `require_plan_feature` (625 — the session stamp
   320, the live plan 662, the server-to-server bypass 652, the 403 681)
 - `backend/app/main.py` — `create_all` (44 — **tables only**) and
@@ -2060,7 +2203,8 @@ is the convenience.**
   story** (§3.1, §9.10)
 - `frontend/src/utils/paymentModes.js` — `isLiveOrder` (47), `canAdvanceOrder` (62),
   `availableModes` (79 — **it filters `prepay_online` out of the whole product**),
-  `modeFor` (70 — **the counter derives the mode**)
+  `modeFor` (70 — **the counter derives the mode**), `PAYMENT_ORDER_TYPES` (24 —
+  **the delivery is already in the list**)
 - `frontend/src/utils/businessType.js` — the last-step wording (38)
 - `frontend/src/pages/StaffOrder.jsx` — the delivery order-type buttons (775, 785,
   1313 — the gate is the FLAG, not a plan feature) → **and the mode is DERIVED**
@@ -2068,7 +2212,8 @@ is the convenience.**
   at the counter** (§4.3, §9.11)
 - `frontend/src/hooks/useSettings.js` — the POS's own fallback defaults (46 —
   `allow_delivery: true`, the one default that must become `false`)
-- `backend/app/services/business_presets.py` — the presets (`allow_delivery: False` — 41)
+- `backend/app/services/business_presets.py` — the presets (`allow_delivery: False` — 41;
+  the delivery entry is never seeded — 139 — *"every preset leaves it off"*)
 - `backend/app/routes/reports.py` — the paid filter (145)
 - `customer-app/js/app.js` — the in-venue app has NO delivery chip (1354) and the
   order-type gate (1367) → **the public customer key** (11 — `customer_app_key`, the
