@@ -1191,15 +1191,60 @@ Every item below was executed live, not reasoned about:
   upstream on `127.0.0.1:8080`, so the branded shell still comes from the app
   server and not from disk.
 
-### 5.8.4 What is still not proven
+### 5.8.4 The reboot has to be able to prove itself
+
+Everything above was exercised component by component. But a reboot is exactly
+the situation where an agent session may not survive, and a verifier that lives
+inside the session cannot report on the boot that killed it. So the boot
+contract is now verified by **systemd units that do not depend on the Gateway
+or on Lumi being alive**.
+
+| Unit | Timer | What it does |
+|---|---|---|
+| `posai-boot-verify.service` | `posai-boot-verify.timer` (`OnBootSec=120s`) | Runs the **29-check** contract: four mount units active, the Vera projection `ro` and write-blocked, `vera-exec` working, four services active, five PM2 apps `online`, `admin-app`/`frontend-pos` `stopped`, four upstream ports listening, and all seven domains over HTTPS |
+| `posai-boot-report.service` | `posai-boot-report.timer` (`OnBootSec=330s`, then every 300s) | Sends the result to Kens over Telegram |
+
+**The verifier waits for the boot to settle** (up to 180s) rather than racing
+the services it is judging — a verifier that reports a half-booted box as
+broken is worse than no verifier at all. The reporter's timer is deliberately
+set *after* the verifier's worst case, so a result can never be read before it
+exists.
+
+**Two bugs were found by building this, and both were the dangerous kind —
+they produced a confident wrong answer rather than an error.**
+
+- The reporter compared the result's `boot_id` only against the
+  *last-reported* `boot_id`, never against the **currently running** kernel
+  `boot_id`. It would therefore have cheerfully sent the **previous** boot's
+  "ALL CHECKS PASSED" while the new boot was still coming up — or still
+  broken. It now refuses any result whose `boot_id` does not match
+  `/proc/sys/kernel/random/boot_id`. Proven by feeding it a fabricated stale
+  `boot_id`: it reported nothing.
+- `hyperliquid-generate-daily-report.service` carried an **unquoted** SMTP
+  password containing spaces, so systemd logged three invalid assignments
+  (`gvgn`, `shrr`, `mozt`) on every boot. The script it runs contains **no
+  email or SMTP reference at all**, so the variable is vestigial — but it was
+  still a live boot warning from a unit whose timer is enabled. The value is
+  now quoted and `systemd-analyze verify` is clean.
+
+**Verified as a real system service, not a shell pretending to be one.** The
+verifier was executed through `systemctl start posai-boot-verify.service` —
+the same path the boot timer uses — and returned **29 passed, 0 failed**.
+
+### 5.8.5 What is still not proven
 
 The reboot itself has **not** been executed. Every mechanism above was
 exercised individually — the units were stopped and started, `pm2-root.service`
-was restarted, the binds were killed and repaired — but no single power cycle
-has been performed, so the claim "the server returns to the same working state
-after a reboot" rests on those component proofs rather than on one observed
-reboot. That is the honest position, and the next step is to actually reboot
-and re-run §5.8.3.
+was restarted, the binds were killed and repaired, the verifier was run
+through its own systemd service — but no single power cycle has been
+performed, so the claim "the server returns to the same working state after a
+reboot" still rests on component proofs rather than on one observed reboot.
+That is the honest position, and the next step is to actually reboot and read
+the §5.8.4 report.
+
+A controlled-reboot path exists for that: `posai-controlled-reboot.service`
+(not enabled, manual) sends a pre-reboot Telegram notice and then reboots, so
+that "the boot did not complete" is distinguishable from "nothing happened".
 
 
 ---
