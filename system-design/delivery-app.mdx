@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.17
+**Document Version:** 1.18
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1 and 2 are BUILT and PROVEN LIVE (the staff side); the customer-facing app is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -2175,6 +2175,65 @@ passed with `outlet: true` after it → and `plan` and `subscription` were `true
 sides of it) → → **the server still owns the money** (the tab sends no fee of its own —
 it sends a *setting*, and the server decides what the fee is) → → **and the live data
 was put back exactly as it was found.**
+
+---
+
+### 9.18 The v1.18 browser review — the tab, in a real browser, for a real tenant
+
+**v1.17 proved the API. → but the API is not the SCREEN** → → **so the Delivery tab was
+opened in a real browser, logged in as the house's staff account, with the console
+watched** → → **and it found one more defect that no API test could have found.**
+
+#### 9.18.1 What the browser proved
+
+**the tab EXISTS** → → **and that is not nothing** → → **the tab is gated on the
+tenant's plan feature** (`feature: 'Delivery'`) → → **so its presence in the settings
+screen is the plan entitlement arriving at the UI** — the thing §9.13 asked for.
+
+→ **and every control rendered:** the switch, the fee, the free threshold, the minimum,
+the radius, the ETA range, the prepaid-only switch, the allowed modes, the default
+mode, the slug, the storefront, the QR and the branded preview → → **and the no-slug
+state is HONEST** ("Save a slug first - the QR carries your delivery page") → → **and
+the QR is the PLACEHOLDER, not a broken image** (a real `<img src>` would have been a
+400, because there is no slug) → → **and the delivery API answered with no 4xx and no
+5xx** → → **and the console was clean: no error, no warning, no page error.**
+
+#### 9.18.2 The defect — a heading that named nothing
+
+**the finding:** → **the "Allowed payment modes" section was headed "The money"** →
+→ **and the fee, the free threshold and the minimum are all under their OWN labels**
+→ → **so the heading named nothing that was in the box** → → **and the locale's own
+`delivery.paymentModes` — "Allowed payment modes" / 允许的付款方式 / របៀបបង់ប្រាក់ដគលអនុញ្ញាត —
+had been translated in all three languages and NEVER USED.**
+
+**one line, one key.** The key was already there in en, zh and km → **so the i18n
+parity is untouched** → → **which is the house's own rule paying off: the parity check
+guaranteed the key existed in every language, and the browser check found that it was
+never wired up.** Neither check could have caught the other's finding.
+
+#### 9.18.3 The check that found it now lives with the code
+
+**`frontend/scripts/delivery_tab_check.mjs`** → → **it logs into the POS, opens
+Settings → Delivery, and proves:** the tab exists → the controls render → the no-slug
+state is honest → the QR is the placeholder rather than a broken image → the delivery
+API answers → **and the console is clean** → → **it WRITES NOTHING**, so the live tenant
+is unchanged by it → → **21/21 checks pass.**
+
+→ **and it is a `.mjs` in the frontend's own `scripts/` because that package is
+`"type": "module"`** — a CommonJS `require()` in a `.js` there is a hard error, not a
+warning → **and Playwright is resolved from the workspace's box-level install**, because
+the POS's own `node_modules` has no Playwright.
+
+#### 9.18.4 The pattern — three proofs, three different defects
+
+| the proof | the defect it found | why nothing else could |
+|---|---|---|
+| **the suites** (45/45, 54/54) | the payment writer finished a COD delivery; a driver from another tenant | the service functions were called directly → **the HTTP path was never in the loop** |
+| **the live API** (§9.16) | the router's prefix — `/delivery` vs the house's `/api` → every call a 404 | the suites never touch a URL → **and the build only checks that the code compiles** |
+| **the browser** (§9.18) | a heading that named nothing, in a section whose own label was already translated | the API was never asked what the screen SAYS → **and the i18n parity check guarantees a key EXISTS, not that it is USED** |
+
+→ **so the house's standing habit is: each proof covers what the one below it cannot
+see** → → **and a phase is done when the LAST of them is green**, not the first.
 
 ---
 
