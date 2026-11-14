@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.21
+**Document Version:** 1.22
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4 and 5 are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`) AND the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -207,6 +207,21 @@ the re-proof also corrected §9.20.3**: that table credited **one** order with a
 **three** different orders actually carried — the **handover and the money write** are
 order `386`'s, the **route and the early leg** are order `389`'s, and the **fresh
 end-to-end chain** is order `388`'s → → **see §9.20.3, §9.20.3.1 and §9.20.7.**
+
+**v1.22 (Nov 15, 2026): the bug CLASS is now GUARDED — a route-level suite that drives the
+URL.** The other delivery suites call the **FUNCTIONS**, so a missing `try/except` at the
+**route boundary** is invisible to them → → **the function refuses correctly and the route
+around it does not catch it** → → **and that is exactly why the 30-second hang shipped:
+the suites were green** → → **so the new suite drives the URL**
+(`backend/scripts/test_delivery_tracking_routes.py` — FastAPI's `TestClient` against the
+tracking router, on an isolated in-memory SQLite): the door · **THE INVARIANT** (a refused
+move must **ANSWER** — a 409 with the service's own message, never an escaped exception,
+never a 500 and never a hang) · the handover · the money · the privacy → **28/28** → → **and
+the check can FAIL**: the **negative control** reverts the fix in a **COPY** of the tree and
+runs the **same** suite against the copy → **the two fix-covering checks fail with HTTP
+500** (the escaped exception) while the other **26 still pass** → so the revert is surgical
+and the suite really covers the fix → **and the live tree is never touched** (POS_AI
+`e79953a`) → → **see §9.20.7.**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -1504,6 +1519,7 @@ the slug `kens-ss17`).
 | **`customer-app/delivery.html`** + **`customer-app/js/delivery.js`** + **`customer-app/css/delivery.css`** | the customer's live map — the route polyline, the rider marker, the drop-off pin, the trail and the ETA |
 | **`customer-app/vendor/leaflet/`** (new) | **Leaflet 1.9.4, vendored** — not a runtime CDN dependency — over the free CARTO/OSM raster tiles, with the attribution the terms require |
 | **`backend/app/routes/competitors.py`** + **`outlet_settings.py`** | the two hardcoded Geoapify literals are **gone** — the key comes from `settings.GEOAPIFY_API_KEY`, and the routes answer **503** when it is missing |
+| **`backend/scripts/test_delivery_tracking_routes.py`** (new, v1.22) | **28 checks — and it drives the URL, not the functions** — the door · **THE INVARIANT** (a refused move answers: a 409, never an escaped exception, never a 500, never a hang) · the handover · the money · the privacy → **and it is negative-controlled** (§9.20.7) |
 
 
 ---
@@ -2605,6 +2621,19 @@ redirect middleware), while the **route-local missing conversion** is what was c
 and fixed → → **and the lesson is the house's own**: **a service that refuses a move must
 always be caught at the route boundary** — the staff route already did it, the tracking
 route did not, and **the two must not diverge again**.
+
+→ **and the CLASS is now GUARDED, not just the one bug fixed**: the other delivery suites
+call the **functions**, so a missing `try/except` at the route boundary was invisible to
+them → **the suites were green when this hang shipped** → → **so the new suite drives the
+URL** (`backend/scripts/test_delivery_tracking_routes.py` — FastAPI's `TestClient` against
+the tracking router, on an isolated in-memory SQLite): the door · **THE INVARIANT** (a
+refused move must **ANSWER** — a 409 with the service's message, **never** an escaped
+exception, **never** a 500 and **never** a hang) · the handover · the money · the privacy
+→ **28/28** → → **and the check can fail**: the **negative control** reverts the fix in a
+**COPY** of the tree and runs the **same** suite against the copy → **the two fix-covering
+checks fail with HTTP 500** (the escaped exception) while the other **26 still pass** → so
+the revert is surgical and the suite really covers the fix → **and the live tree's
+fingerprint is unchanged** (POS_AI `e79953a`).
 
 ---
 
