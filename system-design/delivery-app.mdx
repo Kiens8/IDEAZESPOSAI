@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.25
+**Document Version:** 1.26
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5 and 6a are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5 and 6a are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -2816,6 +2816,93 @@ have found it.
 → **and the customer-facing surface is unchanged**: the customer still sees **one
 delivery-fee line** — the zones changed the tenant's FEE MODEL, not the customer's
 screen (§5.3).
+
+### 9.22 The v1.26 build review — the two PWAs are TWO tracks, and they were sharing one Cache Storage
+
+**Phase 6a shipped and proved the zones live (v1.25). But the shipping of it exposed a
+defect in the PWA layer that has nothing to do with the zones** — and it is the kind of
+defect that only shows up when you look at the *whole* client instead of the feature.
+
+#### 9.22.1 What was actually wrong
+
+| the defect | what it did | how it was found |
+|---|---|---|
+| **`customer-app/VERSION` said `2.6.32` while every in-venue asset was still stamped `2.6.28`** | `python3 scripts/build_pwa.py --check` **FAILED** on `index.html`, `sw.js`, `js/pwa.js` and `manifest.json` — the in-venue PWA was claiming a build that four of its own files did not agree with | the check was run **after** the Phase 6a push, and it failed where it had passed at `64421ac` |
+| **`sw-delivery.js` still said `BUILD = 'v=2.6.30'` while `delivery.html` asked for `?v=2.6.32`** | the worker **precached one build** while the shell **requested another** — so a returning customer's **OFFLINE fallback silently served the older `delivery.js`** — the one file that holds the whole customer journey | by reading the live `/d/sw.js` and **diffing it against the live shell** |
+| **BOTH workers deleted EVERY Cache Storage key except their own** | Cache Storage is **origin-wide** — so activating the delivery worker (`/d/`) **wiped the in-venue precache** (`/`, `pos-customer-v15`), and activating the in-venue worker **wiped the delivery precache** (`pos-delivery-v3`) — **the two apps were evicting each other** | by reading the `activate` handler of both workers |
+
+→ **and the reason the first two happened is a DESIGN gap, not a typo**: **Phase 6a
+changed the DELIVERY track and nobody changed the in-venue track** → → but `VERSION` is
+**one file for the whole `customer-app/`** → → so the delivery bump **leaked into the
+in-venue series** → → and the delivery's OWN worker stamp was **never bumped with it**.
+
+#### 9.22.2 The two rules that fall out — and they are architectural
+
+**Rule 1 — the two PWAs are TWO version SERIES, and the delivery track is its OWN.**
+
+| track | the file that stamps it | its series | its cache namespace | its scope |
+|---|---|---|---|---|
+| **the in-venue PWA** | `customer-app/VERSION` → `index.html` · `sw.js` · `js/pwa.js` · `manifest.json` | `2.6.28` (unchanged by Phase 6a) | `pos-customer-v15` | `/` |
+| **the delivery PWA** | `customer-app/sw-delivery.js` → `delivery.html` · `css/delivery.css` · `js/delivery.js` · `js/choices.js` | `2.6.32` | `pos-delivery-v4` | `/d/` |
+
+→ **the vendored Leaflet (`1.9.4`) is deliberately OUTSIDE both series** — it is
+**vendored**, so it does not move with a build.
+
+→ **and `VERSION` belongs to the in-venue track** → → so Phase 6a's delivery bump must
+**not** touch it → → **`VERSION` is back at `2.6.28`**, which is what the four in-venue
+files were already saying.
+
+**Rule 2 — a worker may only delete ITS OWN cache namespace.**
+
+→ **Cache Storage is per-ORIGIN, not per-scope** — the two workers share one storage →
+→ **so `caches.delete` must be filtered by the worker's OWN prefix** (`pos-customer-*`
+for the in-venue worker, `pos-delivery-*` for the delivery worker) → → **otherwise the
+two apps evict each other's precache**, which is exactly the failure mode of the
+"one origin, two PWAs" architecture (§6).
+
+→ **and the cache version must be bumped whenever the precache CONTENTS change** — the
+delivery worker moved `pos-delivery-v3` → **`pos-delivery-v4`** precisely so a returning
+browser **re-precaches** the new `delivery.js` and the new locale bundles.
+
+#### 9.22.3 The guard — so this cannot drift again
+
+→ **`customer-app/scripts/build_pwa.py` now ALSO checks the delivery track**
+(`check_delivery_track()`) — the script does not **stamp** the delivery track (it has its
+own series and its own stamp), but it **verifies** that **every asset the delivery worker
+precaches is requested with the SAME version query in `delivery.html`** → → and it
+**reports the drift the way the house reports it**: the file, the value it found, and the
+value the worker precaches.
+
+→ **and the negative control proves the guard bites**: drifting `delivery.html` to
+`delivery.js?v=2.6.29` makes the check **fail** with
+*"delivery.html: /js/delivery.js is ?v=2.6.29 (the worker precaches it as ?v=2.6.32)"* —
+and the check **passes again** once the drift is reverted.
+
+→ **and the live proof, because the customer-app tree is a BIND MOUNT into the web root**
+— the fix was live the moment it was written, with no deploy step:
+`/d/sw.js` → `BUILD = 'v=2.6.32'`, `CACHE_VERSION = 'pos-delivery-v4'`,
+`pos-delivery-*` scoped cleanup · `/sw.js` → `BUILD = 'v=2.6.28'`,
+`CACHE_VERSION = 'pos-customer-v15'`, `pos-customer-*` scoped cleanup · and
+`build_pwa.py --check` **passes**.
+
+→ **and the commit is `cd94cfe`** — a fix on top of the Phase 6a commit `878272c`.
+
+→ **and one CDN fact, checked rather than assumed**: the **origin** serves `/d/sw.js`
+with `Cache-Control: no-cache, must-revalidate` (and `Service-Worker-Allowed: /d/`) —
+**but Cloudflare's edge rewrites the header** to `max-age=14400, must-revalidate` →
+→ **that is the CF browser-cache TTL, and it does NOT hold the worker back**: the service
+worker's **update algorithm revalidates the script** (`updateViaCache` defaults to
+revalidating the top-level script), and CF **honours the revalidation** — the live
+edge answered `cf-cache-status: EXPIRED` and served the **NEW** worker (`v=2.6.32`,
+`pos-delivery-v4`) **the moment it was written** → → **so a worker fix reaches a
+returning customer without a deploy and without a manual cache purge.**
+
+→ **the lesson is the house's own, twice over**: **a version stamp is a CONTRACT between
+files** — and a contract that no tool checks is a contract that breaks silently, the way
+the *counter* screen broke (§9.21.4): **the wiring is where the defects live**, and
+**the check is the only thing that sees them before the browser does.**
+
+---
 
 ## 10. Kens's comments — the answers
 
