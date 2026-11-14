@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.16
+**Document Version:** 1.17
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1 and 2 are BUILT and PROVEN LIVE (the staff side); the customer-facing app is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -2104,6 +2104,77 @@ uses, with a real session.**
 
 → **and the fix was made against the code, not against the symptom** — the router's
 prefix, not a rewrite rule and not a second frontend that knows the other path.
+
+---
+
+### 9.17 The v1.17 write-path review — the settings are only as good as the keys
+
+**v1.16 proved the delivery READS work live. → the write path was still unproven** → → **so
+the tab was exercised against the running server, end to end, and every value it
+mutated was restored afterwards** (the slug cleared, `allow_delivery` back to `false`,
+`delivery_settings` back to `null` → and the gate refuses again, with the same reason:
+*"The delivery is switched off at this outlet."*).
+
+#### 9.17.1 The write path, proven against the live server
+
+| the write | the answer |
+|---|---|
+| **`PATCH /api/delivery/slug`** → `{"delivery_slug":"lumi-proof-test"}` | **200** → `{"outlet_id":1,"delivery_slug":"lumi-proof-test"}` |
+| **the storefront, re-read** | the slug is there, and the URL is **the server's** → `https://order.ideazes.com/d/lumi-proof-test` |
+| **`GET /api/delivery/qr.png`** | **200** → a real **`image/png`, 640×640, 9.3 KB** → the QR that was a *400* ("no delivery slug yet") before the write is now a *picture* |
+| **`PUT /api/settings/1`** → `allow_delivery: true` + the money rules | **200** → `{"message":"Settings updated","outlet_id":1}` |
+| **the settings, re-read** | `allow_delivery: True` and the `delivery_settings` object persisted **with the server's own key names** |
+| **the gate, re-read** | **`allowed: true`** → the plan leg, the subscription leg **and** the outlet leg all pass — the switch is what was refusing before |
+
+→ **so the Delivery tab is not a picture of a feature: every control on it writes to
+the server and the server's own answer comes back.**
+
+#### 9.17.2 The defect this review found — the server drops an unknown key SILENTLY
+
+**the finding:** → **`normalize_delivery_settings()` drops a key it does not know, and
+says nothing** → → **that is correct by design** (a settings object is the tenant's own,
+not a schema → the server must not refuse a tenant's own extra key) → → **but it means a
+TYPO in the frontend is invisible:** → **the proof itself hit it** — a test payload sent
+`delivery_fee` and `coverage_radius_km` → → **the server stored `fee: 0.0` and
+`radius_km: 0.0`** → → **and answered `200`** → → **so a money field with a typo in its
+name saves as ZERO, the outlet charges the wrong money, and nothing anywhere complains.**
+
+**and the tab was correct — but "correct today" is not a contract:**
+
+| the side | the keys |
+|---|---|
+| **the server** (`DEFAULT_DELIVERY_SETTINGS`) | `fee` · `free_above` · `minimum_order` · `radius_km` · `eta_minutes` · `eta_max_minutes` · `prepaid_only` · `payment_modes` |
+| **the tab** (`DeliverySettingsTab.jsx`) | **the same eight** — and the same defaults, value for value |
+
+→ **and that is now PROVEN BY A CHECK, not by a reading** → → **the suite compares the
+two sides key by key and default by default** → → **and it proves the drop is real, so
+the comparison is load-bearing rather than decorative** → → **the suite is now 54/54**
+(was 48/48; the core suite is still 45/45).
+
+#### 9.17.3 The rule the house should keep — a silent drop needs a loud comparison
+
+**the shape of it:** → **the server is right to be permissive about a tenant's own
+settings** (it must not refuse the extra key) → → **and the client is right to be
+optimistic about its own key names** (it believes the server knows them) → → **so the
+gap between the two is silent by construction** → → **and a silent gap in a MONEY field
+is the worst kind** → → **so the two sides must be compared by a machine, in CI, on
+every change** — **and the comparison must live in the delivery suite, not in a review,
+because a review is a moment and a suite is a rule.**
+
+→ **and the generalisation beyond the delivery:** → **any setting the client writes and
+the server stores under its OWN name is a place where a typo becomes a silent zero** →
+→ **so the house's standing question for any new setting is: *"what does the server do
+with a key it does not know?"*** → → **if the answer is "ignore it", then the key list
+must be compared by a check.**
+
+#### 9.17.4 What this review did NOT change
+
+→ **the feature's rules are untouched** → → **the entitlement is still the plan feature
+AND the outlet's switch** (the gate refused with `outlet: false` before the write and
+passed with `outlet: true` after it → and `plan` and `subscription` were `true` on both
+sides of it) → → **the server still owns the money** (the tab sends no fee of its own —
+it sends a *setting*, and the server decides what the fee is) → → **and the live data
+was put back exactly as it was found.**
 
 ---
 
