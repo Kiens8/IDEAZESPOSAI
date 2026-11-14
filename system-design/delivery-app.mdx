@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.22
+**Document Version:** 1.23
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4 and 5 are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`) AND the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -222,6 +222,20 @@ runs the **same** suite against the copy → **the two fix-covering checks fail 
 500** (the escaped exception) while the other **26 still pass** → so the revert is surgical
 and the suite really covers the fix → **and the live tree is never touched** (POS_AI
 `e79953a`) → → **see §9.20.7.**
+
+**v1.23 (Nov 15, 2026): the two owner decisions are ANSWERED — the Geoapify key STAYS, and
+the driver's money write is RATIFIED.** Kens: *"It is ok. We still can use back existing
+geoapify key since this is private repo."* → → **so the rotation is NO LONGER OWED** — the
+key's value is unchanged, it lives in `backend/.env`, and the literal in the git history is
+a **known and accepted** risk **because the repository is PRIVATE** → **the standing rule:
+if that repository ever goes public, the rotation is owed again** (§11.2) → → **and Kens:
+*"Yes. Driver should mark delivered and received money after customer paid."*** → → **so the
+driver's link WRITING the money is RATIFIED**, not merely implemented: the rider marks the
+delivery done **and** the cash collected, and that settles the COD order through the
+house's own `payment_modes.status_after_payment` rule → **and it still may not write the
+money any other way** — a **prepaid** order answers **409**, an **already paid** order
+answers **409**, and the leg and the core status stay the server's (§12) → → **see §8 Q14,
+§11.2 and §12.**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -1394,7 +1408,7 @@ prove ownership (the order token — **a new field**, or the existing
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | **✅ DONE (v1.19)** — the PWA is LIVE at `https://order.ideazes.com/d/<slug>` and the public router answers every door; a guest registers, signs in, orders and pays for real (§7.3, §9.19) — **and the customer's MAP, the route-refined ETA and the live driver marker came with Phase 5** (§7.5, §9.20) |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | **✅ DONE (v1.20) — it shipped INSIDE Phase 3's build, not after it**: the DuitNow QR, the cash path, the payment records, the per-order-type lock and the customer's choice at the checkout are all LIVE (§7.3, §9.20) |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Geoapify** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | **✅ DONE (v1.20)** — the driver link, the live pings, the live driver marker, the traffic-aware ETA, the Geoapify routes and the privacy pruning are LIVE and PROVEN against the running app (§7.5, §9.20) |
-| **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium | planned |
+| **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium | **NEXT (v1.23)** — phases 0-5 are built and proven live, and the two owner decisions are answered |
 
 **The order matters** — the core → the staff side → the storefront → the money:
 **the POS must be able to deliver before the customer can order delivery**.
@@ -1581,9 +1595,15 @@ the slug `kens-ss17`).
     the live marker all ship with it) → **and v1.9 put the entitlement on
     Enterprise only** → **so there is no free tier to ask about** → **the honest risk
     stays the driver's cooperation** (§11.2).
-14. **Does the driver's link write the money?** — **no** → the leg is the driver's, the
-    money is the staff's (§12) → the driver may claim the cash they took, the staff
-    record it.
+14. **Does the driver's link write the money?** — **YES, for the COD claim — and it is
+    RATIFIED (Kens, Nov 15, 2026):** *"Driver should mark delivered and received money
+    after customer paid."* → → **so the rider's two taps are the COD settlement**: the
+    **Delivered** button moves the leg and the core, and the **Cash collected** button
+    writes the payment row and the `paid` flag **through the house's own
+    `payment_modes.status_after_payment` rule** (§12) → → **and the boundary is unchanged
+    everywhere else**: the link may not write the money **any other way** — a **prepaid**
+    order answers **409** (there is no cash to claim) and an **already paid** order answers
+    **409** — **and the leg and the core status stay the server's**.
 15. **Is a COD delivery's settlement the money or the handover?** — **both, and they
     may arrive in either order** → one delivery-aware rule (§4.1) → the end state is
     the same either way.
@@ -2945,7 +2965,8 @@ that operate in the EU):
 5. **the map tiles** → the provider's terms require the attribution → the attribution
    goes on the tracking page.
 
-**And the key — the CODE half is DONE (v1.20); the ROTATION is still owed.** The two
+**And the key — the CODE half is DONE (v1.20), and the ROTATION is DECIDED (v1.23): the key
+STAYS.** The two
 hardcoded Geoapify literals are **gone** from the source (`outlet_settings.py` and
 `competitors.py` now read `settings.GEOAPIFY_API_KEY`) and the key lives in
 **`backend/.env`** → **and the code fails loudly when it is missing**: the two routes
@@ -2954,12 +2975,14 @@ answer **503** with the reason, and the new `services/geoapify.py` raises
 Geoapify-dependent features fail, and they fail clearly → a silent fallback to a shared
 key is how a bill arrives from nowhere, and that path is now closed.
 
-→ **but the honest caveat**: the key's VALUE is **unchanged** — the same 32-character
-literal that was in the source is the one in `.env` → → **so it is still in the git
-history**, and the repository is on GitHub → → **the key must be ROTATED in the Geoapify
-dashboard and the new value dropped into `.env`** — that is a one-minute job, and until it
-is done the "no secrets in source" claim is only half true: the literal is gone from the
-working tree, not from the past.
+→ **and the decision (Kens, Nov 15, 2026)**: *"It is ok. We still can use back existing
+geoapify key since this is private repo."* → → **so the key's VALUE stays unchanged** and
+the **rotation is not owed** → **the honest statement of where the secret lives**: the
+literal is **gone from the working tree** (the code reads `settings.GEOAPIFY_API_KEY`) and
+it lives in **`backend/.env`** → **and it is still in the git history**, which is **now a
+KNOWN and ACCEPTED risk, taken deliberately** → → **the standing rule that comes with the
+decision: the repository is PRIVATE, and if it ever goes public the rotation is owed
+again** — one minute in the Geoapify dashboard, and the new value into `.env`.
 
 ### 11.3 What this Geoapify key can and cannot do — probed live, not read from a marketing page
 
@@ -2995,7 +3018,7 @@ frontend POS, or another tool?*
 |---|---|---|
 | the leg (`assigned` → `picked_up` → `delivered`) | **the POS staff** *and* **the driver link** | it is the physical truth of the delivery — only the driver and the shop know it |
 | the handover (`leg = 'delivered'` → the core moves) | **the server**, in the same write | the server owns the shared machine — it is the only place the status can be trusted |
-| **the money** (`payment_status = 'paid'`) | **the POS staff — and the driver link, but ONLY as the COD claim** | it is the tenant's money → the staff write sits behind `staff:orders:write` (`order.py:1013`) → **and v1.20 widened it by exactly one action**: the driver's **Cash collected** button writes the payment row and the `paid` flag **through the house's own `payment_modes.status_after_payment` rule** — the same rule the counter's cash button uses — because for a COD order the rider physically holds the cash at the door (§9.20.3) |
+| **the money** (`payment_status = 'paid'`) | **the POS staff — and the driver link, but ONLY as the COD claim** | it is the tenant's money → the staff write sits behind `staff:orders:write` (`order.py:1013`) → **and v1.20 widened it by exactly one action**: the driver's **Cash collected** button writes the payment row and the `paid` flag **through the house's own `payment_modes.status_after_payment` rule** — the same rule the counter's cash button uses — because for a COD order the rider physically holds the cash at the door (§9.20.3) → → **RATIFIED by Kens (Nov 15, 2026)**: *"Driver should mark delivered and received money after customer paid."* → **so the rider's own taps are the COD settlement, and the staff may still do it from the POS** |
 | the cash **claim** ("I took RM 12.50") | the POS staff **and** the driver link | a claim is a fact about the handover → **in v1.20 it settles the money too** (see the row above) → **and it refuses the two cases where it must**: a **prepaid** order answers **409** (there is no cash to claim) and an **already paid** order answers **409** |
 
 → **so the driver can say "delivered, I took RM 12.50"** → **and the staff still write
