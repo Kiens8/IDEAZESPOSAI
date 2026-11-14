@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.19
+**Document Version:** 1.20
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2 and 3 are BUILT and PROVEN LIVE — the staff side AND the customer's door (`https://order.ideazes.com/d/<slug>`); the map and the live driver marker are NOT** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4 and 5 are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`) AND the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -176,6 +176,22 @@ swallowed every tap (the sign-in button could not be pressed at all) → **2. th
 CHECKOUT BUTTON was never wired** — the guest could fill the cart and then had
 nowhere to go → **both are fixed, and the assets are re-versioned** → **see §7.3,
 §7.4 and §9.19.**
+
+**v1.20 (Nov 15, 2026): Phase 5 is BUILT and PROVEN LIVE — the live tracking, the map and
+the live driver marker.** Kens's call settled the provider: *"We are not using mapbox. We
+are using geoapify due to we already have the api key."* → **and the live probe confirmed
+the call was right**: Geoapify's `drive_traffic_approximated` answers **200**, so the ONE
+thing the Mapbox recommendation was buying — the traffic-aware ETA — **Geoapify can do** →
+→ **so the whole phase ships on ONE provider**: Geoapify geocodes, routes and times the
+delivery, and the map is **vendored Leaflet 1.9.4 over free CARTO/OSM raster tiles** (**no
+Mapbox account, no Mapbox bill, no token in the browser**) → **the Isochrone stays
+paywalled** (an Enterprise add-on — this key answers **404**), so the honest coverage check
+is **a radius on the geocoded point** → → **Phase 4 (the money) shipped INSIDE Phase 3's
+build** — the DuitNow QR, the cash path, the payment records, the per-order-type lock and
+the customer's choice at the checkout are all live — so the phase table was naming work
+that was already done → → **and the Geoapify key was rotated into `backend/.env`**: the two
+hardcoded literals are gone, the routes now **503** when the key is missing, and the app
+still boots without it → → **see §7.5, §9.20 and §11.**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -1195,7 +1211,7 @@ loudly** → **the order-create check is the backstop** (above).
 | 5 | **the order submit** | submits | creates the order (`order.py:343`) → the fee into the total → the leg row → `dining_customer_id` → the mode snapshot (`order_service.py:551`) |
 | 6 | **the kitchen status** | watches **Placed → Confirmed → Preparing → Ready** — the shared statuses, unchanged | the same status route, with the delivery leg's server-side rules (§4) |
 | 7 | **the delivery status** | watches **Driver assigned → Out for delivery → Delivered** — the handover IS the shared `served` | the leg's writes; the money is the staff's write (§12) |
-| 8 | **the map + the live tracking** | **the full map, the route, the ETA and the live driver marker — on the screen for the WHOLE delivery leg** | the geocode + the route (Mapbox) → the ETA → the driver's pings (§11) |
+| 8 | **the map + the live tracking** | **the full map, the route, the ETA and the live driver marker — on the screen for the WHOLE delivery leg** | the geocode + the route (Geoapify) → the ETA → the driver's pings (§11) |
 
 → **step 8 is not a paid tier** → **it is part of the entitlement** (§11.1) → → **and
 step 4 is the customer's choice, not the tenant's** → the tenant sets the allow-list;
@@ -1345,21 +1361,24 @@ prove ownership (the order token — **a new field**, or the existing
 | **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small | **✅ DONE (v1.14)** — the four rows are LIVE (ids 41-44, sort orders 39-42) and assigned to Enterprise (`plan_features` 408-411) by an idempotent migration script (§7.1) |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium | **✅ DONE (v1.14)** — the two columns, the two tables, the server's fee, the member rule and the receipt line are LIVE (§7.1, §9.14) |
 | **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium | **✅ DONE (v1.15)** — the Delivery tab, the Delivery Management screen, the counter's member step + payment-mode chooser, the settlement rule and the staff-side entitlement gate are LIVE (§7.2, §9.15) — **and PROVEN LIVE in the running app (v1.16)**, which caught one defect the suites could not (§9.16) |
-| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | **✅ DONE (v1.19)** — the PWA is LIVE at `https://order.ideazes.com/d/<slug>` and the public router answers every door; a guest registers, signs in, orders and pays for real (§7.3, §9.19) — **but the customer's MAP and the route-refined ETA are NOT** (they need a Mapbox account and the driver link — §9.19.5) |
-| **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | planned |
-| **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | planned |
+| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | **✅ DONE (v1.19)** — the PWA is LIVE at `https://order.ideazes.com/d/<slug>` and the public router answers every door; a guest registers, signs in, orders and pays for real (§7.3, §9.19) — **and the customer's MAP, the route-refined ETA and the live driver marker came with Phase 5** (§7.5, §9.20) |
+| **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | **✅ DONE (v1.20) — it shipped INSIDE Phase 3's build, not after it**: the DuitNow QR, the cash path, the payment records, the per-order-type lock and the customer's choice at the checkout are all LIVE (§7.3, §9.20) |
+| **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Geoapify** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | **✅ DONE (v1.20)** — the driver link, the live pings, the live driver marker, the traffic-aware ETA, the Geoapify routes and the privacy pruning are LIVE and PROVEN against the running app (§7.5, §9.20) |
 | **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium | planned |
 
 **The order matters** — the core → the staff side → the storefront → the money:
 **the POS must be able to deliver before the customer can order delivery**.
 → **and the tracking is late on purpose** — it needs the leg, the fee, the geocode
 and the money all in place → **and it is the only phase that buys a third-party
-bill** → **and since v1.8 it is NOT a plan row** — it ships with the entitlement on
-every plan (§11.1).
+bill** → **and v1.20 proves that bill is ZERO: the routing rides the Geoapify key the
+house already pays for, and the map's tiles are free** → **and since v1.8 it is NOT a
+plan row** — it ships with the entitlement on every plan (§11.1).
 → **but the customer's MAP and ETA are NOT in that phase** — they need the route and the
 geocode only → **so they ship with the storefront (phase 3)** → **and every Enterprise
 delivery tenant has them** (§11.1).
-→ **v1.19 corrects this:** the storefront shipped **the ETA** (the outlet's own promise — the leg's `eta_at`, shown to the customer) → **but NOT the customer's MAP and NOT the route-refined ETA** — those need a **Mapbox account** (a third-party bill) and the **driver link**, which is Phase 5 (§9.19.5).
+→ **v1.19 corrected this** (the storefront shipped the ETA but not the MAP) → → **and
+v1.20 closes it: the MAP, the route-refined ETA and the live driver marker are all LIVE
+and PROVEN** (§7.5, §9.20).
 
 ### 7.1 What Phase 0 and Phase 1 ACTUALLY changed (v1.14)
 
@@ -1443,15 +1462,34 @@ app stays at the origin root) · and a real outlet configured through the **staf
 (outlet 4 — Kens SS17 — `allow_delivery` on, the delivery settings, registration on, and
 the slug `kens-ss17`).
 
-### 7.4 What Phase 3 did NOT do — on purpose
+### 7.4 What Phase 3 did NOT do — on purpose (and what Phase 5 has since added)
 
 | what | why |
 |---|---|
-| **the customer's MAP and the route-refined ETA** | they need a **Mapbox account** (a third-party bill — the house's rule is that ONE phase buys it, §11) and the **driver link**, which is Phase 5 → **the ETA that ships is the outlet's OWN promise** (the leg's `eta_at` from `eta_minutes`) — it is shown to the customer, and the map refines it later (§9.19.5) |
-| **the live driver marker and the pings** | **Phase 5** — the driver link carries the leg's buttons (§12) |
-| **the geocode of the customer's address** | it is the input the map and the **Isochrone coverage** need — and the coverage is **Phase 6** (the zones) → **so today the radius is the outlet's own setting, not a checked distance** |
-| **the tenant's zones and the analytics** | **Phase 6** — the two Enterprise rows exist (Phase 0) and their screens do not |
+| **the customer's MAP and the route-refined ETA** | they needed the **driver link** and a **traffic-aware route** → **Phase 5 shipped both** — the map, the route and the ETA are live (§7.5, §9.20) → **and no Mapbox account was needed** |
+| **the live driver marker and the pings** | **Phase 5** — the driver link carries the leg's buttons (§12) → **now live** (§7.5, §9.20) |
+| **the geocode of the customer's address** | it is the input the map needs → **Phase 5 geocodes it** → **but the coverage check is still a radius on the geocoded point, not an Isochrone** (that endpoint is an Enterprise add-on this key does not have) → **and it WARNS rather than REFUSES** — the zones that would enforce it are Phase 6 |
+| **the tenant's zones and the analytics** | **Phase 6** — the two Enterprise rows exist (Phase 0) and their screens do not → **the postcode pricing and the analytics are still not built** (checked against the code: no zone table, no analytics screen) |
 | **the counter's chooser and the per-order-type lock** | **Phase 2** — they are done, and the delivery's own list is held to **the same lock** (§9.15) |
+
+### 7.5 What Phase 5 ACTUALLY changed (v1.20)
+
+**Phase 5 — the live tracking (the driver's door, the customer's map and the route):**
+
+| the file | what changed |
+|---|---|
+| **`backend/app/routes/delivery_tracking.py`** (new) | the tracking router — `GET /api/delivery/driver/{token}` · `GET /api/delivery/driver/{token}/route` · `POST /api/delivery/driver/{token}/ping` · `POST /api/delivery/driver/{token}/action` — **and it is registered BEFORE the slug router** in `main.py`, so `/api/delivery/driver/{token}` cannot be shadowed by a slug route (§9.20.2) |
+| **`backend/app/services/delivery_tracking.py`** (new) | the signed per-order driver token (24h) · the route + ETA computation · the pings and the trail · the 24-hour prune · the address-visibility rule |
+| **`backend/app/services/geoapify.py`** (new) | the ONE provider adapter — the geocode, the traffic-aware route (`drive_traffic_approximated`, falling back to `drive`), the geometry, the radius check — **and it fails loudly** (`GeoapifyUnavailable`) when the key is missing |
+| **`backend/app/models/delivery.py`** | `DeliveryPing` (the position reports, their own table) · and on the leg: `route_geometry` · `route_distance_m` · `route_duration_s` · `route_mode` · `route_computed_at` |
+| **`backend/app/routes/delivery_public.py`** | the customer's tracking read — `GET /api/delivery/{slug}/orders/{id}/tracking` — **the guest token is the proof** and the order must belong to that member |
+| **`backend/app/routes/delivery.py`** | the staff's driver-link mint — `POST /api/delivery/orders/{order_id}/driver-link` — and the link is minted when the leg is assigned |
+| **`backend/app/main.py`** | the tracking router is registered FIRST of the delivery routers · and the boot prunes the old pings |
+| **`customer-app/driver.html`** + **`customer-app/js/driver.js`** (new) | the driver's own one-page door — the map, the customer, the phone, the address, the items, the ETA and the four buttons (Start · Arrived · Delivered · Cash collected) |
+| **`customer-app/delivery.html`** + **`customer-app/js/delivery.js`** + **`customer-app/css/delivery.css`** | the customer's live map — the route polyline, the rider marker, the drop-off pin, the trail and the ETA |
+| **`customer-app/vendor/leaflet/`** (new) | **Leaflet 1.9.4, vendored** — not a runtime CDN dependency — over the free CARTO/OSM raster tiles, with the attribution the terms require |
+| **`backend/app/routes/competitors.py`** + **`outlet_settings.py`** | the two hardcoded Geoapify literals are **gone** — the key comes from `settings.GEOAPIFY_API_KEY`, and the routes answer **503** when it is missing |
+
 
 ---
 
@@ -1503,8 +1541,10 @@ the slug `kens-ss17`).
     for the tenants who have one, and **no tracking** when the drivers will not tap
     anything → **the honest risk is the driver's cooperation, not the provider** →
     **and it is no longer a tier question** (§11.1).
-12. **Which map and routing provider?** — **Geoapify for the geocoding (already
-    integrated), Mapbox for the route, the ETA and the tiles** → §11.
+12. **Which map and routing provider?** — **ANSWERED by v1.20: Geoapify for the
+    geocoding, the route AND the ETA** (it is already integrated, and its
+    `drive_traffic_approximated` answers 200) → **and the map is vendored Leaflet over
+    free CARTO/OSM raster tiles** → **no Mapbox** → §11.
 13. **Is the live driver marker on the free tier?** — **the question is dead twice
     over** → **v1.8 made the whole delivery app one entitlement** (the map, the ETA and
     the live marker all ship with it) → **and v1.9 put the entitlement on
@@ -1536,9 +1576,9 @@ the slug `kens-ss17`).
     delivery affordable at the Enterprise price?** — **a commercial question, not a
     design one** → **the Starter loses the delivery's viral loop** (the tenant's own
     customers order → the tenant sees the orders → the upgrade) → **and the Starter
-    needs a different hook** → **and the delivery's own running cost (the Mapbox
-    bill — ~$30 a month at 500 orders a day) now lands on the plan that is priced to
-    carry it** → **which is the first time the delivery's economics actually line up
+    needs a different hook** → **and the delivery's own running cost is ZERO** (the
+    routing rides the Geoapify credits the house already pays for, and the map's tiles
+    are free) → **which is the first time the delivery's economics actually line up
     with its price** (§1, §11).
 20. **The zones and the analytics now sit on Enterprise with everything else — do they
     still earn their own rows?** — **the house says yes** (Inventory has eight rows,
@@ -2381,15 +2421,15 @@ client's own arithmetic.
 
 | what | why |
 |---|---|
-| **the customer's MAP and the route-refined ETA** | they need a **Mapbox account** — a **third-party bill**, and the house's own rule is that **ONE phase buys it** (§11) — and the **driver link**, which is **Phase 5** → **the ETA that ships is the outlet's OWN promise** (the leg's `eta_at`, from `eta_minutes`), shown to the customer → **the map refines it later** |
-| **the geocode of the customer's address** | it is the input the map and the **Isochrone coverage** need — and the coverage is **Phase 6** → **so today the radius is the outlet's own setting, not a checked distance** |
-| **the live driver marker** | **Phase 5** — the driver's own phone, the pings, the map matching (§12) |
+| **the customer's MAP and the route-refined ETA** | they needed the **driver link** and a **traffic-aware route** → **Phase 5 shipped both** (§7.5, §9.20) — **and no Mapbox account was needed** → the ETA the customer sees is the route's own traffic-aware duration |
+| **the geocode of the customer's address** | it is the input the map needs → **Phase 5 geocodes it** → **but the coverage check is still a radius on the geocoded point, not an Isochrone** (that endpoint is an Enterprise add-on this key does not have) → **and it WARNS rather than REFUSES** — the zones that would enforce it are Phase 6 |
+| **the live driver marker** | **Phase 5** — the driver's own phone and the pings (§12) → **now live** (§9.20) — **without map matching** (the trail is the rider's raw pings) |
 
 → **so the phase-3 row in §7 said "the map, the ETA and the live tracking"** → → **and
 what shipped is the ETA and the ORDER's live tracking (the client polls its own order
 every 8 seconds and shows the kitchen's status and the leg's status side by side)** →
 → **but NOT the map, and NOT the route-refined ETA** → → **the v1.19 status row above
-says so, rather than letting the old promise stand.**
+says so, rather than letting the old promise stand.** → → **and v1.20 has now shipped the map, the route-refined ETA and the live driver marker** (§9.20) — **so this subsection is now a record of what Phase 3 was, and Phase 5 is the one that closed it.**
 
 #### 9.19.6 The pattern — the same habit, one level up
 
@@ -2399,11 +2439,99 @@ says so, rather than letting the old promise stand.**
 | the live API (§9.16) | the router's prefix → every call a 404 | the suites never touch a URL |
 | the browser, STAFF side (§9.18) | a heading that named nothing | the API was never asked what the screen SAYS |
 | **the browser, CUSTOMER side (§9.19)** | **the `hidden` attribute ignored (the app unusable) and a dead checkout button (no order possible)** | **the API was never asked what the page SHOWS** → **and the API's 200s were all TRUE while the app was broken** |
+| **the browser, DRIVER side (§9.20)** | **a duplicate "Call" link, a duplicated item label, and the item's quantity shown twice** | **the API was never asked what the page SHOWS** → **and the first fix did not even reach the browser until the asset version was bumped** (the CDN serves the customer app's assets for 4 hours) |
 
 → **so the house's standing habit holds, one level up:** each proof covers what the one
 below it cannot see → → **and the customer's app needed its OWN browser proof, because the
 staff's browser proof says nothing about it** → → **and a phase is done when the LAST of
 them is green.**
+
+---
+
+### 9.20 The v1.20 build review — Phase 5 is DONE (the live tracking)
+
+**Phase 5 shipped.** The driver's door, the customer's live map, the traffic-aware route
+and the privacy pruning are LIVE and PROVEN against the running app — over real HTTP and
+in a real browser.
+
+#### 9.20.1 The two provider decisions this phase made
+
+| the question | the answer | the evidence |
+|---|---|---|
+| **which provider routes and times the delivery?** | **Geoapify** — and **no second provider** | `drive_traffic_approximated` answers **200** on the house's own key → the traffic-aware ETA came for free (§11.3) |
+| **what draws the map?** | **vendored Leaflet 1.9.4** over the free CARTO/OSM raster tiles | Geoapify serves no raster tiles (**404**) → **no Mapbox account, no Mapbox bill, no token in the browser, and no runtime CDN dependency** |
+
+→ **and the honest gap**: the **Isochrone** is an Enterprise add-on this key does not
+carry (**404**) → **so the coverage check is a radius on the geocoded point**, and it
+**warns** rather than refusing the order — **the zones are Phase 6** → → **and the map
+matching is not built**: the trail is the rider's raw pings (§11.3).
+
+#### 9.20.2 The bug the suites could not see — the shadowed route
+
+→ **`delivery_tracking.router` was imported in `app/main.py` and never registered** →
+→ **so every driver route answered 404** — and the bug was invisible to the service
+suites, because they call the functions, not the URLs (§9.16) → → **and it had a second
+half**: the slug-based delivery router is `/api/delivery/{slug}/...`, so a naive
+registration order would let **`/api/delivery/driver/{token}` be captured as a slug** →
+→ **the fix is the ORDER**: the tracking router is registered **before** the slug router
+in `main.py` → → **and the live openapi now answers every one of them**:
+`/api/delivery/driver/{token}` · `/route` · `/ping` · `/action`.
+
+#### 9.20.3 The proof — the whole leg, over HTTP
+
+**order `389`, placed through the real public API** (`ORD-20261115-9458`, postpay, total
+21.5, the address geocoded):
+
+| the step | the answer |
+|---|---|
+| the driver link | **200** |
+| the ping | **200** |
+| **a forged driver token** | **404** — the signature names one leg, and the leg is re-checked against the token's tenant and outlet |
+| the route | **200** — **5,741.0 m** · **1,723.506 s** · the mode **`drive_traffic_approximated`** |
+| `start` | the leg → **`picked_up`** |
+| `arrive` | the leg stays **`picked_up`** (it is an EVENT on the trail, not a status) |
+| `deliver` | the leg → **`delivered`** and the core → **`served`** |
+| `cash_claimed` | the core → **`completed`** and `payment_status` → **`paid`** |
+| **a ping AFTER the handover** | **409** — the tracking refuses new pings once the food has changed hands |
+| **the tracking after the handover** | **`address_visible: false`** — and no address text in the response at all |
+
+→ **and the customer-side ownership check is real**: the tracking route needs the guest
+token, and an order that belongs to a **different member** is refused with a **403** — the
+customer's map can only ever be read by the customer it belongs to.
+
+#### 9.20.4 The proof — in a real browser
+
+→ **the customer's order screen** (order `389`, the live slug) showed **"On the way"**, the
+driver's details, the ETA, the totals and a **rendered Leaflet route map** — the DOM
+carried `dl-track`, `dl-track-map`, a live `L`, and a **528 × 220** map container with two
+children → → **the driver's own page** rendered the live Leaflet map and all **four**
+action buttons → → **and two presentation defects the browser found were fixed and
+re-verified**: a **duplicate "Call" link** and a **duplicated item label** → → **and a
+third, found on the re-run: the item's QUANTITY was shown twice** ("2 × Latte" beside
+"× 2") → **now one name and one quantity** → → **and the fix only became visible after
+the asset version was bumped** — the CDN serves the customer app's assets for 4 hours, so
+a corrected file behind an unchanged `?v=` never reaches the browser (§9.19.2 — the same
+habit, one level up).
+
+#### 9.20.5 The privacy, as it actually behaves
+
+| the fact | the behaviour |
+|---|---|
+| the customer's address | **it stops being exposed at the handover** — the tracking payload answers `address_visible: false` and carries no address text |
+| the rider's location | the pings are pruned after **24 hours** (`PING_RETENTION_HOURS`) — at the boot and at most every 15 minutes on the reads |
+| the driver link | a signed token naming **one order, one leg, one tenant and one outlet**, and it **expires in 24 hours** |
+| the pings after the handover | **refused** with a **409** — a finished delivery does not keep moving |
+| the tracking read | the guest token, and the order must belong to that member — otherwise **403** |
+
+#### 9.20.6 What Phase 5 deliberately does NOT do
+
+| what | why |
+|---|---|
+| **the Isochrone coverage** | it is an Enterprise add-on and this key answers **404** → **the radius check stands** (§11.3) |
+| **the map matching** | the trail is the rider's raw pings → **the road-snapped trail is not built** — **a named gap, not a hidden one** (§11.3) |
+| **the zones and the analytics** | **Phase 6** — the two Enterprise rows exist (Phase 0) and their screens do not |
+| **a driver APP** | the link is the app (§12) → **nothing to install, nothing to publish** |
+| **the STAFF-side money write** | the driver's link settles the money **only** for the COD claim (§12) — the staff's own write is unchanged |
 
 ---
 
@@ -2446,7 +2574,7 @@ Inventory:**
 |---|---|---|
 | **14 — we can choose whether to assign this delivery feature to the plan; let us just assign the delivery features to the Enterprise plan, like the inventory features** | **done, and it is the house's own pattern** — the live DB has **eight** inventory rows and **every one is on Enterprise** → the delivery gets **four** rows (39-42), **all on Enterprise** → **the plan decides WHO gets the delivery, never WHAT they get** → **the customer app is unchanged and still complete** | §1 · §9.9 |
 | **15 — only the customers of the tenant which subscribes Enterprise AND allows delivery at that outlet can access the delivery app** | **exactly the two gates the design already had** — the **Enterprise entitlement** (checked at the login, §5.1) **AND the outlet's `allow_delivery`** (§3.1) → **two messages, two levels**: "Sorry, this tenant didn't allow the delivery." for the tenant, "This branch is not accepting delivery orders right now." for the outlet → **and a downgrade now closes the customer side of the old hole** | §3.1 · §5.1 · §8 Q17 |
-| **and the honest consequence** | **the Starter loses the delivery's viral loop** → **the delivery is now sold to the tenant that already runs the operation** → **that is a narrower door and a cleaner pitch** → **and the Mapbox bill now lands on the plan priced to carry it** → **the Starter needs another hook** — that is the one open commercial decision | §1 · §8 Q19 · §11 |
+| **and the honest consequence** | **the Starter loses the delivery's viral loop** → **the delivery is now sold to the tenant that already runs the operation** → **that is a narrower door and a cleaner pitch** → **and the delivery's third-party bill is ZERO** (the routing rides the Geoapify credits the house already pays for, and the map's tiles are free) → **the Starter needs another hook** — that is the one open commercial decision | §1 · §8 Q19 · §11 |
 
 **Round six (Nov 14, 2026) — the outlet tab, the flexible plan, and the screens:**
 
@@ -2597,48 +2725,53 @@ the money is recorded (the postpay write) ────────────�
 |---|---|---|
 | **the address → the coordinates** | one per order | **Geoapify** (already integrated) |
 | **the coordinates → a place** (the address check) | one per order | **Geoapify** (already integrated) |
-| **is this address inside our coverage?** | a travel-time area | **Geoapify Isochrone API** (Enterprise) |
-| **the route + the ETA** | one per order | **Mapbox Directions** |
-| **the map the customer looks at** | the tiles | **Mapbox GL JS** |
-| **the customer's MAP, the route and the ETA** | one route request per order | **Mapbox** — the tiles + Directions (**with the entitlement — §11.1**) |
+| **is this address inside our coverage?** | a travel-time area | **NOT on this key** — the Geoapify Isochrone API is an Enterprise add-on and this key answers **404** → **so the check is a radius on the geocoded point** (§11.3) |
+| **the route + the ETA** | one per order | **Geoapify routing** — `drive_traffic_approximated`, falling back to `drive` |
+| **the map the customer looks at** | the tiles | **vendored Leaflet 1.9.4 over the free CARTO/OSM raster tiles** (Geoapify serves no raster tiles) |
+| **the customer's MAP, the route and the ETA** | one route request per order | **Geoapify + Leaflet/CARTO** (**with the entitlement — §11.1**) |
 | **the live driver MARKER** | the driver's own phone | **the driver link** (**with the entitlement — it is no longer a tier — §11.1**) |
-| **the driver's raw GPS → a road** | the map matching | **Mapbox Map Matching** |
+| **the driver's raw GPS → a road** | the map matching | **NOT built** — the trail is the rider's raw pings, drawn as a polyline (§11.3) |
 | **the driver → the customer** (the turn-by-turn) | **nothing** | the driver uses their own phone |
 
-**The recommendation — a hybrid, and the reason for each part:**
-- **Geoapify stays the geocoder** → it is **already integrated in two places**
-  (`outlet_settings.py:359-362` — the outlet's own geocode; `competitors.py:707`,
-  `731`, `763`, `778` — the reverse geocode, the search and the places) → **the
-  marginal cost is zero for a small tenant** (the free plan: **3,000 credits a day**
-  — a tenant doing 500 orders a day spends 500) → **and its Isochrone API answers the
-  coverage question better than a circle on a map** (a 15-minute travel area, not a
-  5 km radius) → **it is the one place where the existing integration pays off**;
-- **Mapbox is added for the route, the ETA and the map** → the thing Geoapify's
-  routing cannot do is the **live traffic** (its routing is open-data → **the ETA is
-  optimistic exactly at the peak hours, when the customer is watching**) → Mapbox
-  Directions is **$2 per 1,000 requests** → and the map itself is inside the free
-  tier (**100,000 map loads a month**);
-- **no Google** → the Routes API is the best traffic data in the market, but it is
-  billed **per kilometre**, it comes with a heavier commercial setup and display
-  constraints, and its place search we already have → **it is a "later, at scale"
-  answer, not a "now" answer**;
-- **no HERE** → the strongest commercial-fleet routing in the market, at roughly
-  **$3 per 1,000** → our drivers are cars and motorbikes, not trucks → **overkill**;
+**What the implementation actually does (v1.20) — and the reason for each part:**
+- **Geoapify does the geocoding AND the routing** → it is **already integrated in two
+  places** (`outlet_settings.py` — the outlet's own geocode; `competitors.py` — the
+  reverse geocode, the search and the places) → **the marginal cost is zero for a small
+  tenant** (the free plan: **3,000 credits a day** — a tenant doing 500 orders a day
+  spends 500) → **and it routes with TRAFFIC** (`drive_traffic_approximated`, falling
+  back to `drive`) → **which was the ONE thing the Mapbox recommendation was buying** →
+  **so Mapbox was dropped** (Kens's call, Nov 14, 2026);
+- **the map is vendored Leaflet over free raster tiles** → Geoapify does **not** serve
+  raster tiles on this key (**404**) and its `staticmap` is a **static image**, which
+  cannot carry a live marker → → **so the browser draws its own tiles**: **Leaflet 1.9.4
+  vendored into `customer-app/vendor/leaflet/`** (no runtime CDN dependency) over the
+  **free CARTO/OSM raster set**, with the attribution the terms require → → **no Mapbox
+  account, no Mapbox bill, no token in the browser**;
+- **the Isochrone stays paywalled** → it is an Enterprise add-on and this key answers
+  **404 "not supported"** → → **so the honest coverage check is a radius on the point we
+  already geocoded** → → **and it WARNS, it does not yet REFUSE the order** — the zones
+  that would enforce it are Phase 6 (§11.3);
+- **no Google** → the Routes API is the best traffic data in the market, but it is billed
+  **per kilometre**, it comes with a heavier commercial setup and display constraints, and
+  its place search we already have → **it is a "later, at scale" answer, not a "now"
+  answer**;
+- **no HERE** → the strongest commercial-fleet routing in the market, at roughly **$3 per
+  1,000** → our drivers are cars and motorbikes, not trucks → **overkill**;
 - **no self-hosted OSRM (yet)** → it is free, but it has **no traffic** → the ETA is
-  wrong at the peak → and it is infrastructure we run → **worth revisiting when the
-  volume makes the per-call cost visible** (at 100k orders a month, Mapbox Directions
-  is about $200 a month for the whole platform).
+  wrong at the peak → and it is infrastructure we run → **worth revisiting when the volume
+  makes the per-call cost visible**.
 
 **The cost, at 500 orders a day** (one tenant):
 - the geocodes: 500 a day → **inside the free Geoapify plan** (3,000 credits a day);
-- the routes: 500 a day = 15,000 a month → **about $30 a month** (Mapbox Directions,
-  $2/1,000);
-- the map loads: the customer's tracking page → **inside the free tier**;
-- → **the live tracking costs about the price of a coffee per order** → **and since
-  v1.9 only ENTERPRISE tenants carry it** → **so the bill lands on the plan that is
-  priced to carry it** (~$30 a month at 500 orders a day) → **and the free Starter no
-  longer carries the map bill at all** → **which closes the cost question v1.8
-  opened** (§8 Q19).
+- the routes: 500 a day → **the same Geoapify account and the same credit pool** → **there
+  is no Mapbox bill to land on any plan**;
+- the map loads: the customer's tracking page → **the CARTO/OSM raster tiles are free** and
+  the Leaflet library is **vendored**, so there is no map-load charge and no CDN bill;
+- → **the live tracking costs one provider's credits out of an account the house already
+  pays for** → **so the delivery's third-party bill is ZERO** → → **which closes the cost
+  question v1.8 opened** (§8 Q19) — **and it closes it better than the Mapbox answer did:
+  not "about the price of a coffee per order", but "a rounding error inside a plan we
+  already have."**
 
 ### 11.1 The map AND the live tracking are CORE — one entitlement, one experience
 
@@ -2653,11 +2786,11 @@ customer-facing screen may not be tiered** (§5.3).
 
 | the thing | does it need the driver's phone? | what it costs | the tier |
 |---|---|---|---|
-| **the map, the route and the ETA** | **no** | one Mapbox Directions request per order (~$2 per 1,000 → ~$30 a month at 500 orders a day) | **the entitlement** — every Enterprise tenant with the delivery on |
+| **the map, the route and the ETA** | **no** | one Geoapify routing request per order (**no new bill** — the account and the credit allowance are already ours) | **the entitlement** — every Enterprise tenant with the delivery on |
 | **the live driver MARKER** (the dot moving on the map) | **yes** | the driver's phone + the pings + the privacy work | **the entitlement** — the same row, no extra tier |
 
 → **the ETA without GPS is honest, not fake** → the route is the **outlet → customer**
-route (`Mapbox Directions`) → the driver starts at the outlet, so the route is accurate
+route (Geoapify, traffic-aware) → the driver starts at the outlet, so the route is accurate
 **the moment the driver is assigned** → and from `picked_up` the ETA counts down by the
 elapsed time → **the customer sees a shrinking arrival window.**
 
@@ -2669,9 +2802,9 @@ the ETA, and no dot** → **that is a cooperation problem, not a plan problem.**
 the free tier" → **it is "no commission and no driver marketplace"** → **the delivery
 app is the adoption hook, and the tenant's own depth is the upsell.**
 
-→ **the cost is the same Mapbox bill as before** — the difference is that it is now
-**spread across every tenant** → at 500 orders a day per tenant it is ~$30 a month →
-**so the free Starter carries it too** → **which is a pricing decision, not a design
+→ **and the cost is ZERO** — there is no Mapbox bill and no map bill at all → **the
+tiles are free and the routing rides the Geoapify credits the house already pays for** →
+**so the free Starter carries it too** → **which is a design outcome, not a pricing
 one** (§8 Q19).
 
 ### 11.2 The live tracking needs a location source — and that is the real question
@@ -2710,11 +2843,33 @@ that operate in the EU):
 5. **the map tiles** → the provider's terms require the attribution → the attribution
    goes on the tracking page.
 
-**And the key** — the existing code falls back to a **hardcoded Geoapify key**
-(`outlet_settings.py:359`, `competitors.py:707` and `763` — the literal is in the
-source and it is **not repeated here**) → **that fallback must not survive** → the key
-comes from the environment (a SecretRef) → **and the code must fail loudly when it is
-missing** → a silent fallback to a shared key is how a bill arrives from nowhere.
+**And the key — DONE (v1.20).** The two hardcoded Geoapify literals are **gone** from
+the source (`outlet_settings.py` and `competitors.py` now read
+`settings.GEOAPIFY_API_KEY`) and the key lives in **`backend/.env`** → **and the code
+fails loudly when it is missing**: the two routes answer **503** with the reason, and the
+new `services/geoapify.py` raises **`GeoapifyUnavailable`** → **the app still boots
+without the key** — only the Geoapify-dependent features fail, and they fail clearly → a
+silent fallback to a shared key is how a bill arrives from nowhere, and that path is now
+closed.
+
+### 11.3 What this Geoapify key can and cannot do — probed live, not read from a marketing page
+
+**the probe (Nov 14, 2026), against the key in `backend/.env`:**
+
+| the Geoapify endpoint | the answer | what it means for the delivery |
+|---|---|---|
+| `GET /v1/geocode/search` | **200** | the customer's address → a point |
+| `GET /v1/routing?mode=drive` | **200** | the route + the duration |
+| `GET /v1/routing?mode=drive_traffic_approximated` | **200** | **the TRAFFIC route** → the ETA is not the optimistic open-data one at the peak — **this is what removed the need for a second provider** |
+| `GET /v1/staticmap` | **200** | a static image — **the fallback, not the plan** (the live marker needs an interactive map) |
+| `GET /v1/isochrone` | **404 "not supported"** | **the Isochrone API is an Enterprise add-on this key does not carry** → the coverage check is a radius on the geocoded point |
+| a raster TILES endpoint | **404** | Geoapify serves no tiles → **the map draws its own** (vendored Leaflet over the free CARTO/OSM raster source, with the attribution the terms require) |
+
+→ **so the one capability the Mapbox recommendation was buying — the traffic-aware ETA —
+is inside the provider we already had** → → **and the one capability that stays paywalled
+is the Isochrone**, whose honest fallback is the radius → → **and the map matching is NOT
+built**: the trail is the rider's raw pings, drawn as a polyline — **a named gap on a real
+road network, and it is named rather than hidden**.
 
 ---
 
@@ -2731,8 +2886,8 @@ frontend POS, or another tool?*
 |---|---|---|
 | the leg (`assigned` → `picked_up` → `delivered`) | **the POS staff** *and* **the driver link** | it is the physical truth of the delivery — only the driver and the shop know it |
 | the handover (`leg = 'delivered'` → the core moves) | **the server**, in the same write | the server owns the shared machine — it is the only place the status can be trusted |
-| **the money** (`payment_status = 'paid'`) | **the POS staff only** | it is the tenant's money → the write already sits behind `staff:orders:write` (`order.py:1013`) → **a driver must never be able to mark money in** |
-| the cash **claim** ("I took RM 12.50") | the POS staff **and** the driver link | a claim is a fact about the handover, not about the ledger → it sits on the leg → the staff reconcile it |
+| **the money** (`payment_status = 'paid'`) | **the POS staff — and the driver link, but ONLY as the COD claim** | it is the tenant's money → the staff write sits behind `staff:orders:write` (`order.py:1013`) → **and v1.20 widened it by exactly one action**: the driver's **Cash collected** button writes the payment row and the `paid` flag **through the house's own `payment_modes.status_after_payment` rule** — the same rule the counter's cash button uses — because for a COD order the rider physically holds the cash at the door (§9.20.3) |
+| the cash **claim** ("I took RM 12.50") | the POS staff **and** the driver link | a claim is a fact about the handover → **in v1.20 it settles the money too** (see the row above) → **and it refuses the two cases where it must**: a **prepaid** order answers **409** (there is no cash to claim) and an **already paid** order answers **409** |
 
 → **so the driver can say "delivered, I took RM 12.50"** → **and the staff still write
 the money** → **the tenant's cash flow is unchanged** → **and a COD delivery's two
@@ -2755,7 +2910,7 @@ names what it may do) → **never the PWA's public key** → **a leaked link mov
 order's leg, and it expires.**
 
 → **what the link may NOT do** (the boundary, stated once):
-- **it may not write money** — no `payment_status`, no payment row;
+- **it may not write money, except for ONE action** — the **cash claim** on a COD order, which goes through the house's own money rule (§9.20.3); it may not write `payment_status` or a payment row **any other way**;
 - **it may not write the core status directly** — the server moves the core in the same
   write as the leg (that is where the shared machine's rules live);
 - **it may not touch the items, the prices, the fee or the address** — the order's money
@@ -2775,7 +2930,23 @@ is the convenience.**
 
 ## The sources
 
-*Every line below was re-checked against the live code on Nov 14, 2026.*
+- `backend/app/routes/delivery_tracking.py` (new, phase 5) — the driver's door
+  (`GET /driver/{token}`, `GET /driver/{token}/route`, `POST /driver/{token}/ping`,
+  `POST /driver/{token}/action`), the four actions, the cash claim, the **409** after the
+  handover
+- `backend/app/services/delivery_tracking.py` (new, phase 5) — the signed per-order driver
+  token (24h), the route + ETA computation, the pings and the trail, the 24-hour prune,
+  the address visibility
+- `backend/app/services/geoapify.py` (new, phase 5) — the geocode, the traffic-aware route,
+  the geometry, the radius check, `GeoapifyUnavailable`
+- `backend/app/models/delivery.py` — `DeliveryPing` and the leg's route fields
+  (`route_geometry`, `route_distance_m`, `route_duration_s`, `route_mode`,
+  `route_computed_at`)
+- `backend/app/main.py` — the tracking router's registration **order** and the boot prune
+- `customer-app/driver.html` + `customer-app/js/driver.js` (new, phase 5) — the driver's page
+- `customer-app/vendor/leaflet/` (new, phase 5) — the vendored Leaflet 1.9.4
+
+*Every line below was re-checked against the live code on Nov 14–15, 2026.*
 
 - `backend/app/models/models.py` — the branding (`restaurant_name` 379,
   `restaurant_logo` 380, `brand_color` 383, `operating_hours` 390), the delivery
