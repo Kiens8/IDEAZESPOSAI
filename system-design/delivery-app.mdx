@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.15
+**Document Version:** 1.16
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1 and 2 are BUILT (the staff side); the customer-facing app is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1 and 2 are BUILT and PROVEN LIVE (the staff side); the customer-facing app is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -547,7 +547,7 @@ tenant's own storefront (`https://order.ideazes.com/d/<slug>`) → **and the slu
 per outlet** → → **so a QR drawn in a branch's tab points at THAT branch's
 storefront** → → **it cannot live anywhere else and still be right** → **and it is
 drawn by the SERVER** (the front end has no QR library; the backend has
-`qrcode==7.4.2` + `Pillow==10.2.0`) → **`GET /api/delivery/outlets/{outlet_id}/qr`**
+`qrcode==7.4.2` + `Pillow==10.2.0`) → **`GET /api/delivery/qr.png?outlet_id={outlet_id}`**
 — the same shape as the payment QR (`/api/pwa/orders/{id}/pay-qr`,
 `/api/orders/{id}/pay-online/qr`).
 
@@ -606,7 +606,7 @@ both are true.
 (`frontend/package.json` — no qrcode) while the backend has **`qrcode==7.4.2`** and
 **`Pillow==10.2.0`** (`backend/requirements.txt:7-8`) → so the QR is a **PNG from a
 route**, exactly the payment QR's shape (`/api/pwa/orders/{id}/pay-qr`,
-`/api/orders/{id}/pay-online/qr`) → **`GET /api/delivery/outlets/{outlet_id}/qr`** → the
+`/api/orders/{id}/pay-online/qr`) → **`GET /api/delivery/qr.png?outlet_id={outlet_id}`** → the
 tab shows the image, the URL, a copy button and a download → **and the QR encodes the
 tenant's own storefront** (`https://order.ideazes.com/d/<slug>`).
 
@@ -1328,7 +1328,7 @@ prove ownership (the order token — **a new field**, or the existing
 |---|---|---|---|
 | **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small | **✅ DONE (v1.14)** — the four rows are LIVE (ids 41-44, sort orders 39-42) and assigned to Enterprise (`plan_features` 408-411) by an idempotent migration script (§7.1) |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium | **✅ DONE (v1.14)** — the two columns, the two tables, the server's fee, the member rule and the receipt line are LIVE (§7.1, §9.14) |
-| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium | **✅ DONE (v1.15)** — the Delivery tab, the Delivery Management screen, the counter's member step + payment-mode chooser, the settlement rule and the staff-side entitlement gate are LIVE (§7.2, §9.15) |
+| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium | **✅ DONE (v1.15)** — the Delivery tab, the Delivery Management screen, the counter's member step + payment-mode chooser, the settlement rule and the staff-side entitlement gate are LIVE (§7.2, §9.15) — **and PROVEN LIVE in the running app (v1.16)**, which caught one defect the suites could not (§9.16) |
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | planned |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | planned |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | planned |
@@ -1381,7 +1381,7 @@ and the unique index (`outlets.delivery_slug` · `outlet_settings.delivery_setti
 
 | the file | what changed |
 |---|---|
-| **`backend/app/routes/delivery.py`** (new) | the delivery's API — **`GET /gate`** (the entitlement) · **`GET /quote`** (the server's fee, the minimum and the allowed modes) · **`GET`/`POST`/`PATCH`/`DELETE /drivers`** (the tenant's roster) · **`GET /orders`** (today's deliveries) · **`PATCH /orders/{id}`** (the leg's transitions) · **`PATCH /slug`** · **`GET /storefront`** · **`GET /qr.png`** — **every route reads the tenant from the claim** (`require_tenant_claim`) |
+| **`backend/app/routes/delivery.py`** (new) | the delivery's API — **`GET /api/delivery/gate`** (the entitlement) · **`GET /api/delivery/quote`** (the server's fee, the minimum and the allowed modes) · **`GET`/`POST`/`PATCH`/`DELETE /api/delivery/drivers`** (the tenant's roster) · **`GET /api/delivery/orders`** (today's deliveries) · **`PATCH /api/delivery/orders/{id}`** (the leg's transitions) · **`PATCH /api/delivery/slug`** · **`GET /api/delivery/storefront`** · **`GET /api/delivery/qr.png`** — **every route reads the tenant from the claim** (`require_tenant_claim`) — **and every route lives under `/api/`, like every other router in the house** (§9.16.2) |
 | **`backend/app/services/delivery_service.py`** | the **settlement rule** (§4.1 — the handover and the money are two facts) · **`allowed_delivery_modes`** and **`resolve_delivery_mode`** (the client asks, the server decides) · **`delivery_status_on_payment`** / **`delivery_status_on_handover`** · the **tenant check on the driver assignment** |
 | **`backend/app/services/delivery_qr.py`** (new) | the **branded QR** — the outlet's own name, logo and colour on the code |
 | **`backend/app/routes/order.py`** | the order response carries the **leg** (`delivery`), the **fee** and the address · the **member rule with `allow_walkin=False`** — the walk-in flag is gone |
@@ -1765,7 +1765,7 @@ marketplace") **but it is a narrower door** → **the Starter needs another hook
 
 | the comment | what the live code said | the design consequence |
 |---|---|---|
-| **the delivery settings tab must be in the outlet settings — the allow-delivery switch and the QR generation must be there** | the POS's Settings screen is **already outlet-scoped**: `useOutletId()` (`useSession.js:21`) → `/api/settings/${outletId}` (`Settings.jsx:61`, `:85`) → and the header carries an **outlet switcher** (`App.jsx:59-107`) → **so "the settings of the outlet I am working at" is what the screen already is** | the Delivery tab is **per outlet by construction** → the switch, the fees, the slug and the QR all belong to one branch → **one storefront and one QR per branch** → and the QR route is `GET /api/delivery/outlets/{outlet_id}/qr` (§3.1, §3.2) |
+| **the delivery settings tab must be in the outlet settings — the allow-delivery switch and the QR generation must be there** | the POS's Settings screen is **already outlet-scoped**: `useOutletId()` (`useSession.js:21`) → `/api/settings/${outletId}` (`Settings.jsx:61`, `:85`) → and the header carries an **outlet switcher** (`App.jsx:59-107`) → **so "the settings of the outlet I am working at" is what the screen already is** | the Delivery tab is **per outlet by construction** → the switch, the fees, the slug and the QR all belong to one branch → **one storefront and one QR per branch** → and the QR route is `GET /api/delivery/qr.png?outlet_id={outlet_id}` (§3.1, §3.2) |
 | **we do not allow a plan downgrade currently** | the plan-change route has a **downgrade branch** (`subscription.py:1389` — *"A downgrade (or the same price): there is nothing to collect — the plan changes below, right away"*) → **so the product rule and the route are not the same thing** | **the delivery gate must NOT lean on the no-downgrade rule for its correctness** → it reads the **subscription state** (cancelled / expired / overdue — `subscription_access.effective_access` with the 14-day grace and the 7-day warning) → **that case is live whether or not a downgrade is** (§5.1, §8 Q17) |
 | **we are flexible to set the delivery features in any plan — it has to be flexible** | the plan assignment is a **row** in `plan_features` → **there is no code that names a plan for the delivery** — the gate compares the **tab name** (`admin.py:1052`) | the design hardcodes **no plan** → **moving the module is a data change** → **and the rule that keeps it flexible: the gate asks the feature list, never the plan id** (§1, §9.9, §8 Q21) |
 | **list out the screens we propose — including the settings tab** | the POS screens we already have: `Settings.jsx` (the tabs), `StaffOrder.jsx`, `Kitchen.jsx`, `OrderQueue.jsx`, `OutletManagement.jsx` → and the delivery's own: the tab, the nav screen, the zones, the PWA, the driver link | **the full inventory is now §3.2** — **eight POS screens and nine customer screens**, and the delivery's genuinely NEW screens are **one settings tab, one nav screen, one zones tab, the PWA and the driver link** (§3.2) |
@@ -1783,7 +1783,7 @@ marketplace") **but it is a narrower door** → **the Starter needs another hook
   branches has three storefronts and three QRs**, each printed on that branch's menu
   card;
 - **the QR route must take the OUTLET, not the tenant** — `GET
-  /api/delivery/outlets/{outlet_id}/qr` → **and it must return the branch's slug, not
+  /api/delivery/qr.png?outlet_id={outlet_id}` → **and it must return the branch's slug, not
   the tenant's** → → **so the "one storefront per branch" rule is enforced by the
   route's shape**, not by a convention.
 
@@ -1975,7 +1975,7 @@ live path.
 screen needed three numbers it does not own: the fee, the minimum order and the allowed
 payment modes.**
 
-→ **so the quote endpoint is the answer** (`GET /delivery/quote`) → → **and it is the
+→ **so the quote endpoint is the answer** (`GET /api/delivery/quote`) → → **and it is the
 SAME function the order creation uses** (`delivery_fee_for`) → → **so the number on the
 screen is the number on the receipt** → → **and the quote carries the mode allow-list**
 (`allowed_delivery_modes`) → → **so the counter's chooser shows exactly the modes the
@@ -2032,6 +2032,81 @@ leg's actions).
 
 ---
 
+### 9.16 The v1.16 live-deployment review — the running app caught what the suites could not
+
+**v1.15 said Phase 2 was DONE. → the code was committed, pushed, the suites passed and the
+frontend build passed → and the phase was NOT actually running** → → **and the reason is
+the house's own deploy shape**: the POS frontend's source directory is **bind-mounted**
+(`/var/www/html/posai-frontend` → the repo's `frontend/`), so **`npm run build` IS the
+deploy** — the files Caddy serves are the files the build just wrote, with no copy step
+and no service reload → → **but the backend is a PM2 process** (`pos-backend`, uvicorn,
+**no `--reload`**) → → **so the frontend went LIVE with Phase 2 in it while the API was
+still running the code from before Phase 1** → → **and the browser was calling
+`/api/delivery/*` against an API that had no such routes.**
+
+#### 9.16.1 The defect the suites could not find — the router's prefix
+
+**the finding:** → **the delivery router was mounted at `/delivery`** while **every other
+router in the house is mounted under `/api/`** (`/api/orders` · `/api/settings` ·
+`/api/menu` · `/api/loyalty` — all of them) → → **and the frontend calls
+`/api/delivery/*`** (the house's own `API_BASE`) → → **so every delivery call was a
+404** — the Delivery tab, the roster screen, the counter's quote, the QR: **all of it**.
+
+**why the suites missed it:** → **the two suites call the SERVICE FUNCTIONS directly** —
+they never touch the HTTP path → → **and the frontend's build only checks that the code
+compiles** → → **so nothing in the loop ever asked "does the URL the browser uses exist
+on the server?"**
+
+**the fix — one character of the prefix:** `APIRouter(prefix="/delivery")` →
+`APIRouter(prefix="/api/delivery")` → → **and the live proof after the fix, with a real
+staff session:**
+
+| the call | the answer |
+|---|---|
+| `GET /api/delivery/gate?outlet_id=1&customer_id=1` | **200** — `plan: true`, `subscription: true`, **`outlet: false`** → *"The delivery is switched off at this outlet"* (the switch is off until the tenant turns it on — the rule works) |
+| `GET /api/delivery/quote?outlet_id=1&value=25&customer_id=1` | **200** — the server's fee, the minimum, `allowed_modes: ["postpay"]` |
+| `GET /api/delivery/drivers?customer_id=1` | **200** |
+| `GET /api/delivery/orders?outlet_id=1&customer_id=1` | **200** |
+| `GET /api/delivery/storefront?outlet_id=1&customer_id=1` | **200** — the outlet's name, its logo, its colour, its slug |
+| `GET /api/delivery/qr.png?outlet_id=1&customer_id=1` | **400** — *"This outlet has no delivery slug yet - set one first."* (the honest refusal, not a crash) |
+
+→ **and the core POS endpoints answered 200 from the same session** (`/api/settings/1`,
+`/api/menu/items`, `/api/outlets/`) → → **and the other services were untouched** (the
+website API, the site app and the customer app all answered) → → **and the boot log has
+zero tracebacks** → → **and both suites still pass** (45/45 and 48/48).
+
+#### 9.16.2 The lesson the house should keep — a build is not a deploy
+
+**the POS frontend and the POS backend have TWO different deploy paths, and only one of
+them is automatic:**
+
+| the piece | how it goes live |
+|---|---|
+| **the frontend** | **automatically** — the source is bind-mounted, so `npm run build` writes the files Caddy serves. **There is no deploy step.** |
+| **the backend** | **`pm2 restart pos-backend`** — uvicorn has no `--reload`, so the code on disk is NOT the code in memory until the restart |
+
+→ **so a frontend change is live the moment the build finishes, while a backend change
+waits for the restart** → → **and between those two moments the app is HALF DEPLOYED** —
+the browser asks for a route the server does not have → → **and the symptom is a 404,
+which reads like "the feature is off" rather than "the server is stale"** → → **so the
+deploy of a phase that touches BOTH ends is: build → restart → PROVE the URL the browser
+uses, with a real session.**
+
+#### 9.16.3 Why the live proof looked the way it did
+
+**the proof was done in three steps, and each step ruled out a cheaper explanation:**
+
+| the step | what it ruled out |
+|---|---|
+| **the dry boot** — the new code on a spare port (8001) against the live database | that the new code cannot boot against the live schema (it booted clean and served the delivery routes) |
+| **the same key, the same cookie, on a CORE endpoint** | that the delivery routes were broken *by themselves* — `/api/settings/1` answered **200** from the same session while `/api/delivery/gate` answered **404**. **The path was the difference.** |
+| **the route table against the frontend's own calls** | that some caller was using the un-prefixed path — **every** caller in the house already used `/api/delivery/*`; only the ROUTER disagreed |
+
+→ **and the fix was made against the code, not against the symptom** — the router's
+prefix, not a rewrite rule and not a second frontend that knows the other path.
+
+---
+
 ---
 
 ## 10. Kens's comments — the answers
@@ -2077,7 +2152,7 @@ Inventory:**
 
 | the comment | the answer | where |
 |---|---|---|
-| **16 — the delivery settings tab must be in the outlet settings: the allow-delivery switch must be there, and the QR generation must be there too** | **it is an outlet tab — and it costs nothing new**, because the Settings screen is **already outlet-scoped** (`useOutletId()` → `/api/settings/{outlet_id}`) → **so the Delivery tab is per outlet by construction** → the switch, the fees, the slug, **the QR** and the preview are all that branch's → **one storefront and one QR per branch** → the QR route takes the outlet: `GET /api/delivery/outlets/{outlet_id}/qr` | §3.1 · §3.2 · §10.1 |
+| **16 — the delivery settings tab must be in the outlet settings: the allow-delivery switch must be there, and the QR generation must be there too** | **it is an outlet tab — and it costs nothing new**, because the Settings screen is **already outlet-scoped** (`useOutletId()` → `/api/settings/{outlet_id}`) → **so the Delivery tab is per outlet by construction** → the switch, the fees, the slug, **the QR** and the preview are all that branch's → **one storefront and one QR per branch** → the QR route takes the outlet: `GET /api/delivery/qr.png?outlet_id={outlet_id}` | §3.1 · §3.2 · §10.1 |
 | **17 — we do not allow a plan downgrade currently** | **recorded, and it closes the downgrade case** → **so the live case is the subscription LAPSING** (cancelled / expired / overdue) → **and the gate reads the subscription state for that** → **the flag is never reset by anything** → **so the open half is a nightly sweep that turns the flag off wherever the entitlement is gone** | §5.1 · §8 Q17 · §9.10 |
 | **18 — we are flexible to set the delivery features in any plan — it has to be flexible** | **it is flexible by construction** — the plan assignment is a `plan_features` row → **the default is one plan (Enterprise, the Inventory precedent)** → **moving it is a data change, not a code change** → **and the rule that keeps it flexible: the gate asks the plan list for the TAB NAME, never for a plan id** | §1 · §8 Q21 · §9.10 |
 | **19 — list out the screens we propose, including the settings tab** | **the full inventory is §3.2** — **eight POS screens** (the Delivery settings tab, Delivery Management, Delivery Zones, the staff order screen, the kitchen, the queue, the driver link, the delivery reports) **and nine customer screens** (the login, the menu, the item, the cart, the checkout, the payment, the order status, the map + tracking, the history) → **and the delivery's genuinely NEW screens are five**: the settings tab, the nav screen, the zones tab, the PWA and the driver link | §3.2 |
