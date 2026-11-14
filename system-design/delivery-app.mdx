@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.18
+**Document Version:** 1.19
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1 and 2 are BUILT and PROVEN LIVE (the staff side); the customer-facing app is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2 and 3 are BUILT and PROVEN LIVE — the staff side AND the customer's door (`https://order.ideazes.com/d/<slug>`); the map and the live driver marker are NOT** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -160,6 +160,22 @@ asks the SAME feature list the PWA login asks** → **one entitlement, two doors
 record**: the counter has **no payment-mode chooser** (the staff screen *derives* the
 mode — `StaffOrder.jsx:769`) and the counter order has **no member** (so the customer
 gets no map and no tracking — §8 Q22).
+
+**v1.19 (Nov 14, 2026): Phase 3 is BUILT and PROVEN LIVE — the customer's door.**
+The delivery PWA is at `https://order.ideazes.com/d/<slug>` — the server renders the
+shell per slug, so the restaurant's own branding is in the HTML before any script
+runs (iOS reads the page for the home-screen name) → **and the public router answers
+every door**: the storefront, the manifest, the icon, the registration, the login,
+the menu, the quote, the order and the payment → **a guest registers, signs in,
+orders and pays for real**, and the staff side sees the order → **and the live
+browser found TWO defects that made the app UNUSABLE, both invisible to the API**:
+**1. the `hidden` attribute was IGNORED** — the author's `display` rules beat the
+browser's own user-agent rule, so the boot screen kept its 100vh (pushing the whole
+app below the fold) and the CLOSED dish modal stayed a full-screen overlay that
+swallowed every tap (the sign-in button could not be pressed at all) → **2. the
+CHECKOUT BUTTON was never wired** — the guest could fill the cart and then had
+nowhere to go → **both are fixed, and the assets are re-versioned** → **see §7.3,
+§7.4 and §9.19.**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -1329,7 +1345,7 @@ prove ownership (the order token — **a new field**, or the existing
 | **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small | **✅ DONE (v1.14)** — the four rows are LIVE (ids 41-44, sort orders 39-42) and assigned to Enterprise (`plan_features` 408-411) by an idempotent migration script (§7.1) |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium | **✅ DONE (v1.14)** — the two columns, the two tables, the server's fee, the member rule and the receipt line are LIVE (§7.1, §9.14) |
 | **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium | **✅ DONE (v1.15)** — the Delivery tab, the Delivery Management screen, the counter's member step + payment-mode chooser, the settlement rule and the staff-side entitlement gate are LIVE (§7.2, §9.15) — **and PROVEN LIVE in the running app (v1.16)**, which caught one defect the suites could not (§9.16) |
-| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | planned |
+| **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | **✅ DONE (v1.19)** — the PWA is LIVE at `https://order.ideazes.com/d/<slug>` and the public router answers every door; a guest registers, signs in, orders and pays for real (§7.3, §9.19) — **but the customer's MAP and the route-refined ETA are NOT** (they need a Mapbox account and the driver link — §9.19.5) |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | planned |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | planned |
 | **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium | planned |
@@ -1343,6 +1359,7 @@ every plan (§11.1).
 → **but the customer's MAP and ETA are NOT in that phase** — they need the route and the
 geocode only → **so they ship with the storefront (phase 3)** → **and every Enterprise
 delivery tenant has them** (§11.1).
+→ **v1.19 corrects this:** the storefront shipped **the ETA** (the outlet's own promise — the leg's `eta_at`, shown to the customer) → **but NOT the customer's MAP and NOT the route-refined ETA** — those need a **Mapbox account** (a third-party bill) and the **driver link**, which is Phase 5 (§9.19.5).
 
 ### 7.1 What Phase 0 and Phase 1 ACTUALLY changed (v1.14)
 
@@ -1399,6 +1416,42 @@ and the unique index (`outlets.delivery_slug` · `outlet_settings.delivery_setti
 | **`frontend/src/pages/OrderQueue.jsx`** · **`Kitchen.jsx`** | the delivery's own life in the queue and the kitchen's third arm |
 | the three `delivery.json` locales (new) + `settings.json` · `staffOrder.json` · `kitchen.json` · `layout.json` · `orders.json` | the delivery's words — **en · zh · km** |
 | **`frontend/scripts/write-delivery-locales.py`** (new) | the script that writes the delivery's keys into all three locales |
+
+### 7.3 What Phase 3 ACTUALLY changed (v1.19)
+
+**Phase 3 — the customer's door (the public routes, the delivery server and the PWA):**
+
+| the file | what changed |
+|---|---|
+| **`backend/app/routes/delivery_public.py`** (new) | **the public delivery router** — mounted under `/api/delivery/{slug}` like every other router in the house (§9.16) · `GET /{slug}/storefront` · `GET /{slug}/manifest` (the PWA's OWN, scope `/d/<slug>/`) · `GET /{slug}/icon.png` (**public** — the browser fetches it by itself) · `POST /{slug}/auth/register` · `POST /{slug}/auth/login` · `GET /{slug}/menu` · `POST /{slug}/quote` · `POST /{slug}/orders` · `GET /{slug}/orders` · `GET /{slug}/orders/{id}` · `POST /{slug}/orders/{id}/pay` · `GET /{slug}/orders/{id}/pay-qr` — **every route resolves the tenant from the SLUG** and **never from the body** |
+| **`backend/app/services/delivery_entitlement.py`** (new) | the entitlement, read from the **plan's feature list** (the name `Delivery`), the **active subscription** and the **per-customer overrides** — **no plan id is hardcoded** — and the three refusal codes (`delivery_not_allowed` · `delivery_not_subscribed` · `outlet_not_delivering`) as a **403 with `detail.code`** |
+| **`backend/app/services/loyalty_service.py`** (new) | the member's own service — the delivery registers and signs in **the same way the in-venue app does** |
+| **`backend/app/models/delivery.py`** | `DeliveryOrder.contact_phone` and `DeliveryOrder.address_postcode` — **the CONTACT belongs to the DELIVERY leg**, never to the shared order row |
+| **`backend/app/services/order_service.py`** | `create_order` takes `delivery_contact_phone` and `delivery_postcode` — and the money stays the **server's** (`trust_client_money=False`) |
+| **`customer-app/delivery.html`** (new) | the SHELL — the branding is **rendered into the HTML**, so iOS reads the restaurant's own name on the home screen (it reads the page, not the DOM) |
+| **`customer-app/delivery_server.py`** (new) | the server that renders the shell **per slug** — it asks the backend for the storefront and **copies what the backend said**; it trusts none of it |
+| **`customer-app/css/delivery.css`** (new) | the delivery app's own surface — and **the one rule that makes `hidden` work** (§9.19.2) |
+| **`customer-app/js/delivery.js`** (new) | the client — the menu, the cart, the checkout, the order screen, the polling — **it never calculates the money**; it shows the server's quote |
+| **`customer-app/sw-delivery.js`** (new) | the delivery app's **OWN** worker, scope `/d/` — the in-venue worker answers for the whole origin and would hand a `/d/<slug>` navigation the in-venue shell |
+| **`customer-app/d/offline.html`** (new) | the worker's offline fallback — **the shell of THAT slug**, not the in-venue one |
+| the three `delivery.json` locales (new) · **`customer-app/js/i18n.js`** | the delivery app's words — **en · zh · km** — and the shared i18n learns the **root-relative base** the deeper `/d/<slug>` path needs |
+| **`frontend/scripts/delivery_client_check.mjs`** (new) | the browser check — it opens the **live** slug, signs in, adds a dish, and places a **real** order through the public door (§9.19.4) |
+
+**and the deployment** — the delivery server under PM2 (`delivery-server`, `127.0.0.1:8090`) ·
+Caddy: `handle /d/* { reverse_proxy 127.0.0.1:8090 }` on `order.ideazes.com` (the in-venue
+app stays at the origin root) · and a real outlet configured through the **staff API**
+(outlet 4 — Kens SS17 — `allow_delivery` on, the delivery settings, registration on, and
+the slug `kens-ss17`).
+
+### 7.4 What Phase 3 did NOT do — on purpose
+
+| what | why |
+|---|---|
+| **the customer's MAP and the route-refined ETA** | they need a **Mapbox account** (a third-party bill — the house's rule is that ONE phase buys it, §11) and the **driver link**, which is Phase 5 → **the ETA that ships is the outlet's OWN promise** (the leg's `eta_at` from `eta_minutes`) — it is shown to the customer, and the map refines it later (§9.19.5) |
+| **the live driver marker and the pings** | **Phase 5** — the driver link carries the leg's buttons (§12) |
+| **the geocode of the customer's address** | it is the input the map and the **Isochrone coverage** need — and the coverage is **Phase 6** (the zones) → **so today the radius is the outlet's own setting, not a checked distance** |
+| **the tenant's zones and the analytics** | **Phase 6** — the two Enterprise rows exist (Phase 0) and their screens do not |
+| **the counter's chooser and the per-order-type lock** | **Phase 2** — they are done, and the delivery's own list is held to **the same lock** (§9.15) |
 
 ---
 
@@ -2024,7 +2077,7 @@ leg's actions).
 
 | what | why |
 |---|---|
-| **the customer-facing app** | the PWA is **phase 3** — the storefront's slug, the URL and the QR are ready, but no customer screen exists yet |
+| **the customer-facing app** | the PWA was **phase 3** — the storefront's slug, the URL and the QR were ready, but no customer screen existed yet → **and since v1.19 it is BUILT and LIVE** (§7.3, §9.19) |
 | **the online payment** | the DuitNow QR and the money are **phase 4** — the mode is wired, the checkout is not |
 | **the live tracking** | the driver link, the pings and the map are **phase 5** |
 | **the zones and the analytics** | **phase 6** — the two Enterprise rows exist (phase 0) and their screens do not |
@@ -2233,7 +2286,124 @@ the POS's own `node_modules` has no Playwright.
 | **the browser** (§9.18) | a heading that named nothing, in a section whose own label was already translated | the API was never asked what the screen SAYS → **and the i18n parity check guarantees a key EXISTS, not that it is USED** |
 
 → **so the house's standing habit is: each proof covers what the one below it cannot
-see** → → **and a phase is done when the LAST of them is green**, not the first.
+### 9.19 The v1.19 browser review — the customer's door, in a real browser, for a real guest
+
+**v1.18 proved the STAFF's screen. → but the delivery has TWO ends, and the other end is a DIFFERENT app on a DIFFERENT host** → → **so the delivery PWA was opened in a real browser, against a LIVE slug, on `https://order.ideazes.com/d/kens-ss17`** → → **and it found TWO defects that made the app UNUSABLE — and NEITHER was in the API.**
+
+#### 9.19.1 What had to be live before a guest could order at all
+
+| the piece | the proof |
+|---|---|
+| **the public router** | mounted under `/api/delivery/` — `GET /api/delivery/demo/storefront` answers **404 "This delivery link is not valid."** → the router is mounted and live; `demo` simply has no slug |
+| **the delivery server** | PM2 `delivery-server` on `127.0.0.1:8090` — `/d/probe` answers **200** |
+| **Caddy** | `handle /d/* { reverse_proxy 127.0.0.1:8090 }` on `order.ideazes.com` — `https://order.ideazes.com/d/kens-ss17` answers **200**, `/d/sw.js` answers **200** with **`Service-Worker-Allowed: /d/`** — and the in-venue app still answers at the origin root |
+| **a real outlet** | configured through the **staff API**, not by SQL — outlet 4 (Kens SS17, MY/MYR, tenant 1), `allow_delivery` on, the delivery settings (fee 3.0 · free above 50 · minimum 10 · radius 10 · ETA 20-40), registration on, and the slug **`kens-ss17`** → **`GET /api/delivery/gate` answers `allowed: true`** (plan ✓ subscription ✓ outlet ✓) |
+
+→ **and the slug resolves the tenant — a tenant that is not entitled is REFUSED, live:**
+a slug on a non-entitled outlet answers **403** with `{"code": "delivery_not_allowed"}` on
+both the storefront and the menu → → **and the shell still renders (200)** — the page is
+never a dead end, the CLIENT asks the storefront again and shows the refusal in the
+server's own words.
+
+#### 9.19.2 The first defect — `hidden` did not hide
+
+**the finding:** → **the browser's own `[hidden] { display: none }` is a USER-AGENT rule** → → **and the author rules BELOW it (`.dl-boot`, `.dl-modal`, `.dl-status-row`) set `display` — and an author rule beats a UA rule, whatever the specificity** → → **so every element the client hides stayed IN THE LAYOUT.**
+
+**the measured damage** (measured in the browser, not read from the source):
+
+| the element | `hidden`? | what the browser did |
+|---|---|---|
+| `.dl-boot` | **yes** | `display: flex` → it kept its **100vh** → **the whole app was pushed a full screen BELOW the fold** (the app's own box started at **y=896** on a 896px screen) → the guest saw an empty page |
+| `.dl-item-modal` | **yes** | `display: flex`, `z-index: 60` → it stayed a **full-screen overlay** → **`document.elementFromPoint(207,300)` returned `dl-item-modal`** → it swallowed **every** tap → **the sign-in button could not be pressed at all** |
+
+**the fix — ONE rule, at the top of `delivery.css`:** `[hidden] { display: none !important; }`
+→ → **and the `!important` is the point, not laziness: it is what makes the attribute beat
+the author rules below it, whatever they say** → → **one rule fixes the whole class of bug,
+for every element the app hides.**
+
+→ **and nothing in the API could ever have found this:** the API was never asked what the
+page LOOKS like, and the DOM is a rendering fact — **the same lesson as §9.18, one level up.**
+
+#### 9.19.3 The second defect — the checkout button was never wired
+
+**the finding:** → **an audit of every button in the shell against every listener** showed
+`dl-checkout-btn` had **no click handler at all** → → **and it is the ONLY way from the
+cart to the checkout** → → **so the guest could fill the cart, and then had nowhere to go:
+the order could not be placed from the app at all.**
+
+→ **and the audit was worth writing, because it had four false positives:** `dl-auth-submit`
+and `dl-place-btn` are **form-submit buttons** (their forms carry the handler) and
+`dl-header-action` is **wired dynamically** in `renderHeader()` → → **only one button was
+genuinely dead** → → **so the fix is small and the PROOF is the audit itself, not a guess.**
+
+**the fix:** the button is wired, and **it follows the SERVER's own quote** — it is closed
+while the cart is below the outlet's minimum, and the guest is told how much is left
+("Add RM5.50 more to reach the minimum order.") → → **the client still never calculates
+the minimum itself; it reads `below_minimum` off the quote.**
+
+#### 9.19.4 What the live browser proved
+
+**`frontend/scripts/delivery_client_check.mjs`** → → **it opens the LIVE slug, signs in,
+adds a dish, and places a REAL order through the public door** → → **26/26 checks pass:**
+
+| the proof | the answer |
+|---|---|
+| the shell | the app renders, the boot screen is gone, the header shows **"Kens SS17"** |
+| the assets | `/css/delivery.css`, `/js/delivery.js`, `/vendor/i18next.min.js` and the **locale bundles** all load |
+| the worker | registered, and its scope is **`https://order.ideazes.com/d/`** — the delivery's own, never the in-venue one |
+| the menu | the LIVE outlet's dishes render (**Espresso · Latte · Cappuccino**) |
+| the sign-in | the modal opens by itself, the guest signs in, the header shows the member |
+| the cart and the minimum | the dish is in the cart; the note says **"Add RM5.50 more to reach the minimum order."** and the checkout button is CLOSED; above the minimum it OPENS |
+| the checkout | the payment modes are offered (**cash on delivery · pay online**) |
+| **the order** | **placed** — the screen shows **`ORD-20261114-1607`**, the totals (**delivery fee RM3.00 · total RM21.00**) |
+| the console | **no error, no page error** — and **no failed API call** |
+
+**and the same flow, proved at the API and at the staff side:**
+
+| the door | the answer |
+|---|---|
+| the storefront / the menu / the manifest / the icon | **200** |
+| the registration and the login | **200** — a real member of the tenant |
+| the quote | **200** — the server's money, with `below_minimum` and `minimum_shortfall` |
+| the order **below the minimum** | **400** — *"The minimum order for a delivery is 10.0 - this order is 4.5."* |
+| the order | **200** — with the leg (`fee`, `radius_km`, `eta_at`, `contact_phone`, `address_postcode`) |
+| the order **without the token** | **401** |
+| the order **of another member** | **403** — *"This order does not belong to you."* |
+| the online payment | **200** — `payment_id 51`, and the **QR is a real 570x570 PNG** (the payment row lands in the website API) |
+| `pay` on a **postpay** order | **400** — *"This order is not paid online - pay when the food arrives."* |
+| **the staff side** | `GET /api/delivery/orders` shows the order — **the address, the phone, the fee, the status** |
+
+→ **and the money is the server's, proved by the refusal:** the client sends items, and
+the server prices them — a below-minimum order is refused **by the server**, not by the
+client's own arithmetic.
+
+#### 9.19.5 What Phase 3 does NOT have — and why
+
+| what | why |
+|---|---|
+| **the customer's MAP and the route-refined ETA** | they need a **Mapbox account** — a **third-party bill**, and the house's own rule is that **ONE phase buys it** (§11) — and the **driver link**, which is **Phase 5** → **the ETA that ships is the outlet's OWN promise** (the leg's `eta_at`, from `eta_minutes`), shown to the customer → **the map refines it later** |
+| **the geocode of the customer's address** | it is the input the map and the **Isochrone coverage** need — and the coverage is **Phase 6** → **so today the radius is the outlet's own setting, not a checked distance** |
+| **the live driver marker** | **Phase 5** — the driver's own phone, the pings, the map matching (§12) |
+
+→ **so the phase-3 row in §7 said "the map, the ETA and the live tracking"** → → **and
+what shipped is the ETA and the ORDER's live tracking (the client polls its own order
+every 8 seconds and shows the kitchen's status and the leg's status side by side)** →
+→ **but NOT the map, and NOT the route-refined ETA** → → **the v1.19 status row above
+says so, rather than letting the old promise stand.**
+
+#### 9.19.6 The pattern — the same habit, one level up
+
+| the proof | the defect it found | why nothing else could |
+|---|---|---|
+| the suites | the payment writer finished a COD delivery; a driver from another tenant | the service functions were called directly → the HTTP path was never in the loop |
+| the live API (§9.16) | the router's prefix → every call a 404 | the suites never touch a URL |
+| the browser, STAFF side (§9.18) | a heading that named nothing | the API was never asked what the screen SAYS |
+| **the browser, CUSTOMER side (§9.19)** | **the `hidden` attribute ignored (the app unusable) and a dead checkout button (no order possible)** | **the API was never asked what the page SHOWS** → **and the API's 200s were all TRUE while the app was broken** |
+
+→ **so the house's standing habit holds, one level up:** each proof covers what the one
+below it cannot see → → **and the customer's app needed its OWN browser proof, because the
+staff's browser proof says nothing about it** → → **and a phase is done when the LAST of
+them is green.**
 
 ---
 
