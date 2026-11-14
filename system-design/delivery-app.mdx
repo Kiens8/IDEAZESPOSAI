@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.26
+**Document Version:** 1.27
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5 and 6a are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → **and the whole delivery module is now BUILT** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -262,7 +262,7 @@ ways (§9.21.3) → → **the browser found a defect the suites could not**: the
 screen had been **DEAD** since before this phase — a `const` read before its own
 declaration (a temporal dead zone) in a dependency array — and it is **fixed** (§9.21.4)
 → → **and the customer-facing surface is unchanged**: the customer still sees **one
-delivery-fee line** (§5.3) → → **the analytics are 6b** (§7.6, §9.21).
+delivery-fee line** (§5.3) → → **and the analytics are BUILT** — the tenant's own delivery report, aggregated by the server behind its own feature row (§7.7, §9.23).
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -1435,7 +1435,7 @@ prove ownership (the order token — **a new field**, or the existing
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | **✅ DONE (v1.19)** — the PWA is LIVE at `https://order.ideazes.com/d/<slug>` and the public router answers every door; a guest registers, signs in, orders and pays for real (§7.3, §9.19) — **and the customer's MAP, the route-refined ETA and the live driver marker came with Phase 5** (§7.5, §9.20) |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | **✅ DONE (v1.20) — it shipped INSIDE Phase 3's build, not after it**: the DuitNow QR, the cash path, the payment records, the per-order-type lock and the customer's choice at the checkout are all LIVE (§7.3, §9.20) |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Geoapify** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | **✅ DONE (v1.20)** — the driver link, the live pings, the live driver marker, the traffic-aware ETA, the Geoapify routes and the privacy pruning are LIVE and PROVEN against the running app (§7.5, §9.20) |
-| **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium | **6a DONE (v1.25)** — the postcode zones are LIVE and PROVEN against the running app (§7.6, §9.21) → **and 6b (the delivery analytics) is what remains** |
+| **6 — the tenant's depth** | the zones (the postcode pricing) · the analytics → **both Enterprise** (a Pro tenant has no delivery at all) → **and neither touches a customer-facing screen** (§5.3) | medium | **6a DONE (v1.25)** — the postcode zones are LIVE and PROVEN against the running app (§7.6, §9.21) → **and 6b is DONE (v1.27)** — the delivery analytics are LIVE and PROVEN against the running app (§7.7, §9.23) → **so Phase 6 is COMPLETE** |
 
 **The order matters** — the core → the staff side → the storefront → the money:
 **the POS must be able to deliver before the customer can order delivery**.
@@ -1540,7 +1540,7 @@ the slug `kens-ss17`).
 | **the customer's MAP and the route-refined ETA** | they needed the **driver link** and a **traffic-aware route** → **Phase 5 shipped both** — the map, the route and the ETA are live (§7.5, §9.20) → **and no Mapbox account was needed** |
 | **the live driver marker and the pings** | **Phase 5** — the driver link carries the leg's buttons (§12) → **now live** (§7.5, §9.20) |
 | **the geocode of the customer's address** | it is the input the map needs → **Phase 5 geocodes it** → **but the coverage check is still a radius on the geocoded point, not an Isochrone** (that endpoint is an Enterprise add-on this key does not have) → **and it WARNS rather than REFUSES** — the zones that would enforce it are Phase 6 → → **and since v1.25 the tenant's POSTCODE zones DO enforce it** — they are LIVE (§7.6, §9.21) |
-| **the tenant's zones and the analytics** | **the zones are Phase 6a and they are DONE (v1.25)** — the postcode pricing is LIVE (§7.6, §9.21) → **the analytics are still not built** — that is **6b**, and it has its own screen and its own feature row |
+| **the tenant's zones and the analytics** | **the zones are Phase 6a and they are DONE (v1.25)** — the postcode pricing is LIVE (§7.6, §9.21) → **and since v1.27 the analytics are BUILT too** — the tenant's own delivery report, behind its own feature row (§7.7, §9.23) |
 | **the counter's chooser and the per-order-type lock** | **Phase 2** — they are done, and the delivery's own list is held to **the same lock** (§9.15) |
 
 ### 7.5 What Phase 5 ACTUALLY changed (v1.20)
@@ -1595,7 +1595,7 @@ the slug `kens-ss17`).
 
 | what | why |
 |---|---|
-| **the delivery analytics** | the other half of Phase 6 is **6b** — it has its own screen and its own feature row (`delivery_analytics`), and it is **not** in this build |
+| **the delivery analytics** | the other half of Phase 6 is **6b** — it has its own screen and its own feature row (`delivery_analytics`) → → **and it is BUILT now** (§7.7, §9.23) |
 | **any customer-facing screen change** | the customer still sees **ONE delivery-fee line** — the zones change the tenant's FEE MODEL, never the customer's screen (§5.3) |
 | **a polygon or an Isochrone** | the zones are **postcodes** — the managed list, no map editor and no geocoder per vertex (§8 Q10) |
 
@@ -1604,6 +1604,40 @@ the slug `kens-ss17`).
 ---
 
 ---
+
+### 7.7 What Phase 6b ACTUALLY changed (v1.27)
+
+**Phase 6b — the delivery analytics (the tenant's own report about the delivery):**
+
+| the file | what changed |
+|---|---|
+| **`backend/app/services/delivery_analytics.py`** (new) | `DELIVERY_ANALYTICS_FEATURE = "Delivery Analytics"` (**the display name the website API's `tab_name` carries — one name, two doors, no drift**) · `delivery_analytics(db, tenant_id, date_from, date_to)` — the **whole-tenant** aggregation: the totals and the **per-outlet rows**, ranked busiest-first → → **and every number is aggregated by the DATABASE**: the browser asks for a window, it may never hand the server a total, a fee or a count |
+| **`backend/app/routes/delivery.py`** | the analytics' own door — **`GET /api/delivery/analytics`** — behind `require_staff_permission("staff:orders:read")` **AND** its own `Delivery Analytics` feature row (the ordinary Reports entitlement is **not** enough) → the tenant comes from the **session** (a claim about another restaurant group is a **403**, not a report about the wrong tenant) → the dates are **local** `YYYY-MM-DD` and a date it cannot read is a **400** (a typo must never quietly become "All Time") → and the fees are the **SNAPSHOTS** on the legs (`delivery_orders.fee`), never today's setting |
+| **`backend/scripts/test_delivery_analytics.py`** (new) | **45 checks — and it drives the HTTP route boundary with a REAL signed staff session** (not a stubbed auth dependency) — the aggregation, the paid-vs-unpaid split, the cancelled orders, the fee snapshot, the food revenue, the local window and each outlet's own timezone, the date validation, the feature gate, the tenant scope and the closed door → → **and it is negative-controlled** (§9.23.2) |
+| **`frontend/src/components/reports/reportsConfig.js`** | the **Delivery** report — its KPIs (the delivery revenue · the fee per order · the orders · the average ticket) and its table (the **orders per outlet**) → → **and the browser computes NOTHING**: the server's rows are renamed, never re-added |
+| **`frontend/src/components/reports/ReportTabs.jsx`** | the tab list is the **caller's** decision — a tab can be gated by a plan feature row |
+| **`frontend/src/pages/Reports.jsx`** | the **Delivery tab** on the existing Reports screen — **gated on the `Delivery Analytics` feature** (hidden while the features load and for a tenant whose plan lacks the row) → it fetches `GET /api/delivery/analytics` with the authenticated tenant claim → → **and the server is the authority**: hiding the tab is a courtesy, the ROUTE is the guard |
+| the three `reports.json` locales (`en` · `zh` · `km`) | the tab's words, the KPIs' words and the table's columns |
+
+**And the money rules — the ones the SUITE decided, not the plan:**
+
+| the case | the report |
+|---|---|
+| an order that was **paid** | it is money: its `total` (the delivery fee **included**) is revenue, and its leg's fee snapshot is the delivery fee |
+| an order that is **unpaid** | it is still **COUNTED** (the manager must see what is waiting) — but it is **not money** |
+| an order that was **cancelled** | it is counted **separately** and it contributes **no revenue** (the cancel path already takes the fee away with the order, §9.14) |
+| the **food revenue** | the revenue **without** the delivery fees — the delivery fee is **OUTSIDE the food tax base** (§5.3), so the food part is what the tax was charged on |
+| the **fee per order** | the average of the **snapshots** of the paid orders — **never** today's setting (a tenant that changes its fee tomorrow must not move yesterday's report) |
+| the **window** | **local dates**, and **each outlet buckets by its own day** — an outlet in Kuala Lumpur and one in Phnom Penh do not share a clock (§7.6's rule, `app/core/date_window.py`) |
+
+**And what Phase 6b does NOT do — on purpose:**
+
+| what | why |
+|---|---|
+| **any customer-facing screen change** | the customer still sees **ONE delivery-fee line** — the analytics are the tenant's own back office, never the customer's app (§5.3) |
+| **the browser computing anything** | a report the browser adds up is a report the tenant can forge — the server aggregates, the browser renders (§1) |
+| **a live-chart or a drill-down** | the screen answers the three questions of §3.2 screen 8 (the delivery revenue · the fee per order · the orders per outlet) — a deeper report is a later row, not a bigger tab |
+
 
 ## 8. The open questions
 
@@ -2238,7 +2272,7 @@ leg's actions).
 | **the customer-facing app** | the PWA was **phase 3** — the storefront's slug, the URL and the QR were ready, but no customer screen existed yet → **and since v1.19 it is BUILT and LIVE** (§7.3, §9.19) |
 | **the online payment** | the DuitNow QR and the money are **phase 4** — the mode is wired, the checkout is not |
 | **the live tracking** | the driver link, the pings and the map are **phase 5** |
-| **the zones and the analytics** | **phase 6** — the two Enterprise rows exist (phase 0) and their screens do not → **and since v1.25 the zones ARE built and live (§7.6, §9.21)** — the analytics are not (they are 6b) |
+| **the zones and the analytics** | **phase 6** — the two Enterprise rows exist (phase 0) and their screens do not → **and since v1.25 the zones ARE built and live (§7.6, §9.21)**, and **since v1.27 the analytics are too (§7.7, §9.23)** |
 | **the tax treatment of the fee** | **unchanged from phase 1** — the fee is a flat charge outside the tax base (§9.14.2) |
 
 ---
@@ -2688,7 +2722,7 @@ reaches the browser (§9.19.2 — the same habit, one level up).
 |---|---|
 | **the Isochrone coverage** | it is an Enterprise add-on and this key answers **404** → **the radius check stands** (§11.3) |
 | **the map matching** | the trail is the rider's raw pings → **the road-snapped trail is not built** — **a named gap, not a hidden one** (§11.3) |
-| **the zones and the analytics** | **the zones are Phase 6a and they are DONE (v1.25)** — the postcode zones are LIVE (§7.6, §9.21) → **the analytics are 6b** |
+| **the zones and the analytics** | **the zones are Phase 6a and they are DONE (v1.25)** — the postcode zones are LIVE (§7.6, §9.21) → **and the analytics are DONE (v1.27)** (§7.7, §9.23) |
 | **a driver APP** | the link is the app (§12) → **nothing to install, nothing to publish** |
 | **the STAFF-side money write** | the driver's link settles the money **only** for the COD claim (§12) — the staff's own write is unchanged |
 
@@ -2903,6 +2937,57 @@ the *counter* screen broke (§9.21.4): **the wiring is where the defects live**,
 **the check is the only thing that sees them before the browser does.**
 
 ---
+
+### 9.23 The v1.27 build review — Phase 6b is DONE (the delivery analytics)
+
+**Phase 6b shipped.** The tenant's own delivery report — the revenue, the fee per
+order and the orders per outlet — is LIVE behind its own feature row, aggregated by
+the server, and PROVEN over real HTTP with a real signed staff session.
+
+#### 9.23.1 The decisions this phase made
+
+| the question | the answer | the evidence |
+|---|---|---|
+| **does the report need its own feature row, or does the ordinary Reports entitlement cover it?** | **its OWN row** (`delivery_analytics` → the display name **`"Delivery Analytics"`**) | the report is the **delivery's** money → a tenant that bought the delivery but not the analytics must not read the delivery's numbers → **and the gate compares the name the website API actually returns** (`name: f.tab_name`), not the identifier — one name, two doors, no drift |
+| **who decides the tenant — the session or the `customer_id` claim?** | **the session wins, and a mismatch is a 403** | a signed-in member of staff carries their own tenant → a claim about **another** restaurant group is either a bug or an attempt, and **both deserve a 403** instead of a report about the wrong tenant → a server-to-server caller has no session, so the claim is the only signal there is — and the report is still built from the tenant's **own** outlets |
+| **what happens to a typo in the date?** | **a 400** | the service treats an unreadable date as "no bound" → a typo would quietly turn a report into **"All Time"** — the one thing a report must never do quietly → so the route refuses a date it cannot read, and a window that runs backwards |
+| **does the report count the unpaid and the cancelled orders?** | **it counts them, and it does not count them as money** | the manager must see what is still waiting → but an unpaid order is not money yet, and a cancelled one never was → **the two numbers are separate on the screen** |
+| **is the fee the outlet's setting?** | **NO — the SNAPSHOT** | `delivery_orders.fee` is the fee the guest was charged when the order was placed → the same rule the payment-mode snapshot follows → **and the suite proves it**: the tenant raises the fee from 9.00 to 20.00 and the report does not move |
+
+#### 9.23.2 The route suite, and its negative control
+
+**`backend/scripts/test_delivery_analytics.py` — 45 checks, all passing.** It drives the
+**HTTP route boundary** with a **REAL signed staff session** (the house's own
+`create_session_token`) — not a stubbed auth dependency — and covers the aggregation,
+the paid/unpaid/cancelled split, the fee snapshot, the food revenue, the **per-outlet
+timezone**, the date validation, the **feature gate**, the tenant scope and the closed
+door.
+
+→ **and it is negative-controlled** — the suite is only worth its number if it FAILS
+when the defect comes back, so three copies of the tree were mutated and each one was
+run:
+
+| the mutation | what it undoes | the suite's answer |
+|---|---|---|
+| **the feature gate removed from the route** | the `Delivery Analytics` entitlement | **44/45** — fails *"a tenant WITHOUT the analytics feature is refused"* |
+| **the fee snapshot replaced by a zero** | the snapshot rule | **41/45** — fails the fees, the food revenue, the fee per order and the paid-vs-unpaid fees |
+| **the claim trusted blindly + the dates unvalidated** | the tenant scope and the date guard | **41/45** — fails the three date checks **and** *"a claim about another tenant is a 403"* |
+
+→ **the live tree is never touched** — the copies live in a scratch directory.
+
+→ **and the frontend build is green** — the i18n parity check passes (**2262 keys per
+locale** across `en` · `zh` · `km`) and Vite builds the bundle with the new tab.
+
+#### 9.23.3 What this closes
+
+→ **the delivery module is COMPLETE** — phases 0, 1, 2, 3, 4, 5, 6a and 6b are all
+built, and the last two (the zones and the analytics) are the tenant's own depth: the
+**four Enterprise rows** (ids 41-44, sort orders 39-42) now all have their screen.
+
+→ **and the customer-facing surface is still untouched** — the customer sees **one
+delivery-fee line** (§5.3), the zones and the analytics are the tenant's back office,
+and the plan may only change the back office.
+
 
 ## 10. Kens's comments — the answers
 
