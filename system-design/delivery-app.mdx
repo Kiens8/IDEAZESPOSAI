@@ -189,9 +189,10 @@ paywalled** (an Enterprise add-on — this key answers **404**), so the honest c
 is **a radius on the geocoded point** → → **Phase 4 (the money) shipped INSIDE Phase 3's
 build** — the DuitNow QR, the cash path, the payment records, the per-order-type lock and
 the customer's choice at the checkout are all live — so the phase table was naming work
-that was already done → → **and the Geoapify key was rotated into `backend/.env`**: the two
+that was already done → → **and the Geoapify key was MOVED out of the source into `backend/.env`**: the two
 hardcoded literals are gone, the routes now **503** when the key is missing, and the app
-still boots without it → → **see §7.5, §9.20 and §11.**
+still boots without it → → **but the value is unchanged, so it is still in the git
+history — the real rotation in the Geoapify dashboard is still OWED** (§11.2) → → **see §7.5, §9.20 and §11.**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -2843,14 +2844,21 @@ that operate in the EU):
 5. **the map tiles** → the provider's terms require the attribution → the attribution
    goes on the tracking page.
 
-**And the key — DONE (v1.20).** The two hardcoded Geoapify literals are **gone** from
-the source (`outlet_settings.py` and `competitors.py` now read
-`settings.GEOAPIFY_API_KEY`) and the key lives in **`backend/.env`** → **and the code
-fails loudly when it is missing**: the two routes answer **503** with the reason, and the
-new `services/geoapify.py` raises **`GeoapifyUnavailable`** → **the app still boots
-without the key** — only the Geoapify-dependent features fail, and they fail clearly → a
-silent fallback to a shared key is how a bill arrives from nowhere, and that path is now
-closed.
+**And the key — the CODE half is DONE (v1.20); the ROTATION is still owed.** The two
+hardcoded Geoapify literals are **gone** from the source (`outlet_settings.py` and
+`competitors.py` now read `settings.GEOAPIFY_API_KEY`) and the key lives in
+**`backend/.env`** → **and the code fails loudly when it is missing**: the two routes
+answer **503** with the reason, and the new `services/geoapify.py` raises
+**`GeoapifyUnavailable`** → **the app still boots without the key** — only the
+Geoapify-dependent features fail, and they fail clearly → a silent fallback to a shared
+key is how a bill arrives from nowhere, and that path is now closed.
+
+→ **but the honest caveat**: the key's VALUE is **unchanged** — the same 32-character
+literal that was in the source is the one in `.env` → → **so it is still in the git
+history**, and the repository is on GitHub → → **the key must be ROTATED in the Geoapify
+dashboard and the new value dropped into `.env`** — that is a one-minute job, and until it
+is done the "no secrets in source" claim is only half true: the literal is gone from the
+working tree, not from the past.
 
 ### 11.3 What this Geoapify key can and cannot do — probed live, not read from a marketing page
 
