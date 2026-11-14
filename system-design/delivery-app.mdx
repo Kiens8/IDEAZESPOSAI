@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.20
+**Document Version:** 1.21
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4 and 5 are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`) AND the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -193,6 +193,20 @@ that was already done → → **and the Geoapify key was MOVED out of the source
 hardcoded literals are gone, the routes now **503** when the key is missing, and the app
 still boots without it → → **but the value is unchanged, so it is still in the git
 history — the real rotation in the Geoapify dashboard is still OWED** (§11.2) → → **see §7.5, §9.20 and §11.**
+
+**v1.21 (Nov 15, 2026): the action defect that HUNG the rider's phone — found, fixed and
+re-proven; and §9.20.3 CORRECTED.** The live re-proof of the whole leg found a defect the
+suites could not see: the driver's `action` route called `advance_leg()` **without** the
+`try/except ValueError` the staff route already had → → **so a refused move escaped the
+route as an exception**, the middleware stack re-raised it as **`RuntimeError: No response
+returned.`**, and **the rider's phone HUNG** instead of being told why (the request
+answered nothing for 30s) → → **the fix** (`POS_AI` **`14b7186`**): the tracking route
+wraps the action switch in `try/except ValueError` and turns the refusal into **HTTP 409**
+with the service's own message — **the same request now answers 409 in 0.02s** → → **and
+the re-proof also corrected §9.20.3**: that table credited **one** order with a chain that
+**three** different orders actually carried — the **handover and the money write** are
+order `386`'s, the **route and the early leg** are order `389`'s, and the **fresh
+end-to-end chain** is order `388`'s → → **see §9.20.3, §9.20.3.1 and §9.20.7.**
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -2480,25 +2494,57 @@ in `main.py` → → **and the live openapi now answers every one of them**:
 
 #### 9.20.3 The proof — the whole leg, over HTTP
 
-**order `389`, placed through the real public API** (`ORD-20261115-9458`, postpay, total
-21.5, the address geocoded):
+> **THE CORRECTION (v1.21).** The earlier version of this table credited **one** order
+> with a chain that **three** different orders actually carried. The live database is the
+> only authority, and it says this:
+
+| the order | what it really carries |
+|---|---|
+| **`386`** (`ORD-20261114-3904`, postpay, total **21.5**, "Delivery Tester") | **the handover and the money write** — leg 1 → **`delivered`**, the order → **`completed`** and **`paid`**, **exactly one** cash payment of **21.5**, and the trail `position → start → arrive → deliver → cash_claimed` |
+| **`388`** (`ORD-20261114-1607`, postpay, total **21.0**, "Browser Tester") | **the fresh end-to-end chain, re-proven over HTTP on the CURRENT build** — every step and every refusal (§9.20.3.1) |
+| **`389`** (`ORD-20261115-9458`, postpay, total **21.5**, "Delivery Tester") | **the route and the early leg ONLY** — the route **5,741.0 m** · **1,723.506 s** · **`drive_traffic_approximated`**, the link, the ping and `start` → the leg is **`picked_up`** and the order is **still `pending`** → **it was never handed over** |
+
+→ **so the chain below is order `388`'s**, and the route figures the old table quoted were
+order `389`'s — **two different deliveries, two different addresses** → → **and the
+handover the old table described under "order 389" is order `386`'s**.
+
+#### 9.20.3.1 The chain, order `388`, over real HTTP
 
 | the step | the answer |
 |---|---|
-| the driver link | **200** |
+| the staff assignment | **200** — the leg → **`assigned`** |
+| the driver link | **200** — a signed token naming one order, one leg, one tenant and one outlet |
+| the driver payload | **200** |
+| the route | **200** — **18,688.0 m** · **4,371.43 s** · the mode **`drive_traffic_approximated`** · **459** geometry points |
 | the ping | **200** |
 | **a forged driver token** | **404** — the signature names one leg, and the leg is re-checked against the token's tenant and outlet |
-| the route | **200** — **5,741.0 m** · **1,723.506 s** · the mode **`drive_traffic_approximated`** |
-| `start` | the leg → **`picked_up`** |
-| `arrive` | the leg stays **`picked_up`** (it is an EVENT on the trail, not a status) |
-| `deliver` | the leg → **`delivered`** and the core → **`served`** |
-| `cash_claimed` | the core → **`completed`** and `payment_status` → **`paid`** |
-| **a ping AFTER the handover** | **409** — the tracking refuses new pings once the food has changed hands |
-| **the tracking after the handover** | **`address_visible: false`** — and no address text in the response at all |
+| `start` | **200** — the leg → **`picked_up`** |
+| **`start` AGAIN** | **409** — *"This delivery is already on the way."* → **and it answers in 0.02s; before the fix the same request HUNG for 30s** (§9.20.7) |
+| `arrive` | **200** — the leg stays **`picked_up`** (it is an EVENT on the trail, not a status) |
+| `arrive` again | **200** — the arrival is idempotent |
+| the tracking before the handover | **200** — `address_visible: true`, and `destination.text` carries the address |
+| a **foreign member** reading the tracking | **403** — *"This order does not belong to you."* |
+| `deliver` | **200** — the leg → **`delivered`** and the core → **`served`** |
+| **`arrive` after the handover** | **409** — *"This delivery is already delivered."* |
+| **`deliver` again** | **409** — *"This delivery is already delivered."* |
+| **a ping AFTER the handover** | **409** — a finished delivery does not keep moving |
+| the tracking after the handover | **200** — **`address_visible: false`** and `destination.text` is **null** |
+| `cash_claimed` | **200** — the core → **`completed`** and `payment_status` → **`paid`** |
+| **a SECOND `cash_claimed`** | **409** — *"This order is already paid."* |
+
+→ **and the database agrees**: the order is `completed` / `paid`, the leg is `delivered`,
+there is **exactly one** payment row (cash, **21.0**), and the trail reads
+`position → start → arrive → arrive → deliver → cash_claimed`.
 
 → **and the customer-side ownership check is real**: the tracking route needs the guest
 token, and an order that belongs to a **different member** is refused with a **403** — the
 customer's map can only ever be read by the customer it belongs to.
+
+→ **and the map's own fallback is honest**: order `390`'s leg (**"15-1, Jalan Pju 10/17b"**)
+never got a route, because Geoapify's geocode **read-timed-out at 8 seconds** → → **and the
+delivery still went out** — the assignment succeeded, the leg moved, the food was driven
+and the money was claimed — **the live map was simply empty**, which is exactly what the
+design promises: a routing failure never refuses the order (§11.3).
 
 #### 9.20.4 The proof — in a real browser
 
@@ -2533,6 +2579,32 @@ habit, one level up).
 | **the zones and the analytics** | **Phase 6** — the two Enterprise rows exist (Phase 0) and their screens do not |
 | **a driver APP** | the link is the app (§12) → **nothing to install, nothing to publish** |
 | **the STAFF-side money write** | the driver's link settles the money **only** for the COD claim (§12) — the staff's own write is unchanged |
+
+#### 9.20.7 The defect the live re-proof found — the action that HUNG the rider's phone
+
+→ **the symptom**: the driver's `action` route answered **nothing at all** for a refused
+move — the request **hung** (30 seconds and still running) instead of coming back with an
+error, so the rider's phone simply sat there with no message → → **and the PM2 log named
+it exactly**: a **`ValueError`** → then **`RuntimeError: No response returned.`** →
+
+→ **the cause**: the tracking route called `advance_leg()` **without** the
+`try/except ValueError` the STAFF route already had (`delivery.py:535`) → → **so the
+service's own refusal — "this leg cannot make that move" — escaped the route as an
+exception** → → **and the middleware stack cannot answer an exception that escapes a
+route**: it re-raises it (`starlette/middleware/base.py:151`), and the client gets a dead
+request → → **the fix** (`POS_AI` **`14b7186`**): the tracking route wraps the whole
+action switch in `try/except ValueError` and converts the refusal into **HTTP 409** with
+the service's own message, and `start` now refuses a leg that is not waiting for the rider
+with the same **409** → → **the proof**: the exact request that hung for 30 seconds now
+answers **409 in 0.02 seconds** — *"This delivery is already on the way."* (§9.20.3.1).
+
+→ **and the honest caveat**: the hang reproduced against the **live application**, while
+an **isolated** reproduction of the same route returned **500** instead of hanging → **so
+the hang belongs to the full middleware stack** (the `SubscriptionAccessMiddleware` and the
+redirect middleware), while the **route-local missing conversion** is what was confirmed
+and fixed → → **and the lesson is the house's own**: **a service that refuses a move must
+always be caught at the route boundary** — the staff route already did it, the tracking
+route did not, and **the two must not diverge again**.
 
 ---
 
