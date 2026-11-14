@@ -1,6 +1,6 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.23
+**Document Version:** 1.24
 **Owner:** Ideazes POS AI
 **Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4 and 5 are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`) AND the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build)** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
@@ -236,6 +236,17 @@ house's own `payment_modes.status_after_payment` rule → **and it still may not
 money any other way** — a **prepaid** order answers **409**, an **already paid** order
 answers **409**, and the leg and the core status stay the server's (§12) → → **see §8 Q14,
 §11.2 and §12.**
+
+**v1.24 (Nov 15, 2026): the browser found a customer-visible defect on the storefront — a RAW
+i18n template was being shown as a LABEL.** The stats row read **"About {{minutes}} min"**
+beside **"About 20–40 min"**, and **"Within {{km}} km"** beside **"Within 10 km"** → → **the
+cause**: the fact row is a `[label, value]` pair, and **both halves used the SAME key** → the
+value was interpolated, the **label was not** → so the label rendered the **raw template** →
+→ **the fix** (POS_AI `64421ac`): the label has **its own string** in all three locales —
+**Delivery time / Delivery area** (en) · **配送时间 / 配送范围** (zh) · **ពេលវេលាទ្ធនៈប្រគល់ / តំបន់ប្រគល់** (km) → and the **asset version is bumped to `2.6.31`**, because the CDN
+caches the customer app's assets for hours (§9.19.2 — the same habit, one level up) → → **and
+it is proven live in the browser**: the four rows now read **Minimum order · Delivery fee ·
+Delivery time · Delivery area**, with **no raw placeholder anywhere on the page** (§9.20.4).
 
 > **Related** → `order-flow-standards.mdx` §8 (the delivery PWA — this document
 > expands it into the full design).
@@ -2588,13 +2599,22 @@ design promises: a routing failure never refuses the order (§11.3).
 driver's details, the ETA, the totals and a **rendered Leaflet route map** — the DOM
 carried `dl-track`, `dl-track-map`, a live `L`, and a **528 × 220** map container with two
 children → → **the driver's own page** rendered the live Leaflet map and all **four**
-action buttons → → **and two presentation defects the browser found were fixed and
-re-verified**: a **duplicate "Call" link** and a **duplicated item label** → → **and a
-third, found on the re-run: the item's QUANTITY was shown twice** ("2 × Latte" beside
-"× 2") → **now one name and one quantity** → → **and the fix only became visible after
-the asset version was bumped** — the CDN serves the customer app's assets for 4 hours, so
-a corrected file behind an unchanged `?v=` never reaches the browser (§9.19.2 — the same
-habit, one level up).
+action buttons → → **and the map was measured, not assumed (v1.24, the current build): the DOM carries
+**Leaflet 1.9.4** (the vendored copy), the container **`dl-track-map`** at **528 × 220**,
+**6 tiles with all 6 loaded**, **2 route polylines** with real path geometry, **2 markers**
+(the rider and the drop-off pin), **all seven Leaflet panes**, and the required attribution
+**"© OpenStreetMap © CARTO"** → → **and two presentation defects the browser found were
+fixed and re-verified**: a **duplicate "Call" link** and a **duplicated item label** → →
+**and a third, found on the re-run: the item's QUANTITY was shown twice** ("2 × Latte"
+beside "× 2") → **now one name and one quantity** → → **and a fourth (v1.24): the
+storefront's stats row showed a RAW i18n template as its LABEL** — **"About {{minutes}}
+min"** beside **"About 20–40 min"** and **"Within {{km}} km"** beside **"Within 10 km"** →
+→ **the cause**: the row is a `[label, value]` pair and **both halves used the same key**,
+so the **label was never interpolated** → → **the label has its own string now**, in all
+three locales, and the asset version is bumped to **`2.6.31`** (POS_AI `64421ac`) → →
+**and the fix only became visible after the asset version was bumped** — the CDN serves the
+customer app's assets for 4 hours, so a corrected file behind an unchanged `?v=` never
+reaches the browser (§9.19.2 — the same habit, one level up).
 
 #### 9.20.5 The privacy, as it actually behaves
 
