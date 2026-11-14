@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.14
+**Document Version:** 1.15
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **the delivery app itself is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1 and 2 are BUILT (the staff side); the customer-facing app is not built** · **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes)** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -88,6 +88,24 @@ copy of the PWA's checkout — it is the same three answers, read by the tenant*
 (`models.py:423` — `{"dine_in": "postpay", "takeaway": "postpay"}`) → **so every
 delivery is "pay the driver" until the tenant says otherwise** → **which is the safe
 default and stays the default** (§4.2.1).
+
+**v1.15 (Nov 14, 2026): the ELEVENTH round — PHASE 2 is DONE (the staff side).**
+→ **Phase 2 — "the staff side" — is BUILT**: the **Delivery settings tab** (the switch
+moved out of the Order tab, the registration switch out of the Customer tab, the money,
+the coverage, the ETA, the allowed modes, the slug, the URL and the branded QR) · the
+**Delivery Management screen** (the roster, today's deliveries, the leg's buttons) · the
+**counter's delivery flow** (the address, the **registered member**, the payment mode) ·
+the **settlement rule** (§4.1) · the **staff-side entitlement gate** on the Delivery
+button (§9.11) → → **and the walk-in flag is GONE** — phase 1 allowed the walk-in at the
+counter because the counter had no way to satisfy the rule; **the counter's member step
+exists now**, so the rule is armed at BOTH doors (§9.15.1) → → **and the build found
+FOUR things the design had not settled** — the **money the client was trusted with**
+(the fee, the minimum and the modes are the server's, always), the **stale fallback**
+(the client's `allow_delivery: true` against the server's `False`), the **country lock**
+(the delivery's allowed modes bypassed the lock the payment timing enforces) and the
+**tenant claim** (the delivery's endpoints read the tenant from the query string, so the
+client must send it) → → **and every claim below is anchored to the code that shipped**
+(§7.2, §9.15).
 
 **v1.14 (Nov 14, 2026): the TENTH round — PHASE 0 and PHASE 1 are DONE.** Kens's ask:
 *"You can start phase 0 and phase 1. After done just update the phase number and actual
@@ -1310,7 +1328,7 @@ prove ownership (the order token — **a new field**, or the existing
 |---|---|---|---|
 | **0 — the plan rows** | the **four** `features` rows (sort orders **39-42**) + their `plan_features` rows — **all four on ONE plan** (the default: Enterprise — the Inventory precedent, §9.9) → **and the plan is DATA, so moving the module to another plan is a `plan_features` change, not a code change** (§9.10) — **BEFORE any route declares the gate** (§9) | small | **✅ DONE (v1.14)** — the four rows are LIVE (ids 41-44, sort orders 39-42) and assigned to Enterprise (`plan_features` 408-411) by an idempotent migration script (§7.1) |
 | **1 — the core** | the `delivery_settings` column (**+ the idempotent ALTER**) · the `delivery_slug` column (the same ALTER) · the `delivery_orders` + `delivery_drivers` tables · the delivery order type (the address, the fee) · the fee in the order's total | medium | **✅ DONE (v1.14)** — the two columns, the two tables, the server's fee, the member rule and the receipt line are LIVE (§7.1, §9.14) |
-| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium | **next** |
+| **2 — the staff side** | the **Delivery settings tab** (the switch moves, the QR + the share row, the fees, the allowed modes, the registration switch) · the **Delivery Management screen** (the roster, the coverage, today's deliveries) · the **leg** (the buttons, the chip, the kitchen's third arm, the queue's `getNextStatus(order)`) · the **settlement rule** (§4.1) · **the staff-side entitlement gate** on the Delivery button (§9.11) · **the counter's payment-mode chooser** (§4.3) · **the counter's MEMBER step — the required rule** (§4.3.1) · **the counter's PAYMENT-MODE chooser + the server's per-order override** (§4.2.1) | medium | **✅ DONE (v1.15)** — the Delivery tab, the Delivery Management screen, the counter's member step + payment-mode chooser, the settlement rule and the staff-side entitlement gate are LIVE (§7.2, §9.15) |
 | **3 — the storefront** | the delivery PWA (the branding, the menu, the cart, the checkout with the **customer's payment choice**, the **mandatory sign-up**, the **login gate** — §5.1 — the **kitchen status**, the **delivery status**, the **map**, the **ETA** and the **live tracking**) + the public routes (the four gates — **including the server-side entitlement check**) | **large** | planned |
 | **4 — the money** | the prepay (the DuitNow QR — **Malaysia only**) + cash on delivery + the payment records + the **per-order-type lock** and the **customer's choice** at the checkout (§4.2) | medium | planned |
 | **5 — the live tracking** | the **driver link** (which also carries the leg's buttons — §12) · the live pings · the **live driver marker** · the live ETA · the **Mapbox** routes · the privacy pruning → **and it is CORE now** — it ships with the entitlement, so every Enterprise delivery tenant has it (§11.1) | medium | planned |
@@ -1356,6 +1374,33 @@ delivery tenant has them** (§11.1).
 **and the live database** — the POS database now carries the two columns, the two tables
 and the unique index (`outlets.delivery_slug` · `outlet_settings.delivery_settings` ·
 `delivery_orders` · `delivery_drivers` · `ux_outlets_delivery_slug`).
+
+### 7.2 What Phase 2 ACTUALLY changed (v1.15)
+
+**Phase 2 — the staff side (the backend, the tab, the counter and the roster):**
+
+| the file | what changed |
+|---|---|
+| **`backend/app/routes/delivery.py`** (new) | the delivery's API — **`GET /gate`** (the entitlement) · **`GET /quote`** (the server's fee, the minimum and the allowed modes) · **`GET`/`POST`/`PATCH`/`DELETE /drivers`** (the tenant's roster) · **`GET /orders`** (today's deliveries) · **`PATCH /orders/{id}`** (the leg's transitions) · **`PATCH /slug`** · **`GET /storefront`** · **`GET /qr.png`** — **every route reads the tenant from the claim** (`require_tenant_claim`) |
+| **`backend/app/services/delivery_service.py`** | the **settlement rule** (§4.1 — the handover and the money are two facts) · **`allowed_delivery_modes`** and **`resolve_delivery_mode`** (the client asks, the server decides) · **`delivery_status_on_payment`** / **`delivery_status_on_handover`** · the **tenant check on the driver assignment** |
+| **`backend/app/services/delivery_qr.py`** (new) | the **branded QR** — the outlet's own name, logo and colour on the code |
+| **`backend/app/routes/order.py`** | the order response carries the **leg** (`delivery`), the **fee** and the address · the **member rule with `allow_walkin=False`** — the walk-in flag is gone |
+| **`backend/app/services/order_service.py`** | the **per-order payment mode** — the client's request is resolved against the outlet's allow-list and a mode outside it is refused |
+| **`backend/app/routes/outlet_settings.py`** | the delivery's allowed modes are held to the **same country/account lock** the payment timing enforces — the two lists may never disagree |
+| **`backend/scripts/test_delivery_staff_side.py`** (new) | **48 checks** — the gate, the roster, today's deliveries, the leg's transitions, the chooser, the member at the counter and the settlement rule |
+| **`frontend/src/components/settings/DeliverySettingsTab.jsx`** (new) | **the Delivery tab** — the switch, the money, the coverage, the ETA, the prepaid-only switch, the allowed modes, the default mode, the registration switch, the slug, the URL, the QR, the copy/WhatsApp/download and the storefront preview |
+| **`frontend/src/components/pos/DeliveryOrderPanel.jsx`** (new) | the **counter's delivery panel** — the address, the member warning, the mode chooser and the server's fee and minimum |
+| **`frontend/src/pages/DeliveryManagement.jsx`** (new) | the **roster screen** — the drivers, today's deliveries and the leg's actions |
+| **`frontend/src/pages/Settings.jsx`** | the **Delivery tab** is added (gated on the plan's `Delivery` feature) · the **`allow_delivery` switch leaves the Order tab** · the **`customer_registration_enabled` switch leaves the Customer tab** |
+| **`frontend/src/pages/StaffOrder.jsx`** | the counter's delivery flow — the address, the **registered member**, the **mode**, and the three refusals before the order is made |
+| **`frontend/src/components/pos/CartPanel.jsx`** | the **delivery fee row** — the server's number, shown only when there is a fee |
+| **`frontend/src/hooks/useSettings.js`** | the **stale fallback** — `allow_delivery: true` → **`false`**, so the client agrees with the server's own fallback |
+| **`frontend/src/utils/paymentModes.js`** | the delivery-aware **`isLiveOrder`** (two endings, either order) · **`canAdvanceLeg`** · **`nextLegAction`** · **`legActionLabel`** |
+| **`frontend/src/pages/OrderQueue.jsx`** · **`Kitchen.jsx`** | the delivery's own life in the queue and the kitchen's third arm |
+| the three `delivery.json` locales (new) + `settings.json` · `staffOrder.json` · `kitchen.json` · `layout.json` · `orders.json` | the delivery's words — **en · zh · km** |
+| **`frontend/scripts/write-delivery-locales.py`** (new) | the script that writes the delivery's keys into all three locales |
+
+---
 
 ---
 
@@ -1900,6 +1945,92 @@ exactly as it printed before.
 | **the entitlement gate** | the gate is a phase 2/3 thing — **and the plan rows are already live**, so the gate can be switched on without a data change |
 | **the delivery address** | **NOT required yet** — the counter has no address field (that is the phase 2 staff screen), so requiring it would break the counter's delivery order. The address is stored when it is given |
 | **the legacy delivery order** | the one live delivery order predates the leg → it has no leg and no fee → **it keeps the total it has** (`delivery_fee_snapshot` returns 0 for an order without a leg) |
+
+### 9.15 The v1.15 build review — Phase 2 is DONE (the staff side)
+
+**Kens's eleventh round was again a build round: *"Ok. Please proceed phase 2."* → so
+Phase 2 — "the staff side" — is BUILT, and the build settled FOUR things the design had
+left open, plus it found two real defects in the new code.**
+
+#### 9.15.1 The walk-in flag is GONE — the rule is armed at BOTH doors
+
+**Phase 1 shipped the member rule with a `allow_walkin=True` at the counter** — because
+the counter screen defaulted every order's member to the venue's walk-in member, and
+arming the rule then would have broken the counter with a rule the counter could not yet
+satisfy (§9.14.1).
+
+→ **Phase 2 built the counter's member step** — the address, the **registered member**
+and the mode — → **so the flag is now `allow_walkin=False` at the counter too** →
+→ **and the counter says it BEFORE the order is made** (the server's 400 was correct but
+it arrived as an HTTP error the cashier had to read) → → **and the walk-in can no longer
+satisfy the rule from the client side either** — the counter refuses to send it.
+
+→ **so the phase 1 split is closed**: all three clauses (no member · cross-tenant · the
+walk-in) are armed at **both** doors, and the `allow_walkin` parameter is gone from the
+live path.
+
+#### 9.15.2 The money the client was trusted with — the fee, the minimum and the modes
+
+**The design (§4.2.1) says the client asks and the server decides — and the counter's
+screen needed three numbers it does not own: the fee, the minimum order and the allowed
+payment modes.**
+
+→ **so the quote endpoint is the answer** (`GET /delivery/quote`) → → **and it is the
+SAME function the order creation uses** (`delivery_fee_for`) → → **so the number on the
+screen is the number on the receipt** → → **and the quote carries the mode allow-list**
+(`allowed_delivery_modes`) → → **so the counter's chooser shows exactly the modes the
+server would accept** → → **and the mode the cashier picks is sent as a REQUEST** — the
+server resolves it and refuses a mode outside the list.
+
+→ **and the client's own arithmetic is gone from the delivery entirely**: the fee row
+on the cart is the quote's `fee`, and the minimum is the quote's `minimum_order`.
+
+#### 9.15.3 The stale fallback — the client and the server disagreed about OFF
+
+**The design (§9.7) had already found this: the POS's own fallback said
+`allow_delivery: true` while the backend's said `False`.** → **Phase 2 fixed it** — the
+client's fallback is now **`false`** → → **and the same fix reached the ORDER SCREEN**,
+where the delivery button was gated on `settings?.allow_delivery !== false` — which meant
+an **UNSET** setting still showed the delivery → → **and it is now `=== true`** — so a
+missing setting never sells a service the outlet did not ask for (§9.7, §3.1).
+
+#### 9.15.4 The country lock — the delivery's modes bypassed it
+
+**The live code had a lock: "pay online" needs a payment account we can charge AND an
+outlet in a country whose rails exist (DuitNow and Touch 'n Go are Malaysian).** →
+**and the lock was enforced on the payment timing map — but NOT on the delivery's own
+allowed-modes list** → → **so a tenant could have written `prepay_online` into the
+delivery's list on an outlet the timing map would have refused** → → **and the two lists
+may never disagree** → → **so the facts are read ONCE and used by BOTH writes** (the
+account lookup is a network call — it must not run twice for one request).
+
+#### 9.15.5 The tenant claim — the delivery's endpoints read the tenant from the query string
+
+**Every route of the delivery's API reads the claimed tenant** (`require_tenant_claim`
+— the `customer_id` query parameter, and **anything that is not a positive integer is
+"no claim", never a default tenant**) → → **and the first version of the Delivery
+Management screen did not send it** → → **so every delivery call was a 400** → → **the
+screen now sends the claim on every request** (the gate, the orders, the roster and the
+leg's actions).
+
+#### 9.15.6 The two defects the new code had — found by the new test and fixed
+
+| the defect | the fix |
+|---|---|
+| the **payment writer completed a COD delivery** when the cash was recorded — the food was still on the road | the **settlement rule** (§4.1): cash alone does not complete a COD delivery; the handover alone moves the core to `served`; **both** together complete it |
+| the **service-level driver assignment accepted a driver of ANOTHER tenant** | the assignment checks the driver's own `customer_id` — a foreign driver is refused |
+
+#### 9.15.7 What Phase 2 did NOT change — on purpose
+
+| what | why |
+|---|---|
+| **the customer-facing app** | the PWA is **phase 3** — the storefront's slug, the URL and the QR are ready, but no customer screen exists yet |
+| **the online payment** | the DuitNow QR and the money are **phase 4** — the mode is wired, the checkout is not |
+| **the live tracking** | the driver link, the pings and the map are **phase 5** |
+| **the zones and the analytics** | **phase 6** — the two Enterprise rows exist (phase 0) and their screens do not |
+| **the tax treatment of the fee** | **unchanged from phase 1** — the fee is a flat charge outside the tax base (§9.14.2) |
+
+---
 
 ---
 
