@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.28
+**Document Version:** 1.29
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **and the whole delivery module is now BUILT** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over free CARTO/OSM raster tiles**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -2389,12 +2389,12 @@ name saves as ZERO, the outlet charges the wrong money, and nothing anywhere com
 | the side | the keys |
 |---|---|
 | **the server** (`DEFAULT_DELIVERY_SETTINGS`) | `fee` · `free_above` · `minimum_order` · `radius_km` · `eta_minutes` · `eta_max_minutes` · `prepaid_only` · `payment_modes` |
-| **the tab** (`DeliverySettingsTab.jsx`) | **the same eight** — and the same defaults, value for value |
+| **the tab** (`DeliverySettingsTab.jsx`) | **the same eight** — and the same defaults, value for value → → **and this is where the NINTH key came from: at v1.25 the SERVER gained `zones_exclusive` and the tab did NOT — so the two sides DIVERGED, the check went RED at 52/54, and the phase shipped anyway (§9.25)** |
 
 → **and that is now PROVEN BY A CHECK, not by a reading** → → **the suite compares the
 two sides key by key and default by default** → → **and it proves the drop is real, so
-the comparison is load-bearing rather than decorative** → → **the suite is now 54/54**
-(was 48/48; the core suite is still 45/45).
+the comparison is load-bearing rather than decorative** → → **the suite was 54/54**
+(was 48/48; the core suite is still 45/45) → → **and it was RED at 52/54 when Phase 6a shipped — the check caught the drift and the phase shipped anyway (§9.25).**
 
 #### 9.17.3 The rule the house should keep — a silent drop needs a loud comparison
 
@@ -2841,7 +2841,7 @@ have found it.
 | the door | what it answered |
 |---|---|
 | **the staff zones tab** (browser) | the managed list renders — **"KL Central · 50000, 50050 · Delivery fee: RM 3.50"** and **"PJ North · 43000, 43010 · Delivery fee: RM 4.00"** — and the fee is in the **outlet's own currency** |
-| **the exclusive switch** (browser → server) | clicking it **persisted**: the server answered `zones_exclusive: False` immediately afterwards |
+| **the exclusive switch** (browser → server) | clicking it **persisted**: the server answered `zones_exclusive: False` immediately afterwards → → **this proves the ZONES door — and the OTHER door (the Settings tab) could still reset the same value, which is the defect §9.25 closes** |
 | **the staff quote** | postcode **50000** → **fee 3.5** (the ZONE's fee, above the 3.0 flat fee) with `coverage.matched: true` · postcode **60100** → **fee 3.0** (the flat fee) with `coverage.deliverable: false` |
 | **the counter order** (live) | `ORD-20261115-1219` · total **17.00** = 13.50 + **3.50** · and the stored leg carries **`zone_name = "KL Central"`**, **`address_postcode = "50000"`** — the snapshot, on the leg |
 | **the customer cart** (browser) | postcode **50000** → **"Good news - we deliver to your area (KL Central)"** and the **delivery fee moves to RM 3.50**; postcode **60100** under exclusive zones → **"Sorry - we do not deliver to that postcode yet."** and **the checkout button is `disabled`** |
@@ -3059,6 +3059,117 @@ the running app was asked.**
 step is now part of the phase, not an afterthought after it**: build → restart → **prove
 against the running app** → and only then write "LIVE" in the document.
 
+
+
+### 9.25 The v1.29 defect review — the switch the Settings tab forgot
+
+**Phase 6a shipped with a defect the house's OWN suite had already caught — and the phase
+shipped anyway.** The tenant's exclusive-coverage switch (`zones_exclusive`) lives inside
+the outlet's one `delivery_settings` object, and the Settings tab submits that WHOLE
+object. The tab's own key list did not carry `zones_exclusive` → → so **every save of an
+unrelated delivery setting (the fee · the ETA · the allowed payment modes) silently
+rewrote the stored switch back to the server's default** → → **and the tenant's decision
+was overwritten by a save that never mentioned it.**
+
+→ **this is the second time a guardrail this house built caught a real defect and was not
+acted on** — the first was the deploy (§9.24).
+
+#### 9.25.1 The defect — two files that disagreed about one key
+
+| the side | the keys |
+|---|---|
+| **the server** (`DEFAULT_DELIVERY_SETTINGS`) | `fee` · `free_above` · `minimum_order` · `radius_km` · `eta_minutes` · `eta_max_minutes` · `prepaid_only` · `payment_modes` · **`zones_exclusive`** |
+| **the tab** (`DeliverySettingsTab.jsx`) | **the same eight — `zones_exclusive` MISSING** |
+
+→ **and the mechanical proof is one line** — the normalizer starts from the server's
+defaults and fills in EVERY key, so an omitted key lands as the default:
+
+> `normalize_delivery_settings({'fee': 2.5})` → **`zones_exclusive: False`**
+
+→ → **and the tab was not wrong to send the whole object** — it was wrong to send an
+INCOMPLETE one.
+
+#### 9.25.2 Why it survived — the check was already there, and it went RED
+
+| the fact | the evidence |
+|---|---|
+| **the parity check PREDATES Phase 6a** | it came from `752ce1a` — the v1.17 contract review (§9.17.2), which is the review that said *"the tab and the server must be compared by a machine, in CI, on every change"* |
+| **Phase 6a added the ninth key to the SERVER** | `878272c` added `zones_exclusive` to `DEFAULT_DELIVERY_SETTINGS` and to the zones door — and **not** to the tab |
+| **so the suite went red ON the 6a commit** | **proven here by running the suite in a CLEAN WORKTREE at `878272c`: `52/54`** — and the two failures are exactly *"the tab and the server agree on the settings' KEYS"* and *"…and their DEFAULTS"* |
+| **and the phase shipped anyway** | the doc said **LIVE and PROVEN**, and the RED suite was carried forward as a known-failing test rather than as a blocked phase |
+
+→ **so the guardrail worked and the process did not** → → **a guardrail that is not acted
+on is not a guardrail** — it is a decoration (§9.17.3 said the comparison must *"live in
+the delivery suite, not in a review, because a review is a moment and a suite is a rule"* →
+→ **and a rule that goes red is a BLOCKED phase, not a footnote**).
+
+#### 9.25.3 The fix — two places, because the shape of the bug is two-sided
+
+| the place | the change | why it is there |
+|---|---|---|
+| **`frontend/src/components/settings/DeliverySettingsTab.jsx`** | the `DEFAULTS` block now carries **`zones_exclusive: false`** | → the tab SPEAKS about the switch instead of dropping it — **and it still has no control for it**: the ZONES screen owns the switch, the tab only carries the value through, unchanged |
+| **`backend/app/routes/outlet_settings.py`** | the `PUT /api/settings/{outlet_id}` door now **PRESERVES the stored `zones_exclusive` when the request omits it** — an **explicit** value in the request still wins | → **the tab is not the only client** → so the server must not let ANY caller clear a key it never named → → **this is the half that protects every future caller** |
+
+→ **and the zones door keeps its ownership** — `PATCH /api/delivery/zones/coverage` reads
+the stored object, sets the one key and re-normalizes → **it is the only door that
+CHANGES the switch**.
+
+#### 9.25.4 The proof — the suites, then the running app
+
+| the suite | the count |
+|---|---|
+| **`test_delivery_settings_exclusive.py`** (new) | **17/17** — an ISOLATED database (the live one is never touched), a REAL signed staff session, and it drives the REAL `PUT` route: a stored `true` **survives** an unrelated save · an explicit value still wins · a NEW outlet still starts **off** · the tab and the server agree on the keys and the defaults |
+| **`test_delivery_staff_side.py`** | **54/54** (was **52/54**) — the two parity checks now pass |
+| `test_delivery_zones.py` · `test_delivery_core.py` · `test_delivery_public.py` · `test_delivery_analytics.py` · `test_delivery_tracking_routes.py` | **58/58 · 45/45 · 77/77 · 45/45 · 28/28** |
+
+→ **the deploy, in the house's order (§9.24.3)** — `pm2 restart pos-backend`, and the
+frontend is served straight from the bind-mounted `dist`, so the BUILD is the deploy → →
+**and the live site was asked** — it serves **`index-DiJLYe0s.js`**, and that bundle
+carries **`zones_exclusive:!1`**.
+
+→ **and the live proof against the running app — 12 checks over real HTTP through
+`https://app.ideazes.com/api`:**
+
+| the check | what the running app answered |
+|---|---|
+| **the pre-state, read from the live app** | the row as it was found |
+| **the switch turned ON explicitly** | **accepted, and stored** |
+| **an unrelated save that OMITS the switch** | **accepted — and the stored switch SURVIVED** (the fee moved; the switch stayed **on**) |
+| **an explicit switch-OFF** | **accepted, and landed** → the door still honours an explicit value |
+| **the restore** | **the row is back to its exact pre-state** |
+
+→ **the probe ran on outlet 6 (AES Restaurant), whose delivery is OFF** → → **so no live
+delivery order could be affected by the proof.**
+
+→ → **and the honest part: no live tenant actually LOST the switch** → the only outlet
+carrying a delivery blob (outlet 4 · Kens SS17) stores **`zones_exclusive: False`** →
+→ **so this was a LANDMINE — live-reachable, but it had not yet flipped a tenant who had
+turned it on** → → **which is exactly why it is worth closing now and not later.**
+
+→ **the commit is `65442bc`** — pushed, local and remote hashes matching.
+
+#### 9.25.5 What this review does NOT do
+
+| what | why |
+|---|---|
+| **add a control for the switch to the Settings tab** | the ZONES screen owns it (§7.6) — the Settings tab carries the value, it does not own the choice |
+| **change any customer-facing screen** | the customer still sees **ONE delivery-fee line** (§5.3) |
+| **add an entitlement** | the switch is already behind the `Delivery Zones` row (§7.6) |
+| **change the fee rule** | a zone's fee is the fee, even above the flat fee (§7.6) |
+
+#### 9.25.6 The lesson the house should keep
+
+→ **a red suite is a BLOCKED phase** — not a known-failing test to carry forward → →
+**the parity check was written BEFORE the phase that broke it, and it still shipped** →
+→ **so the standing rule is now two-sided:** → **the tab and the server must agree on
+the key list, AND the server must PRESERVE a key a client omitted** → → **because a
+client that submits the whole object may be trusted for the keys it NAMES, and must not
+be trusted to CLEAR the keys it does not.**
+
+→ → **and the generalisation:** → **any server that fills a submitted object from its
+own defaults turns "the client did not mention it" into "the client said NO"** → → **so
+any setting a tenant owns — and did not name in this request — must be carried forward,
+not defaulted**.
 
 
 ## 10. Kens's comments — the answers
