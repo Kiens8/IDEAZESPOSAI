@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.31
+**Document Version:** 1.32
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.32: the ETA MOVES with the RIDER — backlog item §9.28-1 is BUILT: the route is redrawn from the rider's own last position to the customer's door (traffic-aware) and the ETA is re-timed from where the FOOD is, while the promise the outlet made is never touched (the customer now sees BOTH numbers); three guards keep the traffic API honest (100 m of drift, 60 s between calls, 15 min before a stale route is re-timed anyway), a failed routing call keeps the previous route and ETA, and the rider's phone is never made to wait for the traffic API (the refresh happens in the background, in its own session) — 33 checks plus a NEGATIVE CONTROL against the pre-fix tree prove it (§9.29)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -3344,16 +3344,20 @@ The module is BUILT. These are the enhancements that are **NOT** built, each one
 against the running code rather than read off a wish list — and two of them are places where
 the code and this document disagree.
 
-**1. The ETA is a SNAPSHOT, not a live estimate.** `compute_route_for_leg()` has exactly
-**one** caller: the moment a driver is **assigned**. The ping route records a position and
-never re-routes; the customer's tracking read serves the stored `leg.eta_at` and
-`leg.route_geometry`. So the "traffic-aware ETA" is the traffic-aware estimate **from the
-moment of assignment** — as the rider moves through traffic, the ETA the guest watches does
-not move. The phase table (§7.5) calls it "the live ETA"; it is live only in the sense that
-it was computed with traffic in the model. **The enhancement:** re-route (or at least
-re-time) when the rider's position drifts from the route, or on a slow tick, so the ETA
-tracks the rider. `route_computed_at` is already stored and never read — it was clearly
-meant for exactly this.
+**Item 1 below was built in v1.32** (§9.29) and now reads as a record of what it was, not
+as an open enhancement.
+
+**1. The ETA was a SNAPSHOT, not a live estimate — BUILT in v1.32 (§9.29).** It was:
+`compute_route_for_leg()` had exactly **one** caller (the moment a driver was **assigned**),
+the ping route recorded a position and never re-routed, and the customer's tracking read
+served the stored `leg.eta_at` and `leg.route_geometry` — so the "traffic-aware ETA" was the
+traffic-aware estimate **from the moment of assignment**, and as the rider moved through
+traffic the ETA the guest watched did not move. `route_computed_at` was stored and never
+read. **What it is now:** the route is redrawn from the rider's own last position to the
+customer's door and the ETA is re-timed from where the FOOD is, on three guards (100 m of
+drift, 60 s between calls, 15 min before a stale route is re-timed anyway), while
+`eta_promised_at` — the promise the outlet made — is never touched and the customer is shown
+BOTH numbers (§9.29).
 
 **2. The radius is stored, displayed, and NEVER ENFORCED.** `within_radius()` is computed
 inside the route computation and returned — and the only caller **throws the result away**;
@@ -3408,6 +3412,104 @@ not code:** Q19 (the Starter's hook, and whether the delivery is affordable at t
 price) and Q20 (whether the zones and the analytics keep their own rows, or the module
 collapses to one).
 
+
+### 9.29 The v1.32 build — the ETA MOVES with the rider
+
+Backlog item §9.28-1, built. The ETA the customer watched was a **snapshot**: the
+traffic-aware estimate taken at the moment the driver was assigned, served unchanged for the
+whole delivery. As the rider drove through traffic, the number on the screen did not move.
+`route_computed_at` was stored on the leg and never read — it was clearly meant for exactly
+this.
+
+**THE RULE: THE ROAD THAT IS LEFT STARTS WHERE THE FOOD IS.**
+
+| the food is… | the remaining road is… | the ETA is |
+|---|---|---|
+| **in the kitchen** | the road the OUTLET drew (it is already on the leg, traffic-aware) | `now + the drive that is still to come + the preparation that is still owed` |
+| **with the RIDER** | the road from the RIDER's last reported position to the customer's door, redrawn traffic-aware | `now + that road` (the preparation is done — it is in the bag) |
+
+Two consequences fall out of that rule, and both of them are deliberate:
+
+* **while the food is in the kitchen, no routing call is spent.** The rider's position says
+  nothing about the road the food will travel yet — it is the kitchen's road. The ETA is
+  re-timed from the preparation that is still owed, and the preparation burns down from the
+  moment of the assignment, so the ETA is **exactly the promise** while the kitchen is
+  working, and slips with the clock once the food is ready and the rider is not there yet.
+  Both are honest, and neither spends an API call.
+* **once the food is with the rider, the road is the rider's.** The route is redrawn from the
+  rider's last reported position to the customer's door, traffic-aware
+  (`drive_traffic_approximated`, with the plain `drive` as the fallback), and the ETA is
+  `now + that road`.
+
+**THE PROMISE IS NEVER TOUCHED.** `eta_promised_at` keeps the number the outlet gave the
+customer, and it is what the customer compares against. The live ETA is a **second** number,
+not a rewritten promise — and the customer app now shows **both**: the live arrival time and
+the promise, on the tracking card, with the big number in the status card following the live
+one.
+
+**THREE GUARDS KEEP THE TRAFFIC API HONEST.** A rider's phone reports every 15 seconds, and
+a routing call is not free:
+
+| the guard | the number | why |
+|---|---|---|
+| **the drift** | `LIVE_ROUTE_MIN_DRIFT_M = 100` | the rider must have **moved** 100 m from the point the last route was computed from. Ten metres of GPS noise must never spend an API call. The baseline is the position report that was current when the route was computed — the trail knows it, so no extra column is needed. |
+| **the interval** | `LIVE_ROUTE_MIN_INTERVAL_S = 60` | the shortest gap between two live routes for one leg. |
+| **the age** | `LIVE_ROUTE_MAX_AGE_S = 900` | the one case that overrides both: the **traffic moves on its own**, so a route that has gone stale is re-timed even if the rider has not moved a metre. |
+
+And a position report **older than 15 minutes** is not used at all — a phone that stopped
+reporting half an hour ago does not say where the food is.
+
+**A FAILURE IS NOT AN ERROR.** If the routing call fails — no route, or an exception — the
+previous route and the previous ETA stay exactly as they are. The customer keeps the last
+honest number instead of losing the map.
+
+**THE RIDER'S PHONE NEVER WAITS FOR THE TRAFFIC API.** The ping route and the `start` action
+schedule the refresh in a FastAPI **background task**, and that task opens **its own
+session**: FastAPI 0.109 closes the request's session *before* the background task runs, so
+a task that borrowed it would see a closed session. The position report is answered first,
+and the refresh happens after the answer.
+
+**THE SHARED ROUTE FIELD, AND THE SHOP.** `leg.route_geometry` is now the **live** route, so
+the customer's map draws the road that is left and `GET /driver/{token}/route` serves the
+same. That means the **head** of the route is the **rider** — not the shop. So:
+
+* the point the route was drawn **from** is **remembered** when the original route is
+  computed (`_remember_outlet_point`);
+* the head of the route is still trusted as the shop **while the route is the outlet's** —
+  and the trail knows the difference: a head that is one of the rider's own position reports
+  is read as the rider, and the remembered point (or the outlet's address) is used instead.
+
+**THE PROOF.** `backend/scripts/test_delivery_live_eta.py` — **33 checks**, the traffic API
+replaced by a local stub (the suite never calls Geoapify) and the database an isolated
+in-memory SQLite with the real models:
+
+```
+the route starts at the RIDER, not at the shop   : true
+the promise is NOT touched by the live route     : true
+10 s later: NO routing call (the interval holds)  : true
+a minute later, but only 10 m: NO routing call    : true
+the rider moved 300 m: the route IS recomputed    : true
+a route older than 15 min is re-timed             : true
+the LIVE route survives the failure               : true
+the answer was NOT delayed by the traffic API     : true  (0.05s)
+```
+
+**THE NEGATIVE CONTROL.** The same suite, run against a copy in which the live ETA is
+**reverted** (both files taken from git HEAD): every check the live ETA owns **fails** there,
+every other check still **passes**, and the suite says so — *"THE CONTROL IS SURGICAL — the
+live ETA is gone and nothing else broke."* The existing tracking suite still passes **35/35**,
+including the check that the rider's map opens on the **shop** and not on a hardcoded city.
+
+**What this build does NOT do:** there is still **no push** (§9.28-3 is untouched — a guest
+who closes the app hears nothing); the number moves in **steps** (at most once a minute, by
+the guards), not continuously; the trail is still raw GPS (§9.28-4); the radius is still not
+enforced (§9.28-2); and this was proven against an isolated database and a stubbed traffic
+API, **not against a live tenant with a real order in flight**.
+
+**The lesson the house should keep:** **an ETA is a CLAIM about a moving thing, and a claim
+about a moving thing has to be re-made.** The number was honest when it was made and stale
+five minutes later — and it stayed on the screen the whole time, looking exactly as
+trustworthy as the moment it was computed.
 
 ## 10. Kens's comments — the answers
 
