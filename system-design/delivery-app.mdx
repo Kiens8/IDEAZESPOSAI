@@ -2,7 +2,7 @@
 
 **Document Version:** 1.33
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.32: the ETA MOVES with the RIDER — backlog item §9.28-1 is BUILT: the route is redrawn from the rider's own last position to the customer's door (traffic-aware) and the ETA is re-timed from where the FOOD is, while the promise the outlet made is never touched (the customer now sees BOTH numbers); three guards keep the traffic API honest (100 m of drift, 60 s between calls, 15 min before a stale route is re-timed anyway), a failed routing call keeps the previous route and ETA, and the rider's phone is never made to wait for the traffic API (the refresh happens in the background, in its own session) — 33 checks plus a NEGATIVE CONTROL against the pre-fix tree prove it (§9.29)** → **v1.33: the BACKLOG checked ITSELF, and two of its rows had gone STALE — §9.28-6 (the nightly entitlement sweep) and §9.28-7 (the rider's map opening on the wrong country) were published as OPEN in v1.31, and BOTH had been built since (§9.30)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.32: the ETA MOVES with the RIDER — backlog item §9.28-1 is BUILT: the route is redrawn from the rider's own last position to the customer's door (traffic-aware) and the ETA is re-timed from where the FOOD is, while the promise the outlet made is never touched (the customer now sees BOTH numbers); three guards keep the traffic API honest (100 m of drift, 60 s between calls, 15 min before a stale route is re-timed anyway), a failed routing call keeps the previous route and ETA, and the rider's phone is never made to wait for the traffic API (the refresh happens in the background, in its own session) — 33 checks plus a NEGATIVE CONTROL against the pre-fix tree prove it (§9.29)** → **v1.33: the BACKLOG checked ITSELF, and two of its rows had gone STALE — §9.28-6 (the nightly entitlement sweep) and §9.28-7 (the rider's map opening on the wrong country) were published as OPEN in v1.31, and BOTH had been built since (§9.30)** → **v1.34: the two remaining CUSTOMER-facing rows are BUILT — §9.28-2, the radius, was a knob the tenant turned and the server did not honour: it is now ENFORCED in the order's write path (the customer's door and the counter's door cannot disagree), the whole verdict is RECORDED and visible to the tenant, and the refusal is ATOMIC (a probe found a refused order SURVIVING a commit — no order, no line, no voucher, no promotion) — and §9.28-3, the push, is built from scratch: the guest's phone is told when the rider is assigned, when the food is picked up and when it arrives, and the address never leaves the server (§9.31)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -3344,10 +3344,11 @@ The module is BUILT. These are the enhancements that are **NOT** built, each one
 against the running code rather than read off a wish list — and two of them are places where
 the code and this document disagree.
 
-**Items 1, 6 and 7 below were built** (§9.29 for item 1, §9.30 for items 6 and 7) and now
-read as records of what they were, not as open enhancements. The remaining open ones are
-**2** (the radius, which needs a product decision), **3** (no push — the biggest customer
-gap), **4** and **5** (both provider decisions), and **8** (turn-by-turn, a decision).
+**Items 1, 2, 3, 6 and 7 below were built** (§9.29 for item 1, §9.31 for items 2 and 3,
+§9.30 for items 6 and 7) and now read as records of what they were, not as open
+enhancements. The remaining open ones are **4** and **5** (both provider decisions — the
+house's own key answers **404 "not supported"** for `/v1/mapmatching` and `/v1/isochrone`)
+and **8** (turn-by-turn, a decision).
 
 **1. The ETA was a SNAPSHOT, not a live estimate — BUILT in v1.32 (§9.29).** It was:
 `compute_route_for_leg()` had exactly **one** caller (the moment a driver was **assigned**),
@@ -3361,22 +3362,28 @@ drift, 60 s between calls, 15 min before a stale route is re-timed anyway), whil
 `eta_promised_at` — the promise the outlet made — is never touched and the customer is shown
 BOTH numbers (§9.29).
 
-**2. The radius is stored, displayed, and NEVER ENFORCED.** `within_radius()` is computed
-inside the route computation and returned — and the only caller **throws the result away**;
-there is no column on the leg to hold it, and the order write path **never geocodes the
-address at all** (it only snapshots `radius_km` onto the leg). The tenant's radius therefore
-appears in the storefront payload and on the leg, and **no order is ever refused for being
-outside it**. This document says the radius "WARNS rather than REFUSES" (§11.3) — in fact it
-does not even warn. The **postcode zones** (Phase 6a) are the coverage rule that genuinely
-enforces, and they refuse properly. **The enhancement:** either enforce the radius (geocode
-at order time and refuse or warn), or take the radius out of the tenant's UI so the tenant
-is not shown a knob the server does not honour.
+**2. The radius is stored, displayed, and NEVER ENFORCED — BUILT in v1.34 (§9.31).** It was:
+`within_radius()` was computed inside the route computation and returned — and the only
+caller **threw the result away**; there was no column on the leg to hold it, and the order
+write path **never geocoded the address at all** (it only snapshotted `radius_km` onto the
+leg). The tenant's radius therefore appeared in the storefront payload and on the leg, and
+**no order was ever refused for being outside it**. This document says the radius "WARNS
+rather than REFUSES" (§11.3) — in fact it did not even warn. The **postcode zones** (Phase
+6a) are the coverage rule that genuinely enforced, and they refused properly. **The
+decision, now taken: ENFORCE, and keep the knob.** The radius is checked in the **order's
+write path** — the customer's door and the counter's door cannot disagree — an address
+outside the tenant's promised coverage is **refused**, the whole verdict is **recorded**
+and visible to the tenant, and the refusal is **atomic** (§9.31).
 
-**3. Nothing notifies the guest.** There is **no push** anywhere in the delivery app — no
-`PushManager`, no `PushSubscription`, no VAPID keys — and the guest learns that the rider has
-arrived only by **polling every 8 seconds while the app is open**. A guest who closes the app
-hears nothing. The PWA is already installable and already has a service worker, so the
-plumbing is close to being there. **This is the single biggest UX gap in the delivery.**
+**3. Nothing notifies the guest — BUILT in v1.34 (§9.31).** It was: there was **no push**
+anywhere in the delivery app — no `PushManager`, no `PushSubscription`, no VAPID keys — and
+the guest learned that the rider had arrived only by **polling every 8 seconds while the app
+is open**. A guest who closed the app heard nothing. The PWA was already installable and
+already had a service worker, so the plumbing was close to being there. **What it is now:**
+Web Push, built from scratch — the VAPID keys are **CONFIGURATION** (never in the source),
+a subscription belongs to the **TENANT** of the slug and the member the guest token names,
+the payload is built from a **whitelist** so the address never leaves the server, and a push
+that fails is **swallowed**: a phone that cannot be told never stops a delivery (§9.31).
 
 **4. The rider's trail is RAW GPS, never snapped to a road.** The document records this
 honestly (§11.3). Probing the house's own Geoapify key today: `/v1/mapmatching` answers
@@ -3509,7 +3516,8 @@ including the check that the rider's map opens on the **shop** and not on a hard
 who closes the app hears nothing); the number moves in **steps** (at most once a minute, by
 the guards), not continuously; the trail is still raw GPS (§9.28-4); the radius is still not
 enforced (§9.28-2); and this was proven against an isolated database and a stubbed traffic
-API, **not against a live tenant with a real order in flight**.
+API, **not against a live tenant with a real order in flight**. **Update (v1.34):** the push
+(§9.28-3) and the radius (§9.28-2) are both built now — see §9.31.
 
 **The lesson the house should keep:** **an ETA is a CLAIM about a moving thing, and a claim
 about a moving thing has to be re-made.** The number was honest when it was made and stale
@@ -3554,10 +3562,112 @@ The genuinely open ones are **2** (the radius — a product decision: enforce it
 knob out of the tenant's UI), **3** (no push — the biggest customer-facing gap), **4** and
 **5** (both provider decisions: `/v1/mapmatching` and `/v1/isochrone` answer **404 "not
 supported"** on the house's key), and **8** (turn-by-turn — deliberately not built).
+**Update (v1.34):** items **2** and **3** were built too — see §9.31 — so the genuinely open
+ones are **4** and **5** (provider decisions) and **8** (a decision, not a gap).
 
 **The lesson the house should keep:** **a document that claims to be checked against the
 live code must be CHECKED AGAIN — or it is just a document.** The backlog is not a list of
 wishes; it is a list of claims, and a claim expires when the code moves.
+
+### 9.31 The v1.34 build — the radius is a PROMISE the server keeps, and the PHONE is told
+
+Two rows of §9.28 were still open at the start of this build: the **radius** (§9.28-2,
+which carried a product decision) and the **push** (§9.28-3, the biggest customer-facing
+gap). Both are built.
+
+#### The radius — the knob the tenant turns is now a promise the server keeps
+
+It was: `within_radius()` was computed inside the route computation and returned — and the
+only caller **threw the result away**. There was no column on the leg to hold it, and the
+order's write path **never geocoded the address at all**. The tenant's radius appeared in
+the storefront payload and on the leg, and **no order was ever refused for being outside
+it**.
+
+**THE DECISION: ENFORCE, and keep the knob.** The alternative was to take the radius out of
+the tenant's UI so the server would stop promising what it did not honour. But the knob IS
+the tenant's own coverage promise, and the postcode zones already enforce coverage **by
+postcode** (§7.6) — so the radius now enforces coverage **by distance**, beside it, on the
+same path. `radius_km = 0` still means **no limit**, so an outlet that never set a radius
+is not affected by any of this.
+
+**THE RULE LIVES IN THE ORDER'S WRITE PATH** — the same place the money is computed — so
+the customer's door and the counter's door **cannot disagree**. `backend/app/services/delivery_radius.py`
+holds it, and the five rules are written ONCE:
+
+| the rule | what it means |
+|---|---|
+| **0 is no limit** | there is no promise to keep |
+| **the straight line** | the Isochrone API is not on the house's key (§11.3), so the radius is measured from the shop to the door on the straight line — the same measurement `within_radius()` has always used |
+| **the shop point is the tenant's OWN saved point** | the settings page geocodes the restaurant address when it is saved; no saved point means we do not know where the shop is |
+| **an address we cannot find is not a refusal** | the check cannot be made, so the order goes through |
+| **the verdict is recorded** | every order carries what was decided — and WHY it was not decided, when it was not |
+
+**THE UNKNOWN FAILS OPEN — AND IS VISIBLE.** No saved shop location, an address that does
+not geocode, a geocoder that is down: the order goes through, and the leg says **why** it
+was not checked. This is the part the old code could not do at all: a tenant now sees a rule
+that could not be **MEASURED** (`radius_checked: false`, with a reason) instead of a rule
+that was silently ignored. The whole verdict — checked · within · the distance · when it
+was decided · why — is on the leg and in the **tenant's own staff payload**, and the
+tenant's scope is not weakened by it.
+
+**THE REFUSAL IS ATOMIC — and the probe found a hole nobody had looked for.** The order
+write path refuses for several reasons (the payment mode is not the outlet's, the order is
+below the outlet's minimum, the postcode is outside an exclusive zone, the address is
+outside the radius) — and **every one of those refusals happened AFTER the order row had
+been flushed**. The probe proved the consequence:
+
+```
+refused: 400  Sorry, that address is 126.0 km away and we deliver within 8.0 km…
+Order rows in the session after the refusal: 1
+Order rows AFTER a commit: 1          <-- the REFUSED order was committed
+```
+
+A customer who was told *"that address is too far"* could still leave an order behind, and
+a later commit wrote it to the database. The whole write now runs inside a **SAVEPOINT**, so
+a refusal leaves **no order, no line, no leg, no voucher spent and no promotion counted**,
+and a later commit cannot resurrect it. The same savepoint fixes the **minimum-order
+refusal**, which leaked exactly the same way — and nobody had noticed, because the leak is
+invisible until you look for it.
+
+**41 checks**, and the NEGATIVE CONTROL reverts every touched file in a copy of the tree:
+every fix-covering check **fails** there and every unrelated check still **passes**. Two
+house suites had fixtures that pointed at the other side of the planet (`GEOCODED_LAT = 2.0`,
+`GEOCODED_LNG = 102.0` — 126 km from the shop) and made **live** geocoder calls: they now
+stub the geocoder and answer from a coherent point, so the suite is the same on every
+machine, with or without a Geoapify key.
+
+#### The push — the customer's phone is told
+
+It was: no push anywhere in the delivery app — no `PushManager`, no `PushSubscription`, no
+VAPID keys — and the guest learned that the rider had arrived only by **polling every 8
+seconds while the app was open**.
+
+**THE KEYS ARE CONFIGURATION.** The VAPID pair lives in `backend/.env` (never in the
+source, never in git); `scripts/generate_vapid_keys.py` writes it with mode 600 and never
+prints the private half. A house with no key hides the toggle — it does not break the app.
+
+**THE SUBSCRIPTION BELONGS TO THE TENANT.** The slug's outlet's tenant and the member the
+guest token names are the only identity sources — the public door's own mechanism, not a
+second auth scheme. The endpoint is unique per (tenant, endpoint), so the same phone in
+two restaurants is two rows, and one tenant can never list, overwrite, unsubscribe or
+receive another's.
+
+**THE ADDRESS NEVER LEAVES THE SERVER.** The payload is built from a whitelist (status,
+order reference, slug, restaurant, text, url, icon, tag, locale) — not while the food is on
+the way, and not after the handover either. The house hides the address after the handover
+(§11.2); the notification respects the same rule.
+
+**A PUSH THAT FAILS IS NOT AN ERROR.** The send is **queued inside the write** and happens
+**after the commit**, so a phone is never told about a delivery that did not happen; every
+failure is swallowed and the status transition always completes. `pywebpush` is imported
+lazily, so a house without it still serves orders.
+
+**42 checks**, with their own negative control.
+
+**What this build does NOT do:** the radius is still a **straight line**, not a travel-time
+area (§11.3 — the Isochrone API answers 404 on the house's key); the trail is still raw
+GPS (§9.28-4); and both were proven against an **isolated database** with a **stubbed**
+geocoder, **not against a live tenant with a real order in flight**.
 
 ## 10. Kens's comments — the answers
 
