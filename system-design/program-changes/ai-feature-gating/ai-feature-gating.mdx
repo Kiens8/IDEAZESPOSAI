@@ -377,6 +377,14 @@ That made the plan a snapshot for the life of the session (12 hours):
 **`backend/app/core/plan_cache.py`** — a small in-memory cache, filled **on
 demand**:
 
+> **Update (November 17, 2026):** the same cache now holds the plan's **limits**
+> (`max_outlets`, `max_staff`) as well as its features — **one lock, one TTL, one
+> lookup path**, because a second uncached read of the plan would be a second way for the
+> house to answer the same question. The limits are enforced where the data is **written**
+> (`POST /api/outlets/`, `POST /api/users/`) — see
+> `system-design/program-changes/subscription-lifecycle/subscription-lifecycle.mdx` § "Vera's
+> P2 #17".
+
 | | |
 |---|---|
 | a request for a tenant whose entry is missing or old | one read of the website API (~15 ms), then the reads after that come from memory |

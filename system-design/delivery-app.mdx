@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.33
+**Document Version:** 1.36
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.32: the ETA MOVES with the RIDER — backlog item §9.28-1 is BUILT: the route is redrawn from the rider's own last position to the customer's door (traffic-aware) and the ETA is re-timed from where the FOOD is, while the promise the outlet made is never touched (the customer now sees BOTH numbers); three guards keep the traffic API honest (100 m of drift, 60 s between calls, 15 min before a stale route is re-timed anyway), a failed routing call keeps the previous route and ETA, and the rider's phone is never made to wait for the traffic API (the refresh happens in the background, in its own session) — 33 checks plus a NEGATIVE CONTROL against the pre-fix tree prove it (§9.29)** → **v1.33: the BACKLOG checked ITSELF, and two of its rows had gone STALE — §9.28-6 (the nightly entitlement sweep) and §9.28-7 (the rider's map opening on the wrong country) were published as OPEN in v1.31, and BOTH had been built since (§9.30)** → **v1.34: the two remaining CUSTOMER-facing rows are BUILT — §9.28-2, the radius, was a knob the tenant turned and the server did not honour: it is now ENFORCED in the order's write path (the customer's door and the counter's door cannot disagree), the whole verdict is RECORDED and visible to the tenant, and the refusal is ATOMIC (a probe found a refused order SURVIVING a commit — no order, no line, no voucher, no promotion) — and §9.28-3, the push, is built from scratch: the guest's phone is told when the rider is assigned, when the food is picked up and when it arrives, and the address never leaves the server (§9.31)** → **v1.35: the last OPEN customer-facing row is BUILT — §9.28-4, the trail, was the rider's RAW GPS: a line drawn through the pings as the phone reported them, so a rider sitting 30 m behind a wall drew a line through the wall — and it was closed WITHOUT a provider: the leg already carries the polyline the outlet PROMISED (`leg.route_geometry`), so every ping is PROJECTED onto the nearest segment of that polyline, in metres, with no map-matching service, no dependency and NO network call (`/v1/mapmatching` still answers 404 on the house's key — and it is not needed); a ping within 1 m of the road is left EXACTLY as reported, a leg with no usable geometry gets its RAW pings back untouched (the house never invents a path), the LIVE marker stays the raw fix, and the rider's phone DRAWS the server's line without ever reframing the camera (§9.32) — AND the order number, which was a date plus FOUR random digits (two orders in the same second collided 1 in 10,000, and the UNIQUE constraint refused the second order with an IntegrityError — a customer's order failed for a reason that had nothing to do with their food), is now SIX digits, ASKED of the database (the whole number must not exist, and the suffix must not be used by one of this outlet's orders today — because that suffix IS the counter token the kitchen calls out), and a concurrent order that takes the number between the check and the insert is REDRAWN rather than refused: the order row is written inside its own CONTEXT-MANAGED savepoint, a collision redraws a DIFFERENT number and writes it again, the retry is NARROW (only the order row — the voucher, the promotion and the delivery leg come after it, so none of them can be spent twice), and the session stays usable afterwards (§9.33)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.32: the ETA MOVES with the RIDER — backlog item §9.28-1 is BUILT: the route is redrawn from the rider's own last position to the customer's door (traffic-aware) and the ETA is re-timed from where the FOOD is, while the promise the outlet made is never touched (the customer now sees BOTH numbers); three guards keep the traffic API honest (100 m of drift, 60 s between calls, 15 min before a stale route is re-timed anyway), a failed routing call keeps the previous route and ETA, and the rider's phone is never made to wait for the traffic API (the refresh happens in the background, in its own session) — 33 checks plus a NEGATIVE CONTROL against the pre-fix tree prove it (§9.29)** → **v1.33: the BACKLOG checked ITSELF, and two of its rows had gone STALE — §9.28-6 (the nightly entitlement sweep) and §9.28-7 (the rider's map opening on the wrong country) were published as OPEN in v1.31, and BOTH had been built since (§9.30)** → **v1.34: the two remaining CUSTOMER-facing rows are BUILT — §9.28-2, the radius, was a knob the tenant turned and the server did not honour: it is now ENFORCED in the order's write path (the customer's door and the counter's door cannot disagree), the whole verdict is RECORDED and visible to the tenant, and the refusal is ATOMIC (a probe found a refused order SURVIVING a commit — no order, no line, no voucher, no promotion) — and §9.28-3, the push, is built from scratch: the guest's phone is told when the rider is assigned, when the food is picked up and when it arrives, and the address never leaves the server (§9.31)** → **v1.35: the last OPEN customer-facing row is BUILT — §9.28-4, the trail, was the rider's RAW GPS: a line drawn through the pings as the phone reported them, so a rider sitting 30 m behind a wall drew a line through the wall — and it was closed WITHOUT a provider: the leg already carries the polyline the outlet PROMISED (`leg.route_geometry`), so every ping is PROJECTED onto the nearest segment of that polyline, in metres, with no map-matching service, no dependency and NO network call (`/v1/mapmatching` still answers 404 on the house's key — and it is not needed); a ping within 1 m of the road is left EXACTLY as reported, a leg with no usable geometry gets its RAW pings back untouched (the house never invents a path), the LIVE marker stays the raw fix, and the rider's phone DRAWS the server's line without ever reframing the camera (§9.32) — AND the order number, which was a date plus FOUR random digits (two orders in the same second collided 1 in 10,000, and the UNIQUE constraint refused the second order with an IntegrityError — a customer's order failed for a reason that had nothing to do with their food), is now SIX digits, ASKED of the database (the whole number must not exist, and the suffix must not be used by one of this outlet's orders today — because that suffix IS the counter token the kitchen calls out), and a concurrent order that takes the number between the check and the insert is REDRAWN rather than refused: the order row is written inside its own CONTEXT-MANAGED savepoint, a collision redraws a DIFFERENT number and writes it again, the retry is NARROW (only the order row — the voucher, the promotion and the delivery leg come after it, so none of them can be spent twice), and the session stays usable afterwards (§9.33)** → **v1.36: the last two open rows are BUILT — §9.28-8, the turn-by-turn, was the rider's LINE with no directions on it: the SAME Geoapify answer that draws the road also carries the step-by-step instructions (`steps=true` — probed live on Nov 17, 2026: the distance, the time and the geometry are IDENTICAL with and without the steps, on both `drive` and `drive_traffic_approximated`), so the words and the line can never disagree; a leg's step indices are LOCAL to that leg, so they are moved onto the FLATTENED polyline the client draws, and the distance left is walked ALONG the road (a local flat plane, the longitude scaled by `cos(latitude)`) — and the SERVER owns the words: the phone RENDERS the list, it never works an instruction out for itself (§9.34) — AND Vera's P2 #17, the plan limits, were enforced only in the BROWSER: `POST /api/outlets/` and `POST /api/users/` now read the tenant's plan over the house's OWN cached loopback path and REFUSE over the limit with a 403 that names the limit, so a `curl` from the browser's own console can no longer open a fourth outlet on a plan that sells three (subscription-lifecycle, Nov 17, 2026)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -3349,6 +3349,8 @@ the code and this document disagree.
 §9.32 for item 4, §9.30 for items 6 and 7) and now read as records of what they were, not as
 open enhancements. The remaining open ones are **5** (a provider decision — the house's own
 key answers **404 "not supported"** for `/v1/isochrone`) and **8** (turn-by-turn, a decision).
+**Update (v1.36):** item **8** was built too — see §9.34 — so **5** is the only row still
+open, and it is a provider decision, not a piece of work.
 
 **1. The ETA was a SNAPSHOT, not a live estimate — BUILT in v1.32 (§9.29).** It was:
 `compute_route_for_leg()` had exactly **one** caller (the moment a driver was **assigned**),
@@ -3420,8 +3422,15 @@ and the hardcoded coordinate is gone from the client and the backend. The tracki
 proves all three (the outlet's point is not Kuala Lumpur · the client has no hardcoded
 coordinate · the client asks the leg for the outlet's point).
 
-**8. Turn-by-turn for the rider is deliberately NOT built** — the rider uses their own phone
-(§2, §11.3). That is a decision, not a gap.
+**8. Turn-by-turn for the rider was deliberately NOT built — BUILT in v1.36 (§9.34).** It was:
+the rider's phone had a **LINE** — the road the leg was promised — and **a line is not
+directions**. "Turn left onto Jalan Tun Razak" is. The rider was told to use their own phone
+(§2, §11.3), which left the house's own rider link showing a line and no words.
+**What it is now:** the SAME routing answer that draws the road also carries the
+step-by-step instructions (`steps=true` — the distance, the time and the geometry are
+**identical** with and without them, probed live on Nov 17, 2026, on both `drive` and
+`drive_traffic_approximated`), so the words and the line can never disagree; the server owns
+the wording, and the phone only draws it.
 
 **And the two COMMERCIAL questions the document leaves open, which are the owner's calls and
 not code:** Q19 (the Starter's hook, and whether the delivery is affordable at the Enterprise
@@ -3569,6 +3578,9 @@ knob out of the tenant's UI), **3** (no push — the biggest customer-facing gap
 supported"** on the house's key), and **8** (turn-by-turn — deliberately not built).
 **Update (v1.34):** items **2** and **3** were built too — see §9.31 — so the genuinely open
 ones are **4** and **5** (provider decisions) and **8** (a decision, not a gap).
+**Update (v1.36):** items **4** and **8** were built too — see §9.32 and §9.34 — so **5** is
+the only row still open, and it is a **provider** decision (`/v1/isochrone` answers **404** on
+the house's key), not a piece of work.
 
 **The lesson the house should keep:** **a document that claims to be checked against the
 live code must be CHECKED AGAIN — or it is just a document.** The backlog is not a list of
@@ -3801,6 +3813,81 @@ still carry numbers that a human finds similar; the counter token is still **der
 the number rather than a separate column (unchanged — §2.3); and this was proven against an
 **isolated database**, **not against a live tenant with a real order in flight**.
 
+### 9.34 The v1.36 build — the rider is TOLD the turns
+
+Backlog item **8** was a decision, not a gap: the rider was told to use their own phone, and
+the house's own rider link drew a **line**. A line is not directions — *"Turn left onto Jalan
+Tun Razak"* is — and the rider on a motorbike in city traffic needs the **NEXT** instruction,
+not a map and not the whole route at once.
+
+**THE SAME ANSWER.** Geoapify already answers a route with the step-by-step instructions
+(`legs[].steps[]`); the house now asks for them **in the same request as the road**
+(`steps=true` in `geoapify.py`). So the words and the line come out of **ONE** answer — they
+can never be drawn from two different routes. **And asking for the steps does not change the
+route**: the distance, the time and the geometry are **identical** with and without them —
+**probed live on Nov 17, 2026**, on both `drive` and `drive_traffic_approximated`
+(122 m / 54.464 s traffic and 122 m / 14.72 s plain, the same polyline both ways, with **2
+steps** captured). The promise the outlet made to the customer is untouched.
+
+**THE INDEX IS ON THE ROAD.** Geoapify answers a route as `results[].legs[]`, and each leg
+carries **its own** `steps[]` with `from_index` / `to_index` that are **local to that leg** —
+but the road the client draws is **flattened** (every leg's points joined into one line). So a
+step on the second leg has to be **moved by the number of points that came before it**. A turn
+that lands on the wrong piece of road is a turn that sends the rider the wrong way, and
+`geoapify.route_turns()` is the one place that knows how to do it. A step without an
+instruction, or without usable indices, is **dropped** — a road we cannot place is a road we
+do not describe.
+
+**THE DISTANCE IS ALONG THE ROAD.** *"In 240 m"* means **240 m of road**, not 240 m through a
+building. The rider's own raw fix is **projected** onto the promised polyline in a **local
+flat plane** (a degree of longitude is shorter than a degree of latitude by `cos(latitude)`),
+and the distance left is **walked along** the line. The **marker the customer watches stays
+the raw fix** — only the path is projected. A turn the rider has **already passed** is not
+served: the phone shows what is still to come, not a list of instructions already obeyed. The
+**nearest point** (not merely the nearest distance) is what tells a turn that is behind the
+rider from one that is still ahead — the first instruction of a route (*"Head east on Jalan
+Inai"*) belongs to the point the rider is standing **on**; it is the road they are ON, not a
+turn they have already made.
+
+**THE SERVER OWNS THE WORDS.** `backend/app/services/delivery_turns.py` carries the turns on
+the leg (`route_turns`), works out which ones are still ahead, marks the next one, and serves
+**at most twelve** (a route can have a long tail; the phone shows the next few and the rest
+is there for the scroll). The **phone renders them** — `renderTurns()` draws the list and
+`formatDistance()` turns metres into what a rider reads — and it **never works an
+instruction out for itself**, because a phone that invents a turn is a phone that lies about
+the road. The rider's **camera is untouched** (the turn list never reframes the map), and so
+are **Start**, **Arrived**, **Delivered** and **Cash collected**.
+
+**THE BUILD MOVED, OR THE RIDER WOULD NEVER SEE IT.** `driver.js` changed, so the service
+worker's precache query moved with it — the delivery build is **`v=2.6.40`**
+(`CACHE_VERSION` `pos-delivery-v12`), and the driver's page now asks for the same number the
+worker precaches. A rider in poor signal is exactly who needs the offline copy.
+
+**THE PROOF.** `backend/scripts/test_delivery_turns.py` — **40 checks** over the provider, the
+index, the stored leg, the **driver's URL**, the distance, the phone and the tenant
+isolation. Its **negative control** reverts **every file this feature touched** (the provider,
+the service, the route, the model, the migration, the two client files and the two build
+files) and re-runs the same checks: **32/32** in the reverted copy, with every fix-covering
+check failing and every unrelated check still green — *"THE CONTROL IS CLEAN — the checks can
+tell the difference."* The delivery suites still pass: **45/45**, **58/58**, **77/77**,
+**54/54**, **33/33**, **35/35**, **45/45**, **23/23**, **42/42**, **37/37**, **41/41**.
+
+**The files this build touched:** `backend/app/services/geoapify.py` (the `steps=true`
+request and the index offset), `backend/app/services/delivery_turns.py` (new),
+`backend/app/models/delivery.py` (the `route_turns` column),
+`backend/app/core/delivery_schema.py` (the idempotent ALTER),
+`backend/app/services/delivery_tracking.py` (the turns are stored with the road, on both the
+first route and the live redraw), `backend/app/routes/delivery_tracking.py` (the rider's
+answer carries them), `customer-app/driver.html`, `customer-app/js/driver.js`,
+`customer-app/delivery.html` and `customer-app/sw-delivery.js` (the build).
+
+**What this build does NOT do:** it does not add a **provider** — the instructions come from
+the provider the house already had; it does not **re-route** the rider (the road is still the
+one the leg was promised, and the customer's view of it is unchanged); it does not move the
+**camera**, and it does not touch the rider's **actions**; and it was proven against an
+**isolated database** with the routing provider **stubbed** — the live probe above is the
+only part that touched the real provider.
+
 ## 10. Kens's comments — the answers
 
 **Round one (the five comments), and what this document now says about each:**
@@ -3995,7 +4082,7 @@ the money is recorded (the postpay write) ────────────�
 | **the customer's MAP, the route and the ETA** | one route request per order | **Geoapify + Leaflet/OSM** (**with the entitlement — §11.1**) |
 | **the live driver MARKER** | the driver's own phone | **the driver link** (**with the entitlement — it is no longer a tier — §11.1**) |
 | **the driver's raw GPS → a road** | **the leg's OWN polyline** — a local projection, **no provider** | **BUILT (v1.35, §9.32)** — every ping is projected onto the nearest segment of the polyline the leg was promised; **no map-matching service is called** (`/v1/mapmatching` is 404 on this key) and a leg with no geometry keeps its raw pings (§11.3) |
-| **the driver → the customer** (the turn-by-turn) | **nothing** | the driver uses their own phone |
+| **the driver → the customer** (the turn-by-turn) | **the SAME routing answer** — Geoapify's own `steps[]`, asked for with `steps=true` | **BUILT (v1.36, §9.34)** — the instructions and the road come out of ONE answer, so they can never disagree; the server owns the words and the phone only draws them (§11.3) |
 
 **What the implementation actually does (v1.20) — and the reason for each part:**
 - **Geoapify does the geocoding AND the routing** → it is **already integrated in two
@@ -4136,6 +4223,7 @@ again** — one minute in the Geoapify dashboard, and the new value into `.env`.
 | `GET /v1/geocode/search` | **200** | the customer's address → a point |
 | `GET /v1/routing?mode=drive` | **200** | the route + the duration |
 | `GET /v1/routing?mode=drive_traffic_approximated` | **200** | **the TRAFFIC route** → the ETA is not the optimistic open-data one at the peak — **this is what removed the need for a second provider** |
+| the routing answer's own **`steps[]`** | **200** with `steps=true` | **the turn-by-turn comes out of the SAME request as the road** (§9.34) — so the words and the line can never be drawn from two different routes, and **no second provider is needed** |
 | `GET /v1/staticmap` | **200** | a static image — **the fallback, not the plan** (the live marker needs an interactive map) |
 | `GET /v1/isochrone` | **404 "not supported"** | **the Isochrone API is an Enterprise add-on this key does not carry** → the coverage check is a radius on the geocoded point |
 | a raster TILES endpoint | **404** | Geoapify serves no tiles → **the map draws its own** (vendored Leaflet over OpenStreetMap's raster tiles, through our own same-origin tile proxy, with the attribution the terms require) |
@@ -4145,7 +4233,9 @@ is inside the provider we already had** → → **and the one capability that st
 is the Isochrone**, whose honest fallback is the radius → → **and no map-matching SERVICE is called** — **but the trail is snapped onto the road the
 leg was promised** (§9.32), so the rider's line follows the road without a provider; **the
 named gap that remains** is a matching that can put a rider on a road the outlet did not
-promise.
+promise → → **and the TURN-BY-TURN needed no second provider either** — the same routing
+answer already carries the step-by-step instructions (§9.34), so the rider's next turn is
+the provider's own wording, on the provider's own road.
 
 ---
 

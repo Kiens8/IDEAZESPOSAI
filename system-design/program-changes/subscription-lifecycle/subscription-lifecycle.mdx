@@ -7,8 +7,12 @@ description: How a tenant's subscription decides whether they can use the POS, a
 
 **Date:** November 2, 2026  
 **Status:** Approved — **all five phases are done and live** (November 2, 2026)  
+**Update:** November 17, 2026 — the **plan limits** are now enforced where the data is
+written (§ "Vera's P2 #17" below)  
 **Scope:** the website API (the billing system) and the POS login gate  
-**Files:** `website_api/app/services/subscription_access.py` (new), `website_api/app/services/payment_providers.py` (new), `website_api/app/services/subscription_notify.py` (new), `website_api/app/routes/admin.py`, `website_api/app/routes/subscription.py`, `website_api/app/routes/webhooks.py`, `website_api/scripts/send_notifications.py`, `backend/app/services/subscription_gate.py` (new), `backend/app/core/subscription_cache.py` (new), `backend/app/middleware/subscription.py` (new), `backend/app/routes/internal.py`, `backend/app/routes/auth.py`
+**Files:** `website_api/app/services/subscription_access.py` (new), `website_api/app/services/payment_providers.py` (new), `website_api/app/services/subscription_notify.py` (new), `website_api/app/routes/admin.py`, `website_api/app/routes/subscription.py`, `website_api/app/routes/webhooks.py`, `website_api/scripts/send_notifications.py`, `backend/app/services/subscription_gate.py` (new), `backend/app/core/subscription_cache.py` (new), `backend/app/middleware/subscription.py` (new), `backend/app/routes/internal.py`, `backend/app/routes/auth.py`,
+`backend/app/services/plan_limits.py` (new), `backend/app/core/plan_cache.py`,
+`backend/app/routes/outlets.py`, `backend/app/routes/users.py`
 
 ---
 
@@ -497,6 +501,80 @@ there, the gateway call is not — they say so instead of pretending).
 
 **The HitPay and PayWay integration itself is a separate task** — it comes
 with the site apps.
+
+### Vera's P2 #17 — the plan limits, enforced where the data is written
+
+*(November 17, 2026)*
+
+The plan limits were the last thing the house enforced **only in the browser**. The admin
+panel showed *"2 / 3 outlets"*, greyed the button when the tenant was at it, and that was
+**the whole check**. The API accepted whatever a client sent. So a `curl` from the browser's
+own console, a stale tab, a forgotten session, or anybody holding the key could open a
+**fourth outlet on a plan that sells three** — and the tenant would find out at renewal.
+
+**The plan is what the customer paid for, so the limit belongs where the data is written** —
+not where the button is drawn. The button check stays (it is a good, friendly, instant
+message); it is simply **no longer the only** one.
+
+**Where the limit comes from.** The limits live in the website API next to the plan:
+
+| Read | What it answers |
+|---|---|
+| `GET /api/admin/customer/{website_customer_id}/subscription` | which plan is this tenant on? |
+| `GET /api/admin/plans` | the plan's `max_outlets` and `max_staff` |
+
+The read goes over the **house's own loopback path** (`http://127.0.0.1:9000`, the same one
+the login uses — the public URL would add a TLS handshake to every plan read) and with the
+house's **internal key** (`settings.WEBSITE_API_INTERNAL_KEY`). No key is hardcoded anywhere.
+It goes through the **existing plan cache** (`backend/app/core/plan_cache.py`), which now
+holds the features **and** the limits under **one lock and one TTL** — there is no second,
+uncached lookup path. The website API's own push (`POST /internal/plan-changed`) drops the
+cached entry when a plan changes, so an upgrade is visible without waiting for the TTL.
+
+**Whose limit.** The tenant is resolved from the **tenant row**
+(`customers.website_customer_id`, falling back to `id`) — **never** from a value in the
+request body. A client that names another tenant in its payload still gets its own tenant's
+limit. `POST /api/outlets/` also now binds the `customer_id` claim to the caller's tenant,
+the way `GET /api/outlets/` already did — without that the limit would be counted against
+the wrong tenant.
+
+**The count has to be the count the customer sees.** The limit counts the tenant's
+**active** rows and nothing else: **active** outlets, **active** staff accounts, every role.
+A soft-deleted outlet or a deactivated account does not use up the plan — and the
+admin panel's own list does not show them either, so the browser and the server count the
+same thing. (A **manager's** list is narrower than the admin's, so the browser check in a
+manager's session is looser; the server's tenant-wide count is the plan's limit, and the
+plan is sold per tenant, not per manager.)
+
+**Three answers, and the difference between them is a customer:**
+
+| The plan says | What happens |
+|---|---|
+| the tenant is **at or over** the limit | the write is **refused** — **403** — with a message that names the limit and the way out: *"Your plan allows 1 outlet. Upgrade to add more."* / *"Your plan allows 3 staff accounts. Upgrade to add more."* |
+| the limit is **999** | **no limit** — Enterprise is never blocked |
+| the plan **cannot be read at all** | the write goes through (**fail open**) and the response says so (`X-Plan-Limit-Unenforced: true`), with a **WARNING** in the log — a technical problem must not stop a restaurant from opening its second till. A **stale cached limit still enforces**: a limit we *know* but cannot refresh is still a limit |
+
+**The proof.** `backend/scripts/test_plan_limits.py` — **26 checks**, each in its own
+in-memory world. Its **negative control** reverts every file the feature touched (the
+service, the cache, the two routes) back to the pinned base commit and re-runs the same
+checks: **all 17 fix-covering checks fail** and **all 9 unrelated checks still pass** —
+*"THE CONTROL IS CLEAN."* The suites around it stayed green: subscription gate **20/20**,
+subscription middleware **9/9**, delivery entitlement sweep **15/15**, counter member
+search **19/19**, shared bill points **27/27**, delivery settings exclusive **17/17**,
+auto-confirm orders **33/33**, online prepay gates **20/20**, preset payment timing **14
+passed, 0 failed**.
+
+**The files this build touched:** `backend/app/services/plan_limits.py` (new),
+`backend/app/core/plan_cache.py` (features + limits, one lock, one TTL),
+`backend/app/routes/outlets.py`, `backend/app/routes/users.py`,
+`backend/scripts/test_plan_limits.py` (new).
+
+**What this build does NOT do:** it does not change the **plans** (the numbers in the
+website API are still the ones the customer bought); it does not remove the **browser**
+check (it stays, and it is the nicer message); it does not make the POS its own billing
+system (the website API remains the only place a plan is decided); and it does not block a
+tenant whose plan **cannot be read** — a technical fault must not cost a restaurant its
+second till.
 
 ---
 
