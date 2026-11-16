@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.30
+**Document Version:** 1.31
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -1558,6 +1558,7 @@ the slug `kens-ss17`).
 | **`backend/app/main.py`** | the tracking router is registered FIRST of the delivery routers · and the boot prunes the old pings |
 | **`customer-app/driver.html`** + **`customer-app/js/driver.js`** (new) | the driver's own one-page door — the map, the customer, the phone, the address, the items, the ETA and the four buttons (Start · Arrived · Delivered · Cash collected) |
 | **`customer-app/delivery.html`** + **`customer-app/js/delivery.js`** + **`customer-app/css/delivery.css`** | the customer's live map — the route polyline, the rider marker, the drop-off pin, the trail and the ETA |
+| **`customer-app/js/map-camera.js`** (new, v1.31) | **`PosMapCamera`** — the ONE camera-ownership rule, shared by the customer's map and the driver's map: the app may frame the map once, but the moment the person pans or zooms the view is THEIRS and no poll may take it back (§9.27) |
 | **`customer-app/vendor/leaflet/`** (new) | **Leaflet 1.9.4, vendored** — not a runtime CDN dependency — over OpenStreetMap's raster tiles, served through our own same-origin tile proxy, with the attribution the terms require |
 | **`backend/app/routes/competitors.py`** + **`outlet_settings.py`** | the two hardcoded Geoapify literals are **gone** — the key comes from `settings.GEOAPIFY_API_KEY`, and the routes answer **503** when it is missing |
 | **`backend/scripts/test_delivery_tracking_routes.py`** (new, v1.22) | **28 checks — and it drives the URL, not the functions** — the door · **THE INVARIANT** (a refused move answers: a 409, never an escaped exception, never a 500, never a hang) · the handover · the money · the privacy → **and it is negative-controlled** (§9.20.7) |
@@ -3261,6 +3262,151 @@ still carries the older lifetime (which mirrors OSMF's own upstream value) until
 expires, and it still self-heals. No Cloudflare credentials are on the box, so no purge
 was run; the origin's contract — the seven-day floor — is what the proof asserts, and
 the public header is only ever **more** generous than the upstream's own.
+
+
+### 9.27 The v1.31 defect review — the map's camera belonged to the APP
+
+Two defects, one rule, and both on the delivery's own two maps.
+
+**The first defect — the customer's tracking map threw away the customer's own zoom.** The
+tracking map called `fitBounds()` at the end of every render, and the render runs on every
+**8-second poll** — so the camera was reset to the automatic framing of the whole route
+every eight seconds, whether or not anything had moved. A customer who zoomed into their
+own street got that zoom taken away eight seconds later. Measured: the zoom the customer
+chose went **17 → 15** after ONE poll, and `fitBounds` ran **1 → 2** times.
+
+**The second defect — the driver's map was born 0x0, and with no route it never recovered.**
+`drawMap()` called `L.map(element)` while the container was still inside the hidden `#app`,
+and `drawMap` runs from `render()` inside `refresh()`, which the boot sequence calls
+**before** `#app` is un-hidden. Leaflet therefore believed it had no viewport: it asked for
+no tiles, and nothing ever corrected it — there is no `invalidateSize()` anywhere in the
+app. And the second fault was the same code with no route to draw: `fitBounds` was the only
+thing that ever set a centre, so with no route the map had **no centre at all** and every
+Leaflet call was refused (*"Set map center and zoom first."*). Measured: created at
+**{w: 0, h: 0}**, **0 tiles**, that error.
+
+**The fix — ONE rule, written once.** `customer-app/js/map-camera.js` (`PosMapCamera`) is the
+single place that knows who owns the camera, and **both** maps obey it:
+
+| the rule | why it is that way |
+|---|---|
+| **the app may frame the map once** | the first view is the app's job — it is how the customer is shown the delivery at all |
+| **the moment the person pans or zooms, the view is THEIRS** | a map has one camera, and the camera belongs to the person looking at it |
+| **ownership is detected by the VIEW, not by the gestures** | Leaflet's `dragstart`/`zoomstart` only fire for a real pointer gesture, and a view also moves by a trackpad pinch, a keyboard, or the browser restoring a scroll position — so the test is *does the current view still match the one the app last set?* |
+| **the drift is measured in PIXELS, not metres** | one pixel is a metre at street level and a centimetre at maximum zoom — a distance in metres would call a small drag at z17 "no move" and a rotation jitter at z12 "a move". The view is compared in the unit the finger moved in (16px; a zoom change on its own is always the person) |
+| **the app's own framing is NOT animated** | so the view it sets is FINAL before it is remembered — otherwise the comparison is made against a view the map is still travelling to |
+| **a NEW order gets a NEW camera** (`reset()`) | the customer is looking at a different delivery, so the old camera belongs to nobody |
+
+And the driver's map, separately: it is created **only once its box has a real size**, a
+**`ResizeObserver`** passes later size changes to `invalidateSize()`, and the map **always
+gets a view** — the rider's own position first, then this phone's own GPS fix, and only
+then a wide regional view. **A blank grey box is not a map.** The rider also now sees their
+own **"you are here"** dot, drawn from their phone's own GPS.
+
+**The proof — a NEGATIVE CONTROL, because a fix that only stops the view moving leaves a
+FROZEN delivery, which looks like a fix.** The SAME probe was run against the unfixed code
+(sandbox, real Chromium, 430x900 viewport):
+
+| | before (negative control) | after (the fix) |
+|---|---|---|
+| the zoom the customer chose | 17 | 17 |
+| the zoom after ONE poll | 17 → **15** (reset) | 17 → **17** (kept) |
+| `fitBounds` calls | 1 → **2** | 1 → **1** |
+| the driver's map creation size | **{w: 0, h: 0}** | **{w: 364, h: 190}** |
+| the driver's tiles (no route) | **0** | **6** |
+| the driver's centre (no route) | **Error: Set map center and zoom first.** | **{lat: 3.139, lng: 101.6869, zoom: 11}** |
+
+**And the half that matters most — the app still MOVES the delivery while the person keeps
+the view:**
+
+```
+rider_marker_moved  : true      the rider marker followed the rider
+view_preserved      : true      the customer's view did not move
+no_extra_fit        : true      no extra fitBounds behind the customer's back
+```
+
+**What this review does NOT do:** no live-tenant test (the fix touches the customer-facing
+map, and driving a real tenant needs a real order in flight), no real-device test (the pan
+was driven programmatically, not by a thumb), no rotation test (the *later* size-change path
+was not observed changing anything on a device), and no offline test of the new precache
+entry.
+
+**The lesson the house should keep:** **a map's camera belongs to the PERSON looking at it**
+— and the proof of that fix must assert BOTH halves, because a fix that only stops the app
+from moving the view leaves a frozen delivery, which looks like a fix. The second half of the
+same lesson: **a map must be BORN with a size** — a Leaflet map created inside a hidden box
+is 0x0, asks for no tiles, and never recovers on its own.
+
+
+### 9.28 The delivery's enhancement backlog — checked against the LIVE code, not the notes
+
+The module is BUILT. These are the enhancements that are **NOT** built, each one checked
+against the running code rather than read off a wish list — and two of them are places where
+the code and this document disagree.
+
+**1. The ETA is a SNAPSHOT, not a live estimate.** `compute_route_for_leg()` has exactly
+**one** caller: the moment a driver is **assigned**. The ping route records a position and
+never re-routes; the customer's tracking read serves the stored `leg.eta_at` and
+`leg.route_geometry`. So the "traffic-aware ETA" is the traffic-aware estimate **from the
+moment of assignment** — as the rider moves through traffic, the ETA the guest watches does
+not move. The phase table (§7.5) calls it "the live ETA"; it is live only in the sense that
+it was computed with traffic in the model. **The enhancement:** re-route (or at least
+re-time) when the rider's position drifts from the route, or on a slow tick, so the ETA
+tracks the rider. `route_computed_at` is already stored and never read — it was clearly
+meant for exactly this.
+
+**2. The radius is stored, displayed, and NEVER ENFORCED.** `within_radius()` is computed
+inside the route computation and returned — and the only caller **throws the result away**;
+there is no column on the leg to hold it, and the order write path **never geocodes the
+address at all** (it only snapshots `radius_km` onto the leg). The tenant's radius therefore
+appears in the storefront payload and on the leg, and **no order is ever refused for being
+outside it**. This document says the radius "WARNS rather than REFUSES" (§11.3) — in fact it
+does not even warn. The **postcode zones** (Phase 6a) are the coverage rule that genuinely
+enforces, and they refuse properly. **The enhancement:** either enforce the radius (geocode
+at order time and refuse or warn), or take the radius out of the tenant's UI so the tenant
+is not shown a knob the server does not honour.
+
+**3. Nothing notifies the guest.** There is **no push** anywhere in the delivery app — no
+`PushManager`, no `PushSubscription`, no VAPID keys — and the guest learns that the rider has
+arrived only by **polling every 8 seconds while the app is open**. A guest who closes the app
+hears nothing. The PWA is already installable and already has a service worker, so the
+plumbing is close to being there. **This is the single biggest UX gap in the delivery.**
+
+**4. The rider's trail is RAW GPS, never snapped to a road.** The document records this
+honestly (§11.3). Probing the house's own Geoapify key today: `/v1/mapmatching` answers
+**404 "not supported"** — so it is not available on this key at all. Snapping the trail to
+roads needs a different provider (a self-hosted OSRM/Valhalla, or another account) — it is a
+**decision**, not a task.
+
+**5. The travel-time coverage area is not available either.** `/v1/isochrone` answers **404
+"not supported"** on this key (the document already says so, §11.3). The postcode zones are
+the shipped answer, and they work. The decision is whether to buy the Isochrone or keep the
+postcodes.
+
+**6. The entitlement sweep of Q17 is still NOT built.** Q17 asks for "a nightly sweep that
+turns the flag off wherever the entitlement is gone". Checked: there is **no** `allow_delivery`
+writer anywhere in the website API and **no** cron job that touches it (the crontab carries
+notifications, the Hyperliquid log rotation and the HitPay reconciliation). The storefront
+is still safe — the entitlement is re-checked at the **login** *and* at the **order create**
+— so a lapsed tenant cannot sell a delivery it cannot deliver. What is left is the tenant's
+own POS: the Delivery tab and the switch stay ON because nothing ever clears them.
+**The enhancement:** the sweep, or make the POS read the entitlement instead of the stale
+flag.
+
+**7. The driver's map opens on the WRONG COUNTRY when there is no route.** The fallback
+centre is a hardcoded **Kuala Lumpur** coordinate (`3.1390, 101.6869`), and the outlet's own
+coordinates are **not in the driver payload** at all. A Cambodian outlet's rider with no
+route gets a map of Malaysia. **The enhancement:** put the outlet's lat/lng in
+`_driver_payload()` and open on the shop. (The route computation already knows them — it
+reads them off the outlet's settings.)
+
+**8. Turn-by-turn for the rider is deliberately NOT built** — the rider uses their own phone
+(§2, §11.3). That is a decision, not a gap.
+
+**And the two COMMERCIAL questions the document leaves open, which are the owner's calls and
+not code:** Q19 (the Starter's hook, and whether the delivery is affordable at the Enterprise
+price) and Q20 (whether the zones and the analytics keep their own rows, or the module
+collapses to one).
 
 
 ## 10. Kens's comments — the answers
