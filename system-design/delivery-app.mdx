@@ -1,8 +1,8 @@
 # The Delivery App — a white-label delivery storefront, per tenant
 
-**Document Version:** 1.32
+**Document Version:** 1.33
 **Owner:** Ideazes POS AI
-**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.32: the ETA MOVES with the RIDER — backlog item §9.28-1 is BUILT: the route is redrawn from the rider's own last position to the customer's door (traffic-aware) and the ETA is re-timed from where the FOOD is, while the promise the outlet made is never touched (the customer now sees BOTH numbers); three guards keep the traffic API honest (100 m of drift, 60 s between calls, 15 min before a stale route is re-timed anyway), a failed routing call keeps the previous route and ETA, and the rider's phone is never made to wait for the traffic API (the refresh happens in the background, in its own session) — 33 checks plus a NEGATIVE CONTROL against the pre-fix tree prove it (§9.29)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
+**Status:** **Proposal** — the model, the scope boundary, the plan gating and the phases; **phases 0, 1, 2, 3, 4, 5, 6a and 6b are BUILT and PROVEN LIVE — the staff side, the customer's door (`https://order.ideazes.com/d/<slug>`), the live map with the live driver marker (Phase 4, the money, shipped inside Phase 3's build) AND the tenant's postcode zones (6a — the server-priced delivery areas)** · **v1.26: the PWA layer got its own review — the two PWAs are TWO version series (`VERSION`/in-venue `2.6.28` vs the delivery track `2.6.32`) and a worker may only delete ITS OWN cache namespace, because Cache Storage is per-ORIGIN (§9.22)** · **v1.27: Phase 6b is DONE — the delivery analytics are LIVE** — the tenant's own delivery report (the revenue · the fee per order · the orders per outlet), aggregated by the SERVER, behind its own `Delivery Analytics` feature row (§7.7, §9.23) → · **v1.28: the LIVE claim was CHECKED against the running app — and it was FALSE: the 6b commit was never deployed (the backend process predated it), so the route was absent from the live schema → the deploy happened, the route is live now, and 9 live checks prove every gate (§9.24)** → **v1.29: the Phase 6a `zones_exclusive` DEFECT is FIXED — the Settings tab's key list was missing the key, so ANY unrelated delivery-settings save silently RESET the tenant's stored exclusive choice; the tab now carries the key, the server now PRESERVES a stored value the request omits, and 12 live checks against the running app prove it (§9.25)** → **and the whole delivery module is now BUILT** → → **v1.30: the delivery map's BASEMAP was BROKEN and is FIXED — the tiles came from CARTO's KEYED raster set, so without the key every tile was a grey square reading "API KEY REQUIRED" (the route and the markers still drew on top, so it read as "the map is broken", not "the tile provider wants credentials") → the tiles now come from OpenStreetMap through OUR OWN same-origin proxy (`/d/tiles/{z}/{x}/{y}.png`), which is the only way a browser can satisfy the OSM tile policy (a browser cannot set its own User-Agent) → 42 automated checks and a live browser render prove it (§9.26)** → **v1.31: the two maps got their OWN review, and the CAMERA belongs to the PERSON — the customer's tracking map threw away the zoom the customer chose on every 8-second poll, and the driver's map was born 0x0 while the page was hidden (and, with no route, never recovered — a blank grey box); both are FIXED, the rule is written ONCE (`customer-app/js/map-camera.js`) so the two maps cannot drift apart again, and a NEGATIVE CONTROL (the same probe against the unfixed code) proves it (§9.27)** → **v1.32: the ETA MOVES with the RIDER — backlog item §9.28-1 is BUILT: the route is redrawn from the rider's own last position to the customer's door (traffic-aware) and the ETA is re-timed from where the FOOD is, while the promise the outlet made is never touched (the customer now sees BOTH numbers); three guards keep the traffic API honest (100 m of drift, 60 s between calls, 15 min before a stale route is re-timed anyway), a failed routing call keeps the previous route and ETA, and the rider's phone is never made to wait for the traffic API (the refresh happens in the background, in its own session) — 33 checks plus a NEGATIVE CONTROL against the pre-fix tree prove it (§9.29)** → **v1.33: the BACKLOG checked ITSELF, and two of its rows had gone STALE — §9.28-6 (the nightly entitlement sweep) and §9.28-7 (the rider's map opening on the wrong country) were published as OPEN in v1.31, and BOTH had been built since (§9.30)** → **v1.1: the plan gating mapped onto the REAL plans (Starter / Basic / Pro / Enterprise) with the feature rows** · **v1.2: the prices removed — the catalogue is DATA (the website API) and the Starter is free** · **v1.4 (Nov 12, 2026): the review is DONE — every source line re-checked against the live code and every finding is in §9: the delivery SWITCH and the delivery ORDER TYPE already exist, the feature rows collided with four live rows (now 39-42), the plan gate would REFUSE on day one, the PWA's own key is EXEMPT from that gate, the online payment is closed outside Malaysia, the new column needs the idempotent ALTER, and the status flow lives in a HARDCODED array** · **v1.5 (Nov 12, 2026): the five review comments are ANSWERED — the delivery is a PARALLEL LEG (the shared order machine does not change and `served` IS the handover), the two POS screens are TWO feature rows (`Delivery` + `Delivery Management`), the driver roster is a TABLE, the storefront slug is a column on the outlet, the sign-up derives the tenant from the slug, and the map/routing decision is in §11 (Geoapify geocodes, Mapbox routes — **SUPERSEDED by v1.20: Geoapify routes and ETA, and the map is vendored Leaflet over raster tiles — **and the TILES are SUPERSEDED AGAIN by v1.30: OpenStreetMap's, through our own same-origin proxy, because CARTO's raster set needs a key we do not have (§9.26)**) ** · **v1.6 (Nov 14, 2026): the SECOND review round is ANSWERED — the COD question exposed a REAL trap (the money write jumps a delivery to `completed` while the food is on the road, and the POS then cannot even fix it: §4.1) → the delivery gets its OWN settlement rule (two facts, either order, one end state), the tenant's prepay-or-COD becomes the CUSTOMER's choice with a PER-ORDER-TYPE lock (§4.2), the driver's write is split (the leg is the driver's, the money is the staff's: §12), the customer's MAP and ETA ship on EVERY plan while the live driver marker stays Enterprise (§11.1), and the delivery PWA now REQUIRES a registered member of the tenant — so the POS generates the QR and shares it to the tenant's own customers (§3, §5)** ·
 **v1.7 (Nov 14, 2026): the THIRD round — the delivery switch LEAVES the Order tab and
 lives in the Delivery tab (one switch, one field, one place), and the delivery is OFF
 until the tenant has subscribed the feature AND turned it on — with the CORRECTION that
@@ -3344,8 +3344,10 @@ The module is BUILT. These are the enhancements that are **NOT** built, each one
 against the running code rather than read off a wish list — and two of them are places where
 the code and this document disagree.
 
-**Item 1 below was built in v1.32** (§9.29) and now reads as a record of what it was, not
-as an open enhancement.
+**Items 1, 6 and 7 below were built** (§9.29 for item 1, §9.30 for items 6 and 7) and now
+read as records of what they were, not as open enhancements. The remaining open ones are
+**2** (the radius, which needs a product decision), **3** (no push — the biggest customer
+gap), **4** and **5** (both provider decisions), and **8** (turn-by-turn, a decision).
 
 **1. The ETA was a SNAPSHOT, not a live estimate — BUILT in v1.32 (§9.29).** It was:
 `compute_route_for_leg()` had exactly **one** caller (the moment a driver was **assigned**),
@@ -3387,22 +3389,25 @@ roads needs a different provider (a self-hosted OSRM/Valhalla, or another accoun
 the shipped answer, and they work. The decision is whether to buy the Isochrone or keep the
 postcodes.
 
-**6. The entitlement sweep of Q17 is still NOT built.** Q17 asks for "a nightly sweep that
-turns the flag off wherever the entitlement is gone". Checked: there is **no** `allow_delivery`
-writer anywhere in the website API and **no** cron job that touches it (the crontab carries
-notifications, the Hyperliquid log rotation and the HitPay reconciliation). The storefront
-is still safe — the entitlement is re-checked at the **login** *and* at the **order create**
-— so a lapsed tenant cannot sell a delivery it cannot deliver. What is left is the tenant's
-own POS: the Delivery tab and the switch stay ON because nothing ever clears them.
-**The enhancement:** the sweep, or make the POS read the entitlement instead of the stale
-flag.
+**6. The entitlement sweep of Q17 was NOT built — BUILT (5292015) and the doc was STALE (§9.30).** It was:
+Q17 asks for "a nightly sweep that turns the flag off wherever the entitlement is gone", and
+the checked code said there was **no** `allow_delivery` writer anywhere and **no** cron job
+that touched it — so the tenant's own POS kept the Delivery tab and the switch ON forever.
+**What it is now:** `backend/app/services/delivery_entitlement.py` + `backend/scripts/sweep_delivery_entitlement.py`,
+on the crontab at **03:23** nightly, with its own suite (**15/15**). It obeys the three
+house rules: it only ever turns the switch **OFF**, "we could not look it up" is **not** a
+refusal (an unknown plan leaves the switch where it is — only a **known** denial clears it),
+and it is a sweep, not a door — the storefront's own login and order-create checks stay
+authoritative.
 
-**7. The driver's map opens on the WRONG COUNTRY when there is no route.** The fallback
-centre is a hardcoded **Kuala Lumpur** coordinate (`3.1390, 101.6869`), and the outlet's own
-coordinates are **not in the driver payload** at all. A Cambodian outlet's rider with no
-route gets a map of Malaysia. **The enhancement:** put the outlet's lat/lng in
-`_driver_payload()` and open on the shop. (The route computation already knows them — it
-reads them off the outlet's settings.)
+**7. The driver's map opened on the WRONG COUNTRY — BUILT (0712ac7) and the doc was STALE (§9.30).** It was:
+the fallback centre was a hardcoded **Kuala Lumpur** coordinate (`3.1390, 101.6869`) and the
+outlet's own coordinates were **not in the driver payload** at all — so a Cambodian outlet's
+rider with no route got a map of Malaysia. **What it is now:** `_driver_payload()` carries
+the outlet's OWN point (`"outlet": _outlet_point(db, leg)`), the client asks the leg for it,
+and the hardcoded coordinate is gone from the client and the backend. The tracking suite
+proves all three (the outlet's point is not Kuala Lumpur · the client has no hardcoded
+coordinate · the client asks the leg for the outlet's point).
 
 **8. Turn-by-turn for the rider is deliberately NOT built** — the rider uses their own phone
 (§2, §11.3). That is a decision, not a gap.
@@ -3510,6 +3515,49 @@ API, **not against a live tenant with a real order in flight**.
 about a moving thing has to be re-made.** The number was honest when it was made and stale
 five minutes later — and it stayed on the screen the whole time, looking exactly as
 trustworthy as the moment it was computed.
+
+### 9.30 The v1.33 review — the backlog checked ITSELF, and two rows were stale
+
+§9.28 was published in v1.31 as *"the delivery's enhancement backlog — checked against the
+LIVE code, not the notes"*. Two of its rows were **wrong** when v1.31 went out and went on
+being wrong after it, because **the code moved after the document was published**:
+
+| the row | what §9.28 said | what the code does | built in |
+|---|---|---|---|
+| **§9.28-6** | *"the entitlement sweep of Q17 is still **NOT** built … there is **no** `allow_delivery` writer anywhere and **no** cron job that touches it"* | `delivery_entitlement.py` + `scripts/sweep_delivery_entitlement.py`, on the crontab at **03:23**, its own suite **15/15** | `5292015` |
+| **§9.28-7** | *"the driver's map opens on the **WRONG COUNTRY** when there is no route … a hardcoded **Kuala Lumpur** coordinate"* | `_driver_payload()` carries the outlet's own point; the hardcoded coordinate is gone from the client and the backend | `0712ac7` |
+
+**Both were checked against the running code, not the notes — and both were checked
+*before* the code that fixed them.** That is the whole lesson: **a backlog row is a claim
+about the code, and the code keeps moving after the claim is published.** A backlog that is
+never re-read becomes a list of things that are already done.
+
+**The sweep was re-proved live, not just unit-proved.** A dry run against the **live
+database** (read-only — it rolls back) on the day of this review:
+
+```
+outlets scanned     : 1
+switch turned OFF   : 0
+left ON (entitled)  : 1
+left ON (UNKNOWN)   : 0
+  LEFT ON - still entitled:
+    - outlet 4 (Kens SS17)
+```
+
+Read it carefully — it is the fail-open rule doing its job: the tenant **is** entitled, so
+the switch stays ON, and nothing was written. The cron had not fired yet at the time of
+writing (the first firing is **03:23**), so this is the first live proof of the sweep's
+*read* path; its *write* path is covered by the suite's 15 checks.
+
+**What §9.28 now carries:** items **1**, **6** and **7** are records of what they were.
+The genuinely open ones are **2** (the radius — a product decision: enforce it, or take the
+knob out of the tenant's UI), **3** (no push — the biggest customer-facing gap), **4** and
+**5** (both provider decisions: `/v1/mapmatching` and `/v1/isochrone` answer **404 "not
+supported"** on the house's key), and **8** (turn-by-turn — deliberately not built).
+
+**The lesson the house should keep:** **a document that claims to be checked against the
+live code must be CHECKED AGAIN — or it is just a document.** The backlog is not a list of
+wishes; it is a list of claims, and a claim expires when the code moves.
 
 ## 10. Kens's comments — the answers
 
