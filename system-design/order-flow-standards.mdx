@@ -201,6 +201,25 @@ customer record for every walk-in, which cuts against the walk-in principle.
 **The token is nearly free** — the order number already exists (`order_prefix` — "ORD-00042")
 → "A12" is a short form of it → no new table, no new field.
 
+**The token's uniqueness comes from the ORDER NUMBER, so the number's uniqueness must be
+REAL.** The number is `ORD-<the outlet's date>-<suffix>` — the **suffix** is the token, and
+it is **six digits** now (it was four: ten thousand possibilities, and two orders in the
+same second collided 1 in 10,000 — the `UNIQUE` constraint then refused the second order,
+so a customer's order failed for a reason that had nothing to do with their food).
+
+Three rules hold it together, and they are enforced in the order's write path:
+
+  - the **whole number** must not already exist — the database is asked, not assumed;
+  - the **suffix** must not be used by one of **this outlet's** orders **on that day** —
+    because that suffix IS the token the kitchen calls out, so two orders on one day must
+    never answer to the same name;
+  - and if a **concurrent** order takes the number between the check and the insert, the
+    number is **redrawn** and the order is written again — the customer never sees a failed
+    order, and the token on the ticket is never a duplicate.
+
+The token is still **derived, never stored** — this changes how the number is drawn, not
+what the kitchen reads out.
+
 ### 2.4 The walk-in principle
 
 **For the counter businesses the customer is a walk-in.** The fast food, the stall and the
