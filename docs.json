@@ -44,7 +44,19 @@
       {
         "group": "Customer App",
         "pages": [
-          "order-app/overview"
+          "order-app/overview",
+          "order-app/install",
+          "order-app/ordering",
+          "order-app/features"
+        ]
+      },
+      {
+        "group": "Delivery App",
+        "pages": [
+          "delivery-app/overview",
+          "delivery-app/install",
+          "delivery-app/ordering",
+          "delivery-app/tracking"
         ]
       },
       {

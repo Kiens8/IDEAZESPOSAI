@@ -1,0 +1,57 @@
+---
+title: Track a delivery
+description: Live tracking, push updates, and delivery order history
+---
+
+# Track a delivery
+
+## Live tracking
+
+After the order is placed, the guest's order screen shows the status on both sides:
+
+- The **kitchen status** — the branch's own progress with the order.
+- The **delivery status** — where the food is on the road.
+
+The delivery events run:
+
+- **Waiting for a driver** — the order is with the branch and nobody is on the way yet.
+- **Driver assigned** — a rider has taken the order.
+- **On the way** — the rider has collected it.
+- **Delivered** — the food has arrived.
+- **Cancelled** — the order was cancelled.
+
+The rider's name is shown once a rider is assigned.
+
+Alongside the events, the screen shows the **live ETA** and the **promised time**, and the **distance remaining** — *About 2 km away.*
+
+The map draws the rider's position and the route. It only draws once the server has something to draw it with: a route, a rider, or the drop-off point.
+
+<Note>
+The tab bar is hidden on the checkout and order screens. To get back to the storefront, tap **New order** — the Orders tab is then reachable from there.
+</Note>
+
+## The address on the tracking screen
+
+The delivery address is shown on the tracking screen while the order is in progress. It stops being shown once the order is **delivered** — by then the drop-off point on the map is what matters. A cancelled order keeps its address visible, because the rider may still have to come back for the food.
+
+## Push updates
+
+The guest can turn on **Get delivery updates** from the order screen. Once allowed, the browser notifies them of the delivery progress — the rider is on the way, the rider is at the door.
+
+If the browser blocks notifications for the site, the app says so plainly: **Notifications are blocked for this site. Allow them in your browser's settings to hear when your order arrives.**
+
+## Delivery order history
+
+The guest's delivery orders are listed under **My delivery orders**, newest first. The list is scoped to that guest's account at that branch — an order from a sibling branch of the same restaurant group is not shown, and it does not confirm that it exists.
+
+Each order in the history can be **tracked** again, from the **Track this order** action on the order card.
+
+## When an order cannot be delivered
+
+If the order is cancelled, the tracking view reports it as **Cancelled** rather than leaving the guest waiting on a rider who is not coming.
+
+## Related documentation
+
+- [Delivery app](overview)
+- [Place a delivery order](ordering)
+- [Install the delivery app](install)

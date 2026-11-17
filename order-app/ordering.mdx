@@ -1,0 +1,82 @@
+---
+title: Place an order
+description: How a guest picks a venue, orders, and pays in the customer order app
+---
+
+# Place an order
+
+This is the journey a guest takes from opening the app to the kitchen receiving the order.
+
+## 1. Find the venue
+
+When the guest opens the app from a table QR code, the branch and the table are already known and they go straight to the menu.
+
+When the app opens without a QR code, the guest picks the venue in three steps:
+
+1. **Choose your restaurant** — the groups you can order from.
+2. **Choose the branch** — the branches of that restaurant.
+3. **Choose your table** — the table numbers of that branch.
+
+The choice is remembered on the device. The next time the app opens, the guest lands on the menu of that venue, even when they launch it from the home screen with no QR code — the picker does not open again.
+
+<Note>
+The venue list comes from the server, so the picker needs a connection. If the list cannot be loaded, the app says **Could not load the venues.**
+</Note>
+
+## 2. Choose how to order
+
+The app shows the order types the branch has switched on:
+
+- **Dine In** — the order is served to the table.
+- **Takeaway** — the guest collects the order at the counter.
+- **Delivery** — shown only on branches that have delivery switched on.
+
+Delivery to the door is a separate app with its own storefront. See the [delivery app guide](../delivery-app/overview).
+
+For **takeaway**, the app asks for a name so the kitchen and the counter know who to hand the order to. Dine-in orders do not need one — the table is the address.
+
+## 3. Build the order
+
+The menu is grouped into categories. Each item shows its price, and items with options open a panel where the guest picks the required options, the optional ones, and any add-ons. There is also a note field for the kitchen — "no onions", "ring the bell twice".
+
+Items carry their own availability:
+
+- **Out of Stock** — the item cannot be ordered.
+- **Low Stock** — the guest is asked to confirm before adding it.
+
+## 4. Pay
+
+The payment mode is set per branch and per order type. Three modes exist:
+
+| Mode | What the guest does | What the app shows |
+|---|---|---|
+| **Postpay** | Pays at the counter when collecting the order | "Please pay at the cashier counter when you collect your order." |
+| **Prepay at counter** | Pays at the counter before the kitchen starts | "Please pay at the cashier counter before we start preparing your order." |
+| **Prepay online** | Scans a QR and pays in the app before the kitchen starts | "Please scan the QR and pay in the app before we start preparing your order." |
+
+In **prepay online**, the app shows a **DuitNow** or **Touch 'n Go** QR code. The order is held until the payment lands, then the kitchen is told to start.
+
+<Note>
+Online payment is only offered to branches in Malaysia that have a payment account connected. A branch elsewhere, or one without a connected account, is served the counter modes only.
+</Note>
+
+## 5. Track the order
+
+After the order is placed, the app polls for its status and shows it as it changes:
+
+**New → Pending → Confirmed → Preparing → Ready → Completed**
+
+The order can also show as **Cancelled**, and as **Paid** once the money is settled. While a prepaid order is still waiting for its money, the app says **Awaiting payment**.
+
+The guest can cancel their own order while it is still cancellable. They do it from the venue panel — the bar showing the restaurant and table — where **Cancel my order** cancels the table's active orders.
+
+## 6. Pay at the counter
+
+In the counter modes, the guest settles the bill at the branch — the app is for ordering, and the staff records the payment on the POS.
+
+## Related documentation
+
+- [Install the app](install)
+- [Features](features)
+- [Order management](../pos-app/order-management)
+- [Receipt printing](../pos-app/receipt-printing)

@@ -1,0 +1,73 @@
+---
+title: Place a delivery order
+description: The guest journey from the delivery storefront to a placed order
+---
+
+# Place a delivery order
+
+This is the journey a guest takes from opening the delivery link to the order being placed.
+
+## 1. Open the branch storefront
+
+The guest opens **order.ideazes.com/d/<branch>**. The storefront is branded for that branch — its logo and theme colour — and opens with the branch's own facts:
+
+- **Minimum order** — the lowest spend the branch accepts.
+- **Delivery fee** — what the delivery costs, or **Free** above the branch's free-delivery threshold.
+- **Delivery time** — the window the branch promises.
+- **Delivery area** — the radius or zones the branch delivers to.
+
+Each of these is a setting the branch controls. The figures on the storefront are that branch's own numbers.
+
+If the branch is not taking delivery orders, the storefront says so plainly instead of showing the menu.
+
+## 2. Sign in or sign up
+
+The guest creates an account on the storefront with their **name** and **phone number**, or signs in with an existing one. A branch can close registration, in which case only existing members can order.
+
+The account is what carries the order history and proves an order belongs to the guest. Signing up through the delivery link also earns the welcome points when the branch runs a loyalty programme.
+
+## 3. Build the cart
+
+The guest browses the branch's menu and adds items. Each item can carry options, required and optional, plus add-ons.
+
+The cart shows the **subtotal**, the **delivery fee**, any **discount**, any **tax**, and the **total**. Below the minimum order the guest is told how much more to add: *Add RM10.00 more to reach the minimum order.* — the amount comes from the branch's own minimum.
+
+## 4. Get the quote
+
+The quote is the price check. The app asks the server for it, and the server answers with the delivery fee, the coverage for the address, and the totals. The quote is asked again whenever the cart changes, so the number the guest sees matches the order they place.
+
+### Postcode and coverage
+
+Some branches price by area. When a branch does, a **postcode** field appears and the guest enters it to check coverage:
+
+- **Good news - we deliver to your area.** — the address is inside the delivery area.
+- **Good news - we deliver to your area (Zone name).** — the address falls in a named zone.
+- **Sorry - we do not deliver to that postcode yet.** — the address is outside the area.
+
+A branch whose zones only price the areas they cover still delivers everywhere else, so no postcode is required. A branch whose zones are exclusive does require a postcode, and the order cannot be placed without one.
+
+## 5. Checkout
+
+The guest fills in the **name**, the **phone number**, the **delivery address**, the **postcode** where it is needed, and any **note for the restaurant** — *ring the bell twice*.
+
+Then the guest chooses how to pay:
+
+| Choice | What the app says |
+|---|---|
+| **Pay online** | "DuitNow QR - the food starts on the way once you pay." |
+| **Cash on delivery** | "Pay the driver when the food arrives." |
+| **Pay at the counter** | "Pay at the restaurant when you collect the food." |
+
+The available choices come from the branch. A branch that does not take cash on delivery does not offer it. A branch outside Malaysia, or without a connected payment account, does not get the online option.
+
+## 6. Place the order
+
+The app confirms with the order number, and the kitchen is told.
+
+If the branch takes payment online, the order is held until the payment lands: the app shows the QR and waits, then reports **Payment received** and the kitchen starts.
+
+## Related documentation
+
+- [Delivery app](overview)
+- [Track a delivery](tracking)
+- [Customer order app](../order-app/ordering)

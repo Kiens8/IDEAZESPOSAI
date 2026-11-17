@@ -1,0 +1,60 @@
+---
+title: Delivery app
+description: The delivery storefront your customers order from at home
+---
+
+# Delivery app
+
+The delivery app is a separate storefront where customers order food to be delivered to their door. It runs at **order.ideazes.com/d/<branch>** — one link per branch.
+
+Each branch gets its own storefront. The branch's logo and theme colour appear on it, the browser title carries the branch's name, and the app installs to the home screen like any other app.
+
+## Who can order
+
+Delivery is a separate capability, gated on the **Delivery** feature. A restaurant on a plan without it cannot serve the delivery storefront at all, and the guest sees a clear refusal rather than an empty menu.
+
+Two refusals exist:
+
+| Refusal | What the guest sees |
+|---|---|
+| The restaurant's plan or subscription does not allow delivery | "Sorry, this tenant did not allow the delivery." |
+| This branch is not taking delivery orders right now | "This branch is not accepting delivery orders right now." |
+
+<Note>
+Delivery ships with the **Enterprise** plan. If a restaurant on another plan asks for the delivery storefront, the answer is the plan refusal.
+</Note>
+
+## What the guest gets
+
+- **A branded app on the home screen**, installable like any app.
+- **The branch's menu**, with options and add-ons.
+- **A cart** with the subtotal, the delivery fee, the discount, the tax, and the total.
+- **A delivery quote** that checks the address against the branch's delivery area.
+- **Checkout** with the address, the postcode, and the payment choice.
+- **Live tracking** — the map, the rider, the ETA, and the delivery events.
+- **Push updates** for the order.
+- **Order history**, scoped to the guest's own account at that branch.
+
+## The account requirement
+
+Delivery orders are tied to an account. The guest signs up or signs in on the storefront itself, with a name and a phone number, before ordering. That account is what carries the order history and lets the app prove the order belongs to them.
+
+Signing up through the delivery link also earns the welcome points when the restaurant runs a loyalty programme.
+
+## The two apps are different
+
+| | Customer order app | Delivery app |
+|---|---|---|
+| Address | `order.ideazes.com` | `order.ideazes.com/d/<branch>` |
+| Where the guest is | At a table in the branch | At home |
+| Order types | Dine in, takeaway, and delivery where the branch enables it | Delivery |
+| Requires an account | No | Yes |
+
+Delivery to the door is a separate app with its own storefront, its own menu, and a driver on the way. A branch that delivers may also show a delivery chip in the in-venue app, but the two apps stay separate.
+
+## Related documentation
+
+- [Install the delivery app](install)
+- [Place a delivery order](ordering)
+- [Track a delivery](tracking)
+- [Customer order app](../order-app/overview)

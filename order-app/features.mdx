@@ -1,0 +1,58 @@
+---
+title: Customer app features
+description: Order history, accounts, loyalty, vouchers, and the AI order assistant in the customer order app
+---
+
+# Customer app features
+
+## Order history
+
+The app keeps the orders of the table the guest is at, and shows them under **My Orders**.
+
+Two things scope the history:
+
+- The **branch and table** it belongs to.
+- The **dining customer** it belongs to. The history belongs to one guest, not to whoever picks up the phone next.
+
+A guest who signs in sees their own orders. On a shared device, the next guest does not inherit them.
+
+## Cancelling an order
+
+The venue panel — the bar showing the restaurant and the table — opens a sheet with the table's active orders. **Cancel my order** there cancels the table's active orders. The venue panel is also where the guest picks a different table, which cancels the table's orders first.
+
+## Account and profile
+
+The account section holds the guest's details, and the sign-in state is remembered on the device.
+
+When the guest is signed in, the app also shows the **loyalty** and **voucher** sections. When the guest is not signed in, the app falls back to the restaurant's default settings for which features are shown.
+
+## Loyalty points
+
+When the restaurant runs a loyalty programme, the guest sees their points and earns more on each order.
+
+## Vouchers
+
+When the restaurant runs vouchers, the guest can apply a voucher to the order and see the discount on the cart. A welcome voucher can greet a guest who signs up for the first time.
+
+## AI order assistant
+
+The app carries an AI assistant that helps build the order. It opens as a chat panel and can:
+
+- **Search the menu** — ask for "something spicy" or "vegetarian" and it suggests the matching dishes.
+- **Add items to the cart** — the suggestions are clickable, and picking one adds it to the cart.
+
+The same search sits on the menu, so the guest can look up a dish without opening the assistant.
+
+## Availability
+
+The menu shows stock honestly. Items that are out of stock are marked and cannot be ordered, and low-stock items ask for confirmation first. The stock state comes from the branch, so it reflects what the kitchen can actually serve.
+
+## Offline behaviour
+
+The app keeps a cached copy of the shell on the device, so it opens without a connection and shows a banner: **You're offline - the menu may be out of date**. The menu itself is fetched fresh from the branch each time the app opens with a connection, so prices and availability stay correct. Placing an order needs a connection.
+
+## Related documentation
+
+- [Install the app](install)
+- [Place an order](ordering)
+- [Customer order app](overview)

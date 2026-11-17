@@ -1,47 +1,44 @@
 ---
-title: Customer App
-description: Online ordering for customers
+title: Customer order app
+description: The in-venue ordering app your guests install on their phone
 ---
 
-# Customer App - Customer Ordering
+# Customer order app
 
-The customer ordering app at **order.ideazes.com** allows customers to browse menus and place orders online.
+The customer order app is the web app your guests open to order from the table. It runs at **order.ideazes.com** and installs to the home screen like any other app, so it opens full screen without the browser bars.
 
-## Features
+The app is branded for the restaurant. The app name comes from the restaurant group that owns the branch, and the icon and the theme colour come from the branch. Both are applied once the guest's venue is known, so a guest who has not picked a branch yet sees a generic name and icon until they do.
 
-### For Customers
-- **QR Code Ordering** - Scan table QR code to view menu and order
-- **Venue Picker** - Choose the restaurant and the table (group -> branch -> table); the picker works offline and the choice is remembered
-- **Branded App** - The app on the home screen carries the name of the group, the icon and the colour of the branch
-- **Menu Browsing** - View categories, items, and modifications
-- **Cart Management** - Add/remove items, modify orders
-- **Order Tracking** - Real-time order status updates
-- **Pay at the counter** - the guest orders from the table, the staff records the payment on the POS. The guest app does not take money
+## What the guest gets
 
-### Order Flow
-1. Customer scans QR code or visits order.ideazes.com (the picker asks for the restaurant and the table when the venue is unknown)
-2. Selects items and customizations
-3. Submits order
-4. Order sent to the POS (the kitchen display shows it)
-5. The staff serves the order and **records the payment on the POS** - the guest pays at the counter
-6. Customer receives status updates
+- **Install to the home screen** on iOS and Android — see [Install the app](install).
+- **A venue picker** — restaurant, then branch, then table — when the app opens without a table QR code.
+- **Dine in and takeaway** ordering, each switched on per branch. A branch that also delivers shows a delivery chip on the order type row.
+- **The menu** with categories, options, and add-ons.
+- **A cart** that survives closing the app.
+- **Payment** at the counter, or online by QR when the branch offers it.
+- **Order tracking** with live status.
+- **Order history** for the table, tied to the dining customer.
+- **Loyalty points and vouchers** when the restaurant offers them.
+- **An AI order assistant** that searches the menu and helps build the order.
 
-## Key Concepts
+## The two apps are different
 
-### Table Management
-- Each table has a unique QR code
-- QR codes link to specific outlet and table
-- Customers can order without waitstaff
-- The table stays occupied while an order is open - the payment is settled at the counter
+| | Customer order app | Delivery app |
+|---|---|---|
+| Address | `order.ideazes.com` | `order.ideazes.com/d/<branch>` |
+| Where the guest is | At a table in the branch | At home |
+| Order types | Dine in, takeaway, and delivery where the branch enables it | Delivery |
+| Requires an account | No | Yes |
 
-### Menu Integration
-- Menu synced from POS backend
-- Real-time menu updates
-- Item availability based on outlet settings
+Delivery to the door is a separate app with its own storefront, its own menu, its own delivery fee, and a driver on the way. See the [delivery app guide](../delivery-app/overview).
 
-## Related Documentation
+The delivery chip in the in-venue app is a per-branch setting. A branch that has delivery switched off never shows it, so a table guest only sees a delivery option if that branch really delivers.
 
-- PWA setup - the branding, the venue picker, the service worker and the deploy runbook (internal runbook, not published here)
-- [Order Management](../pos-app/order-management)
-- [Kitchen Display System](../pos-app/kitchen-kds)
-- [Receipt Printing](../pos-app/receipt-printing)
+## Related documentation
+
+- [Install the app](install)
+- [Place an order](ordering)
+- [Features](features)
+- [Order management](../pos-app/order-management)
+- [Kitchen display system](../pos-app/kitchen-kds)

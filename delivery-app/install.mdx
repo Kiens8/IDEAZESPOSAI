@@ -1,0 +1,58 @@
+---
+title: Install the delivery app
+description: Add the delivery storefront to the home screen on iOS and Android
+---
+
+# Install the delivery app
+
+The delivery storefront is a progressive web app with its own manifest and its own service worker, separate from the in-venue app. Once installed, it opens from the home screen with its own icon and runs full screen.
+
+Installing is optional. A guest can order straight from the browser at **order.ideazes.com/d/<branch>**.
+
+## Before you start
+
+You need the delivery link for the branch. It is one link per branch — the guest's app is branded for that branch only.
+
+## iPhone and iPad
+
+iOS does not show an install button. You add the app to the home screen by hand.
+
+1. Open the delivery link in **Safari**. Other browsers on iOS cannot add an app to the home screen.
+2. Tap the **Share** button — the square with an arrow pointing up.
+3. Scroll down and tap **Add to Home Screen**.
+4. Confirm the name and tap **Add**.
+
+The app then appears on your home screen.
+
+<Note>
+The name on the home screen comes from the app manifest, which carries the restaurant group's branding. The branch's own name is what the browser tab shows.
+</Note>
+
+## Android
+
+Chrome may offer to install the app on its own the first time the link is opened.
+
+1. Open the delivery link in **Chrome**.
+2. Accept the install prompt the browser shows, or use the browser's own menu — share, then **Add to home screen**.
+3. Confirm **Install**.
+
+<Note>
+The delivery storefront does not render its own **Install app** button the way the in-venue app does. Use the browser's install prompt or menu.
+</Note>
+
+## What you get after installing
+
+- **The branch's icon and theme colour** on the home screen.
+- **Full screen** — no browser bars.
+- **The right branch.** The storefront belongs to one branch, so it does not offer a restaurant picker. It opens on that branch every time.
+- **Its own offline page.** The delivery storefront serves a dedicated offline page when it cannot reach the server.
+
+## When the connection drops
+
+The delivery storefront needs a live connection for the menu, the quote, and the order itself. When it cannot reach the server it says **You are offline. Check your connection and try again.**
+
+## Related documentation
+
+- [Delivery app](overview)
+- [Place a delivery order](ordering)
+- [Track a delivery](tracking)
