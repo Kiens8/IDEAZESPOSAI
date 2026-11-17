@@ -1,96 +1,103 @@
 ---
-title: Receipt Printing
-description: Configure and use receipt printers with IDEAZES POS AI
+title: Receipt printing
+description: Choose a receipt printer for your branch and print receipts, kitchen tickets and reprints
 ---
 
-# Receipt Printing
+# Receipt printing
 
-IDEAZES POS AI supports multiple receipt printing options to suit your restaurant's needs.
+The POS prints receipts on the printer you set up for the branch. The printer is set on the **Settings** screen, on the **Receipt** tab, and only an admin can change it.
 
-## Supported Printer Types
+## The five printer choices
 
-| Type | Description | Best For |
-|------|-------------|----------|
-| **Quick Print** | Browser print dialog | Any printer |
-| **Network** | ESC/POS via network | Counter POS |
-| **Bluetooth** | Wireless printing | Mobile/deli |
-| **PDF** | Save as PDF | Email receipts |
+The **Printer Type** radio group offers five options.
 
-## Configuring Your Printer
+| Option | What it does | What you need |
+|---|---|---|
+| **None (No Printer)** | Receipt printing disabled | Nothing |
+| **Quick Print (Browser Print)** | Uses your default printer via browser | A printer set up in the browser |
+| **Network Printer (ESC/POS)** | Direct print to network thermal printer | ⚠️ Requires: Browser Print Server (Chrome extension) |
+| **Bluetooth Printer** | Print via Bluetooth (Chrome/Edge only) | ⚠️ Requires: Chrome/Edge browser + Bluetooth pairing |
+| **PDF / Screenshot** | Save receipt as PDF or image | Nothing |
 
-### Step 1: Access Settings
+If nothing is stored yet, **None (No Printer)** is the option that is ticked.
 
-1. Go to **Settings** → **Receipt**
+## Setting up your printer
 
-### Step 2: Select Printer Type
+Open **Settings**, then the **Receipt** tab, and find the **Receipt Printer** section.
 
-Choose your preferred printer type:
+### Quick Print
 
-- **None** - Disable printing
-- **Quick Print** - Browser default printer
-- **Network Printer** - ESC/POS thermal printer
-- **Bluetooth Printer** - Wireless thermal printer
-- **PDF** - Save as PDF file
+Choose **Quick Print (Browser Print)** and press **Save Settings**. The POS then opens the browser's own print window when a receipt is printed, and you pick the printer there.
 
-### Step 3: Configure Connection
+### Network printer
 
-#### For Network Printer
+Choose **Network Printer (ESC/POS)** and two extra fields appear:
 
-| Setting | Description |
-|---------|-------------|
-| Printer IP | Printer's network IP address |
-| Port | Usually `9100` (default) |
+| Setting | What you put in it | Default |
+|---|---|---|
+| **Printer IP Address** | The printer's IP address on your network | Empty |
+| **Port** | The port the printer listens on | `9100` |
 
-#### For Bluetooth Printer
+### Bluetooth printer
 
-1. Make sure your printer is discoverable
-2. Click **Scan** to find devices
-3. Select your printer from the list
+Choose **Bluetooth Printer** and a **Bluetooth Device** dropdown appears. Its first option is **Select a device...** and the rest come from the devices already paired to the branch.
 
-## Printing Receipts
+A note under the field reads **Note: Bluetooth requires Chrome or Edge browser**.
 
-After recording payment:
+<Note>
+**Test Connection** and **Scan** do nothing yet. They only show a message that the feature is coming soon. **Test Connection** does not test your network printer, and **Scan** does not look for Bluetooth devices, so the **Bluetooth Device** list stays empty until a device is paired another way.
+</Note>
 
-1. A success banner appears
-2. Click **Print Receipt**
-3. Receipt prints based on your settings
+## Printing a receipt after a payment
 
-## Receipt Copies
+When you record a payment for an order, a **Print Receipt** banner appears on the Orders screen. Press it and the receipt goes to the printer you configured.
 
-Set the number of copies to print automatically:
+The receipt carries the wording you set on the **Receipt** tab: **Receipt Header**, **Receipt Footer**, **Terms & Conditions** and **Return/Refund Policy**. The time printed on it comes from the branch timezone, so it is your local time even if the terminal is somewhere else.
 
-- **1 copy** - Customer receipt only
-- **2+ copies** - Customer + kitchen/audit copies
+## How many copies
 
-## Troubleshooting
+Set **Receipt Copies** on the **Receipt** tab. It offers **1 Copy**, **2 Copies** and **3 Copies**. The default is **1**.
 
-### Quick Print Not Working
+When you reprint an order from **Order History**, the reprint dialog asks how many copies to print as well, along with whether the pickup token goes on the paper and an optional reason.
 
-1. Check your default printer is set
-2. Allow browser pop-ups for the site
-3. Ensure printer is powered on
+<Note>
+Only a paid order can be reprinted. If the branch has no printer configured, the dialog says **This outlet has no receipt printer configured. Set one up in the outlet settings.** and the **Print** button stays disabled.
+</Note>
 
-### Network Printer Not Connecting
+## Kitchen tickets
 
-1. Verify printer IP address
-2. Check printer is on same network
-3. Try installing [Browser Print Server](https://chrome.google.com/webstore) for reliable printing
+The **Auto-print kitchen tickets** switch on the **Kitchen** tab prints a ticket for every new order. It uses the receipt printer you configured, so the two have to agree.
 
-### Bluetooth Not Detecting
+| Printer type | Auto-prints a kitchen ticket? |
+|---|---|
+| **Quick Print (Browser Print)** | Yes |
+| **Network Printer (ESC/POS)** | Yes |
+| **PDF / Screenshot** | Yes |
+| **Bluetooth Printer** | No |
+| **None (No Printer)** | No |
 
-1. Ensure printer is in pairing mode
-2. Use Chrome or Edge browser (not Safari/Firefox)
-3. Grant Bluetooth permissions when prompted
+The ticket only prints for **new** orders that arrive while the kitchen screen is open. Orders already on screen are not reprinted.
 
-## Supported Printers
+<Note>
+With **Bluetooth Printer** selected, **Auto-print kitchen tickets** does nothing and says nothing. There is no ticket and no warning, so print the ticket yourself with the manual button on the order.
+</Note>
 
-IDEAZES POS AI works with standard ESC/POS thermal printers including:
+## Network printing from the browser
 
-- Epson TM series
-- Star TSP series
-- Zebra ZPL printers
-- Any printer supporting ESC/POS protocol
+A network printer reaches the POS over your network, and the POS needs the browser print bridge to talk to it. The option is labelled **Network Printer (ESC/POS)** with the warning **⚠️ Requires: Browser Print Server (Chrome extension)**.
 
-## Need Help?
+The reprint dialog repeats it in plain words: **This outlet uses a network printer. It only works through the Browser Print Server bridge - from the browser it will fail.**
 
-[View FAQs](/troubleshooting/faqs) or contact support.
+So a network printer set up in the POS without that bridge in place will not print from the browser.
+
+## Bluetooth printing
+
+Bluetooth printing works in Chrome and Edge. It does not work in Safari or Firefox, so open the POS in Chrome or Edge on the counter device when you use a Bluetooth printer.
+
+## Related documentation
+
+- [Settings](settings)
+- [Order management](order-management)
+- [Kitchen display system](kitchen-kds)
+- [Order history](order-history)
+- [Staff and branches](staff-outlets)

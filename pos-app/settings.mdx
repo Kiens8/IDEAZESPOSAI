@@ -1,0 +1,323 @@
+---
+title: Settings
+description: Every tab of the Settings screen, what each setting does, and what it defaults to
+---
+
+# Settings
+
+The Settings screen holds the configuration of one branch. It is **admin-only** — a manager or a staff member never sees **Settings** in the menu.
+
+The header shows the branch name, or the subtitle **Outlet Settings** when the branch has no name. Press **Save Settings** to write your changes. The button shows **Saving...** while it works and **Saved!** when it is done.
+
+<Note>
+The settings belong to the branch you are working in. Switching branch swaps the whole screen, so check the branch name in the header before you save.
+</Note>
+
+Not every tab is always there. Each tab belongs to a feature on your plan, and only the tabs your plan carries are shown. The first one you can open becomes the default tab.
+
+## The tabs
+
+| Tab | What it holds |
+|---|---|
+| **Restaurant** | Your name, logo, brand colour, contact details and opening hours |
+| **Currency** | Currency, timezone, country and date format |
+| **Tax** | Tax switches and rates |
+| **Payment** | The payment methods you accept, split bill, tips and cash change |
+| **Receipt** | Receipt wording, copies and the printer |
+| **Kitchen** | Kitchen display reminders, auto-print and sound |
+| **Order** | Order numbering, order types and when the money is taken |
+| **AI Chatbot** | The chatbot name, language and greeting |
+| **QR & Tables** | The QR base URL and table limits |
+| **Business** | Interface language, business type and stock threshold |
+| **Security** | Auto-logout and daily backup |
+| **Customer** | Loyalty, vouchers and the welcome voucher |
+| **Inventory** | Stock tracking switches |
+| **Delivery** | Delivery pricing, payment modes and the delivery page link |
+
+## Restaurant
+
+This tab is headed **Restaurant Profile**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Company / Group Name** | The name of the restaurant group that owns the branch | Your account name |
+| **Restaurant Name** | The name of this restaurant | Empty |
+| **Restaurant Logo URL** | A link to your logo. A preview appears under the field | Empty |
+| **Brand Colour** | The colour of the app on the guest's home screen | `#dc2626` |
+| **Phone Number** | The branch phone number | Empty |
+| **Address** | The branch address | Empty |
+| **Latitude** | The branch latitude. Read-only, shown as **Auto** | Empty |
+| **Longitude** | The branch longitude. Read-only, shown as **Auto** | Empty |
+| **Operating Hours** | An opening and closing time for each day of the week | Empty |
+| **Apply to all days** | Copies the first day that has both times set to all seven days | — |
+
+<Note>
+**Latitude** and **Longitude** cannot be typed into. If they are wrong, contact support.
+</Note>
+
+Leave a day empty in **Operating Hours** if the branch is closed that day. An empty day is shown as **not set** in the AI chatbot, which is different from a day with a closing time.
+
+**Company / Group Name** is saved on its own, separately from the rest of the page, so it can succeed even when the other settings fail.
+
+## Currency
+
+This tab is headed **Currency & Regional Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Currency Symbol** | The symbol printed next to every amount | `RM` |
+| **Currency Code** | The currency the branch trades in | `MYR` |
+| **Decimal Places** | How many decimal places amounts carry | `2` |
+| **Timezone** | The timezone used for receipt times and the day | `Asia/Kuala_Lumpur` |
+| **Country (for Holiday Calendar)** | The country whose public holidays are used | `MY` |
+| **Date Format** | How dates are written | `DD/MM/YYYY` |
+
+**Currency Code** offers `MYR`, `USD`, `SGD`, `CNY`, `EUR`, `GBP`, `KHR`, `THB`, `IDR` and `VND`. **Decimal Places** offers **0 (No decimals)** and **2 (Standard)**. **Date Format** offers `DD/MM/YYYY`, `MM/DD/YYYY` and `YYYY-MM-DD`.
+
+The timezone also decides the timestamp printed on your receipt.
+
+## Tax
+
+This tab is headed **Tax Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Enable Tax Calculation** | The master switch for tax | On |
+| **SST (Sales & Service Tax)** | Turns on SST | Off |
+| **SST Rate (%)** | The SST percentage. Greyed out while SST is off | `0` |
+| **VAT (Value Added Tax)** | Turns on VAT | Off |
+| **VAT Rate (%)** | The VAT percentage. Greyed out while VAT is off | `0` |
+| **Service Tax** | Turns on service tax | Off |
+| **Service Tax Rate (%)** | The service tax percentage. Greyed out while service tax is off | `0` |
+| **Tax ID / Registration Number** | Your tax registration number | Empty |
+| **Menu prices are inclusive of tax** | Treat the menu prices as tax-inclusive | Off |
+
+The **SST Rate (%)** field carries the helper **Malaysia SST: 6% or 8%**.
+
+## Payment
+
+This tab is headed **Payment Settings**. See [Payment methods](../billing/payment-methods) for the full picture.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Accepted Payment Methods** | Tick the methods the counter offers | Your saved list |
+| **Split Bill** | Lets you split one bill between people | On |
+| **Tips Collection** | Turns on tips | Off |
+| **Cash Change Calculation** | Shows the change due when cash is taken | On |
+
+Under **Accepted Payment Methods** you tick the methods you accept: **💵 Cash**, **💳 Credit/Debit Card**, **DuitNow QR**, **🇰🇭 KHQR (Cambodia)**, **🇸🇬 SGQR (Singapore)**, **🇻🇳 VietQR (Vietnam)**, **Touch 'n Go**, **GrabPay**, **Boost**, **ShopeePay** and **🏦 Bank Transfer**.
+
+The **Online payments** section sits at the bottom of the tab. It only appears for a branch in Malaysia that has a payment account connected.
+
+<Note>
+**Tips Collection** turns tips on, but there is no tip control on the counter screen yet. Turning it on does not give you a way to add a tip while you take the money.
+</Note>
+
+## Receipt
+
+This tab is headed **Receipt / Invoice Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Receipt Header** | The text printed at the top of the receipt | Empty |
+| **Receipt Footer** | The text printed at the bottom of the receipt | Empty |
+| **Terms & Conditions** | Printed on the receipt | Empty |
+| **Return/Refund Policy** | Printed on the receipt | Empty |
+| **Receipt Copies** | How many copies to print | `1` |
+| **Printer Type** | Which printer the branch uses | **None (No Printer)** |
+| **Printer IP Address** | The printer's IP address, for a network printer | Empty |
+| **Port** | The printer's port, for a network printer | `9100` |
+| **Test Connection** | A placeholder button that does nothing yet | — |
+| **Bluetooth Device** | The paired Bluetooth printer | Empty |
+| **Scan** | A placeholder button that does nothing yet | — |
+
+**Receipt Copies** offers **1 Copy**, **2 Copies** and **3 Copies**.
+
+See [Receipt printing](receipt-printing) for the printer choices in full.
+
+<Note>
+**Test Connection** and **Scan** are placeholders. Pressing them only shows a message that the feature is coming soon. They do not test a printer and they do not scan for Bluetooth devices.
+</Note>
+
+## Kitchen
+
+This tab is headed **Kitchen Display Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Order Reminder (minutes)** | Alerts you when a pending order has waited too long. Accepts 1 to 30 minutes | `5` |
+| **Auto-print kitchen tickets** | Prints a ticket for every new order. The note says **(Uses receipt printer)** | Off |
+| **Sound notifications** | Plays an alert sound when a new order arrives | On |
+
+The helper under **Order Reminder (minutes)** reads **Alert when pending orders exceed this time (1-30 minutes)**.
+
+<Note>
+**Auto-print kitchen tickets** only works with a **Network Printer**, **Quick Print** or **PDF / Screenshot** receipt printer. With **Bluetooth Printer** or **None (No Printer)** it silently prints nothing.
+</Note>
+
+## Order
+
+This tab is headed **Order Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Order Number Prefix** | The letters in front of every order number | `ORD` |
+| **Max Orders Per Table** | How many orders one table may hold. Marked `* Staff Order` | `5` |
+| **Order Reminder (minutes)** | The same reminder the Kitchen tab holds. The placeholder reads `0 = disabled` | `0` |
+| **Allow Dine-In Orders** | Lets the branch take dine-in orders | On |
+| **Allow Takeaway** | Lets the branch take takeaway orders | On |
+| **Table Required for Dine-In** | A dine-in order must name a table. Marked `* Staff Order` | On |
+| **Auto-confirm orders** | New orders go straight to the kitchen with nobody confirming them | Off |
+| **When the money is taken** | One payment mode per order type | — |
+
+Under **When the money is taken** you choose a mode for each order type the branch serves: **Dine-in**, **Takeaway** and, when delivery is on, **Delivery**. Each row offers:
+
+- **Pay when the customer collects**
+- **Pay at the counter first (we start after the payment)**
+- **Pay online when the customer orders**
+
+An order takes a snapshot of this choice when it is created, so changing it does not move the orders already running.
+
+<Note>
+**Pay online when the customer orders** stays disabled until the branch has a connected payment account. When it is disabled it says **Pay online when the customer orders - not available yet - the restaurant has no payment account connected**.
+</Note>
+
+The **Allow Delivery** switch is not on this tab. It lives on the **Delivery** tab.
+
+<Note>
+**Order Reminder (minutes)** on this tab and **Order Reminder (minutes)** on the **Kitchen** tab are the same value, shown twice. The Kitchen tab accepts 1 to 30 minutes and starts at 5; the Order tab starts at 0 and accepts any number. Set the reminder on one tab and check the other shows the same value.
+</Note>
+
+## AI Chatbot
+
+This tab is headed **AI Chatbot Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Bot Name** | The name the chatbot answers to | `Lumi` |
+| **Language** | The language the chatbot answers in | `English` |
+| **Auto-Response Greeting** | The message the chatbot opens with | Empty |
+| **Enable AI Chatbot** | Turns the chatbot on | On |
+
+**Language** offers **English**, **Chinese**, **Malay**, **Khmer** and **Multilingual**.
+
+## QR & Tables
+
+This tab is headed **QR Code & Table Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **QR Code Base URL** | The base address used to generate the table QR codes | Empty |
+| **Max Guests Per Table** | How many guests a table seats | `10` |
+| **Table Status Auto-Update (minutes)** | How often a table status refreshes. The placeholder reads `0 = disabled` | `0` |
+| **Auto-generate QR codes for new tables** | Creates a QR code whenever you add a table | On |
+
+## Business
+
+This tab is headed **Business Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Default Interface Language** | The language staff see when they have not chosen one | `English` |
+| **Business Type** | The kind of business, which seeds a set of order settings | `Restaurant` |
+| **Low Stock Alert Threshold** | Alerts you when stock falls below this number | `10` |
+
+**Business Type** offers **Restaurant**, **Cafe**, **Fast Food**, **Bar** and **Stall**. The helper under **Default Interface Language** reads **Applies to staff who have not chosen a language of their own. Prices and dates are unaffected.** The interface languages are **English**, **中文** and **ភាសាខ្មែរ**.
+
+Choosing a new **Business Type** opens a confirmation modal headed **Apply the `{{type}}` setup?** listing what would change: **Table required for a dine-in**, **Dine-in orders**, **Takeaway orders**, **Delivery orders**, **Orders confirmed automatically**, **Tips**, **Split bill** and **When the money is taken**. You press **Apply the setup** to go ahead.
+
+<Note>
+**Business Type** is a one-shot preset. It sets the knobs listed in the modal and then you fine-tune them yourself. Applying the type a second time does not bring back the adjustments you made under the first type.
+</Note>
+
+## Security
+
+This tab is headed **Security & Backup**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Auto-Logout Timeout (minutes)** | Signs the terminal out after a period of inactivity. The helper reads `0 = never auto-logout` | `30` |
+| **Enable Daily Data Backup** | Takes a daily backup of the branch data | On |
+
+## Customer
+
+This tab is headed **Customer Engagement**, with the intro line **Enable customer registration, loyalty program, and vouchers for your restaurant**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Loyalty Program** | Lets customers earn and redeem points | Off |
+| **Vouchers System** | Lets you issue vouchers to customers | Off |
+| **Welcome Voucher** | Gives a voucher to a newly registered customer | Off |
+| **Discount Type** | Whether the welcome voucher is a percentage or a fixed amount | `percentage` |
+| **Discount %** or **Amount (RM)** | The voucher value. The label follows the **Discount Type** | `10` |
+| **Valid Days** | How long the voucher stays valid | `30` |
+| **Minimum Spend (RM)** | The smallest bill the voucher works on | `0` |
+
+The **Welcome Voucher Settings** section only appears once **Welcome Voucher** is on.
+
+The **Customer Registration** switch is not on this tab. It lives on the **Delivery** tab.
+
+## Inventory
+
+This tab is headed **Inventory Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Enable Inventory Module** | Turns stock tracking on. Turning it on turns on all four switches below | Off |
+| **Out of Stock Blocking** | Blocks **Add to Cart** when an ingredient is low or out of stock | Off |
+| **Auto Decrement Stock** | Reduces ingredient stock when an order is ready | Off |
+| **Low Stock Badge** | Shows a warning badge on menu items in the customer and staff apps | Off |
+| **Enable Notifications** | Shows inventory alerts in the header bell | On |
+| **Low Stock Alert** | Alerts when stock is at or below the minimum level. Recipients: All Staff | On |
+| **Out of Stock Alert** | Alerts when stock reaches zero. Recipients: All Staff | On |
+| **Critical Low** | Alerts when stock falls below 20% of the minimum. Recipients: Admin Only | Off |
+
+<Note>
+The Inventory tab saves itself. Every switch you flip is stored straight away and you get an **Inventory settings saved!** confirmation. The other tabs wait for **Save Settings**. Switch on inventory changes and press **Save Settings** without seeing the confirmation, and you may not know which change was kept.
+</Note>
+
+## Delivery
+
+This tab is headed **Delivery Settings**. It exists only when your plan includes delivery.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Offer delivery at this outlet** | Turns on delivery for this branch | Off |
+| **Delivery fee** | A flat fee charged on top of the bill | `0` |
+| **Free delivery above** | The bill above which delivery is free. Leave it empty for no free delivery | Empty |
+| **Minimum order** | The smallest bill delivery accepts | `0` |
+| **Delivery radius (km)** | How far delivery goes. `0 = no limit` | `0` |
+| **Shortest (minutes)** | The shortest delivery time a customer is shown | `30` |
+| **Longest (minutes)** | The longest delivery time | `45` |
+| **Prepaid only** | On: every delivery is paid before it is prepared. Off: the customer can pay the driver | Off |
+| **Allowed payment modes** | Which payments delivery accepts | None ticked |
+| **The delivery's default mode** | The mode a delivery starts on | The branch's own delivery setting |
+| **Customer registration** | Asks a customer to register before ordering | Off |
+| **Storefront slug** | The short link of your delivery page. Letters, numbers and dashes | Empty |
+| **Save the slug** | Saves the slug | — |
+| **Storefront link** | Your delivery page address, with **Copy the link**, **WhatsApp** and **Download the QR** | — |
+| **Your QR code** | The QR code for your delivery page | — |
+| **Storefront preview** | A preview card of the delivery page | — |
+
+The three **Allowed payment modes** are **Pay when the customer receives it (cash on delivery)**, **Pay at the counter before it is prepared** and **Pay online**.
+
+<Note>
+The delivery cannot go live while **Customer registration** is off. A branch also needs the plan to allow delivery, not just this switch.
+</Note>
+
+## The three interface languages
+
+The POS speaks three interface languages: **English**, **中文** and **ភាសាខ្មែរ**. Each staff member can pick their own in their staff record, and **Default Interface Language** on the **Business** tab covers everyone else. The language you pick changes the words on screen only. It does not change prices or dates.
+
+<Note>
+There is no theme setting in the POS. You cannot switch the POS between a light and a dark look. **Brand Colour** on the Restaurant tab is the colour of the guest's home screen app, not the POS itself.
+</Note>
+
+## Related documentation
+
+- [Staff and branches](staff-outlets)
+- [Receipt printing](receipt-printing)
+- [Payment methods](../billing/payment-methods)
+- [Kitchen display system](kitchen-kds)
+- [Delivery management](delivery-management)
+- [Inventory](inventory)

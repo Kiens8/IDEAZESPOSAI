@@ -1,0 +1,80 @@
+---
+title: Promotions
+description: Create the promotions your outlet runs, and see how each one is priced at the counter and in the customer app
+---
+
+# Promotions
+
+The **Promotions & Campaigns** screen holds every promotion of your outlet in one list. Its subtitle reads **Manage time-based deals, bundles, and BOGO offers**.
+
+The screen is for admins, and your plan has to include the Promotions feature. Otherwise it does not appear in your menu.
+
+## The screen
+
+Four counters sit above the list:
+
+- **Total Promotions** — every promotion your outlet has.
+- **Active Now** — the promotions whose switch is on.
+- **Happy Hour** — the time-based promotions.
+- **Bundle Deals** — the bundles and the BOGO deals together.
+
+Underneath, a row of filter tabs narrows the list: **All**, **Active**, **Inactive**, **Happy Hour**, **Bundle**, **BOGO** and **% Off**.
+
+When your outlet has no promotions the list says **No promotions found** and **Create your first promotion to get started**.
+
+<Note>
+**Active Now** counts the switch, not the clock. A Happy Hour promotion that is switched on but sits outside its own hours still counts in **Active Now**. Check the hours on the card itself before you tell a customer a deal is running.
+</Note>
+
+## The kinds of promotion
+
+There are five kinds, and each is priced in its own way.
+
+| Type | What it needs | How it is priced |
+|---|---|---|
+| **Happy Hour / Time-Based** | **Start Time**, **End Time**, **Days of Week** | The deal applies in the hours and days you set |
+| **Bundle / Combo Deal** | **Bundle Items** — the items bought together | A set **Bundle Price ($)** for the bundle |
+| **Buy One Get One (BOGO)** | **BOGO Categories** — the categories where two items are bought | The cheapest item of the pair is free |
+| **Percentage Off** | **Discount %** | A percentage off, optionally capped by **Max Discount ($)** |
+| **Fixed Discount** | **Discount ($)** | A set amount off |
+
+The BOGO type works on categories rather than on individual items. You choose the category, and buying two items from it makes the cheaper one free.
+
+Every promotion can also carry:
+
+- **Promotion Name**, **Badge Text** and **Description**. The badge text and the **Badge Color** are what the customer app shows.
+- **Max Total Uses** — how many times the promotion may be used.
+- **Validity Period** — how long the promotion runs.
+
+The list shows how much of the cap is used, as **Used: `{{used}}`/`{{max}}`**.
+
+Create a promotion with **Add Promotion** and save it with **Create Promotion**. Edit an existing one and save it with **Update Promotion**. Removing one asks **Delete this promotion?** first.
+
+## What a promotion applies to
+
+There is no separate targeting step. What you fill in on the form is the targeting:
+
+- **Happy Hour / Time-Based** targets the hours and the days of the week.
+- **Bundle / Combo Deal** targets the items that must be bought together.
+- **Buy One Get One (BOGO)** targets the categories.
+- **Percentage Off** and **Fixed Discount** apply to the order.
+
+## How the price is worked out
+
+The price of a promotion is not worked out on your screen. The POS asks the server what the promotion is worth and shows you that answer, and the customer app asks the same question. So the counter, the customer app and the bill always agree, and you never price a promotion by hand.
+
+## How the counter applies a promotion
+
+At the counter, the promotion price is shown on the menu tile itself, not on a separate screen. When the cart is priced, the counter asks the server to calculate the promotion and the answer comes back as the discount.
+
+In the cart, the **Discount** row appears only when there is a discount to show, and the promotion that produced it is named beside it, for example **20% OFF**.
+
+In the customer app, the promotions are included when the cart is priced, and the server returns the value. The badge text and colour you set on the promotion are what the customer sees.
+
+## Related documentation
+
+- [Take an order at the counter](taking-orders)
+- [Loyalty and vouchers](loyalty-vouchers)
+- [Menu management](menu-management)
+- [Reports](reports)
+- [Settings](settings)

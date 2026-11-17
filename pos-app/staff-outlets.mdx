@@ -1,0 +1,134 @@
+---
+title: Staff and branches
+description: Add staff, set roles, and manage the branches your restaurant runs
+---
+
+# Staff and branches
+
+This page covers the two screens that decide who works in your restaurant and where they work: **Staff Management** and **Outlet Management**.
+
+## Signing in
+
+You sign in with two things:
+
+- **Email**
+- **Password**
+
+Type them and press **Sign In**. The screen also has a **Show password** eye toggle if you want to check what you typed.
+
+There is no branch picker on the sign-in screen. Your branch comes from your staff record, and your role comes from the same record. If your account has been blocked, the screen shows **Access Blocked** and you are not signed in. If your account carries warnings, they appear under **Important Notice** and you still sign in.
+
+<Note>
+The **PIN** on a staff record is not a way to sign in. There is no PIN field on the sign-in screen, so a staff member who forgets their password cannot use their PIN to get in.
+</Note>
+
+To sign out, use the **Log Out** button at the bottom of the menu (or the red **Log Out** tile on a phone).
+
+## The three roles
+
+Every staff member has one of three roles. The role decides what they can reach.
+
+| Role | What the role description says | What it reaches |
+|---|---|---|
+| **Admin** | Full access: All settings, staff, outlets, menu & orders | Everything, including **Outlets**, **Promotions**, **Loyalty**, **Vouchers** and **Settings** |
+| **Manager** | Manage: Menu, orders, tables & staff clock in/out | Everything a staff member reaches, plus **Menu**, **AI Chatbot**, **AI Tools**, **Reports** and the inventory screens |
+| **Staff** | View: Orders & tables. Edit: Own profile (name, email, password, PIN) | **Dashboard**, **Orders**, **Delivery**, **Staff Order**, **Kitchen**, **Order History**, **Tables** and **Staff** |
+
+A staff member never sees **Reports**, the menu editor or **Settings**. Those entries are not in their menu at all.
+
+The **Staff** screen itself is in everyone's menu, but what you can do on it depends on your role.
+
+## Staff Management
+
+The screen is headed **Staff Management** with the subtitle **Manage staff accounts, roles & clock in/out**. Each row shows the person, their **Outlet**, their **Role**, their **Status** (**Clocked In** or **Clocked Out**), and the action buttons.
+
+The header also shows how many staff records you have used against your plan, as **`{{used}}` / `{{max}}` staff used**. When you reach the limit, the app refuses with **Maximum staff limit reached (`{{max}}`). Upgrade your plan to add more staff.** and points you to support.
+
+### Adding a staff member
+
+Press **Add Staff** to open the **Add New Staff** form. It asks for:
+
+| Field | What you put in it |
+|---|---|
+| **Name** | The person's name. Required. |
+| **Email** | The address they will sign in with. Required. |
+| **Password** | Their sign-in password. Required when you create them. |
+| **PIN (optional)** | Up to six digits, used for clock in and clock out. |
+| **Interface Language** | The language this person sees in the POS. |
+| **Role** | **Staff**, **Manager** or **Admin**. Admins only. |
+| **Assign to Outlet** | The branch they belong to. Admins and managers only. |
+
+The field under **PIN (optional)** carries the hint **For clock in/out**. The clock in and clock out themselves are done with the **Clock In** and **Clock Out** buttons in the staff list — the PIN is never entered anywhere as a sign-in credential.
+
+When you edit someone, leaving **Password** blank keeps the current password. The form tells you this with the hint **(leave blank to keep current)**.
+
+### What each role can do here
+
+- **Admin** picks any role and any branch, including the option **All Outlets (Admin)**.
+- **Manager** can only create **Staff**, and the branch is fixed to the manager's own branch.
+- **Staff** sees no **Role** and no **Assign to Outlet** control. When a staff member edits their own record, the form shows the note **You can only edit your name, email & password**.
+
+The list is filtered to what you may see. A staff member sees only their own row. A manager sees only the staff of their own branch, and never an admin. An admin sees everyone.
+
+### Clock in and clock out
+
+The **Status** column shows whether a person is **Clocked In** or **Clocked Out**. The **Clock In** and **Clock Out** buttons are available to an admin, a manager, or the person themselves.
+
+### Removing a staff member
+
+The trash icon asks **Are you sure you want to delete this staff member?** and then removes the record.
+
+<Note>
+Deleting a staff member is permanent. There is no switch to deactivate or suspend someone, so if you only want to stop someone working for a while, leave the record alone and change their password instead.
+</Note>
+
+## Outlet Management
+
+The screen is headed **Outlet Management** with the subtitle **Manage your restaurant branches/locations**. Each branch card shows the name, the address and the phone number. The header shows **`{{used}}` / `{{max}}` outlets used**, and adding beyond the plan limit is refused with **Maximum outlets reached (`{{max}}`). Upgrade your plan to add more outlets.**
+
+### Adding a branch
+
+Press **Add Outlet** and fill in the **Add New Outlet** form:
+
+| Field | What you put in it |
+|---|---|
+| **Outlet Name** | The branch name. Required. |
+| **Address** | The full address of the branch. |
+| **Phone Number** | The contact number for the branch. |
+
+### Switching between branches
+
+An admin gets a **Select outlet** dropdown in the menu. It lists every branch of the restaurant group. Pick one and the app reloads on that branch. If an admin signs in without a branch, the app picks the first branch automatically.
+
+Everyone else sees a read-only panel with the label **Current Outlet** and the name of their branch.
+
+<Note>
+Only an admin can add a branch or switch between branches. A manager and a staff member always work in the branch they are assigned to.
+</Note>
+
+### What belongs to a branch
+
+A branch carries its own settings, not just its name and address. The things that change when you switch branch are:
+
+- The currency — symbol, code and decimal places.
+- The timezone and the country used for the holiday calendar.
+- The tax settings.
+- The date format.
+- Everything else on the **Settings** screen, including the printer, the kitchen reminder and the order switches.
+
+<Note>
+Because the settings belong to the branch, switching branch swaps the whole Settings screen. Check the branch name in the Settings header before you change anything.
+</Note>
+
+### Removing a branch
+
+The trash icon asks **Are you sure you want to delete this outlet? This will affect all data associated with it.** and then deletes the branch.
+
+## Related documentation
+
+- [Settings](settings)
+- [Receipt printing](receipt-printing)
+- [Payment methods](../billing/payment-methods)
+- [Menu management](menu-management)
+- [Reports](reports)
+- [Order management](order-management)

@@ -1,0 +1,271 @@
+---
+title: Stock and suppliers
+description: How to track ingredients, build recipes, record stock movements, order from suppliers and read your stock reports
+---
+
+# Stock and suppliers
+
+The Inventory section tells you what you have in the store room, what it costs you, and what you need to order next.
+
+It is made of seven screens:
+
+- **Ingredients** — everything you keep in stock.
+- **Recipe Builder** — how a dish is made from those ingredients.
+- **Stock Movements** — every change to a stock level.
+- **Suppliers** — who you buy from and at what price.
+- **Purchase Orders** — what you have ordered and what has arrived.
+- **Stock Transfers** — moving stock between your branches.
+- **Inventory Reports** — what all of the above adds up to.
+
+<Note>
+Every screen in this section is for managers and above. Staff who can take orders cannot open any of them.
+</Note>
+
+## Ingredients
+
+An ingredient is one thing you keep in stock — a bag of rice, a bottle of cooking oil, a box of chicken.
+
+Each ingredient record holds:
+
+- **Name**
+- **Category**
+- **Unit** — what you count it in
+- **Cost/`{{unit}}` (`{{currency}}`)** — what one unit costs you
+- **Current Stock** — how much you have now
+- **Min Level** — the level below which you want to reorder
+- **Preferred Supplier** — who you normally buy it from
+
+Name, cost per unit, current stock and min level are all required. The category and the preferred supplier are optional.
+
+Above the table is a **Low Stock Alert (`{{count}}`)** banner listing the ingredients that have fallen low. Each row shows **`{{name}}`: `{{stock}}` `{{unit}}` (min: `{{minLevel}}`)**.
+
+### The stock status labels
+
+Every ingredient gets one of three labels:
+
+| Label | What it means |
+|---|---|
+| **OUT** | The stock is zero or below. The row is tinted red. |
+| **LOW** | The stock is at or below your min level. The row is tinted yellow. |
+| **OK** | The stock is above your min level. |
+
+Two extra columns appear when the prediction service answers: **Runs Out** (how many days until the ingredient runs out, or **NOW**) and **Trend** (the change against last week).
+
+<Note>
+The **Category** and **Unit** lists are fixed. The categories are Meat & Poultry, Seafood, Vegetables, Dairy, Grains & Cereals, Condiments & Sauces, Spices & Seasonings, Beverages and General Supplies. The units are kg, g, liter, ml, pcs, box, pack, bottle and can. You cannot add your own in the app.
+</Note>
+
+<Note>
+An ingredient running out does not remove a dish from your menu. The ordering screens do not read your stock levels. If a dish should stop being sold, take it off the menu yourself.
+</Note>
+
+## The recipe builder
+
+A recipe is how a dish is built from ingredients. It is what gives a menu item a real cost, and therefore a real margin.
+
+The screen has two panes.
+
+The left pane is headed **Menu Items** and lists your dishes with the search box **Search menu items...**. Each dish carries a badge: **Recipe** if it has one, **No Recipe** if it does not. Pick a dish to load its recipe.
+
+The right pane holds the recipe itself. Each row is:
+
+- an ingredient
+- a quantity
+- a unit — the ingredient's own unit, or one you type over it
+- the money of the row, shown as **`{{quantity}}` `{{unit}}` x `{{currency}}``{{cost}}`/unit**
+
+The **Add Ingredient** row at the bottom lets you pick an ingredient (the option shows its current stock and unit), type the quantity in the **Qty** box and optionally override the unit. The **+** button adds the row to the recipe without saving it yet. If you add a row with no ingredient or no quantity, the app refuses it and says **Please select ingredient and enter quantity**.
+
+### The cost summary
+
+The **Recipe Cost Summary** at the top works out the cost of the dish in front of you, based on the ingredient quantities. It sits above the recipe rows and shows:
+
+- **Based on ingredient quantities**
+- **Recipe Ingredients**
+- **Menu Price: `{{currency}}``{{price}}`**
+- **Margin: `{{currency}}``{{margin}}`**
+- the recipe cost itself
+
+When there are no rows yet it says **No ingredients added yet** and **Use the form below to add ingredients**.
+
+Press **Save Recipe** to store the rows. You get **Recipe saved successfully!** and, if it fails, **Failed to save recipe**. **Delete Recipe** asks first: **Are you sure you want to delete this recipe?**
+
+### Recipes for sizes
+
+If the dish has sizes, a row of tabs appears above the recipe: **The dish** plus one tab per size. Each size tab shows its own cost, or **cost unknown**.
+
+A size with no recipe of its own falls back to the dish recipe multiplied by the size multiplier, and the panel says so in an amber note. You can give a size its own recipe, and delete it again from the **Delete Recipe** button on that tab.
+
+## Stock movements
+
+A movement is one line of stock change for one ingredient. It carries a date, a type, a quantity (shown with a **+** when it goes up and coloured green, and in red when it goes down) and a note.
+
+There are four types:
+
+| Type | What it records |
+|---|---|
+| **Purchase** | Stock that came in. |
+| **Usage** | Stock consumed by preparing food. |
+| **Waste** | Stock thrown away. |
+| **Adjustment** | A correction to the count. |
+
+You can filter the list with **Filters:** — **All Ingredients** and **All Types** for the two, plus **Start date** and **End date** and **Clear Filters**.
+
+### Recording a movement
+
+From this screen you can record two of the four types:
+
+- **Record Purchase** — the ingredient, **Quantity Received** and **Notes (optional)**. The placeholder is **e.g., Delivery from supplier**. This adds to your stock. You get **Purchase recorded successfully!**, or **Failed to record purchase** if it does not go through.
+- **Record Waste** — the ingredient, **Quantity Wasted** and **Reason (optional)**. The placeholder is **e.g., Expired, Damaged, Spoilage**. This takes stock away. You get **Waste recorded successfully!**, or **Failed to record waste**.
+
+The waste reason is a free-text box. The app offers no fixed list of reasons, and the reason you type is what the Waste report groups by later.
+
+<Note>
+Usage and adjustment movements are not recorded from this screen. They come from the kitchen and order flow, and this list reads them back.
+</Note>
+
+<Note>
+A movement cannot be edited or deleted once it is recorded. If you make a mistake, record a correcting movement instead.
+</Note>
+
+## Suppliers
+
+A supplier record holds:
+
+- **Supplier Name \*** — the only required field
+- **Category**
+- **Contact Person**
+- a phone number and an email
+- **Address**
+- **Lead Time (days)** — how long the supplier takes, three days by default
+- free-text notes
+
+The card shows the name, the category chip, **Contact:** with the contact person, the phone, the email and **Lead time: `{{days}}` days**. Search with **Search suppliers...**, which matches the supplier name and the contact name, and filter by category with **All Categories**.
+
+### Supplier prices
+
+The dollar button on a card, **Manage Ingredient Prices**, opens the **Ingredient Prices** panel for that supplier. Each row is an ingredient, a unit price and a **Preferred** flag. Tick **Set as Preferred Supplier for this ingredient** to make this supplier the preferred one for that ingredient. An empty list says **No ingredient prices yet. Click “Add Price” to add one.**
+
+The preferred supplier on an ingredient is what decides which purchase order a line belongs to, and it is what the purchase suggestion report uses to price a suggested order.
+
+Deleting a supplier asks **Are you sure you want to delete this supplier?** and deleting a price asks **Are you sure you want to delete this price?**
+
+## Purchase orders
+
+A purchase order is what you have ordered from a supplier.
+
+### The stages
+
+| Stage | What it means |
+|---|---|
+| **Pending** | The order has been created and not yet sent. |
+| **Sent** | You have sent the order to the supplier. |
+| **Received** | The goods have arrived and your stock has been updated. |
+| **Cancelled** | The order was called off. |
+
+Press **Mark as Sent** to move a pending order to sent. Press **Receive Stock** to move it to received. The receive button asks first: **Mark this order as received? Stock will be updated.** Your stock levels are updated when the order is received.
+
+The Cancel button is on a pending order and takes it to **Cancelled**.
+
+<Note>
+**Partial** appears as one of the order status names, but no action in the app sets it. If you receive only part of an order, the order still moves to **Received**.
+</Note>
+
+<Note>
+Cancelling a purchase order happens with no confirmation. One tap puts the order to **Cancelled**.
+</Note>
+
+The filter chips above the list are **All (`{{count}}`)**, **Pending**, **Sent**, **Received** and **Cancelled**, each with a count.
+
+### Creating an order
+
+Press **New Order** to open **Create Purchase Order**. You pick the ingredients to order with **Add Items** and **Select ingredient**; the option shows the ingredient and its supplier, or **- No supplier**. You give the quantity in **Qty** and the price in **Price**, and the price is pre-filled from the ingredient cost.
+
+Under **Preview - PO will be created per supplier** you can see how the lines will split. The submit button reads **`{{count}}` PO(s)**, because one purchase order is created per supplier. **Expected Delivery Date** and **Notes (for all POs)** apply to every order created from that form.
+
+A line whose ingredient has no supplier appears in the **Unassigned** group, where you can give it one by hand. If any line is still unassigned when you save, the app refuses and says **Please assign all unassigned items to a supplier, or remove them.**
+
+### The order details
+
+**Purchase Order Details** shows the order number as **Order #`{{number}}`**, the order date, the expected delivery date, the received date, the supplier, and a table of **Item**, **Qty**, **Unit Price** and **Subtotal** with a **Total:** footer. The order can be printed; the print view has the **Purchase Order** header, the supplier block, the dates, the item table, the total and the notes.
+
+## Stock transfers between branches
+
+Stock Transfers moves stock between the branches of your restaurant group. There are two kinds, and you pick which one with the two buttons at the top.
+
+**Direct** sends stock out of your outlet to another outlet. The form spells out what happens: **Stock will be deducted from this outlet**, the ingredients are **Matched by ingredient name at destination**, and **If no match found, a new ingredient will be created**. You name the destination in **Transfer To \***.
+
+**Request** asks another outlet for stock. The form says **The other outlet will decide whether to approve** and **You will be notified when responded**. You name the other outlet in **Request From \***.
+
+Both forms let you pick the ingredients to move with **+ Add Item**. The option shows **`{{name}}` (Stock: `{{stock}}` `{{unit}}`)**, and you type the quantity in **Qty**. Notes are optional. Press **Create Transfer** to create it.
+
+### Who does what
+
+A new transfer starts as **Pending**. The buttons you see depend on which side of the transfer your outlet is on:
+
+- For a request, the outlet the stock would come from sees **Approve & Transfer** and **Reject**. The requesting outlet sees **Cancel Request**.
+- For a direct transfer, the outlet that created it sees **Approve & Transfer** and **Reject**. The receiving outlet sees **Cancel Request**.
+
+**Approve & Transfer** asks **Approve this transfer? Stock will be updated.** and then moves the stock. You get **Transfer approved and stock updated!**
+
+The five status names are **Pending**, **Approved**, **Rejected**, **Completed** and **Cancelled**. The filter chips offer **All (`{{count}}`)**, **Pending**, **Completed** and **Rejected**.
+
+<Note>
+**Reject** takes effect straight away, with no confirmation. **Cancel Request** does ask first: **Cancel this request?**
+</Note>
+
+## Inventory reports
+
+**Inventory Reports** has five tabs: **Cost Analysis**, **Stock Status**, **Waste Report**, **Purchase Suggestion** and an export tab.
+
+### The date range
+
+One control sits above the tabs: **Date Range:**, a start date, the word **to**, an end date, and **Clear Filters**. It covers the Cost Analysis tab, the Waste Report tab and the export. The Stock Status and Purchase Suggestion tabs do not take a date range, so changing the dates does not change what they show.
+
+### Cost Analysis
+
+Built from your usage movements. It shows **Total Cost**, **Ingredients Used** and **Periods Tracked**, a **Cost Trend (Last 14 Days)** chart, the **Top Cost Contributors** list with the five costliest ingredients, and the **Cost Breakdown by Ingredient** table with the total used, the unit cost and the total cost per ingredient.
+
+<Note>
+The Daily, Weekly and Monthly buttons at the top of Cost Analysis only change which button is highlighted. The numbers behind them stay the same, because the figures are always grouped by day over the last 14 days.
+</Note>
+
+### Stock Status
+
+The summary cards are **Total Items**, **Total Stock Value** and **Low / Out Stock**. The table lists each ingredient with its stock level, its value, the **Days Left** (your stock divided by how fast you use it) and a status badge of **Out of Stock**, **Low Stock** or **OK**. Filter with **All (`{{count}}`)**, **Low Stock (`{{count}}`)** and **Out of Stock (`{{count}}`)**. The rows put the critical items first.
+
+### Waste Report
+
+Built from your waste movements and compared against your purchases. The cards are **Total Waste**, **Waste Percentage** and **Cost of Waste**. Below them is the **Waste by Reason** list, which groups by the reason text you typed when you recorded the waste; a waste row with no reason is grouped as **Other**. The **Waste by Ingredient** table shows the quantity, the percentage and the cost of the waste for each ingredient.
+
+<Note>
+The waste percentage shown against an individual ingredient can read 0 even when you have recorded waste for it. The overall **Waste Percentage** in the card is worked out from the totals and is not affected by this.
+</Note>
+
+### Purchase Suggestion
+
+Lists the ingredients at or below their min level, with the **Stock**, the **Usage/Day**, the **Days Left**, the **Order Qty**, the **Est. Cost** and an **Urgency** of **CRITICAL**, **HIGH**, **MEDIUM** or **LOW**.
+
+Three settings drive the suggestion:
+
+- **Period:** — **7D**, **30D** or **90D**
+- **Lead Time:** in days, seven by default
+- **Safety Stock:** in days, three by default
+
+The suggested quantity is the lead time plus the safety stock, multiplied by your daily usage, minus what you already have.
+
+Use **Select All** and **Clear** to pick lines, then **Generate PO (`{{count}}`)** to create the purchase orders. The **Generate Purchase Orders** panel groups the lines by preferred supplier, warns **`{{count}}` PO(s) will be created**, shows the **Grand Total:** and creates one order per supplier. You get **Please select at least one item** if nothing is ticked.
+
+**Export CSV** on this tab downloads the suggestion list.
+
+### Exporting your inventory
+
+The export tab lets you choose an **Export Type** of **All Ingredients** or **Low Stock Only**, and the format is CSV (UTF-8 with BOM). The file includes **Name, Unit, Current Stock, Min Level, Unit Cost, Status**. Press **Export to CSV** and the file downloads automatically.
+
+## Related documentation
+
+- [Build your menu](menu-management)
+- [Promotions](promotions)
+- [Order management](order-management)
+- [Settings](settings)
+- [AI tools](ai-tools)

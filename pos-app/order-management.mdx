@@ -1,155 +1,116 @@
 ---
-title: Order Management
-description: Manage restaurant orders from start to finish
+title: Manage live orders
+description: How the Orders screen groups live orders and what you can do with each one
 ---
 
-# Order Management
+# Manage live orders
 
-IDEAZES POS AI provides complete order lifecycle management for restaurants.
+The Orders screen is where your team runs the day. It shows every live order, groups them for you, and gives you the buttons you need to move an order along and take the money.
 
-## Order Status Flow
+Every staff member with the staff role can reach it. Your plan also has to include the Orders feature, otherwise the screen does not appear in the menu.
 
-```mermaid
-graph LR
-    A[Pending] --> B[Confirmed]
-    B --> C[Preparing]
-    C --> D[Ready]
-    D --> E[Served]
-    E --> F[Paid]
-```
+## The three views
 
-## Order Statuses
+The screen has a strip of three tabs at the top:
 
-| Status | Description |
-|--------|-------------|
-| **Pending** | Order just created, awaiting confirmation |
-| **Confirmed** | Staff confirmed the order |
-| **Preparing** | Kitchen is preparing the order |
-| **Ready** | Order ready for service, waiting to be served |
-| **Served** | Food delivered to customer |
-| **Paid** | Payment completed |
+- **📋 Queue** — every live order, grouped into kitchen sections.
+- **🪑 Tables** — orders grouped by table, for settling a whole table at once.
+- **🥡 Takeaway** — the takeaway orders waiting to be handed over. The tab carries a count of how many are waiting.
 
-## Order Settings
+Under the tabs a line counts the four kitchen buckets for you: **`{{pending}}` pending • `{{confirmed}}` confirmed • `{{preparing}}` preparing • `{{ready}}` ready**.
 
-Configure order settings in **Settings → Order**.
+## The six sections
 
-### Settings That Apply to Both Customer App and Staff Order
+The queue is split into six sections, in this order:
 
-| Setting | Description |
-|---------|-------------|
-| **Allow Dine In** | Show/hide "Dine In" option |
-| **Allow Takeaway** | Show/hide "Takeaway" option |
-| **Allow Delivery** | Show/hide "Delivery" option |
+| Section | What belongs in it |
+|---|---|
+| **New Orders** | Orders that have just come in and are not confirmed yet |
+| **Confirmed Orders** | Orders the kitchen has confirmed |
+| **Preparing** | Orders being made right now |
+| **Ready to Serve** | Orders finished and waiting to go out |
+| **Awaiting Payment** | Orders that have been served and still owe money |
+| **Deliveries** | Delivery orders, with their own driver steps |
 
-### Settings That Apply to Staff Order Only *
+Deliveries never appear in the kitchen sections. They live in their own section so the kitchen view stays clean.
 
-> *marked with **Staff Order** label in settings
+Cancelled and finished orders drop out of the screen. A prepaid order stays visible until it is handed over, and a pay-at-counter order stays visible until it is paid.
 
-| Setting | Description |
-|---------|-------------|
-| **Max Orders Per Table** * | Maximum active orders allowed per table |
-| **Table Required for Dine-In** * | Force table selection for dine-in orders |
+## The buttons on an order
 
-## Staff Order Screen
+Each order row carries the buttons that make sense for it right now:
 
-The Staff Order screen allows staff to manually create orders for customers.
+- **✓ Confirm** — accepts a new order.
+- **Start Preparing** — moves it to the kitchen.
+- **Mark Ready** — the food is done and waiting.
+- **💰 Record Payment** — takes the money.
+- **❌ Cancel Order** — throws the order away.
+- **➖ Remove Item** — takes a dish off an order that is still under way.
+- **Print Receipt** — appears as a banner once the payment is in.
 
-### Order Type Options
+The next-status button moves the order one kitchen step forward. A prepaid order can only move forward once it has been paid. A pay-at-counter order can only move forward while it is still unpaid.
 
-The available order types depend on your settings:
+**💰 Record Payment** appears when the order still owes money and has at least one item that has not been cancelled.
 
-- **Allow Dine In** - Show/hide "Dine In" option
-- **Allow Takeaway** - Show/hide "Takeaway" option
-- **Allow Delivery** - Show/hide "Delivery" option
+**❌ Cancel Order** is only offered while the order is new, confirmed or preparing, and only while it is unpaid.
 
-### Table Selection
+**➖ Remove Item** is offered on the same orders, and only when the order has more than one item on it.
 
-When selecting a table:
+## Cancelling an order and removing an item
 
-- Tables show current number of active orders
-- Tables at max capacity (Max Orders Per Table) are highlighted in red and disabled
-- Error message shown if attempting to select full table
-- If **Table Required for Dine-In** is enabled, table must be selected for dine-in orders
+Both of these ask you why.
 
-### Order Flow
+**❌ Cancel Order** opens a dialog headed **Please select a reason for cancellation:** with a dropdown of reasons: **Wrong order received**, **Customer changed mind**, **Item unavailable**, **Duplicate order**, **Staff error** and **Other**. The **Confirm Cancel** button stays disabled until you pick one, and the reason is sent with the cancellation.
 
-1. Select order type (Dine In / Takeaway / Delivery)
-2. Select table (if dine-in)
-3. Add menu items to cart
-4. Submit order
-5. Order appears in Order Queue and Kitchen Display
+**➖ Remove Item** opens a dialog that asks **Select items to remove:** and **Reason for removal:**. The **Remove** button on each item stays disabled until you pick a reason.
 
-## Managing Orders
+Both dialogs close with **Done**.
 
-### Create New Order
+<Note>
+Clearing the cart on the counter screen is the one destructive action with no reason and no confirmation. Cancelling an order or removing an item asks for a reason; **Clear** on the cart does not.
+</Note>
 
-1. Click **New Order**
-2. Select table (for table service) or continue (counter service)
-3. Add menu items
-4. Adjust quantities as needed
-5. Add special instructions if any
+## Settling a whole table
 
-### Update Order Status
+The **🪑 Tables** view groups the orders by table number. Takeaway orders that carry a table are grouped there too. Each table card shows how much is still unpaid and how many orders are waiting to be paid. When nothing is owed the card says **Table is free**.
 
-1. Find the order in the queue
-2. Click the status badge
-3. Select the next status
+You can settle a table in one go only when every order on it that still owes money has been served. If any of them has not been served yet, the card says **All orders must be served before recording payment** and refuses to settle the table.
 
-### View Order Details
+## Delivery rows
 
-Click on any order to see:
-- Order items
-- Order history
-- Payment status
-- Customer notes
+A delivery row shows its own step chip, the driver, the address, the delivery fee and the button for the next delivery step. The delivery steps are:
 
-## Order Actions
+- **Unassigned**
+- **Assigned**
+- **Picked up**
+- **Delivered**
+- **Cancelled**
 
-| Action | Description |
-|--------|-------------|
-| Edit | Modify order items |
-| Cancel | Cancel the order |
-| Split Bill | Divide among multiple payers |
-| Print | Reprint receipt |
+The button follows the delivery step: you assign a driver from the confirmed stage onwards, the order goes out only once it is ready, and the handover to the guest is what marks it as served. A delivery row never offers a shared **Mark Served** button.
 
-## Split Bill Feature
+**💰 Record Payment** on a delivery row waits until the food has actually been handed over.
 
-Split bills among multiple customers:
+## Served or collected
 
-1. Select order
-2. Click **Split Bill**
-3. Choose split method:
-   - **Equal Split** - Divide equally
-   - **By Item** - Assign items to each person
-   - **Custom** - Enter custom amounts
-4. Assign payment methods to each split
-5. Process payments
+The last step is worded for your business type, but it is the same step underneath:
 
-## Order Queue
+| Business type | The button reads |
+|---|---|
+| Restaurant or bar | **Mark Served** |
+| Cafe, fast food or stall | **Mark Collected** |
 
-The order queue shows all active orders organized by status:
+The order chip that follows uses the same wording: **Served** or **Collected**.
 
-- **Pending Orders** - Need confirmation
-- **In Progress** - Being prepared
-- **Ready Orders** - Awaiting pickup/delivery
+## Empty states
 
-## Kitchen Display System (KDS)
+When there is nothing to show, the screen tells you so plainly:
 
-Orders automatically appear on the kitchen display for preparation tracking.
+- An empty queue shows **All Caught Up!** and **No active orders at the moment**.
+- An empty takeaway view shows **No takeaways waiting** and **Every takeaway has been settled**.
+- When nothing is waiting to be paid, the payment search shows **No served orders waiting for payment**.
 
-- **Ready** orders stay on screen until marked as "Served"
-- Order reminder alerts appear for orders waiting too long (configurable in Settings)
-- Kitchen tickets and order dates use the outlet timezone setting
+## Related documentation
 
-## Timezone Configuration
-
-Order numbers and dates use the **outlet timezone** configured in **Settings → General → Timezone**.
-
-This ensures:
-- Order numbers show correct date for the restaurant location
-- Kitchen tickets display correct local time
-- Order history filters work correctly by local date
-
-## Need Help?
-
-[View FAQs](/troubleshooting/faqs) or contact support.
+- [Take an order at the counter](taking-orders)
+- [Kitchen display system](kitchen-kds)
+- [Receipt printing](receipt-printing)

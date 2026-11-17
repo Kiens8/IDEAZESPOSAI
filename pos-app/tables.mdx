@@ -1,0 +1,78 @@
+---
+title: Tables and QR codes
+description: Add tables, set their capacity, generate QR codes for guests, and see which tables are occupied
+---
+
+# Tables and QR codes
+
+The tables screen holds your floor plan. You give each table a number and a capacity, then generate a QR code that guests scan to order from that table.
+
+Open it from the sidebar with **Tables**. Every staff member can reach it. Your plan also has to include the Tables feature, otherwise the entry does not appear in the menu.
+
+The page is titled **Tables & QR Codes** with the subtitle **Manage tables and generate QR codes for ordering**.
+
+## Add a table
+
+Press **Add Table**. A dialog opens with the title **Add New Table** and two fields:
+
+- **Table Number** — free text, with the placeholder **e.g., T1, Table 5, A-01**. You can use any naming you like.
+- **Capacity** — how many guests fit. The label reads **Capacity (Max Guests: `{{guests}}`)**, where the maximum is your outlet's **Max guests per table** setting. The minimum is 1, and if the setting has never been set the maximum is 10. A new table starts at a capacity of 4.
+
+Save the table with **Add New Table**. If the save fails, the browser shows the alert **Failed to save table** and nothing is added.
+
+## Edit a table
+
+Every table card has a pencil button. It opens the same dialog titled **Edit Table**, prefilled with the current number and capacity. Save it with **Update Table**.
+
+## Delete a table
+
+Every table card has a bin button. Pressing it asks **Delete this table?** before the table is removed.
+
+<Note>
+Deleting a table is the only action on this screen that asks you to confirm. Nothing else warns you first, so take care with the pencil and bin buttons — they are small icons with no text label.
+</Note>
+
+## The table cards
+
+Tables are shown as a card grid, one card per table. Each card shows the table number, an **Occupied** or **Available** badge, the capacity, a **QR** button, and the two icon buttons.
+
+If you have no tables yet, the screen says **No tables yet** and **Add your first table to get started**.
+
+### Occupied or Available
+
+The badge is worked out from your live orders. The app matches the table number against the orders for your outlet and keeps only the ones still running. If any live order is on that table, the badge reads **Occupied**; otherwise it reads **Available**.
+
+You are never asked whether a table is free. The app decides for you.
+
+<Note>
+Only the badge is shown. The number of live orders behind it is not displayed, so you cannot see from this screen how many orders a table already holds.
+</Note>
+
+### The settings strip
+
+Above the cards, the screen reads **Settings:** and lists **Max guests per table: `{{guests}}`**, **QR Base URL: `{{url}}`** and **Auto-generate QR: `{{value}}`**.
+
+<Note>
+**Auto-generate QR** only reports your outlet setting. Nothing on this screen is generated automatically — you always open the QR code yourself with the **QR** button.
+</Note>
+
+## The QR code
+
+Press **QR** on a table card. A dialog opens with the title **QR Code - `{{number}}`**, the QR image, and the raw link under the caption **QR Code URL:**.
+
+The code points at the customer order app, not at the POS. When your outlet has no QR base URL set, the default `https://order.ideazes.com` is used, so a scan drops the guest into the ordering app for your restaurant and their table.
+
+Press **Download QR Code** to save the image. It downloads as a PNG named `Table-<table number>-QR.png`. Print it, and stick it on the table.
+
+The on-screen hint tells you what to do with it: **Print and paste this QR code at the table for customers to scan and order**. A good table card names your restaurant, asks the guest to scan to order, and shows the table number so the guest can check they are on the right table.
+
+<Note>
+The QR image is drawn by an external image service, so it needs internet access to appear. If the image does not show, check the connection before reprinting anything.
+</Note>
+
+## Related documentation
+
+- [Customer order app](../order-app/overview)
+- [Take an order at the counter](taking-orders)
+- [Kitchen display system](kitchen-kds)
+- [Order history and receipts](order-history)

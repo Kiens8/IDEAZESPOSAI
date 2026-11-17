@@ -1,0 +1,110 @@
+---
+title: Order history and receipts
+description: Search past orders, filter them by period, status and type, reprint a receipt, and export your orders to CSV
+---
+
+# Order history and receipts
+
+The order history screen holds every order your outlet has taken. You can search it, filter it, reprint a receipt and export the lot to a spreadsheet.
+
+Open it from the sidebar with **Order History**. Every staff member can reach it. Your plan also has to include the Order History feature, otherwise the entry does not appear in the menu.
+
+The screen always shows the current outlet. There is no outlet filter, so a multi-branch view is not available here.
+
+## Choose the period
+
+A row of buttons under **Period:** picks the window:
+
+- **Today** — today in your outlet's timezone.
+- **7 Days** — from today minus seven days to the end of today.
+- **30 Days** — from today minus thirty days to the end of today.
+- **This Month** — from the first of the month.
+- **All Time** — no window at all.
+
+**Today** is the default when the screen opens.
+
+<Note>
+**7 Days** and **30 Days** cover a few more calendar days than the names suggest. **7 Days** runs across eight calendar days including today, and **30 Days** across thirty-one.
+</Note>
+
+## Search
+
+The search box carries the placeholder **Search by order number, table, or item...**. One free-text box matches the order number, the table number, or the name of any item on the order, and it ignores capitalisation.
+
+## Filter by status
+
+The status dropdown offers:
+
+- **All Status** — everything.
+- **Paid** — only orders that have been paid.
+- **Unpaid** — everything that has not been paid in full. A part-paid order still counts as unpaid.
+- A last option, labelled **Served** for a restaurant or bar and **Collected** for a cafe, fast food or stall. It keeps only orders that have reached that step.
+
+The label follows your business type, so the same dropdown reads differently from one outlet to the next.
+
+## Filter by order type
+
+The type dropdown offers **All Types**, **Dine In** and **Takeaway**.
+
+<Note>
+There is no **Delivery** option in the type filter, even though delivery is in scope for your business. You cannot filter delivery orders out of the list with this dropdown.
+</Note>
+
+## What each row shows
+
+Every row carries:
+
+- The order number, and the table as a badge — a **T** in front of the table number. Table **T5** shows as **T5**, and table **5** shows as **T5** too.
+- A status badge: **Paid** for a paid order, otherwise the order's own status or your business type's last step.
+- A reprint button, titled **Reprint the receipt**. It appears on paid orders only.
+- The date and the time, in your outlet's date format and timezone.
+- The first three item names, then **+`{{count}}` more** when the order has more items than that.
+- The order total in your outlet's currency.
+
+The list holds 20 orders per page, with the pager reading **Page `{{current}}` of `{{total}}`**. When nothing matches your filters, the screen says **No orders found**.
+
+## Reprint a receipt
+
+Press the reprint button on a paid order to open the reprint dialog. It asks:
+
+- **How many copies** — 1 or 2.
+- A checkbox, **Print the pickup token on the receipt**. It is ticked by default on takeaway orders, so the guest gets the number they collect against.
+- A **Reason (optional)** field, for the note of why you are reprinting.
+- The **Reprint history** for that order, so you can see what has already been reprinted.
+
+<Note>
+Only a paid order can be reprinted. An unpaid order has no receipt to print, so the button is not there at all.
+</Note>
+
+<Note>
+There is no refund action and no void action on this screen. If you need to give money back or cancel a completed order, that is done elsewhere in the POS.
+</Note>
+
+The reprint is written into the reprint record first, and only then does the paper come out. If the record cannot be written, nothing prints and the dialog says **The reprint could not be recorded, so nothing was printed.**
+
+Two warnings can appear in the dialog:
+
+- **This outlet has no receipt printer configured. Set one up in the outlet settings.** — the Print button is disabled.
+- **This outlet uses a network printer. It only works through the Browser Print Server bridge - from the browser it will fail.** — a network printer cannot be reached from the browser, so a reprint from this screen will not print.
+
+## Export to CSV
+
+Press **Export CSV** to download the rows that match your current filters. The file is a `.csv` named `orders_<outlet>_<period>_<date>.csv`.
+
+Only managers and admins see the **Export CSV** button. A staff member sees no export option at all.
+
+The columns are:
+
+Order number, Date, Order type, Table, Customer, Status, Payment status, Payment method, Items, Subtotal, Discount, Tax, Total, Voucher.
+
+Money is written as plain numbers with your outlet's decimal precision and no currency symbol, so the file adds up cleanly in a spreadsheet.
+
+If nothing matches your filters, the browser shows the alert **There is nothing to export with these filters.** If the export fails, the alert reads **The export failed. Please try again.** Both are browser pop-ups rather than messages on the page.
+
+## Related documentation
+
+- [Take an order at the counter](taking-orders)
+- [Manage live orders](order-management)
+- [Receipt printing](receipt-printing)
+- [Dashboard](dashboard)
+- [Tables and QR codes](tables)

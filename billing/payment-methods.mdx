@@ -1,77 +1,118 @@
 ---
-title: Payment Methods
-description: Accepted payment methods
+title: Payment methods
+description: The payment methods your counter accepts, how to turn them on, and how online QR payment works
 ---
 
-# Payment Methods
+# Payment methods
 
-IDEAZES POS AI supports multiple payment options for your customers.
+Your counter only offers the payment methods you have switched on for the branch. You switch them on under **Settings**, on the **Payment** tab.
 
-## Accepted Payment Methods
+## The methods you can turn on
 
-| Method | Description | Processing Time |
-|--------|-------------|-----------------|
-| Cash | Physical currency | Instant |
-| Credit Card | Visa, Mastercard, AMEX | Instant |
-| Debit Card | Bank cards | Instant |
-| Online Banking | FPX, bank transfer | 1-2 days |
-| QR Pay | GrabPay, Touch 'n Go, Boost | Instant |
+**Accepted Payment Methods** holds eleven tick boxes:
 
-## Setting Up Payment Methods
+| Method | What it is |
+|---|---|
+| **💵 Cash** | Physical money taken at the counter |
+| **💳 Credit/Debit Card** | A card machine at the counter |
+| **DuitNow QR** | Malaysian QR payment |
+| **🇰🇭 KHQR (Cambodia)** | Cambodian QR payment |
+| **🇸🇬 SGQR (Singapore)** | Singaporean QR payment |
+| **🇻🇳 VietQR (Vietnam)** | Vietnamese QR payment |
+| **Touch 'n Go** | Malaysian e-wallet |
+| **GrabPay** | E-wallet |
+| **Boost** | E-wallet |
+| **ShopeePay** | E-wallet |
+| **🏦 Bank Transfer** | A transfer to your account |
 
-### Step 1: Access Settings
+The counter screen names the same methods in the customer's own words: **Cash**, **Card (Credit/Debit)**, **DuitNow QR**, **KHQR (Cambodia)**, **SGQR (Singapore)**, **VietQR (Vietnam)**, **Touch 'n Go**, **GrabPay**, **Boost**, **ShopeePay**, **Bank Transfer** and **E-Wallet**.
 
-1. Go to **Settings** → **Payment**
+If the branch has no method list saved, the counter falls back to **Cash**, **Card (Credit/Debit)** and **DuitNow QR**.
 
-### Step 2: Enable Methods
+<Note>
+Switching a method on does not make an online payment work. Ticking **DuitNow QR** gives you the button on the counter; to take the money through it you also need a payment account connected to the branch. See below.
+</Note>
 
-Toggle on the payment methods you want to accept:
+## Split bill, tips and cash change
 
-- Cash
-- Credit/Debit Card
-- Online Banking
-- QR Payment
+Three more switches on the same tab change how the counter behaves:
 
-### Step 3: Configure (Optional)
+| Setting | What it does | Default |
+|---|---|---|
+| **Split Bill** | Lets you split one bill between several people | On |
+| **Tips Collection** | Turns on tips | Off |
+| **Cash Change Calculation** | Shows the change due when cash is taken | On |
 
-For card payments, connect your Stripe account:
+With **Split Bill** on, you split the bill equally or by item, and each person pays their own share. The method you choose for each person starts at **Cash**.
 
-1. Enter Stripe API keys
-2. Test the connection
-3. Enable live mode when ready
+With **Cash Change Calculation** on, the counter shows **Change due** after you enter the cash received. An under-tender never shows a negative change.
 
-## Processing Payments
+<Note>
+**Tips Collection** turns tips on, but the counter screen has no tip control yet. Turning it on does not give you a way to add a tip while you take the money.
+</Note>
 
-### Counter Service
+## Taking the money
 
-1. Complete the order
-2. Select payment method
-3. Process payment
-4. Print receipt (if configured)
+You record the payment from the order. The Orders screen offers **💰 Record Payment**, and the counter screen (Staff Order) opens the same payment panel. Both show the same method names for the same tender.
 
-### Table Service
+Only **DuitNow QR** and **Touch 'n Go** can be taken through the online gateway. Every other method is simply recorded against the order.
 
-1. Update order status to "Served"
-2. Select payment method
-3. Process payment
-4. Print receipt
+## Online QR payment
 
-## Pay Later Option
+Online QR payment needs two things at once:
 
-For subscription payments:
+1. The branch is in **Malaysia**.
+2. The branch has a **connected payment account**.
 
-1. Select Pay Later at checkout
-2. Receive invoice via email
-3. Pay via bank transfer within 14 days
+If either is missing, the counter cannot take an online QR payment.
 
-## Payment Reports
+<Note>
+A branch outside Malaysia cannot take an online QR payment at all. The **Online payments** section on the **Payment** tab says **Paying online is only available for outlets in Malaysia - DuitNow and Touch 'n Go are Malaysian payment methods.** and shows no form.
+</Note>
 
-View payment analytics:
+A branch in Malaysia that has no connected account still sees the form, but the online payment mode stays locked on the **Order** tab with the message **Pay online when the customer orders - not available yet - the restaurant has no payment account connected**.
 
-- Daily sales by payment method
-- Transaction history
-- Settlement reports
+### Connecting a payment account
 
-## Need Help?
+The **Online payments** section of the **Payment** tab holds the connection. The app talks to **HitPay**.
 
-Contact [support@ideazes.com](mailto:support@ideazes.com)
+| Field | What you put in it |
+|---|---|
+| **Provider** | **HitPay** |
+| **API key** | Your HitPay API key |
+| **API secret (salt)** | Your HitPay API secret |
+| **Webhook salt** | The salt of your HitPay webhook. Optional — leave it empty to use the API secret |
+| **Merchant ID** | Your merchant id, for example `H12345` |
+| **Currency** | **MYR** |
+
+Both **API key** and **API secret (salt)** are required. If one is missing you get **The API key and the API secret are both required.** When the save works, the notice **The payment account was saved.** appears and the two secret boxes are cleared from the screen.
+
+The **Webhook salt** field explains that the secret is stored on the server and never shown again, and that HitPay signs its events with the salt shown next to your webhook URL.
+
+### What you can read back
+
+Once the account is connected, the section shows **Connected** along with the **Provider**, **Currency**, **Merchant ID**, the **API key** (only its last few characters, behind an ellipsis) and **Last updated**.
+
+The credentials are write-only. You can replace them with new ones, but you cannot read the current ones back.
+
+### Disconnecting
+
+The disconnect button asks **Disconnect the payment account? The guests will not be able to pay online until a new account is saved.** When you confirm, the notice **The payment account was disconnected.** appears.
+
+## When the money is taken
+
+The payment mode per order type is set on the **Settings** screen, on the **Order** tab, under **When the money is taken**. Each order type you serve — **Dine-in**, **Takeaway**, **Delivery** — gets one of:
+
+- **Pay when the customer collects**
+- **Pay at the counter first (we start after the payment)**
+- **Pay online when the customer orders**
+
+An order takes a snapshot of the choice when it is created, so changing it later does not move the orders already running.
+
+## Related documentation
+
+- [Settings](../pos-app/settings)
+- [Staff and branches](../pos-app/staff-outlets)
+- [Order management](../pos-app/order-management)
+- [Receipt printing](../pos-app/receipt-printing)
+- [Delivery management](../pos-app/delivery-management)

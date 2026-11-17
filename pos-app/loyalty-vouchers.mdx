@@ -1,0 +1,94 @@
+---
+title: Loyalty and vouchers
+description: Set up your loyalty programme, issue vouchers to your customers, and take payment for them at the counter
+---
+
+# Loyalty and vouchers
+
+Two screens work together here. **Loyalty** runs your points programme and holds your customer list. **Vouchers** holds the voucher templates you issue from it.
+
+Both screens are for admins, and both need their own feature on your plan: Loyalty and Vouchers.
+
+## The Loyalty screen
+
+The screen has three tabs: **Overview**, **Settings** and **Customers**.
+
+**Overview** holds the programme's numbers. **Settings** holds the programme itself, and **Customers** holds the member list.
+
+### Set up the programme
+
+In **Settings** you decide whether customers earn points at all, and you set the earning rules. One of them is **Minimum spend to earn points (`{{currency}}`)** — the smallest bill that earns points.
+
+### Your customers
+
+The **Customers** tab lists your registered members with a search. When you have no members the list says **No customers registered yet**.
+
+From this tab you can **Issue Voucher** to a customer: you pick the customer, you pick one of the voucher templates, and the voucher is issued to them. The templates come from the same voucher templates as the Vouchers screen.
+
+## The Vouchers screen
+
+Four counters sit at the top of the screen:
+
+- **Total Issued** — every voucher you have issued.
+- **Active** — the vouchers still usable.
+- **Redeemed** — the vouchers a customer has used.
+- **Expired** — the vouchers past their date.
+
+The screen has three tabs.
+
+### Templates
+
+A template is the reusable definition of a voucher. It holds a name, a type, a discount, how many days it stays valid, how many times it may be used, and whether it is active. A discount can carry a maximum-discount cap.
+
+Create one with **Create Template**, or **Create Voucher Template** in the form itself. The table shows the columns **Template**, **Type**, **Discount**, **Valid Days**, **Uses**, **Status** and **Actions**. When you have no templates the table says **No voucher templates yet** and **Create your first template to start issuing vouchers**.
+
+### Issued Vouchers
+
+These are the vouchers actually in your customers' hands. The table shows **Code**, **Customer**, **Voucher**, **Discount**, **Status**, **Valid Until**, **Used At** and **Actions**. A voucher is **Active**, **Used** or **Expired**.
+
+You can search the list by code, by customer name or by phone number. When nothing has been issued the table says **No vouchers issued yet** and **Vouchers from campaigns will appear here**.
+
+### Bulk Issue
+
+This tab does not send vouchers on its own. It points you at the way to do it: create a template first, then go to the **Loyalty** page, manage your customers and issue the vouchers from there.
+
+## How your guest redeems a voucher
+
+A signed-in guest opens the cart, types the code into **Enter voucher code** and presses **Apply**.
+
+The app looks the code up among that guest's own vouchers. It accepts the code only if the voucher is active and its valid date is still in the future. Otherwise it says **Invalid or expired voucher code**.
+
+If the voucher cannot be used for that order the guest sees **This voucher cannot be used for this order**. If the order is under the voucher's minimum spend, they see **This voucher needs a minimum spend of `{{amount}}`**.
+
+A voucher that goes through shows **Voucher applied!** beside the cart, with its discount, and the guest can take it off again with **Voucher removed**.
+
+The money is not worked out in the app. The app sends the voucher code, and the server validates it, prices the order and redeems the voucher once.
+
+The guest's own vouchers are in **🎫 My Vouchers**. Until they earn one, it says **No vouchers yet. Start ordering to earn!**
+
+<Note>
+The voucher section only appears for a signed-in guest, and only when vouchers are switched on for your customer features.
+</Note>
+
+## How the counter attaches a member
+
+At the counter, the field is labelled **Member (earn points)** and its hint reads **Optional - leave it empty unless the customer asks to earn points.**
+
+An order belongs to your outlet's walk-in member by default. If the cashier leaves the field empty, the order is recorded as a walk-in and earns no points. The cashier types a name or a phone number, picks the member from the matches, and that member earns the points of the bill.
+
+The search waits until the cashier stops typing, and it needs at least two characters. It only ever returns your own registered members — the walk-in customer is never in the list.
+
+<Note>
+An order with no member attached earns no points, however large the bill. If a guest wants points, pick them in the **Member (earn points)** field before you send the order.
+</Note>
+
+<Note>
+A delivery always needs a registered customer. The walk-in customer cannot be used for a delivery, so pick the guest in the **Member (earn points)** field before you send it.
+</Note>
+
+## Related documentation
+
+- [Take an order at the counter](taking-orders)
+- [Promotions](promotions)
+- [Reports](reports)
+- [Customer order app](../order-app/overview)

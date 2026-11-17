@@ -1,0 +1,164 @@
+---
+title: Build your menu
+description: How to create categories and menu items, set sizes and choices, and see the cost and margin of every dish
+---
+
+# Build your menu
+
+Your menu lives in **Menu Management**. This is where you create the categories your staff browse, the dishes inside them, and the sizes and choices a guest can pick.
+
+The screen is for managers and above. It also needs the Menu feature on your plan, otherwise it does not appear in the sidebar.
+
+## How the menu is arranged
+
+Your menu is two levels deep:
+
+1. A **category** — for example *Mains*, *Drinks*, *Desserts*.
+2. A **menu item** inside that category.
+
+The screen shows your items as a grid of cards. Above the grid is a row of filter chips. The first chip is **All**, which shows everything. Each other chip carries a category name and narrows the grid to the items in that category.
+
+Every item card shows:
+
+- the item name and its description
+- the price
+- a cost and margin line, or an estimated cost line
+- an **Available** or **Unavailable** badge
+- a **Recipe** badge when the dish has a recipe attached
+
+## Categories
+
+Press **Manage Categories** to open the category list. The panel has one field with the placeholder **New category name** and a plus button. Type a name and press the plus button to create it.
+
+Each category in the list has two buttons:
+
+- The pencil button puts the name back into the field so you can rename it. Type the new name and save.
+- The trash button deletes it, after a browser confirmation that reads **Delete this category? Items in this category will need to be reassigned.**
+
+If you have no categories yet, the panel says **No categories yet. Add your first category above!**
+
+<Note>
+**Categories cannot be reordered in the app.** There is no drag handle and no up or down arrow. The order you see is the order the categories come back in, and you cannot change it from here.
+</Note>
+
+Saving a category needs your outlet to be set. If your account is not linked to a restaurant group yet, the app refuses and tells you **Your account is not linked to a restaurant group yet. Please contact support.** A failed save shows **Failed to save category** and a failed delete shows **Failed to delete category**.
+
+## Adding a menu item
+
+Press **Add Item** to open the item form. The fields are:
+
+| Field | What it is | Required |
+|---|---|---|
+| **Category** | The category the item belongs to. The empty option reads **Select category**. | Yes |
+| **Name** | The name your staff and guests see. | Yes |
+| **Description** | A short line under the name. | No |
+| **Image URL** | A link to a picture of the dish. The hint reads **Recommended: 800x600px, max 200KB for fast loading**. | No |
+| **Price (`{{currency}}`)** | The selling price of the dish. | Yes |
+| **Estimated Cost (`{{currency}}`)** | What the dish costs you to make. The hint reads **For margin calculation (optional)**. | No |
+| **This is an add-on item** | Marks the item as an extra rather than a dish. | No |
+| **Add-on Price (`{{currency}}`)** | The price of the add-on. Only appears once you tick the box above. | No |
+
+Save the item with **Update Item** when you are editing, or **Add New Item** when it is new.
+
+<Note>
+There is no tax field on a menu item. Tax is set for the whole outlet in your settings and applied once to the cart subtotal, so you never set tax per dish.
+</Note>
+
+<Note>
+There is no switch on this form to hide a dish from the customer app, and your stock levels do not hide it either. A dish whose ingredient is out of stock is still offered to guests. To stop a dish being sold, take it off your menu yourself.
+</Note>
+
+<Note>
+If the save fails, nothing is shown on screen. The item form gives no error message when a save does not go through, so go back to the grid and check whether the item is there before trying again.
+</Note>
+
+Deleting an item asks first: **Are you sure you want to delete this item?**
+
+## Sizes and choices
+
+The fork button on an item card opens the **Choices & sizes** panel. The panel header reads **The choices and the sizes of `{{name}}`**, with the line **The sizes a guest can pick and the choices that go with them.**
+
+### The sizes
+
+A size is a version of the dish — Large, Small, Regular. Under **The sizes** you add one with **Add a size**.
+
+Each size takes:
+
+- **The name (Large, Small)** — the label the guest sees.
+- **The price difference** — the extra money, or less money, that this size adds to the dish.
+- **The cost multiplier** — how much of the ingredients this size uses. **1.5** means half again as much of the ingredients as the base size.
+
+If the dish has no sizes yet, the section says **This dish has no sizes yet.**
+
+### The groups of choices
+
+A group is a named set of options that belongs to the dish — Noodle, Spice, Rice. Under **The groups of choices** you create one with **New group**.
+
+Each group takes:
+
+- **The name of the group (Noodle, Spice)**
+- **at least** — the smallest number of options the guest has to pick
+- **at most** — the largest number of options the guest may pick
+
+The allowed range is shown as **pick `{{min}}` to `{{max}}`**. A new group starts at 0 and 1, so it is optional and the guest may pick a single option.
+
+A group you already created for another dish can be attached with **Choose a group...** and then **Put it on this dish**. A group already on the dish can be taken off with **Take off this dish**, or deleted outright with the confirm **Delete the group "`{{name}}`"? Every dish that carries it loses it.**
+
+Inside a group, options are added with **Add a choice**. A choice takes:
+
+- **The name (Bihun)**
+- **The price difference** — the extra money the option adds
+- an ingredient and a quantity, but only if you have the Inventory feature on your plan. If you do not, the panel shows **Linking an ingredient to a choice needs the Inventory feature. The choices and the sizes work without it.**
+
+If the dish has no groups yet, the section says **This dish has no groups of choices yet.**
+
+### Required and optional
+
+The panel has no **Required** checkbox. What decides it is the at least and at most pair:
+
+- **at least 0, at most 1** — optional, and the guest picks one option.
+- **at least 0, at most more than 1** — optional, and the guest may pick several options.
+- **at least 1 or more** — the guest must make that many picks before the dish can be ordered.
+
+A group that the dish must have also has a required flag on the link between the group and the dish. The picker honours that flag first, and falls back to the group's own minimum when there is no flag.
+
+<Note>
+Deleting a group removes it from **every** dish that carries it, not just the one you are looking at.
+</Note>
+
+## Add-ons and choices are not the same thing
+
+This trips people up, so it is worth being clear:
+
+- An **add-on** is a menu item of its own. You create it in the ordinary item form by ticking **This is an add-on item** and giving it an **Add-on Price (`{{currency}}`)**. It carries its own price.
+- A **choice** is not a menu item. It lives inside a group that is attached to a dish, and it only carries a **price difference** that is added to the dish.
+
+## How the price of a line is worked out
+
+When a dish is ordered, the money on that line is:
+
+1. the price of the dish, or the own price of the size when the guest picks a size that has one, and
+2. plus the **price difference** of every choice the guest picked.
+
+The size cost multiplier does not change the money. It changes how much ingredient the kitchen uses, which is what feeds the cost and the margin.
+
+## Cost and margin
+
+Each item card shows the money the dish makes you:
+
+- **Cost: `{{amount}}`** and **Margin: `{{amount}}` (`{{percent}}`%)** when the dish has a recipe. The cost comes from the recipe, and the margin is the price minus that cost.
+- **Est. Cost: `{{amount}}`** when the dish has no recipe but you filled in the **Estimated Cost (`{{currency}}`)** field.
+
+<Note>
+The recipe cost and the margin only appear when the Inventory feature is on your plan. Without it, only the estimated cost you typed yourself is shown.
+</Note>
+
+To build the recipe behind those figures, see [Stock and suppliers](inventory).
+
+## Related documentation
+
+- [Stock and suppliers](inventory)
+- [Take an order at the counter](taking-orders)
+- [Manage live orders](order-management)
+- [Promotions](promotions)
+- [Settings](settings)

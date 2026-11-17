@@ -1,0 +1,172 @@
+---
+title: Take an order at the counter
+description: How a cashier takes an order in the POS, from choosing the order type to taking the payment
+---
+
+# Take an order at the counter
+
+The Staff Order screen is the counter screen. Your cashier opens it, builds the order, takes the money and sends the order to the kitchen.
+
+Every staff member with the staff role can reach this screen. Your plan also has to include the Staff Order feature, otherwise the screen does not appear in the menu.
+
+<Note>
+The cart on this screen is not saved. If the browser reloads, or the device loses power, everything the cashier has entered is gone.
+</Note>
+
+## 1. Choose the order type
+
+The screen opens on the dine-in type. The order types you can see come from your outlet settings:
+
+- **🍽️ Dine In** — the order is served to a table.
+- **🥡 Takeaway** — the guest collects the order at the counter.
+- **🚚 Delivery** — the order goes out to the guest.
+
+Dine in and takeaway are on unless you switch them off. Delivery is the opposite: it only appears when you switch it on for your outlet.
+
+If you switch off the type the screen is sitting on, the screen moves itself to the first type that is still available. It never stays on a type that no longer exists.
+
+Switching type does not clear the table you picked. You can carry a table across to a takeaway if you need to.
+
+## 2. Pick a table
+
+The step is headed **1. Select Table**, or **1. Select Table (optional)** when your outlet does not require one.
+
+A table is required for a dine-in order when your outlet has **Table Required for Dine-In** switched on. Without a table the screen refuses to submit and says **Please select a table for dine-in orders**. For a takeaway or a delivery the table is optional, but you can still attach one.
+
+Each table shows its capacity as **Cap: `{{seats}}`** and how many orders are already on it as **`{{count}}` order** or **`{{count}}` orders**. Once you pick it, the screen confirms with **Selected: Table `{{number}}`**.
+
+A table cannot hold more than your **Max Orders Per Table** setting. If you have not set it, the limit is 5 orders. Picking a table that is already at the limit is refused with **Table `{{number}}` has reached maximum orders (`{{max}}`)**, and the message appears in red under the table list.
+
+## 3. Browse the menu
+
+The menu is filtered by category. The first chip is **All**, which shows every item. Any other chip narrows the list to that category. A category with nothing in it says **No menu items available**.
+
+Every tile carries a stock badge:
+
+- **Out of Stock** — shown in red. The item cannot be added.
+- **Low Stock** — shown in amber. The item can be added, but you are asked to confirm.
+
+If you tap an out-of-stock item the screen says **This item is out of stock and cannot be added to cart.** If you tap a low-stock item it asks **This item is low in stock. Add anyway?** and nothing is added if you say no.
+
+## 4. Open a dish and make the choices
+
+A dish with no sizes and no choices goes straight into the cart on one tap. A dish that offers sizes or choice groups opens a picker instead.
+
+Inside the picker:
+
+- A choice group the dish **requires** needs at least one pick. A group that is only linked to the dish uses its own minimum.
+- A group allows a limited number of picks. Once you reach the maximum, further picks are refused.
+- The allowed range is shown as **pick `{{min}}` to `{{max}}`**.
+- What is still missing is listed as **Choose: `{{names}}`**.
+
+The **Add to the order** button stays disabled while a required choice is still missing.
+
+The price under **The price** is the price of the size you picked plus the extra amount for each choice you chose.
+
+## 5. Add a note for the kitchen
+
+The picker has a **A note for the kitchen** field, with the placeholder **no onion, birthday table...**. Whatever you type is trimmed and stored on that line, so the kitchen sees it with the dish.
+
+## 6. Build the cart
+
+The cart sits under the heading **3. Cart**. An empty cart says **Cart is empty**.
+
+Each line shows the dish name, the size and choices joined by a middle dot, the quantity, and a red **✕** to take the line out. You change the quantity with the **-** and **+** buttons on the line.
+
+At the bottom of the cart you see:
+
+- **Subtotal** — the sum of the lines.
+- **Discount** — only shown when there is one. The promotion that produced it is named beside it, for example **20% OFF**.
+- **Tax** — your outlet tax, worked out on the subtotal.
+- **Delivery fee** — only shown on a delivery, and only when it is more than zero.
+
+Rows with a zero value stay hidden, so you do not see an empty tax or fee line.
+
+<Note>
+A **Discount** and a **Delivery fee** row only appear when the amount is greater than zero. A zero row is not drawn at all.
+</Note>
+
+### Change the price of a line
+
+Tap the **✎** button, titled **Change the price of this line**, and type a new amount. Confirm with **✓** (**Save the price**) or step away with **✕** (**Keep the menu price**).
+
+Once the price is changed the new price is shown in the main colour and the original menu price is struck through beside it, so the counter always sees both. A promotional price is shown the same way, with the menu price struck through.
+
+### Clear the cart
+
+**Clear** empties the whole cart in one tap.
+
+<Note>
+**Clear** has no confirmation. One tap wipes the cart, and the same goes for the red **✕** on a single line. If a customer changes their mind at the last moment, expect to rebuild the order.
+</Note>
+
+## 7. Attach a loyalty member
+
+The field is labelled **Member (earn points)** and the hint under it reads **Optional - leave it empty unless the customer asks to earn points.**
+
+You can search by name or phone number using the **Name or phone number** placeholder. The search waits for you to stop typing, then runs. While it runs the list says **Searching...**. If the search cannot be reached it says **The member search is not available**, and if nobody matches it says **No member found**.
+
+The results only contain your own registered members. The walk-in customer is never in the list. A picked member shows their name, phone and points as **`{{points}}` pts**, and you can undo the pick with the **×** button titled **Remove the member**.
+
+If you leave the field empty, the order is recorded as a walk-in and earns no points.
+
+## 8. Take the payment
+
+The payment dialog is headed **Payment** and shows **Amount due**. The methods you get are your own list of payment methods. If your outlet has none set, the screen falls back to **Cash**, **Card (Credit/Debit)** and **DuitNow QR**. The same labels appear on the Orders screen, so a tender reads the same everywhere.
+
+### Cash
+
+The field is labelled **Cash tendered**. It opens pre-filled with the amount due, and you can change it. It accepts digits and at most two decimal places.
+
+**Exact** fills in the amount due for you. Three quick-cash buttons are offered for 20, 50 and 100, and only those larger than the amount due appear.
+
+**Change due** is the cash tendered minus the amount due, and it never goes below zero. An under-tender shows no change.
+
+### Split a bill
+
+The **Split bill** toggle only appears when your outlet has split bill switched on. There are two ways to split:
+
+- **Equal split** — divides the amount due by the number of people. Each person gets a **Person `{{number}}`** card with its own method, starting on cash.
+- **Custom split** — you assign the items to people yourself, one **Person `{{number}}`** tab per person.
+
+A person who has paid shows **✓ Paid** instead of **Pay**. You can also name the person who paid a part, using the placeholder **Who paid this part? (name or phone)**.
+
+The split is recorded per person, and then the order is marked as paid.
+
+### DuitNow QR and Touch 'n Go
+
+Only **DuitNow QR** and **Touch 'n Go** can go through the online gateway, and only when your outlet is in Malaysia and you have connected your own payment account. Without both of those, the method is recorded as an ordinary payment and nothing waits.
+
+When the gateway is available, the screen does not take the money itself. It shows a QR code and watches for the payment to land. The screen checks every few seconds. If the money does not arrive within two minutes, it gives up and tells you **Still waiting for the payment.**
+
+When the payment lands the order is marked as paid in the same way as any other payment, and the paid state stays on the screen after the dialog closes.
+
+Finish with **Complete sale**. The confirmation reads **Payment recorded**.
+
+## 9. Send the order
+
+The main button reads **Place Order**, or **Collect payment & send** when the order type runs on a payment mode where the guest pays first. While the order is going through, the button reads **Processing...** and is disabled.
+
+Before anything is sent, the screen refuses in these cases:
+
+- A dine-in table is required and none was picked.
+- The cart is empty.
+- A delivery has no address. You get **A delivery needs an address.**
+- A delivery has no registered customer. You get **A delivery must be for a registered customer. Pick the customer - the walk-in customer cannot be used for a delivery.**
+- A delivery is under your minimum order. You get **The bill is below the minimum order of `{{amount}}`.**
+
+<Note>
+A delivery always needs a registered customer. The walk-in customer cannot be used for a delivery, so pick the guest in the **Member (earn points)** field before you send it.
+</Note>
+
+If the order goes through you see **✅ Order placed successfully!** The customer name is cleared, and the cart is cleared two seconds later.
+
+On a payment mode where the guest pays first, the screen takes you straight into the payment step with the amount due already set.
+
+If the order is refused, the screen shows the reason it was given. If there is no reason, it shows **Failed to create order**. A network failure gives **Error submitting order**.
+
+## Related documentation
+
+- [Manage live orders](order-management)
+- [Kitchen display system](kitchen-kds)
+- [Receipt printing](receipt-printing)

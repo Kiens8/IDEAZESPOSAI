@@ -1,0 +1,132 @@
+---
+title: Delivery
+description: Run your delivery from the POS back office, and set the fees, coverage and zones for each branch
+---
+
+# Delivery
+
+The **Delivery** screen is the staff back office for delivery. Its subtitle reads **Today's deliveries and the driver roster**.
+
+Delivery is switched on per branch, and it is off until you turn it on. A branch with delivery switched off has no delivery screens at all.
+
+<Note>
+The back office first checks whether your outlet actually offers delivery. If it does not, the screen says **The delivery is not available at this outlet.** and the tabs never appear.
+</Note>
+
+## The three tabs
+
+The screen has three tabs: **Today's Deliveries**, **Drivers** and **Delivery Zones**. Any staff member can open it, and your plan has to include the Delivery Management feature.
+
+### Today's Deliveries
+
+This is the day's delivery orders, each with its status:
+
+- **Unassigned**
+- **Assigned**
+- **Picked up**
+- **Delivered**
+- **Cancelled**
+
+The status moves as your staff work the order. On an order that has no driver yet, the action is **Assign driver**. From there the order can move to **Picked up** and then **Delivered**, and an unassigned order can be **Cancelled**. Once a driver is on the order you can change them with **Change driver**, and the order is shown as **Out for delivery**.
+
+A driver link can be produced with **Driver link** and sent on with **Copy link**. The screen confirms it with **The link is ready. It expires in 24 hours.** If no driver is on the order yet, the screen says **Assign a driver first.**
+
+When nothing has come in yet the list says **No deliveries yet today.**
+
+### Drivers
+
+The **Drivers** tab is your driver roster. Each driver has a name, a phone number and a vehicle. You can add a driver, edit one and remove one, and this is where a delivery order is assigned from.
+
+When you have no drivers the tab says **No drivers yet - add one in the Drivers tab.**
+
+### Delivery Zones
+
+The **Delivery Zones** tab prices delivery by postcode area. It appears only when your plan includes the Delivery Zones feature.
+
+## Delivery zones
+
+The panel is headed **Your postcode zones**. A zone holds:
+
+- **Zone name** — for example **KL Central**.
+- **Postcodes** — one postcode per line. A shorter code covers everything that starts with it, so **500** covers **50050**.
+- **Delivery fee** — the fee for a delivery to those postcodes.
+
+The fee itself is never worked out in the screen. The server answers with the fee, and a postcode is matched to the first active zone that covers it.
+
+Zones can be **Inactive**. You **Activate the zone** or **Deactivate the zone** from the zone itself.
+
+The switch **Only deliver inside my zones** decides what happens outside every zone:
+
+- **On** — a postcode that no active zone covers is refused.
+- **Off** — the zones only price the areas they cover, and everywhere else uses the flat fee from your settings.
+
+The switch is off by default.
+
+Removing a zone asks **Remove this zone? The orders already priced by it keep their fee.** Orders that were already priced keep the fee they were given.
+
+<Note>
+A zone only prices the area it covers. If you want one flat fee for everywhere, leave the switch off and set the fee in your delivery settings.
+</Note>
+
+## What the counter does differently for a delivery
+
+A delivery order is refused before it is sent if any of these is missing:
+
+- **The address** — you get **A delivery needs an address.**
+- **A registered customer** — you get **A delivery must be for a registered customer. Pick the customer - the walk-in customer cannot be used for a delivery.**
+- **The minimum order** — you get **The bill is below the minimum order of `{{amount}}`.**
+
+<Note>
+A delivery always needs a registered customer. The walk-in customer cannot be used for a delivery, so pick the guest in the **Member (earn points)** field before you send it.
+</Note>
+
+## Delivery settings
+
+The delivery settings live on the **Delivery** tab of your outlet's settings, and they apply to that one outlet. The section is headed **Delivery Settings** and its subtitle reads **Turn the delivery on for this outlet, set the fee and the coverage, and share the storefront with your own customers.**
+
+### The switch
+
+**Offer delivery at this outlet** turns delivery on for the branch. The hint under it reads: this outlet only, and a customer sees the delivery when the switch is on and the restaurant's plan allows it.
+
+### Fees
+
+- **Delivery fee** — the flat fee for a delivery.
+- **Free delivery above** — the bill above which the delivery is free. Leave it empty if you have no free delivery.
+- **Minimum order** — the smallest bill you accept for a delivery.
+
+### Coverage
+
+**Delivery radius (km)** is how far you will deliver. A radius of 0 means no limit. When your plan includes Delivery Zones, the zones sit alongside this and price their own areas.
+
+### The money
+
+**Prepaid only** decides when the customer pays. When it is on, every delivery is paid before it is prepared. When it is off, the customer can pay the driver.
+
+**Allowed payment modes** is the list of payment modes a customer may choose, and **The delivery's default mode** is the one used unless the customer picks another. **Pay online** is only offered when a payment account is connected and your outlet is in Malaysia. Otherwise the mode is shown as **not available yet - the restaurant has no payment account connected**. If you allow only one mode, no choice is shown to the customer.
+
+### Delivery time
+
+**Delivery time** holds the shortest and the longest estimate the customer is shown, in minutes. The driver's route refines the estimate.
+
+### Customer registration
+
+This switch asks a customer to register before they order. The screen warns you: **The delivery cannot go live while this is off.**
+
+### Storefront
+
+The **Storefront** part gives your outlet its own delivery link:
+
+- **Storefront slug** — letters, numbers and dashes only, and it has to be unique. Save it with **Save the slug**. If the slug is not allowed the screen says **The slug may only use letters, numbers and dashes.**, and if another outlet already has it, **That slug is already in use by another outlet.** A saved slug confirms with **The slug was saved.**
+- **Storefront link** and **Copy the link** — the link you share with your own customers.
+- **WhatsApp** — shares the link on WhatsApp.
+- **Download the QR** — a branded QR PNG of your delivery page. The screen says **Your QR code**, and asks for a saved slug first with **Save a slug first - the QR carries your delivery page.**
+
+While delivery is off at the outlet, the section shows **The delivery is off at this outlet. Turn the switch on to share the storefront.**
+
+## Related documentation
+
+- [Take an order at the counter](taking-orders)
+- [Manage live orders](order-management)
+- [Loyalty and vouchers](loyalty-vouchers)
+- [Settings](settings)
+- [Staff and outlets](staff-outlets)

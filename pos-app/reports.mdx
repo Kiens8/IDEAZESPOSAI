@@ -1,0 +1,136 @@
+---
+title: Reports
+description: The reports screen: sales, orders, items, payments, loyalty, takings, delivery and audit, with CSV download and print.
+---
+
+# Reports
+
+The **Reports & Analytics** screen tells you how the business is doing. You pick a period, you choose the report you want, and the screen gives you the numbers, a few plain-language insights, a chart, and a table you can take away as a CSV file or print.
+
+## Who can see reports
+
+The Reports screen is for **manager and admin accounts**. A staff account does not see it.
+
+Some reports need an extra entitlement before they appear at all:
+
+- The **Delivery** tab only appears if your restaurant has delivery analytics switched on.
+- Every other report appears with the Reports feature itself.
+
+<Note>
+If you cannot find the **Delivery** tab, it is not a permission problem. The tab is hidden unless the delivery analytics entitlement is present.
+</Note>
+
+## Choose the period
+
+The date range sits at the top right of the screen. You choose between:
+
+- **Today**
+- **Last 7 Days**
+- **Last 30 Days**
+- **All Time**
+
+Everything on the screen — the cards, the insights, the chart and the table — reflects the range you picked.
+
+One tab is the exception. **Daily Takings** keeps its own date field, labelled **The day of the takings**, and the range dropdown is disabled while that tab is open.
+
+## Every report compares against the previous period
+
+Each number card can carry a comparison line. The app works out the previous window as a window of the same length immediately before the one you selected, so **Last 7 Days** is compared with the seven days before it.
+
+The comparison shows an arrow and a percentage, with the words **vs the previous period**:
+
+- **↑** the value went up.
+- **↓** the value went down.
+- **→** the value did not change.
+
+**All Time** has no earlier period, so its cards carry no comparison line.
+
+## The tabs
+
+### Sales
+
+What the period earned, and at what margin. The cards are **Total Revenue**, **Total Orders**, **Avg Order Value**, **Items Sold**, **Tax Collected**, **Discounts Given**, **Gross Profit** and **Gross Margin**. A bar chart of revenue by period sits above the table, and the table below it is the same series the chart draws, so the export adds up to the chart.
+
+**Gross Profit** and **Gross Margin** show **—** if your restaurant has never valued its dishes. They need a valued menu before they can say anything.
+
+### Orders
+
+How the period's orders split by type. The cards are **Total Orders**, **Paid**, **Pending** and **Cancelled**. The **Order Breakdown** table lists **🍽️ Dine In**, **🥡 Takeaway** and **🚚 Delivery** with the count, the revenue and the share of the total.
+
+### Walk-in vs Registered
+
+Whether your business is building a customer base or living on walk-ins. The cards are **Registered**, **Walk-in**, **Registered Sales** and **Walk-in Sales**. The **Customer Type Analysis** table splits the period between **👤 Registered Customers** and **🚶 Walk-in Customers**.
+
+An insight box reads this back to you. If members dominate, it says **Good news! Registered customers account for `{{percentage}}`% of orders.** If walk-ins dominate, it suggests **Consider promoting loyalty sign-ups — `{{percentage}}`% of orders are from walk-ins.**
+
+### Items
+
+The full menu mix for the period — every dish sold, not a top ten. The cards are **Total Items Sold**, **Top Item**, **Items Revenue**, **Avg Item Price**, **Gross Profit** and **Gross Margin**.
+
+The **Top Selling Items** table gives you each item's quantity sold, revenue, cost and contribution. A second table, **Breakdown by size**, breaks the same sales down by size.
+
+<Note>
+The size table is not the whole story. Items sold without a size are excluded from it, and the note under the table says so: **`{{quantity}}` items were sold without a size and are in the table above only.** The cost shown also depends on how your costs are recorded — the report tells you which rule it used, from a recipe valued at current ingredient prices, a frozen cost at the moment of sale, an estimate, or a mix of rules.
+</Note>
+
+### Payments
+
+Where the money came from. The cards are **Total Revenue**, **Cash**, **Card** and **Pending Payment**, and the **Payment Methods** table gives transactions, amount and share of the total for each method. A payment that is still pending is shown separately, not as revenue.
+
+### Loyalty
+
+Your customer base over the period. The cards are **Total Customers**, **Active Customers**, **Total Revenue** and **Total Points Redeemed**. The **Customer Loyalty Overview** table lists every customer with their orders, revenue, redeemed points and lifetime points.
+
+### Daily Takings
+
+The closing sheet for one day. The cards are **The Takings**, **The Orders**, **The Average Ticket** and **The Voided**, and the **The takings of the day** table is a statement of lines: what was taken, what was voided, and a note on each line.
+
+This tab has its own date field and loads its own numbers for the day you pick, plus the day before it for the comparison.
+
+### Delivery
+
+The delivery trade on its own. The cards are **Delivery Revenue**, **Fee per Order**, **Delivery Orders** and **Avg Order Value**, and the **Delivery by outlet** table breaks the numbers down per outlet with orders, paid, cancelled, revenue and fee per order.
+
+### Audit
+
+Two halves of the same question. The cards are **Voided Orders**, **Total Voided**, **Reprints** and **Copies Printed**.
+
+The first table, **Voided and refunded orders**, shows which order was voided, when, why, by whom and for how much. The second table, **The reprint log**, shows every reprinted receipt, how many copies, on which printer and why.
+
+## The insight panels
+
+Some tabs carry an extra panel under **💡 Insights**, written in plain language:
+
+- **Today so far** (on the Sales tab, and only when the range is **Today**) compares today's takings so far with the same time yesterday. It shows the pace of the day.
+- **When we serve** (on the Sales tab) shows the busiest hour and how the day's orders split across **Breakfast**, **Lunch**, **Dinner** and **Other**. This is the input you need for rostering.
+- **Top customers** (on the Loyalty tab) lists your five best customers of the period. The table below it holds the whole list.
+
+## Download a CSV
+
+Every tab has a table, so every tab can be exported with **📥 Download CSV**. The file is written for an accountant rather than for a spreadsheet:
+
+- It opens with three header lines naming the **Outlet**, the **Report** and the **Period** it covers, plus **Generated at** — the moment the file was generated — and a **Summary** block of the key numbers.
+- Money cells are bare numbers, with no currency symbol and no thousands separator, so they can be summed.
+- Percentages carry two decimals.
+- Khmer names survive Excel on Windows.
+- A guest name starting with `=` is escaped so it cannot run as a formula in the spreadsheet.
+
+The filename is `report_<id>_<from>_<to>.csv`.
+
+If the table has no rows, the button reads **No data to export** rather than writing an empty file.
+
+The Audit tab's two tables each have their own export, and the second table's file is a separate report.
+
+## Print a report
+
+Every tab can also be printed with **🖨️ Print**. This uses your browser's print window, and the printed page carries a header with the outlet, the period, when it was printed and by whom.
+
+## Related documentation
+
+- [Dashboard](dashboard)
+- [Menu management](menu-management)
+- [Inventory](inventory)
+- [AI tools](ai-tools)
+- [Loyalty and vouchers](loyalty-vouchers)
+- [Delivery management](delivery-management)
+- [Settings](settings)

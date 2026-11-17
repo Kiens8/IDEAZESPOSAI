@@ -33,11 +33,25 @@
         ]
       },
       {
-        "group": "POS Frontend",
+        "group": "POS App",
         "pages": [
-          "pos-app/receipt-printing",
+          "pos-app/overview",
+          "pos-app/dashboard",
+          "pos-app/taking-orders",
           "pos-app/order-management",
           "pos-app/kitchen-kds",
+          "pos-app/tables",
+          "pos-app/order-history",
+          "pos-app/menu-management",
+          "pos-app/inventory",
+          "pos-app/promotions",
+          "pos-app/loyalty-vouchers",
+          "pos-app/reports",
+          "pos-app/ai-tools",
+          "pos-app/delivery-management",
+          "pos-app/staff-outlets",
+          "pos-app/settings",
+          "pos-app/receipt-printing",
           "billing/payment-methods"
         ]
       },

@@ -1,0 +1,90 @@
+---
+title: Dashboard
+description: Today's orders, revenue, active orders and average order value, plus the AI cards for forecasts and alerts
+---
+
+# Dashboard
+
+The dashboard is the first screen you land on. It gives you the day's numbers at a glance, the most recent orders, and a set of AI cards that look ahead and flag anything unusual.
+
+Open it from the sidebar with **Dashboard**. Every staff member can reach it. Your plan also has to include the Dashboard feature, otherwise the entry does not appear in the menu.
+
+The header shows today's date in your outlet's timezone. There is no date range control on this screen — the dashboard always shows today.
+
+## The four numbers
+
+- **Today's Orders** — how many orders were created today, counted in your outlet's timezone.
+- **Today's Revenue** — the sum of those same today's order totals.
+- **Active Orders** — how many orders are currently in a live status, which means pending, confirmed, preparing or ready.
+- **Avg Order Value** — today's revenue divided by today's order count.
+
+<Note>
+**Today's Revenue** counts the totals on today's orders, not the money that has actually settled. An order that has not been paid still adds its total to this figure.
+</Note>
+
+<Note>
+**Active Orders** counts every day, not only today. A ticket left open yesterday is still counted here, and it will also sit on the kitchen board.
+</Note>
+
+## Recent Orders
+
+Below the numbers is a **Recent Orders** list. It shows the first five orders on the list, each with the order number, the item count, the time, the total and a status badge. The heading reads **`{{count}}` item** or **`{{count}}` items**.
+
+When there is nothing to show, the list says **No active orders**.
+
+<Note>
+The wording says "active" although the list holds recent orders, so do not read an empty list as "no orders running".
+</Note>
+
+## The AI cards
+
+Four AI cards sit under the numbers: **AI Insights**, **Demand Forecast**, **Order Insights** and **AI Alerts**.
+
+They are only shown to managers and admins. They are part of every plan, so you do not have to buy anything extra to see them.
+
+### AI Insights
+
+**AI Insights** looks at today. It shows a forecast of the day's order count and revenue next to the count and revenue you have so far, a demand insight line, and your top sellers for the day.
+
+The demand insight reads one of:
+
+- **Normal demand expected**
+- **High lunch demand! Consider adding staff.**
+- **Peak dinner hours - maximize capacity!**
+- **Slow morning - try promotions to boost traffic**
+
+<Note>
+The forecast here is a projection of today's own pace, worked out from the hours that have already passed. It is not a separate prediction model, so treat it as an estimate rather than a certainty.
+</Note>
+
+### Demand Forecast
+
+**Demand Forecast** looks ahead. A selector chooses **3 Days**, **5 Days** or **7 Days**.
+
+Under the label **Tomorrow** it gives the predicted order count and predicted revenue, plus a confidence label — **low**, **medium** or **high**. It then shows the weather for each upcoming day, with the temperature, the description and the chance of rain.
+
+You also get a **Staffing Recommendation** — a suggested number of staff for the predicted day, between 2 and 10 — with a **busy**, **moderate** or **normal** tag next to it. Below that the card shows the next holiday with how many days away it is and the uplift it is expected to bring, the impact factors behind the forecast, up to two recommendations, and the coming days with their predicted orders and revenue.
+
+The footer reads **Updates every 6 hours - Based on historical data**.
+
+### Order Insights
+
+**Order Insights** breaks down today's trading. It shows the order count and the average order value, each with a trend against yesterday, and the mix of order types as percentages.
+
+It also shows the average time from order placed to order paid, the peak hours with their order counts, and a written insight you can read in full.
+
+### AI Alerts
+
+**AI Alerts** — headed **AI Security Alerts** — lists the unacknowledged fraud alerts raised against your outlet: cancellation abuse, unusual hours and price manipulation.
+
+A price alert reads **Price set to `{{symbol}}` `{{newPrice}}` (cost: `{{symbol}}` `{{costPrice}}`) by `{{userName}}`**, so you can see what was changed, what it cost you and who did it.
+
+Press **Dismiss** to acknowledge an alert and clear it from the list. **View All** opens a modal where you can narrow the list with the **Hours** and **Price** filters.
+
+## Related documentation
+
+- [Take an order at the counter](taking-orders)
+- [Manage live orders](order-management)
+- [Order history and receipts](order-history)
+- [Kitchen display system](kitchen-kds)
+- [Reports](reports)
