@@ -1,0 +1,100 @@
+---
+title: AI Chatbot
+description: Ask the AI Chatbot about your menu, your orders, your tables and your numbers, in plain language, from inside the POS.
+---
+
+# AI Chatbot
+
+The **AI Chatbot** is a chat window inside the POS. You type a question in plain language and it answers from your own restaurant data — your menu, your orders, your tables, your kitchen, your sales.
+
+Open it from the sidebar with **AI Chatbot**. It is for managers and admins. Your plan also has to include the AI Chatbot feature, otherwise the entry does not appear in the menu.
+
+## What you see
+
+The screen has three parts.
+
+- **The header** carries the title **AI Chatbot** and a status on the right. It reads **Lumi is online** when the chatbot is switched on, or **Disabled** when it is not. The name is the one you set under **Bot Name** in Settings, and **Lumi** is the default.
+- **The conversation**, where your messages sit on the right and the bot's sit on the left.
+- **The quick replies** in a strip above the message box, and the message box itself.
+
+When the chatbot is switched off, the bot posts **👋 AI Chatbot is currently disabled. Please enable it in Settings to use this feature.** and the message box and the quick replies are both greyed out.
+
+## Asking a question
+
+Type in the message box and press the send button. The placeholder reads **Type your message...** while the chatbot is on.
+
+The bot's answers are set out as text with bold headings and bullet points, so a long answer is easy to read.
+
+## The quick replies
+
+Eight buttons sit above the message box. Each one is a question you would otherwise have to type.
+
+| Button | The question it fills in |
+|---|---|
+| **📋 Menu** | Show me the menu |
+| **💰 Today Sales** | What's today's sales? |
+| **🪑 Tables Served** | How many tables are served? |
+| **📦 Pending Orders** | How many pending orders? |
+| **🍳 Kitchen Status** | How many orders in kitchen? |
+| **💡 Recommend** | What do you recommend? |
+| **🕐 Hours** | What are your opening hours? |
+| **📍 Location** | Where are you located? |
+
+<Note>
+Clicking a quick reply only fills the message box. It does not send the question. You still press send.
+</Note>
+
+The buttons are shown in the language you chose under **Language** in Settings, and the questions behind them are sent in that language too.
+
+## The greeting
+
+The bot opens the conversation with a greeting. If you wrote an **Auto-Response Greeting** in Settings, the bot uses that. Otherwise it uses a default greeting in your chosen language, which introduces the bot and lists what it can help with.
+
+## What it can answer
+
+The bot works out what you are asking for, then answers from your data. What it can answer depends on **your role**, because it will not answer a question your account is not allowed to see.
+
+- **A manager** can ask about the menu and orders, order status, recommendations, today's specials, opening hours, location, kitchen status, pending orders, ready orders, completed orders, tables served, takeaway and dine-in, payment, today's sales, price, and how many outlets the group has.
+- **An admin** can ask about all of that, plus your staff.
+- **A staff account** is not given this screen in the menu. If one reaches it, it answers the staff set: the menu and orders, order status, recommendations, specials, opening hours, location, kitchen status, pending and ready orders, tables served, takeaway, dine-in and payment. It is not given today's sales, price, completed orders, the outlet count, or staff.
+
+<Note>
+A staff account is deliberately not given today's sales, price or the staff count. Those answers belong to the reports, which a staff account does not reach.
+</Note>
+
+## When it does not understand
+
+If your question does not match anything the bot knows, it says **🤔 I'm not sure I understand that question.** and lists the topics it can help with. The list you get depends on your role.
+
+For a manager or an admin, a question outside the known topics is passed to the AI assistant instead, and you get a written answer rather than the list. That only happens when the AI assistant is configured on your account. Without it, you get the **I'm not sure I understand that question** reply like everyone else.
+
+## If a reply fails to come back
+
+If the answer cannot be fetched, the bot posts a message that starts **Sorry, there is a problem** and tells you to check that the service is running. The bot also switches itself off for that session and shows **👋 AI Chatbot is disabled. Please enable it in Settings.**
+
+## Setting the bot up
+
+The bot is configured on the **AI Chatbot** tab of **Settings**.
+
+| Setting | What it does | Default |
+|---|---|---|
+| **Bot Name** | The name in the header and in the greeting. | `Lumi` |
+| **Language** | The language the bot answers and the quick replies in. The options are **English**, **Chinese**, **Malay**, **Khmer** and **Multilingual**. | `en` |
+| **Auto-Response Greeting** | What the bot says when the conversation opens. The placeholder reads `Hello! How can I help you today?`. | empty |
+| **Enable AI Chatbot** | Switches the bot on or off for the branch. | on |
+
+<Note>
+**Enable AI Chatbot** is on by default, and it applies to the branch you are on. Switching it off disables the bot for that branch only. The settings are per branch, so switching branch switches the bot's settings too.
+</Note>
+
+## What the bot does not do
+
+The bot answers questions. It does not take orders, take payment, change an order, or change anything on your menu. Those stay on the screens that own them — [the counter](taking-orders), [the order list](order-management) and [the menu editor](menu-management).
+
+## Related documentation
+
+- [POS app guide](overview)
+- [AI tools](ai-tools) — the AI Insights, Menu Analytics, campaigns and competitor screens.
+- [Settings](settings) — every tab of the Settings screen.
+- [Dashboard](dashboard) — the AI panels on your dashboard.
+- [Reports](reports) — the same numbers as a proper report.

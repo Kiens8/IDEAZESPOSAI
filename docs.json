@@ -48,6 +48,7 @@
           "pos-app/loyalty-vouchers",
           "pos-app/reports",
           "pos-app/ai-tools",
+          "pos-app/ai-chatbot",
           "pos-app/delivery-management",
           "pos-app/staff-outlets",
           "pos-app/settings",
