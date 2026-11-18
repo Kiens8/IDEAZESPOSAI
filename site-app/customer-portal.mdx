@@ -1,0 +1,95 @@
+---
+title: Customer portal
+description: The account area of the site — plan, invoices, payment, profile and support
+---
+
+# The customer portal
+
+The portal is where a restaurant manages the account behind its subscription. It lives at `site.ideazes.com/en/portal`, behind your login, and it has five tabs.
+
+## The email verification gate
+
+The portal hides almost everything until the account's email address is verified. Until then:
+
+- the four figures on **Overview** — **Plan**, **Outlets**, **Staff** and **Status** — read as a dash
+- the three quick actions are locked and grey
+- **Subscription** shows **Email Verification Required**, with a **Resend Verification Email** button
+
+Verifying the address unlocks all of it. The status tile then reads **Active** when a subscription is running, and **Inactive** when there is none.
+
+## Overview
+
+Four tiles: **Plan**, **Outlets**, **Staff** and **Status**. The outlet and staff figures are the limits your plan allows.
+
+Below them, the **Current Subscription** card carries the plan name, the billing cycle, the renewal date and the price. Then three quick actions:
+
+| Action | Where it goes |
+|---|---|
+| **Open POS** | `app.ideazes.com`, in a new tab |
+| **Upgrade Plan** | The **Subscription** tab |
+| **View Invoices** | The billing page |
+
+## Subscription
+
+This tab is where the plan is chosen, changed, or brought back. It runs as a three-step wizard.
+
+**Step 1: select your plan.** The four plans, each with its outlets and staff count.
+
+**Step 2: choose your option.** **Monthly**, **Annual**, or the **30-Day Free Trial**, which takes no payment now.
+
+**Step 3: select your payment method.** **Pay Later** (bank transfer or cash) or **Credit/Debit Card (Stripe)**.
+
+A **Currency** switch sits above the wizard: **USD** or **MYR**. It is only offered to a Malaysian customer, and it locks itself once you have a subscription or pick a Malaysian wallet — an upgrade is paid in the same money you signed up in.
+
+### The payment methods you are offered
+
+The methods come from the server, which knows your country. The two universal methods are always there — **Pay Later** and **Stripe**. A Malaysian customer also gets the Malaysian wallets, **DuitNow** and **Touch 'n Go**, but only while the currency is set to **MYR**: the wallets settle in ringgit, so they cannot take dollars. Switch the currency away from ringgit and a Malaysian wallet is dropped, with **Stripe** taking its place.
+
+### Upgrading, and the Stripe lock
+
+An upgrade keeps your billing cycle and pays the difference for the time left in the period. If your subscription is on **Stripe**, the method stays **Stripe** — the portal says so, and the upgrade has to go through it.
+
+### When the subscription has ended
+
+A cancelled or expired subscription opens the tab as **Reactivate Your Subscription**, with a notice that the old subscription is no longer active. Creating a new one restores your access, and your POS data is safe and comes back with it.
+
+## Billing
+
+The billing page holds the money side of the account.
+
+**Current Subscription** — plan, billing cycle, status, payment method, and the date the money is due by.
+
+**Invoice History** — every invoice with its number, date, amount, status and due date. A **pending** or **overdue** invoice carries a **Pay Now** button. It asks the server for a payment, and the invoice decides the method: a DuitNow QR code, a Touch 'n Go link, or a Stripe checkout page. You cannot pick a different method on the way.
+
+**Invoice details** — open one invoice to see its number, description, dates and payment method, then take the **Download PDF Invoice** or the **View Online Invoice**.
+
+**Cancel Subscription** — cancelling leaves your access running until the end of the period you have already paid for, and the portal says so before you confirm.
+
+### Paying with a QR code
+
+The payment panel shows a QR code with a countdown to its expiry. Scan it with your banking app, then press **I have paid**. The panel checks the invoice and closes when the payment lands. An expired code can be replaced with **Get a new code**. Touch 'n Go is a link rather than a QR code, so the panel opens the e-wallet instead.
+
+### The invoice page
+
+`/invoice/<id>` opens one invoice as a document. It needs your login — an invoice link that reaches you signed out takes you to the login page and brings you straight back.
+
+## Profile
+
+**Restaurant name** and **Phone**, saved on the spot.
+
+**Change Password** asks for your current password, the new one and the new one again. The new password needs six characters or more.
+
+## Support
+
+Two links: **Email Support** at `support@ideazes.com`, and **Documentation**, which opens `docs.ideazes.com`.
+
+## Notifications
+
+The bell in the header carries your notifications. It checks for new ones every 30 seconds, shows the last ten you have not read, and times them as "Just now", "2h ago" or "3d ago". **Mark as read** clears one.
+
+## Related documentation
+
+- [Site app overview](overview)
+- [Payment methods](../billing/payment-methods)
+- [Pricing plans](../billing/plans)
+- [POS app user guide](../pos-app/overview)

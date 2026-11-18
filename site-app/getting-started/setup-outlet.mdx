@@ -1,55 +1,118 @@
 ---
-title: Set Up Your Outlet
-description: Configure your restaurant outlet settings
+title: Set up your outlet
+description: Configure a branch in the POS app — the settings screen, the tabs, and what each one holds
 ---
 
-# Set Up Your Outlet
+# Set up your outlet
 
-Configure your outlet settings to customize IDEAZES POS AI for your restaurant.
+Your outlet — the branch you serve from — is configured in the POS app, under **Settings**. The screen is **admin-only**: a manager and a staff member never see it in the menu.
 
-## Accessing Outlet Settings
+<Note>
+The settings belong to the branch you are working in. Switching branch swaps the whole screen, so check the branch name in the header before you save. The header shows the branch name, or the subtitle **Outlet Settings** when the branch has no name.
+</Note>
 
-1. Go to **Settings** in the navigation menu
-2. Select **Outlet Settings**
+Press **Save Settings** to write your changes. The button shows **Saving...** while it works, and **Saved!** when it is done.
 
-## Basic Information
+## The tabs
 
-| Field | Description |
-|-------|-------------|
-| Outlet Name | Your restaurant name |
-| Address | Physical address |
-| Phone | Contact number |
-| Timezone | Your local timezone |
+Each tab belongs to a feature on your plan, so you only see the tabs your plan carries. The first one you can open becomes the default tab.
 
-## Restaurant Details
+| Tab | What it holds |
+|---|---|
+| **Restaurant** | Your name, logo, brand colour, contact details and opening hours |
+| **Currency** | Currency, timezone, country and date format |
+| **Tax** | Tax switches and rates |
+| **Payment** | The payment methods you accept, split bill, tips and cash change |
+| **Receipt** | Receipt wording, copies and the printer |
+| **Kitchen** | Kitchen display reminders, auto-print and sound |
+| **Order** | Order numbering, order types and when the money is taken |
+| **AI Chatbot** | The chatbot name, language and greeting |
+| **QR & Tables** | The QR base URL and table limits |
+| **Business** | Interface language, business type and stock threshold |
+| **Security** | Auto-logout and daily backup |
+| **Customer** | Loyalty, vouchers and the welcome voucher |
+| **Inventory** | Stock tracking switches |
+| **Delivery** | Delivery pricing, payment modes and the delivery page link |
 
-Configure how your restaurant appears to customers:
+## Restaurant
 
-- **Restaurant Name** - Displayed on receipts
-- **Logo** - Upload your logo
-- **Banner** - Homepage banner image
+The tab is headed **Restaurant Profile**.
 
-## Receipt Settings
+| Setting | What it does |
+|---|---|
+| **Company / Group Name** | The name of the restaurant group that owns the branch |
+| **Restaurant Name** | The name of this restaurant |
+| **Restaurant Logo URL** | A link to your logo. A preview appears under the field |
+| **Brand Colour** | The colour of the app on the guest's home screen |
+| **Phone Number** | The branch phone number |
+| **Address** | The branch address |
+| **Latitude** and **Longitude** | Read-only, shown as **Auto** |
+| **Operating Hours** | An opening and a closing time for each day of the week |
 
-Customize your receipt content:
+**Apply to all days** copies the first day that has both times set to all seven days. Leave a day empty if the branch is closed that day — an empty day is shown as **not set** in the AI chatbot, which is different from a day with a closing time.
 
-| Setting | Description |
-|---------|-------------|
-| Receipt Header | Text at top of receipt |
-| Receipt Footer | Text at bottom of receipt |
-| Terms & Conditions | Legal terms |
-| Return Policy | Refund policy |
-| Receipt Copies | Number of copies to print |
+<Note>
+**Latitude** and **Longitude** cannot be typed into. If they are wrong, contact support.
+</Note>
 
-## Payment Settings
+## Currency
 
-Configure accepted payment methods:
+The tab is headed **Currency & Regional Settings**.
 
-- Cash
-- Credit/Debit Card
-- Online Payment
-- Pay Later (for subscription plans)
+| Setting | What it does |
+|---|---|
+| **Currency Symbol** and **Currency Code** | The money the branch takes |
+| **Decimal Places** | **0 (No decimals)** or **2 (Standard)** |
+| **Timezone** | The branch's timezone |
+| **Country** | Used for the public holiday calendar |
+| **Date Format** | How dates are shown |
 
-## Need Help?
+## Payment
 
-Contact [support@ideazes.com](mailto:support@ideazes.com) for assistance.
+The tab is headed **Payment Settings**. **Accepted Payment Methods** holds eleven tick boxes:
+
+| Method | What it is |
+|---|---|
+| **💵 Cash** | Physical money taken at the counter |
+| **💳 Credit/Debit Card** | A card machine at the counter |
+| **DuitNow QR** | Malaysian QR payment |
+| **🇰🇭 KHQR (Cambodia)** | Cambodian QR payment |
+| **🇸🇬 SGQR (Singapore)** | Singaporean QR payment |
+| **🇻🇳 VietQR (Vietnam)** | Vietnamese QR payment |
+| **Touch 'n Go** | Malaysian e-wallet |
+| **GrabPay** | E-wallet |
+| **Boost** | E-wallet |
+| **ShopeePay** | E-wallet |
+| **🏦 Bank Transfer** | A transfer to your account |
+
+The same tab carries **Split Bill**, **Tips Collection** and **Cash Change Calculation**, plus the online payment gateway — **HitPay** — where you connect your own account so your guests can pay online with DuitNow or Touch 'n Go.
+
+See [Payment methods](../../billing/payment-methods) for the full detail on each method.
+
+## Receipt
+
+The tab is headed **Receipt / Invoice Settings**.
+
+| Setting | What it does |
+|---|---|
+| **Receipt Header** | The text printed at the top of the receipt |
+| **Receipt Footer** | The text printed at the bottom of the receipt |
+| **Terms & Conditions** | Printed on the receipt |
+| **Return/Refund Policy** | Printed on the receipt |
+| **Receipt Copies** | **1 Copy**, **2 Copies** or **3 Copies** |
+| **Printer Type** | **None (No Printer)**, **Quick Print**, **Network Printer**, **Bluetooth Printer** or **PDF / Screenshot** |
+| **Printer IP Address** and **Port** | For a network printer. The port defaults to `9100` |
+| **Bluetooth Device** and **Scan** | The paired Bluetooth printer |
+
+<Note>
+**Test Connection** and **Scan** are placeholders. Pressing them only shows a message that the feature is coming soon. They do not test a printer and they do not scan for Bluetooth devices.
+</Note>
+
+See [Receipt printing](../../pos-app/receipt-printing) for the printer choices in full.
+
+## Next steps
+
+- [Take an order at the counter](../../pos-app/taking-orders)
+- [Build your menu](../../pos-app/menu-management)
+- [Set up your tables and QR codes](../../pos-app/tables)
+- [Add staff and branches](../../pos-app/staff-outlets)

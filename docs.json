@@ -27,9 +27,10 @@
         ]
       },
       {
-        "group": "Site (Landing Page)",
+        "group": "Site",
         "pages": [
-          "site-app/overview"
+          "site-app/overview",
+          "site-app/customer-portal"
         ]
       },
       {
