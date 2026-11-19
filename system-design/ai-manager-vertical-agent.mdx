@@ -5,7 +5,7 @@ description: An MCP server as the tool and identity layer, so any agent runtime 
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.7 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
+**Document Version:** 1.8 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
 the backbone, n8n was demoted to one client among many, and the tool catalogue was added ·
 **v1.2: every tool now carries the PLAN GATE of the module it touches, and the catalogue a
 tenant's agent sees is filtered by that tenant's live feature list — so when the admin moves a
@@ -35,9 +35,9 @@ artifact against a live operation), not whether it needs approval; the approval 
 house's own routes with the **approver's signed session**, so every house gate — the
 permission, the plan, the tenancy, the pricing path — applies to that person; `notify_staff`
 is gated on `Staff`, because the live catalogue has no `Notifications` row; and the approver
-must present a **signed session**, not merely hold the permission.**)**
+must present a **signed session**, not merely hold the permission. · **v1.8: Phase B is BUILT, and the one wrinkle Phase B was carrying is now settled by the code rather than left as a question for the design review. The tenant profile is the THIRD GATE and the lowest one: it may only NARROW what the plan and the token's scope already allow, and it never narrows the read tools — so configuring a profile can only ever make the agent more careful, never less (§8.4). The profile is addressed by the signed-in session's tenant and NEVER by a query parameter, so one tenant can neither read nor write another's. The seed copies the tenant's first active branch's bot settings, and falls back to the house chatbot's own default — **"Lumi"** — when that branch has no settings row, so a seeded profile is never nameless. The profile's own routes are a MANAGEMENT surface: a manager and an admin may read, only an admin may write, and the floor has neither. The **profile screen moves to Phase D**, which is the only phase allowed to move the frontend at all (§10.2) — Phase B ships the API and the engine's use of it, and the doc's frontend rule stands untouched.**)**
 **Owner:** Ideazes POS AI
-**Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
+**Status:** **Proposal, partly built.** Phase 0, Phase A and Phase B are BUILT and proven against the live server (§8.3, §8.4); Phase C onward is still the design below. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
 integrate the SaaS POS with something like n8n, let each tenant have their own vertical AI
 agent, an AI Manager that manages the store and matches our site app."* Then: *"I am not
@@ -146,6 +146,8 @@ tenant-profile idea, and it lives in the outlet row.
 | Tenant API keys for a connector | `api_keys` in the website API, with a `permissions` JSON column. |
 
 ### 2.4 What is missing, itemised
+
+*(This is the BASELINE audit — the state before the build, read from the running code on Nov 19. It is kept as point-in-time evidence rather than rewritten. Phase 0 has since built the MCP server, Phase A the write tools and the approval step, and Phase B the tenant agent profile; see §8.4.)*
 
 | Missing | Evidence it is missing |
 |---|---|
@@ -347,17 +349,33 @@ A per-tenant record that turns one engine into fifty managers:
 | Field | Example | Why |
 |---|---|---|
 | `name` | "Aunty Mei" | The name the tenant already gives the bot today. |
-| `persona` / `system_prompt` | "You are the outlet manager of a kopitiam. Be brief. Speak in the outlet's timezone." | The tenant's voice, not ours. |
+| `system_prompt` | "You are the outlet manager of a kopitiam. Be brief. Speak in the outlet's timezone." | The tenant's voice, not ours. |
 | `language` | `en` / `zh` / `ms` / `kh` | Already exists per outlet (`bot_language`). |
+| `greeting` | "Welcome to Nasi Lemak Corner MY!" | Already exists per outlet (`bot_greeting`). |
 | `sop` (list) | "Every morning at 09:30, check yesterday's waste vs sales and message the kitchen." | The tenant's own procedure. |
-| `allowed_actions` | `["draft_purchase_order", "draft_campaign"]` | What this agent may ever do. Empty set = read-only, which is today's behaviour. |
+| `allowed_actions` | `["draft_purchase_order", "draft_campaign"]` | What this agent may ever do. Empty set = read-only for the draft and action tools. |
 | `quiet_hours` | `23:00–07:00` | When the agent may not push anything. |
 | `escalation` | "money > RM 500 → notify the admin" | The tenant's own thresholds. |
-| `outlet_scope` | `["all"]` or a list | Which outlets this agent watches. |
+| `outlet_scope` | `["all"]` or a list of branch ids | Which outlets this agent watches. |
 | `runtime` | `pos_frontend` / `n8n` / `telegram` / … | Which client runs this agent. The profile is runtime-agnostic. |
+| `ai_enabled` | `true` | Whether the tenant's agent is switched on at all. |
+| `is_active` | `true` | Whether this profile narrows the agent. A profile the tenant has switched off narrows nothing. |
 
 This is the layer that makes the product *vertical*: the same engine, a different manager for
 every tenant, and **no code change** to onboard a new one.
+
+**The table above is the built schema, not the sketch.** The `persona` / `system_prompt` pair
+of the first draft became one column, `system_prompt` — a persona and a prompt are the same
+thing to a model, and two columns would have had to be reconciled at every read. The row's
+owner is **one row per tenant**, addressed by `customer_id`.
+
+**What the profile may do, and what it may not (§8.4).** The profile is the third gate and the
+lowest: it sits below the plan gate and below the token's own scope, so it can only take a
+tool AWAY. It never narrows the ten read tools, because the plan says what the tenant may
+**see** and the profile says what this agent may **do** — two questions, two owners. And the
+profile's three states are kept apart on purpose: no profile at all means the plan decides
+(Phase A's behaviour), an active profile narrows, and an active profile with an EMPTY
+`allowed_actions` is read-only.
 
 ### 3.5 The trigger layer — the event bus (Phase C)
 
@@ -814,7 +832,7 @@ The fix is deliberately small, and it belongs at the call site rather than behin
 
 | Table | Holds |
 |---|---|
-| `tenant_agent_profiles` | One row per tenant: the profile of §3.4. |
+| `tenant_agent_profiles` | One row per tenant: the profile of §3.4. **BUILT in Phase B.** |
 | `agent_tokens` | The MCP credentials: `customer_id`, `outlet_id`, `scope`, `plan row`, `revoked`. |
 | `ai_actions` | The audit row: agent, tenant, outlet, tool, arguments, result, approval, timestamps. **BUILT in Phase A.** |
 | `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. **BUILT in Phase A.** |
@@ -1102,6 +1120,80 @@ arguments, that a refusal is recorded as a refusal, that the tenant is the sessi
 tenant, and that a failed operation is still on the record. Phase 0's three proofs still
 pass unchanged (18 / 35 / 10).
 
+### 8.4 What Phase B's implementation settled
+
+Phase B was a configuration layer, so the questions it raised were mostly about **where the
+authority comes from** and **what a profile is allowed to change**. The code answered them, and
+this is the record of how — so the next reader does not have to re-derive them from the diff.
+
+**1. The profile is a THIRD GATE, and the lowest one.** The engine of Phase A had two locks:
+the credential's own scope (`read` / `draft` / `action`) and the tenant's live plan. The
+profile is the third, and it sits **below** both, because it may only take a tool AWAY. A
+profile can never add a tool the plan does not hold or the token's scope does not cover, so
+configuring one can only ever make the agent more careful. The gate is applied in **two**
+places, because a hidden tool and a refused tool are different things: the catalogue omits it
+(`mcp_tool_catalogue`), and the call itself is refused (`check_profile_gate`). An agent that
+is never offered a tool cannot try to call it, and an agent that tries anyway is told why.
+
+**2. The profile does NOT narrow the read tools.** The plan says what the tenant may **see**;
+the profile says what this agent may **do**. Two questions, two owners — so the ten read
+tools are governed by the plan and the credential, exactly as in Phase A, and `allowed_actions`
+holds only the draft and action tools. A tenant that wants a read-only agent writes
+`allowed_actions: []`, which is explicit, visible and reversible.
+
+**3. "No profile" means the plan decides — not read-only.** The alternative — "no profile means
+read-only" — reads safer in the abstract, but it would silently demote every tenant that
+bought `AI Agent Actions` to a read-only agent the moment this table shipped. The profile is
+therefore an **opt-in narrowing**, and the three states are kept apart: no row (the plan
+decides), an active row (it narrows), an inactive row (the plan decides again). An active row
+with an empty allow-list is read-only, and that is a state a tenant reaches on purpose.
+
+**4. The profile is addressed by the credential, never by a parameter.** Every profile route
+reads the signed-in session's `customer_id`. There is no `customer_id` query parameter to
+pass, so one tenant's manager cannot ask for another tenant's profile by typing their number.
+The routes also **refuse a session that carries no tenant** rather than falling back to
+something.
+
+**5. The permissions are the house's own, and the profile is a MANAGEMENT surface.** Reads
+need `ai:read`, writes and seeding need `ai:write` — so a **manager** may read and may not
+write, an **admin** may do both, and **staff** may do neither. The design's §6 gate table
+already said the campaign writes need `ai:write` and only the admin role carries `ai:*`; the
+profile simply obeys the same table rather than inventing a rule of its own. The floor does
+not configure the manager.
+
+**6. The seed copies, and it falls back the way the house chatbot falls back.** The four
+knobs come from the tenant's **first active branch**. When that branch has no settings row,
+the profile takes the house chatbot's own fallback — **"Lumi"** — rather than coming out
+nameless; and an existing settings row with an empty `bot_name` falls back the same way. The
+seed **never overwrites** a profile that already exists: the tenant may have changed things
+since, and a re-seed must not throw their work away.
+
+**7. The two strict fields are strict for a reason.** An `allowed_actions` entry that is not a
+real tool is **refused, not ignored** — a typo would otherwise leave the agent quietly unable
+to do anything and nobody would know why. A branch in `outlet_scope` that is not the
+tenant's is refused too, because the profile may narrow the tenant's own branches and may not
+name another group's. A scope outside the tenant's branches is a refusal the agent explains
+in its own words: *"the tenant profile's outlet scope does not include it."*
+
+**8. The seed's two paths are proven separately, because they are different things.** Every
+live branch of the house calls its bot "Lumi" in "en" with the bot switched on — which are
+also the house DEFAULTS. A live tenant therefore **cannot** tell "the seed copied the branch's
+settings" apart from "the seed fell back to the default". So the proof creates a **scratch
+tenant** whose settings say something distinctive — a different name, a different language, a
+greeting, and the bot switched off — and proves the COPY path there, and proves the FALLBACK
+path on a branch that has no settings row at all.
+
+**What was proven.** `backend/scripts/test_mcp_profile.py` — 59 checks against the live
+server — covers that a profile with an allow-list narrows the catalogue and that a tool
+outside it is refused **at call time**; that an empty allow-list is read-only; that the seed
+copies the settings and falls back to "Lumi"; that a second seed does not overwrite; that two
+tenants with different profiles get **visibly different behaviour from the same engine**,
+which is the design's own proof; that the routes' permissions are manager-read, admin-write,
+floor-neither; that one tenant cannot see another's profile; that the outlet scope narrows the
+branches; and that a typo'd tool name, a foreign branch and an impossible quiet hour are all
+refused rather than silently dropped. Phase 0's and Phase A's proofs still pass unchanged
+(18 / 35 / 10 / 53 — **116 checks**).
+
 ### Phase 0 — the MCP server (read-only), and the two feature rows
 
 **Does:** the MCP transport on the existing FastAPI app, mounted at `/api/mcp` so the
@@ -1165,19 +1257,26 @@ the only path to approval is a signed request from a human's own session.
 
 ### Phase B — the tenant profile
 
-**Does:** `tenant_agent_profiles`; the profile screen; the profile seeds from the outlet's
-existing bot settings (`bot_name`, `bot_language`, `bot_greeting`, `ai_enabled` — the four
-knobs that exist today); the profile's `allowed_actions` narrows what the agent may call;
-the `runtime` field names the client.
+**Status: BUILT** (POS `main` at `85bf7e2`; proven by `backend/scripts/test_mcp_profile.py`,
+59 checks, against the live server).
 
-**Does not:** introduce new capabilities — it configures the ones Phase A built.
+**Does:** `tenant_agent_profiles` — one row per tenant, addressed by the signed-in session's
+`customer_id`; the profile seeds from the tenant's first active branch's existing bot settings
+(`bot_name`, `bot_language`, `bot_greeting`, `ai_enabled` — the four knobs that exist today);
+the profile's `allowed_actions` narrows what the agent may call; the `outlet_scope` narrows
+which branches it watches; the `runtime` field names the client; and the four profile routes
+— `GET`/`PUT /api/ai/profile`, `POST /api/ai/profile/seed`, `GET /api/ai/profile/actions`.
+
+**Does not:** introduce new capabilities — it configures the ones Phase A built. Nor does it
+move the frontend: **the profile screen is Phase D's**, because §10.2 is the rule that the
+frontend does not move before then. Phase B ships the API the screen will call.
 
 **Proves:** two tenants with different personas, hours and allowed actions get visibly
 different behaviour from the same engine, and no code changed between them.
 
-*(One wrinkle to settle in the design review: the profile is one row per **tenant**, while the
-bot settings it seeds from are per **outlet** — so a group seeds from its default outlet and
-then diverges per outlet.)*
+*(The wrinkle this section used to carry is settled by the code: the profile is one row per
+**tenant**, while the bot settings it seeds from are per **outlet** — so a group seeds from
+its first active branch and then diverges per branch through `outlet_scope`. §8.4.)*
 
 ### Phase C — the trigger layer
 
@@ -1400,7 +1499,10 @@ one-worker assumption is a convenience we may lose, not a guarantee we may build
 - **Nothing in Phases 0–C.** The frontend is a REST client against `/api/*`; MCP is
   server-to-server. The nav gating (`frontend/src/config/navItems.js`), the feature hook
   (`frontend/src/hooks/useFeatures.jsx`) and the notification bell
-  (`frontend/src/components/NotificationBell.jsx`) are untouched.
+  (`frontend/src/components/NotificationBell.jsx`) are untouched. **Phase B included the
+  profile screen in its scope, and that was the one place the phases disagreed with this
+  section — the screen moves to Phase D.** What Phase B built is the API behind it
+  (`/api/ai/profile`), so Phase D's screen is React work against routes that already exist.
 - **In Phase D, one page changes** — the `/ai-tools` page is replaced by the AI Manager
   page (§3.6), and the chat gains the proposal card and its three controls (§3.3.1). Both
   are ordinary React work against our own REST routes. The frontend still never speaks
