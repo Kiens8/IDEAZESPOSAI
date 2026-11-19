@@ -5,7 +5,7 @@ description: An MCP server as the tool and identity layer, so any agent runtime 
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.6 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
+**Document Version:** 1.7 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
 the backbone, n8n was demoted to one client among many, and the tool catalogue was added ·
 **v1.2: every tool now carries the PLAN GATE of the module it touches, and the catalogue a
 tenant's agent sees is filtered by that tenant's live feature list — so when the admin moves a
@@ -27,7 +27,15 @@ briefing cap move forward into the push phase, so the first proactive call is me
 capped before it exists rather than after. Two traps found while re-auditing are named in
 Phase 0: `require_plan_feature` is a **no-op for a key caller** (it only gates a session), so
 the MCP path must check the plan itself; and a new key type that is neither `frontend` nor
-`user` is treated as a *customer* caller by `is_customer_caller` (§8)**)**
+`user` is treated as a *customer* caller by `is_customer_caller` (§8) · **v1.7: Phase A is
+BUILT, and the four places the design left room are now settled by the code rather than by
+preference — the recorded answers are in §8.3. The short version: a **draft tool also waits
+for a human**, and what separates a draft from an action is *what it asks for* (a non-live
+artifact against a live operation), not whether it needs approval; the approval runs the
+house's own routes with the **approver's signed session**, so every house gate — the
+permission, the plan, the tenancy, the pricing path — applies to that person; `notify_staff`
+is gated on `Staff`, because the live catalogue has no `Notifications` row; and the approver
+must present a **signed session**, not merely hold the permission.**)**
 **Owner:** Ideazes POS AI
 **Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
@@ -253,8 +261,8 @@ The tool registry grows a third kind of tool. The three kinds behave differently
 | Kind | Example | Approval | Audit |
 |---|---|---|---|
 | **Read** | `get_sales`, `get_alerts` | none | none |
-| **Draft** | `draft_purchase_order`, `draft_campaign`, `draft_shift_swap` | none — it produces a *proposal*, nothing changes | the proposal is stored |
-| **Action** | `send_purchase_order`, `publish_campaign`, `apply_price_change` | **required** — a human with the right permission approves | an `ai_actions` row |
+| **Draft** | `draft_purchase_order`, `draft_campaign`, `draft_shift_swap` | **required** — it produces a *proposal*, and the approval is what creates the thing | the proposal is stored, and an `ai_actions` row is written when it is decided |
+| **Action** | `send_purchase_order`, `execute_campaign`, `apply_price_change` | **required** — a human with the right permission approves | an `ai_actions` row |
 
 The rules that make this safe, each one drawn from a rule the house already enforces:
 
@@ -308,9 +316,13 @@ to say yes to. Approval cannot be a *phrase*.
    `POST /api/ai/proposals/{id}/approve|edit|reject`. The chat's message endpoint never
    approves anything; approval is not reachable by writing text.
 4. **The approver's own permissions are checked at approval time**, not at draft time. The
-   agent never holds `ai:approve`. The person clicking Approve is checked with the same
-   `require_permission` the rest of the app uses, in that person's own session — so a
-   waiter's session cannot approve a purchase order by replaying a manager's token.
+   agent never holds `ai:approve`. The person clicking Approve is checked in that person's
+   own session, and the check is **stricter than `require_permission`**: a new
+   `require_human_approver` dependency demands a *signed session* (`key_type == "user"`)
+   **and** the permission. The shared frontend API key is refused outright — it carries an
+   `ai:*` wildcard, and a secret everybody holds cannot be a decision — and so is the agent
+   token, which is not a session at all. So a waiter's session cannot approve a purchase
+   order by replaying a manager's token, and neither can our own server-side key.
 5. **The audit row is written before the action runs** — `ai_actions`, with the agent, the
    approver, the timestamp, the arguments and the JSON of what changed. An approval is
    recorded even when the action then fails, and a refusal is recorded as refused (§3.3).
@@ -622,19 +634,21 @@ through the same registry with the same tenant rules.
 
 ### 4.3 The tools we plan to add — draft and action
 
-**Draft** (produces a proposal; changes nothing) and **action** (changes something; needs a
-human's approval and writes an `ai_actions` row). The route in the middle column is the
-existing endpoint the tool must go through — the agent never writes to the database.
+**Draft** (proposes a thing in a NON-LIVE state) and **action** (performs a live
+operation). **Both need a human's approval**, and both write an `ai_actions` row when they
+are decided — the difference between them is *what they ask for*, not whether they need a
+decision (§8.3). The route in the middle column is the existing endpoint the tool must go
+through — the agent never writes to the database.
 
 | Tool | Kind | Goes through | Approval | Feature row (plan gate) |
 |---|---|---|---|---|
-| `draft_purchase_order` | draft | `purchase_orders.py` `POST /` | — | `Inventory` — **Enterprise** |
-| `draft_promotion` | draft | `promotions.py` `POST /` | — | `Promotions` — Basic+ |
-| `draft_campaign` | draft | `ai/__init__.py` `POST /api/ai/campaigns` | — | `AI Campaigns` — Pro+ |
-| `draft_price_change` | draft | `menu.py` / `order_pricing.py` | — | `Menu` — all plans |
-| `draft_stock_transfer` | draft | `transfers.py` `POST /` | — | `Inventory` — **Enterprise** |
-| `draft_voucher_issue` | draft | `vouchers.py` `POST /issue` | — | `Vouchers` — Basic+ |
-| `draft_shift_swap` | draft | `users.py` (clock / roster) | — | `Staff` — all plans |
+| `draft_purchase_order` | draft | `purchase_orders.py` `POST /` | required | `Inventory` — **Enterprise** |
+| `draft_promotion` | draft | `promotions.py` `POST /` | required | `Promotions` — Basic+ |
+| `draft_campaign` | draft | `ai/__init__.py` `POST /api/ai/campaigns` | required | `AI Campaigns` — Pro+ |
+| `draft_price_change` | draft | `menu.py` / `order_pricing.py` | required | `Menu` — all plans |
+| `draft_stock_transfer` | draft | `transfers.py` `POST /` | required | `Inventory` — **Enterprise** |
+| `draft_voucher_issue` | draft | `vouchers.py` `POST /issue` | required | `Vouchers` — Basic+ |
+| `draft_shift_swap` | draft | `users.py` (clock — the house has no roster) | required | `Staff` — all plans |
 | `send_purchase_order` | action | `purchase_orders.py` `PUT /{id}/status` | required | `Inventory` — **Enterprise** |
 | `create_promotion` | action | `promotions.py` `POST /` | required | `Promotions` — Basic+ |
 | `execute_campaign` | action | `ai/__init__.py` `POST /campaigns/{id}/execute` | required | `AI Campaigns` — Pro+ |
@@ -642,9 +656,16 @@ existing endpoint the tool must go through — the agent never writes to the dat
 | `record_stock_waste` | action | `inventory.py` `POST /stock-movements/waste` | required | `Inventory` — **Enterprise** |
 | `issue_voucher` | action | `vouchers.py` `POST /issue` | required | `Vouchers` — Basic+ |
 | `acknowledge_alert` | action | `ai_security.py` `POST /alerts/{id}/acknowledge` | required | `AI Insights` — Pro+ |
-| `notify_staff` | action | `notifications.py` | required | `Notifications` — all plans |
+| `notify_staff` | action | `agent_notifications` — the native channel (§5.1) | required | `Staff` — all plans |
 
-**Every action tool needs BOTH gates.** The module row says *what* the agent may touch; the
+**Two rows in this table moved when the code was written (§8.3).** `notify_staff` goes to
+the native channel rather than to `notifications.py` — the existing notifications route is
+the *inventory* feed, keyed on an ingredient, and it cannot carry a decision — and it is
+gated on `Staff`, because the live catalogue has no `Notifications` row to gate on. And
+`draft_shift_swap` binds to the clock: the house has no shift or roster model, so a handover
+is the two clock actions, one going out and one coming in.
+
+**Every draft and action tool needs BOTH gates.** The module row says *what* the agent may touch; the
 `AI Agent Actions` row says *whether the agent may touch it at all*. A Pro tenant with
 `AI Agent Actions` but no `Inventory` still cannot order stock. The two rows are independent
 on purpose — the module row moves when a plan changes, the agent row is the extra thing the
@@ -795,11 +816,11 @@ The fix is deliberately small, and it belongs at the call site rather than behin
 |---|---|
 | `tenant_agent_profiles` | One row per tenant: the profile of §3.4. |
 | `agent_tokens` | The MCP credentials: `customer_id`, `outlet_id`, `scope`, `plan row`, `revoked`. |
-| `ai_actions` | The audit row: agent, tenant, outlet, tool, arguments, result, approval, timestamps. |
-| `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. |
+| `ai_actions` | The audit row: agent, tenant, outlet, tool, arguments, result, approval, timestamps. **BUILT in Phase A.** |
+| `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. **BUILT in Phase A.** |
 | `domain_events` | The outbox: the event, the tenant, the payload, the delivery state. |
 | `event_subscriptions` | Who wants which events, on which channel, for which outlet (§3.5.1). |
-| `agent_notifications` | The native channel's rows: a briefing, an alert or a pending approval, addressed to an outlet, with its read state. **This is the table the existing inventory notifications cannot be** — theirs is an ingredient feed, and the bell that shows it is hidden without an Inventory feature (§3.5.3). |
+| `agent_notifications` | The native channel's rows: a briefing, an alert or a pending approval, addressed to an outlet, with its read state. **BUILT in Phase A.** **This is the table the existing inventory notifications cannot be** — theirs is an ingredient feed, and the bell that shows it is hidden without an Inventory feature (§3.5.3). |
 
 All seven are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
 "tenant = the restaurant group" rule the delivery leg and the AI tools already use.
@@ -1030,6 +1051,57 @@ The edges that are not obvious from the list:
 Nothing in Phase A depends on Phase C or Phase D. The **metering and the cap land in
 Phase D**, with the briefing that first spends a token unasked.
 
+### 8.3 What Phase A's implementation settled
+
+The design left four questions open. The code answered them, and this is the record of how —
+so the next reader does not have to re-derive them from the diff.
+
+**1. A draft tool also waits for a human.** §4.3's table had the draft rows at "—" for
+approval, while §3.3 had the draft producing "a *proposal*, nothing changes" and Phase A's
+own proof section had a manager approving a *drafted* purchase order into a real one. The
+implementation reads those together as: the *tool call* needs no approval — it changes
+nothing — and the **approval is what creates the thing**. So both kinds produce a stored
+proposal, both wait for a human, and both write an `ai_actions` row when they are decided.
+The table's "Approval" column now reads `required` on every row.
+
+**2. Draft against action is *what it asks for*, not *whether it needs approval*.**
+
+| | The draft asks for | The action asks for |
+|---|---|---|
+| `purchase_order` | the order, in `pending` | the order, **sent** to the supplier |
+| `promotion` | the promotion, **not running** | the promotion, **running** |
+| `campaign` | the campaign, **not active** | the campaign, **executed** — vouchers sent |
+| `price` | a price **derived from the live cost** at the margin asked for | a price **somebody chose** — the money action |
+| `voucher` | the house **template's** terms — the draft may not invent the money | **bespoke** terms |
+| `shift_swap` | the handover, drafted | — (the clock *is* the roster) |
+
+The two that share a route — a promotion, a voucher — differ in exactly that way: the draft
+takes the house's standard form and the action takes the bespoke one. That is what stops a
+`draft` token from being a quieter `action` token.
+
+**3. The approval runs the house's own routes, with the approver's session.** The approved
+operation is executed by calling the POS backend's own endpoints over the loopback, with the
+**approver's signed session cookie** forwarded. So the route's own permission, its own plan
+gate, its own outlet tenancy and the pricing path all run *with that person's authority* —
+and the agent never writes business data. It also means the permission the tool needs is
+the route's own: `record_stock_waste` needs `inventory:write`, which the `manager` role does
+not hold, so a manager is refused that one and the refusal is recorded.
+
+**4. The approver must present a signed session, not merely hold the permission.** The
+shared frontend API key carries an `ai:*` wildcard, so a plain `require_permission` check
+would have let that shared secret approve a purchase order. `require_human_approver` demands
+`key_type == "user"` **and** the permission, so the shared key, the agent token and the
+`staff` role are all refused — and only a person in their own session decides.
+
+**What was proven.** `backend/scripts/test_mcp_actions.py` — 53 checks against the live
+server — covers the scope ladder at the transport, that a proposal changes nothing, that
+only a person approves (agent token, shared key and staff session each refused), that the
+approval runs the house's own route, that the `ai_actions` row was written **before** the
+operation ran, that an edit creates a new proposal and never patches the old one's
+arguments, that a refusal is recorded as a refusal, that the tenant is the session's
+tenant, and that a failed operation is still on the record. Phase 0's three proofs still
+pass unchanged (18 / 35 / 10).
+
 ### Phase 0 — the MCP server (read-only), and the two feature rows
 
 **Does:** the MCP transport on the existing FastAPI app, mounted at `/api/mcp` so the
@@ -1069,6 +1141,9 @@ silent when they are wrong:
   that choice is part of this phase, not an afterthought.
 
 ### Phase A — the action layer
+
+**Status: BUILT** (POS `main` at `5fc7983`; proven by `backend/scripts/test_mcp_actions.py`,
+53 checks, against the live server).
 
 **Does:** extend the tool registry with the draft and action tools of §4.3; the `ai_actions`
 audit table and the `ai_action_proposals` queue; the three explicit approval controls of
