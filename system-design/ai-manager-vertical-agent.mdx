@@ -5,8 +5,15 @@ description: An MCP server as the tool and identity layer, so any agent runtime 
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.1 (the proposal — Nov 19, 2026 · revised the same day: the MCP server
-becomes the backbone, n8n is demoted to one client among many, and the tool catalogue is added)
+**Document Version:** 1.2 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
+the backbone, n8n was demoted to one client among many, and the tool catalogue was added ·
+**v1.2: every tool now carries the PLAN GATE of the module it touches, and the catalogue a
+tenant's agent sees is filtered by that tenant's live feature list — so when the admin moves a
+feature row from Enterprise to Pro, the tool follows with no code change (§4.5). The trigger
+layer is now written out as a real EVENT BUS — an outbox written in the transaction, a
+dispatcher, per-tenant subscriptions, three channels (the POS app's own inbox and web push,
+a Telegram bridge, a signed webhook), at-least-once delivery with a dead-letter log, and the
+plan gate applied to the events as well as the tools (§3.5)**)
 **Owner:** Ideazes POS AI
 **Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
@@ -199,6 +206,12 @@ twice: as the OpenAI-style function schemas MiniMax already consumes (`tool_sche
 as the MCP tool catalogue. If the two were written separately they would drift, and we would
 have two truths about what the agent can do.
 
+**The catalogue is filtered by the tenant's plan.** A tool declares the feature row that
+gates it, and a tenant's agent is only offered the tools whose rows are in that tenant's live
+feature list — read from the same source the API reads it from (`plan_cache` /
+`fetch_plan_features`). The gate is re-checked on every call as well, because the plan can
+change mid-session. The full rule, and why it is data rather than code, is §4.5.
+
 **What the MCP server does NOT do:**
 
 - It does **not** call the model. The *client* holds the LLM. (Consequence: per-tenant token
@@ -252,10 +265,23 @@ A per-tenant record that turns one engine into fifty managers:
 This is the layer that makes the product *vertical*: the same engine, a different manager for
 every tenant, and **no code change** to onboard a new one.
 
-### 3.5 The trigger layer (Phase C)
+### 3.5 The trigger layer — the event bus (Phase C)
 
-The POS starts emitting **domain events**. MCP is pull-based, so the proactive side needs its
-own path. The minimum set for a restaurant manager:
+MCP is **pull**: the client asks, the server answers. That covers "the manager typed a
+question". It does not cover "the agent noticed something". For that the POS needs its own
+side — an **event bus** — and the two are complementary rather than alternatives:
+
+> **The event bus tells the agent THAT something happened. The MCP server tells the agent
+> WHAT it may do about it.**
+
+An event carries **no power and almost no data** — a name, a tenant, an outlet, an object id, a
+timestamp. The agent reacts by calling the tools over MCP, with its own token, and the server
+answers under the tenant's plan and the tenant's outlet scope. So the bus cannot leak what
+the tools would refuse, and the tools cannot be reached without a credential.
+
+#### 3.5.1 The four parts
+
+**1. The emitters — in the write path, never a poller.**
 
 | Event | Emitted when | A manager agent would… |
 |---|---|---|
@@ -268,18 +294,132 @@ own path. The minimum set for a restaurant manager:
 | `payment.failed` | a gateway webhook says no | alert the counter |
 | `refund.issued` | a refund is written | flag it for the security review |
 
-Three implementation notes:
+The delivery module already settled the house rule: **the server owns the decision, and the
+enforcement lives where the data is written.** An event emitted next to the order insert is
+*truthful*; an event inferred by a cron that scans for rows is a *guess* — it double-fires,
+and it cannot see a transaction that has not committed.
 
-- **Emit from the write path, not from a poller.** The delivery module already showed the
-  house rule: the server owns the decision, and the enforcement lives where the data is
-  written. An event emitted next to the order insert is truthful; an event inferred by a cron
-  that scans for rows is a guess.
-- **Deliver through the existing internal-key pattern.** `backend/app/routes/internal.py`
-  already carries `/plan-changed` and `/order-paid` behind `require_internal_key`. A tenant's
-  client subscribes with its own key, scoped to its own tenant, and the POS signs the payload.
-- **A queue, not a synchronous call.** An event that blocks an order insert because a tenant's
-  webhook is slow is a self-inflicted outage. The insert commits; the event is queued; the
-  delivery is retried with a backoff and a dead-letter log.
+**2. The outbox — `domain_events`, written in the same transaction.**
+
+The event row is written **in the same DB transaction as the business change**. That is what
+makes it true: either the order exists and the event exists, or neither does. There is no
+window where an agent saw an order that was rolled back. The row carries
+`event_id`, `event_type`, `customer_id`, `outlet_id`, `payload` (ids only),
+`created_at`, `delivered_at`, `attempts`, `state`.
+
+**3. The dispatcher — one worker, the same pattern as the delivery sweep.**
+
+The box already runs a cron worker (`scripts/sweep_delivery_entitlement.py`, 03:23 daily).
+The dispatcher is the same shape: a script that reads the undelivered `domain_events`, asks
+the **subscribers** which ones they want, and delivers. It is **not** a synchronous call from
+the order insert — an event that blocks an order because a tenant's webhook is slow is a
+self-inflicted outage on the live payment path. The order commits; the event is queued; the
+dispatcher retries with a backoff and drops into a dead-letter log after N attempts.
+
+**4. The subscriptions — per tenant, per outlet, per event type.**
+
+A row saying *this tenant, this outlet, wants these events, delivered this way*:
+
+| Subscription field | Example | Why |
+|---|---|---|
+| `customer_id` / `outlet_id` | 22 / 3 | The tenant — **never** from the payload |
+| `event_types` | `["stock.low", "order.stalled"]` | What this agent cares about |
+| `channel` | `in_app` / `telegram` / `webhook` | Where the answer goes |
+| `endpoint` / `chat_id` / `bot_token_ref` | a chat id, a SecretRef | Where exactly |
+| `runtime` | `pos_frontend` / `n8n` / `telegram_bridge` | Which client runs the agent |
+| `quiet_hours` | `23:00–07:00` | From the tenant profile (§3.4) |
+| `enabled` | true | The off switch a tenant can pull |
+
+#### 3.5.2 The two shapes of a trigger
+
+**Push (proactive).** The POS notices something.
+
+```
+order insert ──▶ domain_events row (same transaction)
+                      │
+                 dispatcher (cron / worker)
+                      │  asks the subscribers
+                      ▼
+              tenant's agent runtime  ──▶ MCP tool calls (with the tenant's token)
+                      │
+                      ▼
+              the answer lands on the channel
+```
+
+**Pull (reactive).** A human says something.
+
+```
+manager types in Telegram ──▶ the channel's bridge ──▶ the agent runtime
+                                                              │
+                                                              ▼
+                                                  MCP tool calls (same token)
+                                                              │
+                                                              ▼
+                                                   the answer goes back
+```
+
+Both shapes end at the **same MCP server, with the same token, under the same plan and outlet
+scope**. That is the point of the split: the bus is a *notification mechanism*, the MCP server
+is the *authority*. A tenant's Telegram agent and our own POS chatbot have exactly the same
+powers.
+
+#### 3.5.3 The channels, concretely
+
+**Channel A — the frontend POS app (we already have it).**
+
+The staff app's **notification bell** already polls `GET /api/inventory/notifications/`
+every **30 seconds** (`frontend/src/components/NotificationBell.jsx`) and shows a badge. The
+agent's briefing arrives the same way — as a notification row. Nothing new is needed for the
+first version of the surface; the **approval queue** (the proposals from §3.3) is the same
+table with a different kind. For a phone, `delivery_push.py` already speaks **VAPID web
+push** with a `push_subscriptions` row per tenant per endpoint — the same service can carry
+the manager's briefing.
+
+**Channel B — Telegram (the tenant's own channel).**
+
+This is the case Kens named, and it is the one that makes the runtime swappable:
+
+- **The tenant connects Telegram** — a bot token stored as a **SecretRef** (never a plain
+  value, never in the workflow JSON), the chat id bound to `customer_id` + `outlet_id` in the
+  subscription row. One subscription = one tenant + one outlet + one chat.
+- **Inbound** — Telegram posts the message to a webhook; the bridge resolves the chat id to
+  the tenant, then the agent runtime calls our MCP server with that tenant's token. The
+  bridge never touches the database — it is a client, exactly like n8n.
+- **Outbound** — the dispatcher delivers the event to the runtime; the runtime calls the
+  tools and sends the answer to the chat.
+- **The channel is not the identity.** The chat id is a *routing* fact. Every tool call still
+  arrives with a token that resolves to the tenant, so a misrouted or spoofed message cannot
+  reach another restaurant's data — the token's scope is what decides.
+- **The POS backend has no Telegram code today.** `grep -rn telegram backend/app` returns
+  nothing; the only Telegram in the house is the OpenClaw gateway's own channel. So this
+  channel is new code, and it lives in the *bridge*, not in the POS.
+
+**Channel C — a signed webhook (the tenant's own runtime).**
+
+The dispatcher POSTs the event to the tenant's endpoint with a signature over the body, a
+timestamp and the tenant id, scoped to that tenant's key — the pattern
+`backend/app/routes/internal.py` already uses for `/plan-changed` and `/order-paid`. This is
+the channel n8n consumes, and the channel any other runtime consumes.
+
+#### 3.5.4 The rules that keep the bus honest
+
+- **The event carries no money and no personal data.** An event says *which* order, not what
+  it cost and who it belonged to. The agent fetches the detail through a tool, under the
+  gate. A webhook payload that carried the order total would leak it to whatever endpoint the
+  tenant pointed at.
+- **At-least-once, and the receiver must be idempotent.** The dispatcher may deliver twice
+  (it crashed after the push and before the mark). Every event carries a stable `event_id`, and
+  a consumer that acts on it must record what it has already acted on.
+- **A failed delivery is a recorded failure, not silence.** Dead-lettered events are visible
+  in the admin app. The house already lives by this — the unattended watcher rule: *silence
+  must never mean "healthy."*
+- **The plan gate applies to the events too.** A tenant on Pro must not receive a
+  `stock.low` event, because `Inventory` is an Enterprise row. The dispatcher asks the same
+  feature list the tools ask, and drops an event whose module the tenant does not hold.
+- **Quiet hours are the tenant's, and they are enforced here.** An event that arrives at 02:00
+  is held, not dropped — it is delivered when the tenant's day starts.
+- **One event, one tenant.** The dispatcher never fans an event out across tenants, and the
+  tenant id on the row is the tenant the event belongs to.
 
 ### 3.6 The surface (Phase D)
 
@@ -306,46 +446,56 @@ already obey, in the module's own words: the tenant comes from the session, neve
 model's arguments; the money is grouped per currency and never added up; a tool allow-list,
 not a SQL generator; every answer is returned in the API's `data` field; `MAX_ROWS = 15`.
 
-| Tool | Parameters | What it answers | Notable behaviour |
-|---|---|---|---|
-| `get_sales` | `period`, `outlet` | The revenue, the order count and the average order value for a period | One bucket **per currency** — two currencies are never summed |
-| `get_orders` | `period`, `outlet` | The order counts by status, by type and by hour | The busiest hours come from this |
-| `list_outlets` | — | The group's outlets: name, currency, address, phone, tables, staff | The only tool with no parameters |
-| `compare_outlets` | `period`, `metric` | The same metric for every outlet, so they can be compared | `metric` is sales, orders or average_order_value |
-| `get_tables` | `outlet` | The table occupancy right now, per outlet | Occupied / available, up to 15 tables |
-| `get_menu_performance` | `period`, `outlet` | The best and the worst selling menu items | Cancelled lines are excluded |
-| `get_staff` | `outlet` | The headcount per outlet and per role | **Counts only, never names** |
-| `get_customers` | `period`, `outlet` | How many guests were served, and how many came back | **Counts only, never names** |
-| `get_payments` | `period`, `outlet` | The payment mix — how much came in per method | Per currency, per method |
-| `get_alerts` | `outlet`, `limit` | The recent AI alerts — what the system flagged and why | The newest first, capped at `MAX_ROWS` |
+| Tool | Parameters | What it answers | Notable behaviour | Feature row (plan gate) |
+|---|---|---|---|---|
+| `get_sales` | `period`, `outlet` | The revenue, the order count and the average order value for a period | One bucket **per currency** — two currencies are never summed | `Reports` (all plans) |
+| `get_orders` | `period`, `outlet` | The order counts by status, by type and by hour | The busiest hours come from this | `Orders` (all plans) |
+| `list_outlets` | — | The group's outlets: name, currency, address, phone, tables, staff | The only tool with no parameters | `Outlets` (Basic+) |
+| `compare_outlets` | `period`, `metric` | The same metric for every outlet, so they can be compared | `metric` is sales, orders or average_order_value | `Reports` (all plans) |
+| `get_tables` | `outlet` | The table occupancy right now, per outlet | Occupied / available, up to 15 tables | `Tables` (all plans) |
+| `get_menu_performance` | `period`, `outlet` | The best and the worst selling menu items | Cancelled lines are excluded | `Menu` (all plans) |
+| `get_staff` | `outlet` | The headcount per outlet and per role | **Counts only, never names** | `Staff` (all plans) |
+| `get_customers` | `period`, `outlet` | How many guests were served, and how many came back | **Counts only, never names** | `Reports` (all plans) |
+| `get_payments` | `period`, `outlet` | The payment mix — how much came in per method | Per currency, per method | `Reports` (all plans) |
+| `get_alerts` | `outlet`, `limit` | The recent AI alerts — what the system flagged and why | The newest first, capped at `MAX_ROWS` | `AI Insights` (Pro+) — **proposal**: `ai_alerts` has no row of its own today |
 
 The periods are a closed set: `today`, `yesterday`, `last_7_days`, `this_week`,
 `last_30_days`, `this_month`, `year`. A tool that cannot resolve a period **says so rather
 than guessing**.
+
+**The gate column is a proposal, and it is a change from today.** Today the whole chatbot is
+gated **once, at the route**, by `require_plan_feature("AI Chatbot")` — no tool carries its
+own module gate. So a Pro tenant's admin chatbot can read AI alerts, the demand forecast and
+the order insights, whose own routes (`ai_security.py`, `ai_forecast.py`, `ai_orders.py`)
+carry **no plan gate at all**, only `ai:read`. And several modules are gated in the
+**frontend only**: `navItems.js` hides Promotions, Loyalty, Vouchers and every Inventory page
+by feature row, but `promotions.py`, `vouchers.py` and `loyalty.py` have **no
+`require_plan_feature`** — the screen hides what the API does not refuse. Per-tool gating
+closes both.
 
 ### 4.2 The tools we plan to add — read
 
 Every one of these has a live route or service behind it today; the work is to expose it
 through the same registry with the same tenant rules.
 
-| Tool | Backed by | What it answers |
-|---|---|---|
-| `get_inventory_levels` | `inventory.py` | Stock on hand, per ingredient, per outlet |
-| `get_low_stock` | `inventory.py`, `notifications.py` | What is below its threshold, and for which supplier |
-| `get_stock_movements` | `inventory.py` | The purchase and waste history — what is being thrown away |
-| `get_purchase_orders` | `purchase_orders.py` | The open purchase orders and their status |
-| `get_suppliers` | `suppliers.py` | The suppliers, their lead times and their prices |
-| `get_recipes` | `inventory.py` (recipes) | What is in a dish — the cost behind the price |
-| `get_promotions` | `promotions.py` | The running promotions, and how often each is used |
-| `get_vouchers` | `vouchers.py` | The issued, redeemed and expired vouchers |
-| `get_loyalty_members` | `loyalty.py` | The members, their points and their last visit — **counts and tiers, not names** |
-| `get_forecast` | `ai_forecast.py` | The demand forecast for the coming days, and the staffing it implies |
-| `get_shift` | `users.py` (clock), `staff` routes | Who is clocked in, who is not, the overtime |
-| `get_order` | `order.py` | One order — its lines, its status, its payments |
-| `get_delivery_orders` | `delivery.py`, `delivery_analytics.py` | The delivery leg — the riders, the zones, the fees |
-| `get_price_of` | `order_pricing.py`, `menu.py` | What a dish actually costs and what it sells for |
-| `search_menu` | `ai_search.py` | The search the staff already has, as a tool |
-| `get_competitors` | `competitors.py` | The tracked competitors and the price gap |
+| Tool | Backed by | What it answers | Feature row (plan gate) |
+|---|---|---|---|
+| `get_inventory_levels` | `inventory.py` | Stock on hand, per ingredient, per outlet | `Inventory` — **Enterprise** |
+| `get_low_stock` | `inventory.py`, `notifications.py` | What is below its threshold, and for which supplier | `Inventory` — **Enterprise** |
+| `get_stock_movements` | `inventory.py` | The purchase and waste history — what is being thrown away | `Inventory` — **Enterprise** |
+| `get_purchase_orders` | `purchase_orders.py` | The open purchase orders and their status | `Inventory` — **Enterprise** |
+| `get_suppliers` | `suppliers.py` | The suppliers, their lead times and their prices | `Inventory` — **Enterprise** |
+| `get_recipes` | `inventory.py` (recipes) | What is in a dish — the cost behind the price | `Inventory` — **Enterprise** |
+| `get_promotions` | `promotions.py` | The running promotions, and how often each is used | `Promotions` — Basic+ |
+| `get_vouchers` | `vouchers.py` | The issued, redeemed and expired vouchers | `Vouchers` — Basic+ |
+| `get_loyalty_members` | `loyalty.py` | The members, their points and their last visit — **counts and tiers, not names** | `Loyalty` — Basic+ |
+| `get_forecast` | `ai_forecast.py` | The demand forecast for the coming days, and the staffing it implies | `AI Tools` — Pro+ |
+| `get_shift` | `users.py` (clock), `staff` routes | Who is clocked in, who is not, the overtime | `Staff` — all plans |
+| `get_order` | `order.py` | One order — its lines, its status, its payments | `Order History` — all plans |
+| `get_delivery_orders` | `delivery.py`, `delivery_analytics.py` | The delivery leg — the riders, the zones, the fees | `Delivery` — **Enterprise** |
+| `get_price_of` | `order_pricing.py`, `menu.py` | What a dish actually costs and what it sells for | `Menu` — all plans |
+| `search_menu` | `ai_search.py` | The search the staff already has, as a tool | `Menu` — all plans |
+| `get_competitors` | `competitors.py` | The tracked competitors and the price gap | `Competitor Analysis` — **Enterprise** |
 
 ### 4.3 The tools we plan to add — draft and action
 
@@ -353,23 +503,29 @@ through the same registry with the same tenant rules.
 human's approval and writes an `ai_actions` row). The route in the middle column is the
 existing endpoint the tool must go through — the agent never writes to the database.
 
-| Tool | Kind | Goes through | Approval |
-|---|---|---|---|
-| `draft_purchase_order` | draft | `purchase_orders.py` `POST /` | — |
-| `draft_promotion` | draft | `promotions.py` `POST /` | — |
-| `draft_campaign` | draft | `ai/__init__.py` `POST /api/ai/campaigns` | — |
-| `draft_price_change` | draft | `menu.py` / `order_pricing.py` | — |
-| `draft_stock_transfer` | draft | `transfers.py` `POST /` | — |
-| `draft_voucher_issue` | draft | `vouchers.py` `POST /issue` | — |
-| `draft_shift_swap` | draft | `users.py` (clock / roster) | — |
-| `send_purchase_order` | action | `purchase_orders.py` `PUT /{id}/status` | required |
-| `create_promotion` | action | `promotions.py` `POST /` | required |
-| `execute_campaign` | action | `ai/__init__.py` `POST /campaigns/{id}/execute` | required |
-| `apply_price_change` | action | `menu.py` | required (money) |
-| `record_stock_waste` | action | `inventory.py` `POST /stock-movements/waste` | required |
-| `issue_voucher` | action | `vouchers.py` `POST /issue` | required |
-| `acknowledge_alert` | action | `ai_security.py` `POST /alerts/{id}/acknowledge` | required |
-| `notify_staff` | action | `notifications.py` | required |
+| Tool | Kind | Goes through | Approval | Feature row (plan gate) |
+|---|---|---|---|---|
+| `draft_purchase_order` | draft | `purchase_orders.py` `POST /` | — | `Inventory` — **Enterprise** |
+| `draft_promotion` | draft | `promotions.py` `POST /` | — | `Promotions` — Basic+ |
+| `draft_campaign` | draft | `ai/__init__.py` `POST /api/ai/campaigns` | — | `AI Campaigns` — Pro+ |
+| `draft_price_change` | draft | `menu.py` / `order_pricing.py` | — | `Menu` — all plans |
+| `draft_stock_transfer` | draft | `transfers.py` `POST /` | — | `Inventory` — **Enterprise** |
+| `draft_voucher_issue` | draft | `vouchers.py` `POST /issue` | — | `Vouchers` — Basic+ |
+| `draft_shift_swap` | draft | `users.py` (clock / roster) | — | `Staff` — all plans |
+| `send_purchase_order` | action | `purchase_orders.py` `PUT /{id}/status` | required | `Inventory` — **Enterprise** |
+| `create_promotion` | action | `promotions.py` `POST /` | required | `Promotions` — Basic+ |
+| `execute_campaign` | action | `ai/__init__.py` `POST /campaigns/{id}/execute` | required | `AI Campaigns` — Pro+ |
+| `apply_price_change` | action | `menu.py` | required (money) | `Menu` — all plans |
+| `record_stock_waste` | action | `inventory.py` `POST /stock-movements/waste` | required | `Inventory` — **Enterprise** |
+| `issue_voucher` | action | `vouchers.py` `POST /issue` | required | `Vouchers` — Basic+ |
+| `acknowledge_alert` | action | `ai_security.py` `POST /alerts/{id}/acknowledge` | required | `AI Insights` — Pro+ |
+| `notify_staff` | action | `notifications.py` | required | `Notifications` — all plans |
+
+**Every action tool needs BOTH gates.** The module row says *what* the agent may touch; the
+`AI Agent Actions` row says *whether the agent may touch it at all*. A Pro tenant with
+`AI Agent Actions` but no `Inventory` still cannot order stock. The two rows are independent
+on purpose — the module row moves when a plan changes, the agent row is the extra thing the
+tenant buys.
 
 **Two things deliberately absent** from the action list: anything that **refunds or voids a
 paid order**, and anything that **changes a price the customer has already been quoted**.
@@ -389,6 +545,75 @@ path).
 Without this, the cost of a proactive agent is unknown and unbounded — and a proactive agent
 that talks every morning for every outlet is exactly the case that turns a margin into a loss.
 
+### 4.5 The gate every tool carries
+
+Every tool above declares **one feature row** — the row of the module it touches. That row
+is the tool's plan gate. Three rules follow from it.
+
+**Rule 1 — the gate is data, never a tier name.** The tool does not know what "Pro" or
+"Enterprise" is. It knows it touches `Inventory`. The plan row for `Inventory` is read live
+from the website API's `features` / `plan_features` tables, through the machinery the house
+already has:
+
+- `backend/app/services/plan_features.py` — `get_plan_features(tenant_id, fetch)` reads the
+  plan's feature **display names** and caches them.
+- `backend/app/core/plan_cache.py` — the cache distinguishes three states, and the third one
+  is the one that matters:
+  - a **fresh or stale known list** — the tenant bought these features;
+  - an **empty known list** — the tenant bought no paid feature (a Starter tenant);
+  - **`None`** — the plan could not be read and was never known.
+
+`None` is not "no features". It is "we could not ask". The delivery entitlement pattern
+already draws this line: it checks the plan includes delivery, then that the subscription is
+active, then that the outlet's own delivery switch is on. **We could not ask is not the same
+as not allowed** — a lookup failure must never be reported to a tenant as a refusal, because
+the tenant *has* the feature and we simply could not confirm it.
+
+**Rule 2 — no tier names in code.** The catalogue never says "Pro-only" or "Enterprise-only".
+It says "`Inventory`". If the admin later moves the `Inventory` row from Enterprise to Pro —
+which is exactly what Kens said could happen — the tools that touch inventory become
+available to Pro tenants **with no code change and no redeploy of the catalogue**. The tier
+names in the tables in §4.1–4.3 are annotations of *today's* plan assignment, not the rule.
+They are marked as such.
+
+**Rule 3 — the gate is checked on every call, not only when listing.** Two checks, both
+required:
+
+1. **At catalogue time** — `list_tools` (MCP) / the tool-schema registry returns only the
+   tools whose feature rows are in this tenant's live feature list. A Pro tenant's agent is
+   never even *offered* `get_inventory_levels`.
+2. **At call time** — every tool body re-checks the gate before it runs. The plan can change
+   mid-session: the tenant upgrades, downgrades, lapses, or an admin moves a feature row
+   between plans while the agent is holding a session. The listing was true when it was made;
+   the call-time check is what makes it true *now*. The read is served from
+   `plan_cache`, so it is cheap — and a cache miss costs one live read, not a refusal.
+
+**What a refusal looks like.** When a tool is called and the gate fails, the tool returns a
+**module-level refusal**, in the same shape as every other answer (the `data` field):
+
+> `This restaurant's plan does not include the Inventory module.`
+
+It does **not** return an empty result, and it does **not** invent plausible data. An empty
+result would be read by the model as "there is no stock" — a refusal is the only answer that
+cannot be misread.
+
+**Why this matters more than it looks.** Today the chatbot's ten tools are gated **once, at
+the route**, by `require_plan_feature("AI Chatbot")` — no tool carries its own module gate.
+Two consequences follow:
+
+- A tenant with `AI Chatbot` can ask the agent about AI alerts, the demand forecast and the
+  order insights, whose own routes (`ai_security.py`, `ai_forecast.py`, `ai_orders.py`) carry
+  **no plan gate at all** — only `ai:read`. The features are paid for elsewhere; the agent
+  reaches them anyway.
+- Several modules are gated in the **frontend only**. `frontend/src/config/navItems.js` hides
+  Promotions, Loyalty, Vouchers and every Inventory page by feature row, but
+  `promotions.py`, `vouchers.py` and `loyalty.py` carry **no `require_plan_feature`**. The
+  screen hides what the API does not refuse — hiding a menu item is a usability decision, not
+  an authorisation boundary.
+
+Per-tool gating closes both, and it is the difference between an agent that is *about the
+business* and an agent that is *about the plan*.
+
 ---
 
 ## 5. Data and configuration
@@ -402,8 +627,9 @@ that talks every morning for every outlet is exactly the case that turns a margi
 | `ai_actions` | The audit row: agent, tenant, outlet, tool, arguments, result, approval, timestamps. |
 | `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. |
 | `domain_events` | The outbox: the event, the tenant, the payload, the delivery state. |
+| `event_subscriptions` | Who wants which events, on which channel, for which outlet (§3.5.1). |
 
-All five are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
+All six are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
 "tenant = the restaurant group" rule the delivery leg and the AI tools already use.
 
 ### 5.2 Reused configuration
@@ -479,6 +705,29 @@ member cannot approve a price change.
 `action`) is checked **at the transport**, before the tool body runs — so an agent that
 somehow tries an action tool with a read token is refused without the tool ever seeing the
 request.
+
+**Where the gate sits today, and where it moves.** The route-level gate is what the house
+uses today, and it works — but it is one gate for a whole route. The chatbot's route carries
+`require_plan_feature("AI Chatbot")` and that is the **only** gate on it: the ten tools
+inside have no gate of their own, so a tenant with `AI Chatbot` can ask the agent about
+alerts, forecasts and order insights whose own routes carry no plan gate at all, and about
+Promotions, Loyalty and Vouchers, whose routes carry none either — those are hidden in the
+frontend only (`navItems.js`). Hiding a menu item is a usability decision; refusing a call is
+an authorisation boundary.
+
+The proposal moves the gate **down to the tool** (§4.5):
+
+| | Today | Proposal |
+|---|---|---|
+| The gate | one per route, `require_plan_feature` | one per tool, carrying the feature row of the module it touches |
+| Where it is checked | at the route, once, at request entry | at catalogue time **and** at call time, per tool |
+| What a refusal says | the route returns 403 | `This restaurant's plan does not include the Inventory module.` |
+| A tier change | a code change per route | a row move in `plan_features` — no code change |
+| A lookup failure | the route refuses | **never** reported as a refusal — "we could not ask" is not "not allowed" |
+
+The route gate stays — it is still the coarse boundary for the page. The tool gate is the
+fine one, and the two are not redundant: the route gate answers *"may this tenant open the
+AI Manager at all?"*, the tool gate answers *"may this agent read stock?"*.
 
 ---
 
@@ -565,14 +814,20 @@ different behaviour from the same engine, and no code changed between them.
 
 ### Phase C — the trigger layer
 
-**Does:** the `domain_events` outbox; emit the §3.5 events from the write paths; the signed,
-tenant-scoped outbound webhook; the queue, the retry and the dead-letter log.
+**Does:** the `domain_events` outbox, written in the same transaction as the business change;
+emit the §3.5 events from the write paths; the dispatcher with its retry and dead-letter log;
+the subscription rows; the three channels of §3.5.3 — the POS app's own notification inbox
+and web push (both already exist), the Telegram bridge (a client, like n8n), and the signed,
+tenant-scoped outbound webhook.
 
 **Does not:** require n8n — the events are consumed by the native agent in Phase D; n8n is one
-possible consumer.
+possible consumer. Nor does it build a queue broker: the outbox is a table in the POS's own
+database, read by a worker.
 
 **Proves:** an order placed in one tenant produces an event that reaches that tenant's
-endpoint, signed and scoped — and that a second tenant's endpoint never sees it.
+endpoint, signed and scoped — and that a second tenant's endpoint never sees it. A second
+proof: a Pro tenant receives no `stock.low` event at all, because `Inventory` is not in that
+tenant's feature list (§4.5).
 
 ### Phase D — the AI Manager surface
 
@@ -647,8 +902,16 @@ above changes.
 - `backend/app/services/plan_features.py` — the plan read over the house's loopback path
 - `backend/app/core/plan_cache.py`, `backend/app/middleware/subscription.py` — the cache and
   the notification that keeps it fresh
-- `backend/app/routes/internal.py` — the server-to-server pattern (`require_internal_key`)
+- `backend/app/routes/internal.py` — the server-to-server pattern (`require_internal_key`),
+  and the two precedents the event bus copies: `/order-paid` (an idempotent, server-to-server
+  webhook) and `/plan-changed`
 - `backend/app/services/delivery_push.py` — VAPID web push
+- `backend/app/models/push.py` — the `push_subscriptions` row: one phone per tenant
+- `backend/app/routes/notifications.py` — the inbox the POS app already polls
+- `frontend/src/components/NotificationBell.jsx` — the 30-second poll
+  (`setInterval(..., 30000)`) that the in-app channel reuses
+- `website_api/app/services/plan_notify.py` — `notify_pos_plan_changed`, the push-notification
+  precedent: one tenant's plan change tells the POS, and the cache drops
 - `backend/app/models/models.py` — `bot_name` / `bot_language` / `bot_greeting` / `ai_enabled`
   (496-499), `OrderReprint` (548), `AIAlert` (576), `AIInsightCache`
 - `backend/app/services/plan_limits.py` — the plan-limit rule the agent would inherit
