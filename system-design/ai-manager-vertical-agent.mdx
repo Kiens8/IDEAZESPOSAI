@@ -1,0 +1,480 @@
+---
+title: The AI Manager — a vertical agent per tenant
+description: From a chatbot that answers questions to an agent that manages the store - the action layer, the tenant profile, the event bus, and where n8n fits
+---
+
+# The AI Manager — a vertical agent per tenant
+
+**Document Version:** 1.0 (the proposal — Nov 19, 2026)
+**Owner:** Ideazes POS AI
+**Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
+current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
+integrate the SaaS POS with something like n8n, let each tenant have their own vertical AI
+agent, an AI Manager that manages the store and matches our site app."*
+
+> **Related** → `program-changes/ai-chatbot/ai-chatbot-module.mdx` (the chatbot as it is
+> built today) · `program-changes/ai-feature-gating/ai-feature-gating.mdx` (how a feature row
+> becomes a plan entitlement) · `order-flow-standards.mdx` (the order machine the agent would
+> read from and write to) · `pricing-engine-and-promotions.mdx` (who owns the money of an
+> order — the rule the agent must never break)
+
+---
+
+## 1. The short answer
+
+**The chatbot we have is good enough to sell. It is not an AI Manager, and n8n does not turn
+it into one.**
+
+What exists today is a **pull** model: a human asks, the bot answers from POS data. What Kens
+described is a **push** model with agency: a per-tenant agent that watches the store, knows the
+tenant's own rules, and *does* things — always inside the POS's own rules.
+
+The distance between the two is **not the model**. MiniMax already answers. The distance is
+three missing layers:
+
+1. **An action layer** — the agent can only read. Every write it performs is a new tool with
+   its own permission, its own approval step and its own audit row.
+2. **A trigger layer** — nothing in the product emits an event the agent could react to.
+   The only webhooks that exist today are **inbound** payment ones.
+3. **A tenant-profile layer** — the bot's behaviour lives in Python code paths. For the agent
+   to be *the tenant's* agent, its persona, SOPs, permissions and working hours have to be
+   **tenant data**, not code.
+
+**n8n's place:** *downstream* of the POS, as the optional **connector layer** for tenant-owned
+automations that reach outside the product (WhatsApp, delivery aggregators, accounting).
+**Not** as the agent runtime — see §7 for why, and §6 for the shape that makes it safe.
+
+---
+
+## 2. What is actually built today (the audit this proposal starts from)
+
+Every line below was read from the running code, not from the docs.
+
+### 2.1 The chatbot
+
+| Artifact | What it is |
+|---|---|
+| `backend/app/ai/chatbot.py` (1,295 lines) | The engine. Regex intent tables (`INTENT_PATTERNS`), a role map (`ROLE_INTENTS`), one handler per intent, and an AI fallback. |
+| `backend/app/ai/chatbot_tools.py` (537 lines) | The tool registry the fallback calls: `get_sales`, `get_orders`, `list_outlets`, `compare_outlets`, `get_tables`, `get_menu_performance`, `get_staff`, `get_customers`, `get_payments`, `get_alerts` — **10 tools, every one of them a read.** |
+| `backend/app/ai/minimax.py` | The shared MiniMax helper. Strips the `<think>` block so reasoning never leaks into a user-visible answer. |
+| `backend/app/routes/chatbot.py` | `POST /api/chatbot/`, plus `/test`, `/greeting`, `/quick-replies`. Gated by `require_permission("ai:read")` **and** `require_plan_feature("AI Chatbot")`. |
+| `backend/app/routes/ai_chatbot.py` | `POST /api/ai/chat/order` — the customer-facing conversational order. Same two gates. |
+
+Two facts that shape the whole proposal:
+
+- **The tool-calling loop only runs for `chatbot_type == "admin"`** (`chatbot.py`, the
+  `tools = tool_schemas()` branch). A manager gets the AI fallback with the *snapshot* in the
+  prompt; a staff member gets neither the tools nor a model. The tool machinery exists — it is
+  simply gated to one role.
+- **`MAX_TOOL_ROUNDS = 3`** (`chatbot.py:20`). The loop is bounded and the answer is written
+  from the tool results. The pattern — *ask the model, let it call bounded read tools, write
+  the answer from the numbers* — is the right one and Phase A extends it rather than replacing
+  it.
+
+### 2.2 The AI surfaces that already exist
+
+- `backend/app/routes/ai/__init__.py` — `POST /api/ai/insights`, `GET /api/ai/menu-analytics`,
+  and the **campaign** CRUD (`/campaigns`, `/campaigns/{id}/toggle`, `/campaigns/{id}/execute`,
+  `/campaigns/suggest`, `/campaigns/{id}/simulate`). Reads need `ai:read`; the campaign writes
+  need `ai:write` — and only the **admin** role carries `ai:*`.
+- `backend/app/routes/ai_forecast.py`, `ai_inventory.py`, `ai_orders.py`, `ai_search.py`,
+  `ai_security.py` — the forecast, inventory-prediction, order-analytics, smart-search and
+  fraud-alert surfaces.
+- `frontend/src/pages/AI/index.jsx` — the AI Tools page. Five tabs, each gated by a feature
+  row **and** a plan, with a locked tab that offers an upgrade.
+- `frontend/src/pages/Chatbot.jsx` — the chatbot panel in the staff app.
+- `frontend/src/pages/Settings.jsx` — the **AI Chatbot** tab, gated by the feature row
+  `AI Chatbot Settings`. It writes `bot_name`, `bot_language`, `bot_greeting`, `ai_enabled` on
+  the outlet (`backend/app/models/models.py:496-499`).
+
+So the tenant already has a **name and a greeting** for its bot. That is the thin end of the
+tenant-profile idea, and it lives in the outlet row.
+
+### 2.3 The machinery the agent would reuse
+
+| Need | What already exists |
+|---|---|
+| Plan entitlement | `backend/app/services/plan_features.py` reads the website API over the house's loopback path; `require_plan_feature("<display name>")` gates a route. The feature list is stamped into the session at login. |
+| Per-tenant exception to a plan | `customer_feature_overrides` (website API) — `customer_id`, `feature_id`, `enabled`, `reason`, `created_by`. The admin route `POST /api/admin/customer-features` already writes it and pushes the change to the POS cache. **This is the hook for selling the AI Manager to one tenant without inventing a billing mechanism.** |
+| Server-to-server calls | `backend/app/routes/internal.py` — `/plan-changed`, `/subscription-changed`, `/order-paid`, all behind `require_internal_key`. The pattern for "the POS tells somebody something" exists. |
+| An inbox for things that need attention | `backend/app/routes/notifications.py` — list, unread count, mark read, plus the stock check. The bell in the staff app already exists. |
+| Push to a phone | `backend/app/services/delivery_push.py` — VAPID web push, with subscribe/unsubscribe and a payload builder. It ships to the **customer** app today; the same service can carry the manager's briefing. |
+| An audit trail | `order_reprints` (`models.py:548`) — who, when, how many copies, why, and whether the token was on the paper. The house already has a pattern for "this was done by a human and here is the record". |
+| AI findings with an acknowledgement | `AIAlert` (`ai_alerts`) — severity, the related order/user/item, `is_acknowledged`, `acknowledged_at`, `acknowledged_by`. |
+| Tenant API keys for a connector | `api_keys` in the website API, with a `permissions` JSON column. |
+
+### 2.4 What is missing, itemised
+
+| Missing | Evidence it is missing |
+|---|---|
+| A write tool | All 10 tools in `chatbot_tools.py` are reads. `TOOLS` maps names to read functions only. |
+| An approval step | No table, route or enum anywhere holds a *pending approval*. |
+| An audit row for AI actions | `order_reprints` is human-only; there is no AI-action log. |
+| A domain event bus | `grep` for `n8n`, `webhook` and `scheduler` in `backend/app` returns only inbound payment webhooks and `subscription_cache` comments. There is no APScheduler and no event table. The only scheduling in the box is four crontab lines (notifications at 09:00, the HitPay reconcile every 10 minutes, the delivery entitlement sweep at 03:23, a log rotation). |
+| A tenant agent profile | The bot's knowledge is code. The only tenant-owned knobs are `bot_name`, `bot_language`, `bot_greeting`, `ai_enabled`. |
+| An agent "role" in the POS | `ROLE_INTENTS` has `staff`, `manager`, `customer`, `admin` — all of them *human* roles. There is no `agent` role, so no permission namespace an agent could hold. |
+
+---
+
+## 3. The design
+
+### 3.1 The shape
+
+```
+                    ┌──────────────────────────────────────────┐
+  POS domain events │  order.placed · order.paid · stock.low   │  ← the trigger layer
+  (the bus)        │  staff.clocked_in · table.turned · shift   │
+                    └───────────────────┬──────────────────────┘
+                                        │
+                    ┌───────────────────▼──────────────────────┐
+  The agent core   │  tenant profile (persona, SOPs, hours)     │  ← the tenant layer
+  (in the backend) │  + tool registry (read + action + write)   │
+                    │  + approval workflow (draft → approve)    │
+                    └───────────────────┬──────────────────────┘
+                                        │
+                    ┌───────────────────▼──────────────────────┐
+  Channels         │  staff-app inbox · web push · WhatsApp     │
+                    │  (n8n is one more channel, not the brain) │
+                    └──────────────────────────────────────────┘
+```
+
+**The agent core lives in the POS backend, not in n8n.** The reason is §7.
+
+### 3.2 The action layer (Phase A)
+
+The tool registry grows a third kind of tool. The three kinds behave differently:
+
+| Kind | Example | Approval | Audit |
+|---|---|---|---|
+| **Read** | `get_sales`, `get_alerts` | none | none |
+| **Draft** | `draft_purchase_order`, `draft_campaign`, `draft_shift_swap` | none — it produces a *proposal*, nothing changes | the proposal is stored |
+| **Action** | `send_purchase_order`, `publish_campaign`, `apply_price_change` | **required** — a human with the right permission approves | an `ai_actions` row |
+
+The rules that make this safe, each one drawn from a rule the house already enforces:
+
+- **The agent holds a role, not a god-mode key.** A new `agent` role in `ROLE_PERMISSIONS`,
+  with `ai:act` and a scoped list of the action tools it may call. It never inherits `admin:*`.
+- **The server owns the money and the price.** The agent may propose a price change; the
+  write goes through the same pricing path the staff screen uses, so the promotion precedence,
+  the tax and the order's locked price are unchanged (`pricing-engine-and-promotions.mdx`).
+- **Every action is written down before it runs**, in an `ai_actions` row: the agent, the
+  tenant, the outlet, the tool, the arguments, the JSON of what changed, who approved it, when.
+  The `order_reprints` row is the precedent; the fields are the same idea.
+- **An action that is refused is recorded as refused.** Silence is not success — the same rule
+  the delivery sweep and the unattended watcher already live by.
+- **The approval is a human's, in the POS.** The approval lands in the existing notification
+  inbox. Nothing is auto-approved because a model was confident.
+
+### 3.3 The tenant profile (Phase B)
+
+A per-tenant record that turns one engine into fifty managers:
+
+| Field | Example | Why |
+|---|---|---|
+| `name` | "Aunty Mei" | The name the tenant already gives the bot today. |
+| `persona` / `system_prompt` | "You are the outlet manager of a kopitiam. Be brief. Speak in the outlet's timezone." | The tenant's voice, not ours. |
+| `language` | `en` / `zh` / `ms` / `kh` | Already exists per outlet (`bot_language`). |
+| `sop` (list) | "Every morning at 09:30, check yesterday's waste vs sales and message the kitchen." | The tenant's own procedure. |
+| `allowed_actions` | `["draft_purchase_order", "draft_campaign"]` | What this agent may ever do. Empty set = read-only, which is today's behaviour. |
+| `quiet_hours` | `23:00–07:00` | When the agent may not push anything. |
+| `escalation` | "money > RM 500 → notify the admin" | The tenant's own thresholds. |
+| `outlet_scope` | `["all"]` or a list | Which outlets this agent watches. |
+
+This is the layer that makes the product *vertical*: the same engine, a different manager for
+every tenant, and **no code change** to onboard a new one.
+
+### 3.4 The trigger layer (Phase C)
+
+The POS starts emitting **domain events**. The minimum set for a restaurant manager:
+
+| Event | Emitted when | A manager agent would… |
+|---|---|---|
+| `order.placed` | an order is created | flag a table that has been open too long |
+| `order.paid` | the money settles | close the shift count |
+| `order.stalled` | an order sits past the kitchen's reminder | tell the kitchen |
+| `stock.low` | an ingredient falls to its threshold | draft a purchase order |
+| `staff.clocked_in` / `shift.ended` | the shift starts and ends | compare the actual to the roster |
+| `table.turned` | a table is settled | suggest the next seating |
+| `payment.failed` | a gateway webhook says no | alert the counter |
+| `refund.issued` | a refund is written | flag it for the security review |
+
+Three implementation notes:
+
+- **Emit from the write path, not from a poller.** The delivery module already showed the
+  house rule: the server owns the decision, and the enforcement lives where the data is
+  written. An event emitted next to the order insert is truthful; an event inferred by a cron
+  that scans for rows is a guess.
+- **Deliver through the existing internal-key pattern.** `backend/app/routes/internal.py`
+  already carries `/plan-changed` and `/order-paid` behind `require_internal_key`. A tenant's
+  n8n subscribes with its own key, scoped to its own tenant, and the POS signs the payload.
+- **A queue, not a synchronous call.** An event that blocks an order insert because a
+  tenant's webhook is slow is a self-inflicted outage. The insert commits; the event is
+  queued; the delivery is retried with a backoff and a dead-letter log.
+
+### 3.5 The surface (Phase D)
+
+The **AI Manager** page in the staff app — the "matches our site app" surface Kens asked for:
+
+- **Today** — the briefing: sales against the same hour yesterday, orders waiting, tables
+  occupied, anything the agent thinks the manager should know, in the outlet's timezone.
+- **Needs you** — the approvals. A draft purchase order, a proposed campaign, a price change.
+  Approve, edit, or reject — each one an audit row.
+- **Alerts** — the agent's findings, next to the existing AI alerts, with the same
+  acknowledge path (`AIAlert` already has one).
+- **Agent** — the profile from §3.3, the working hours, the allowed actions, the escalation
+  thresholds, and the channel the briefing arrives on.
+
+---
+
+## 4. Data and configuration
+
+### 4.1 New tables (proposal)
+
+| Table | Holds |
+|---|---|
+| `tenant_agent_profiles` | One row per tenant: the profile of §3.3. |
+| `ai_actions` | The audit row: agent, tenant, outlet, tool, arguments, result, approval, timestamps. |
+| `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. |
+| `domain_events` | The outbox: the event, the tenant, the payload, the delivery state. |
+
+All four are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
+"tenant = the restaurant group" rule the delivery leg and the AI tools already use.
+
+### 4.2 Reused configuration
+
+- `outlet_settings.bot_name` / `bot_language` / `bot_greeting` / `ai_enabled` — the profile
+  **seeds** from these, so a tenant that has already named its bot sees its name carried over.
+- The feature row and the plan gate — unchanged; the AI Manager rides the existing
+  `require_plan_feature` machinery (§5).
+
+### 4.3 The model
+
+MiniMax, as today (`settings.MINIMAX_MODEL`, the `ai/minimax.py` helper). One change worth
+making: the agent's calls should go through **one** client with a **cost log** — the number of
+calls, the tokens and the tenant they belong to. Without that, a proactive agent that runs
+every morning for every outlet is an unbounded bill and nobody knows whose it is.
+
+---
+
+## 5. Plan and role gating
+
+The house has two independent gates, and the agent needs both:
+
+- **The role** says what a *person* may do with a kind of data.
+- **The plan** says what the restaurant *bought*. `require_plan_feature` compares the feature's
+  **display name** against the tenant's list, which is read from the website API over the
+  house's loopback path.
+
+**Plan rows.** The live feature table holds 44 rows, of which the AI category is:
+
+| Row | Display name | Pro | Enterprise |
+|---|---|---|---|
+| `ai_chatbot` | AI Chatbot | yes | yes |
+| `ai_tools` | AI Tools | yes | yes |
+| `ai_customer_insights` | AI Insights | yes | yes |
+| `ai_menu_analytics` | Menu Analytics | yes | yes |
+| `ai_campaigns` | AI Campaigns | yes | yes |
+| `ai_competitor_analysis` | Competitor Analysis | no | yes |
+| `Competitor Discover` | Competitor Discover | no | yes |
+
+Plus the settings row `ai_chatbot_setting` → **AI Chatbot Settings** (Pro and Enterprise).
+Starter and Basic carry **no** AI row at all.
+
+**The proposal:** two new rows.
+
+| Row | Display name | Plan |
+|---|---|---|
+| `ai_agent` | AI Agent | Pro — read-only agent (profile, briefing, inbox) |
+| `ai_agent_actions` | AI Agent Actions | Enterprise — the agent may also *act* (draft + action tools) |
+
+The two-row split is deliberate: **the agent that reports is a different purchase from the
+agent that writes**, and the write one is the one that needs the audit, the approval queue and
+the review. Splitting them also means a tenant can buy the briefing on Pro and not be
+refused at runtime for a missing entitlement — the plan gate refuses a *route*, and an action
+is a route.
+
+**The per-tenant exception already exists.** `customer_feature_overrides` lets the admin grant
+or refuse a feature for one customer with a reason and a `created_by`. So the "AI Manager" can
+be sold to a single tenant on a plan that does not include it, without a new billing path —
+the row is written, the POS cache is notified (`notify_pos_plan_changed`), and the tenant's
+agent switches on.
+
+**The role.** The agent is not a person, so it gets its own entry in `ROLE_PERMISSIONS`:
+
+- `ai:read` — everything today's tools already need.
+- `ai:act` — the draft and action tools, and nothing else.
+- `ai:approve` — **not** given to the agent. Ever. The approval is a human's.
+
+A human who approves an action is recorded as the approver, with their own permissions checked
+at that moment — so the manager's `ai:*` and the admin's `ai:*` still differ, and a staff
+member cannot approve a price change.
+
+---
+
+## 6. Where n8n fits — and where it does not
+
+### 6.1 What n8n is good at
+
+- Letting a **tenant** wire their own automations without us building each one: WhatsApp
+  broadcasts, a delivery aggregator, an accounting export, a Google Sheet, a Telegram channel.
+- Surviving the long tail of integrations we would never ship.
+- Being **visible** to the tenant — the flow is in a UI they can open and read.
+
+### 6.2 What n8n is bad at, for this job
+
+| Problem | Why n8n does not solve it |
+|---|---|
+| **Tenant isolation** | A flow runs with the credentials it was given. Getting "this flow may only ever read this tenant's data" right means re-implementing the isolation the POS already has in `require_outlet_access` and the tenant scope on every tool. |
+| **The money rules** | The agent must never be able to write a price the pricing engine would not have written. A workflow that calls the POS API is subject to the POS's rules; a workflow that writes to the database directly is not. |
+| **Plan gating** | `require_plan_feature` refuses a route for a tenant that did not buy it. A tenant's n8n flow is outside that gate unless we make it call our gated routes — at which point n8n is a caller, not the brain. |
+| **The agent's own identity** | The agent needs a tenant profile, a working-hours rule, an escalation threshold and an audit trail. That is data the POS must own; it cannot live in a workflow JSON. |
+| **Cost** | A proactive agent that runs every morning for every outlet is a per-tenant bill (model calls + n8n executions). That has to be priced deliberately, not discovered later. |
+
+### 6.3 The shape that works
+
+**The POS owns the agent; n8n is a channel and a connector, downstream of a signed webhook.**
+
+```
+tenant's n8n  ──POST──▶  POS outbound webhook  ──▶  tenant's n8n
+                          (signed, tenant-scoped,
+                           plan-gated, queued)
+```
+
+- The POS emits `domain_events` and delivers them to a **signed, tenant-scoped endpoint**.
+- The tenant's n8n receives them, does whatever the tenant wants, and may call back into the
+  POS's **gated** API routes — which re-check the plan and the permissions.
+- If the tenant does not want n8n at all, the same events feed the native agent core
+  (§3.1) and the staff-app inbox. **n8n is optional; the product is not.**
+
+This is also the cheapest way to *test* the push layer: stand up one n8n, subscribe, and see
+what the events look like, before building the native consumer.
+
+---
+
+## 7. The phases
+
+Each phase names what it **does not** do. Nothing in Phase A depends on Phase C, and Phase C
+does not depend on Phase D.
+
+### Phase A — the action layer
+
+**Does:** extend the tool registry with draft and action tools; add the `agent` role with
+`ai:act`; add the `ai_actions` audit table and the `ai_action_proposals` queue; deliver the
+proposals into the existing notification inbox; a human approves.
+
+**Does not:** emit events; run on a schedule; change the chatbot's read behaviour; introduce
+n8n.
+
+**Proves:** the agent can propose a purchase order from the inventory suggestion the AI
+already makes, a manager sees it in the inbox, the manager approves, a purchase order exists,
+and `ai_actions` holds the whole story.
+
+### Phase B — the tenant profile
+
+**Does:** `tenant_agent_profiles`; the profile screen; the profile seeds from the outlet's
+existing bot settings; the profile's `allowed_actions` narrows what the agent may call.
+
+**Does not:** introduce new capabilities — it configures the ones Phase A built.
+
+**Proves:** two tenants with different personas, hours and allowed actions get visibly
+different behaviour from the same engine, and no code changed between them.
+
+### Phase C — the event bus
+
+**Does:** the `domain_events` outbox; emit the §3.4 events from the write paths; the signed,
+tenant-scoped outbound webhook; the queue, the retry and the dead-letter log.
+
+**Does not:** require n8n — the events are consumed by the native agent in Phase D; n8n is one
+possible consumer.
+
+**Proves:** an order placed in one tenant produces an event that reaches that tenant's
+endpoint, signed and scoped — and that a second tenant's endpoint never sees it.
+
+### Phase D — the AI Manager surface
+
+**Does:** the briefing, the approvals queue, the alerts, the profile screen, the channel
+settings; the native agent consumes the Phase C events and produces the §3.5 briefing.
+
+**Does not:** invent a new notification system — the inbox, the push service and the alerts
+table are reused.
+
+### Phase E — the money
+
+**Does:** the `ai_agent` and `ai_agent_actions` feature rows; the plan assignment; the
+per-tenant override path used for the first design partners; the cost log per tenant.
+
+**Does not:** change how any other plan row is priced.
+
+### Phase F — n8n as the connector (optional, and last)
+
+**Does:** the documented n8n setup for a tenant — the signed webhook, the key, the example
+flows.
+
+**Does not:** make n8n a dependency of the agent. If n8n is not installed, nothing above
+changes.
+
+---
+
+## 8. Open questions for Kens
+
+1. **Does the agent act, or only propose?** The safest first ship is *propose only* — the
+   agent drafts, a human approves, forever. The stronger version acts on low-risk actions
+   (a draft purchase order, a report) and escalates the rest. Which do we want to sell?
+2. **Where does the agent live?** In the POS backend (one engine, tenant data, no extra
+   runtime), or as a separate OpenClaw agent per tenant (maximum isolation, real operational
+   independence, more moving parts)? The house already runs a separate agent for a very
+   different job (`vera-agent.mdx`) — the same pattern is available here.
+3. **Which channel first?** The staff-app inbox is free. Web push exists today for the
+   customer app (`delivery_push.py`). WhatsApp is a third party, a cost and a policy
+   question. Which is first?
+4. **What does it cost?** Model calls scale with tenants and with how often the agent speaks.
+   Per outlet? Per agent run? A message cap? This has to be decided before Phase C, not after.
+5. **Do we need a human's approval for *every* action, or only for money?** A proposed price
+   change and a proposed staff shift are not the same risk.
+6. **Does the AI Manager replace the AI Tools page, or sit beside it?** The Tools page is
+   five read-only tabs; the Manager would be the same insights with a trigger and a
+   personality. Merging them is a cleaner product, but it is a change to a page tenants
+   already use.
+7. **Is n8n per tenant, or one house instance with per-tenant credentials?** One instance is
+   far cheaper to run; per-tenant is closer to isolation. My recommendation is **one instance,
+   one credential set per tenant, keyed by tenant id** — but that is a decision, not a fact.
+
+---
+
+## 9. The sources
+
+- `backend/app/ai/chatbot.py` — the engine: `INTENT_PATTERNS`, `ROLE_INTENTS`,
+  `MAX_TOOL_ROUNDS = 3`, `_handle_ai_fallback`, the admin-only tool branch
+- `backend/app/ai/chatbot_tools.py` — `TOOLS`, `tool_schemas()`, `run_tool()`, `ToolContext`
+- `backend/app/ai/minimax.py` — the shared MiniMax helper and the `<think>` strip
+- `backend/app/routes/chatbot.py`, `backend/app/routes/ai_chatbot.py` — the two chatbot routes
+  and their two gates
+- `backend/app/routes/ai/__init__.py` — insights, menu analytics, the campaign CRUD
+- `backend/app/routes/ai_forecast.py`, `ai_inventory.py`, `ai_orders.py`, `ai_search.py`,
+  `ai_security.py` — the other AI surfaces
+- `backend/app/middleware/auth.py` — `ROLE_PERMISSIONS`, `PERMISSIONS` (the three key types),
+  `require_permission`, `require_plan_feature`, `key_info_has_permission`
+- `backend/app/services/plan_features.py` — the plan read over the house's loopback path
+- `backend/app/core/plan_cache.py`, `backend/app/middleware/subscription.py` — the cache and
+  the notification that keeps it fresh
+- `backend/app/routes/internal.py` — the server-to-server pattern (`require_internal_key`)
+- `backend/app/routes/notifications.py` — the inbox the approvals would land in
+- `backend/app/services/delivery_push.py` — VAPID web push
+- `backend/app/models/models.py` — `bot_name` / `bot_language` / `bot_greeting` / `ai_enabled`
+  (496-499), `OrderReprint` (548), `AIAlert` (576), `AIInsightCache`
+- `backend/app/services/plan_limits.py` — the plan-limit rule the agent would inherit
+- `website_api/app/core/seed_features.py` and the live `features` / `plan_features` /
+  `customer_feature_overrides` / `api_keys` tables — the 44 feature rows, the plan
+  assignments, the per-tenant override and the connector keys
+- `website_api/app/routes/admin.py` — `POST /api/admin/customer-features` (the override) and
+  `notify_pos_plan_changed`
+- `frontend/src/pages/AI/index.jsx`, `frontend/src/pages/Chatbot.jsx`,
+  `frontend/src/pages/Settings.jsx` — the AI surfaces the tenant already sees
+- `frontend/src/hooks/useFeatures.jsx` — the client-side half of the feature gate
+- `backend/scripts/test_chatbot_intents.py`, `test_chatbot_tools.py` — the existing tests the
+  phases must not break
+- `program-changes/ai-chatbot/ai-chatbot-module.mdx`,
+  `program-changes/ai-feature-gating/ai-feature-gating.mdx` — the module record and the
+  gating rule
+- `order-flow-standards.mdx`, `pricing-engine-and-promotions.mdx` — the machine and the money
+  rules the agent must not break
