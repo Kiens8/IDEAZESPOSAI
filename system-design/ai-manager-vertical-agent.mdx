@@ -35,9 +35,9 @@ artifact against a live operation), not whether it needs approval; the approval 
 house's own routes with the **approver's signed session**, so every house gate — the
 permission, the plan, the tenancy, the pricing path — applies to that person; `notify_staff`
 is gated on `Staff`, because the live catalogue has no `Notifications` row; and the approver
-must present a **signed session**, not merely hold the permission. · **v1.8: Phase B is BUILT, and the one wrinkle Phase B was carrying is now settled by the code rather than left as a question for the design review. The tenant profile is the THIRD GATE and the lowest one: it may only NARROW what the plan and the token's scope already allow, and it never narrows the read tools — so configuring a profile can only ever make the agent more careful, never less (§8.4). The profile is addressed by the signed-in session's tenant and NEVER by a query parameter, so one tenant can neither read nor write another's. The seed copies the tenant's first active branch's bot settings, and falls back to the house chatbot's own default — **"Lumi"** — when that branch has no settings row, so a seeded profile is never nameless. The profile's own routes are a MANAGEMENT surface: a manager and an admin may read, only an admin may write, and the floor has neither. The **profile screen moves to Phase D**, which is the only phase allowed to move the frontend at all (§10.2) — Phase B ships the API and the engine's use of it, and the doc's frontend rule stands untouched.**)**
+must present a **signed session**, not merely hold the permission. · **v1.8: Phase B is BUILT, and the one wrinkle Phase B was carrying is now settled by the code rather than left as a question for the design review. The tenant profile is the THIRD GATE and the lowest one: it may only NARROW what the plan and the token's scope already allow, and it never narrows the read tools — so configuring a profile can only ever make the agent more careful, never less (§8.4). The profile is addressed by the signed-in session's tenant and NEVER by a query parameter, so one tenant can neither read nor write another's. The seed copies the tenant's first active branch's bot settings, and falls back to the house chatbot's own default — **"Lumi"** — when that branch has no settings row, so a seeded profile is never nameless. The profile's own routes are a MANAGEMENT surface: a manager and an admin may read, only an admin may write, and the floor has neither. The **profile screen moves to Phase D**, which is the only phase allowed to move the frontend at all (§10.2) — Phase B ships the API and the engine's use of it, and the doc's frontend rule stands untouched. · **v1.9: Phase C is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.5. The short version: the event is written **in the caller's transaction** and the caller commits, so the event and the business change land together or neither does — and an emitter that FAILS never rolls back a successful write, because a live payment must not fall over because a row could not be written. The tenant of an event comes from the **row that was just written**, never from the payload, and the payload carries ids and small facts only: no money, no personal data. The dispatcher claims its rows with a **compare-and-set**, so two workers racing for one row produce one winner — the single uvicorn worker is a convenience, not a guarantee. The plan gate applies to the events too: a tenant without `Inventory` receives no `stock.low`, and the refusal is **VISIBLE** rather than silent. Quiet hours **HOLD** an eligible event until the tenant's day starts; they never drop it. And one event is the honest exception to the house rule: `order.stalled` has no business write behind it, because an order stalls when the **CLOCK** moves — so it is swept, and its event id is derived from the order and the cycle, which is what stops the sweep reminding twice.**)**
 **Owner:** Ideazes POS AI
-**Status:** **Proposal, partly built.** Phase 0, Phase A and Phase B are BUILT and proven against the live server (§8.3, §8.4); Phase C onward is still the design below. It is the design Kens asked for after the
+**Status:** **Proposal, partly built.** Phase 0, Phase A, Phase B and Phase C are BUILT and proven against the live server (§8.3, §8.4, §8.5); Phase D onward is still the design below. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
 integrate the SaaS POS with something like n8n, let each tenant have their own vertical AI
 agent, an AI Manager that manages the store and matches our site app."* Then: *"I am not
@@ -836,12 +836,18 @@ The fix is deliberately small, and it belongs at the call site rather than behin
 | `agent_tokens` | The MCP credentials: `customer_id`, `outlet_id`, `scope`, `plan row`, `revoked`. |
 | `ai_actions` | The audit row: agent, tenant, outlet, tool, arguments, result, approval, timestamps. **BUILT in Phase A.** |
 | `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. **BUILT in Phase A.** |
-| `domain_events` | The outbox: the event, the tenant, the payload, the delivery state. |
-| `event_subscriptions` | Who wants which events, on which channel, for which outlet (§3.5.1). |
+| `domain_events` | The outbox: the event, the tenant, the payload, the delivery state. **BUILT in Phase C.** |
+| `event_subscriptions` | Who wants which events, on which channel, for which outlet (§3.5.1). **BUILT in Phase C.** |
+| `event_deliveries` | One attempt to deliver one event to one subscription — the retry state AND the dead-letter log. **BUILT in Phase C.** |
+| `staff_push_subscriptions` | A manager's own phone for the staff push — a manager's phone is not a customer's `push_subscriptions` (§3.5.3). **BUILT in Phase C.** |
 | `agent_notifications` | The native channel's rows: a briefing, an alert or a pending approval, addressed to an outlet, with its read state. **BUILT in Phase A.** **This is the table the existing inventory notifications cannot be** — theirs is an ingredient feed, and the bell that shows it is hidden without an Inventory feature (§3.5.3). |
 
-All seven are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
+All are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
 "tenant = the restaurant group" rule the delivery leg and the AI tools already use.
+
+*(`tenant_agent_profiles`, `agent_tokens`, `ai_actions`, `ai_action_proposals` and
+`agent_notifications` were built in Phase 0, Phase A and Phase B; the four event tables were
+built in Phase C. `agent_tokens` was built in Phase 0.)*
 
 ### 5.2 Reused configuration
 
@@ -1194,6 +1200,105 @@ branches; and that a typo'd tool name, a foreign branch and an impossible quiet 
 refused rather than silently dropped. Phase 0's and Phase A's proofs still pass unchanged
 (18 / 35 / 10 / 53 — **116 checks**).
 
+### 8.5 What Phase C's implementation settled
+
+Phase C was the trigger layer, so the questions it raised were about **where the event is
+written, what happens when that write fails, and what an event may carry**. The code answered
+them, and this is the record of how — so the next reader does not have to re-derive them from
+the diff.
+
+**1. THE EVENT IS WRITTEN IN THE CALLER'S TRANSACTION, AND THE CALLER COMMITS.** `emit()`
+never commits and never rolls back. It writes one row and hands it back. The write path — the
+order insert, the payment, the stock decrement, the clock-in — calls it and then commits as
+it always did, and that one commit carries both the business change and the event. So there
+is no window where an agent saw an order that was rolled back, and no window where the order
+landed without its event. The proof pins this from both sides: a rolled-back write takes the
+event with it, and a committed write carries it along.
+
+**2. AN EMITTER FAILURE NEVER ROLLS BACK A SUCCESSFUL WRITE.** This was the one that could
+have gone badly. A live payment must not fall over because an event row could not be written,
+so `emit_event(...)` catches the failure, logs it loudly, and returns nothing — the business
+write stands on its own. The proof forces the bus to fail (`emit` raises) and shows the order
+still lands, with no half-written event row beside it. The trade is deliberate and is the
+house's own rule: **the business write is the truth; the event is a notice about it.**
+
+**3. THE TENANT COMES FROM THE ROW, NEVER FROM THE PAYLOAD.** An event's `customer_id` is
+resolved from the business row that was just written — the order's own tenant, or the
+outlet's tenant when the order carries none. A caller cannot name a tenant in a payload,
+because a payload naming one is refused outright. The payload carries **ids and small facts
+only**: the order id and number, the table id, the payment method, the reminder cycle. The
+money and the personal data are deliberately absent, and a payload carrying either is
+**refused** rather than written — the catalogue's own list of forbidden keys. An agent that
+wants to know what the order cost fetches it through a tool, under the tenant's plan.
+
+**4. THE CLAIM IS A COMPARE-AND-SET, NOT A LUCKY SEQUENCE.** `claim_events(...)` updates
+only the rows that are still `pending` and reads back how many the worker actually won. Two
+workers racing for the same row therefore produce ONE winner. The design's §10.1 said the
+backend runs one uvicorn worker — that is a convenience, not a guarantee, and the claim does
+not lean on it. The proof claims the same row twice and shows the second worker wins nothing.
+
+**5. THE PLAN GATE APPLIES TO THE EVENTS TOO, AND THE REFUSAL IS VISIBLE.** A tenant that
+did not buy `Inventory` receives no `stock.low` event — and the delivery row is written as
+**skipped**, naming the module the tenant does not hold. A refusal a tenant cannot see is
+indistinguishable from a bug, so it is recorded. The plan is read **live** from the website
+API through the house's own `tenant_features`, with a cache, so the gate is proven against a
+real tenant's real plan.
+
+**6. QUIET HOURS HOLD; THEY NEVER DROP.** An eligible event inside the window is written as
+**held**, with an `available_at` when the tenant's day starts, and the event goes back to
+`pending`. Nothing is lost and nothing arrives at 3am. The proof shows the held event is
+neither delivered nor dropped.
+
+**7. A FAILED DELIVERY IS A RECORDED FAILURE, NOT SILENCE.** A webhook that cannot succeed
+lands in the dead-letter log with the reason attached, and the tenant can read that log and
+requeue it. Retries back off. The dead letter is a place a human looks — the opposite of a
+silent drop.
+
+**8. THE WEBHOOK IS SIGNED OVER THE BODY THAT ARRIVED.** The signature covers the body, the
+timestamp and the tenant, in Stripe's shape (`t=<timestamp>,v1=<hex>`), and it is scoped to
+the subscription's own secret — so one tenant's runtime cannot forge another's deliveries.
+The proof verifies the signature over the body the endpoint actually received, and shows that
+a **tampered body** and a **foreign secret** both fail to verify.
+
+**9. ONE EVENT IS THE HONEST EXCEPTION: `order.stalled`.** Every other event is written next
+to a business write. `order.stalled` has no write behind it — an order does not stall
+because somebody wrote something, it stalls because the **CLOCK** moved — so it is swept.
+Two things keep the sweep honest: the decision is the **server's** (the outlet's own
+`order_reminder_minutes`, the same number the kitchen screen reads), and the event id is
+**derived** from the order and the cycle, and the column is UNIQUE — so the second attempt in
+the same cycle is a collision the database refuses, not a second reminder. Without that key,
+a sweep running every minute would remind the manager sixty times an hour. The proof shows
+one reminder per cycle, no second reminder for the same cycle, and a new reminder for a later
+one.
+
+**10. AND THE TENANT OF A SWEPT ORDER IS READ THE SAME WAY.** The sweep originally read the
+tenant from the order row alone, while every emitter resolved it from the order **or** the
+outlet. An order written without an explicit tenant therefore reached no subscriber at all —
+silently, with nothing to show for it. The code now resolves the tenant by the same rule the
+emitters use, so the sweep and the emitters cannot drift apart.
+
+**What was proven.** `backend/scripts/test_phase_c_events.py` — **60 checks**, each in its own
+in-memory world with its own tenant, outlet and session, so one poisoned check cannot take
+an unrelated check down with it — covers: that the event rides the business transaction in
+both directions; that a broken emitter leaves the order standing and writes no event; that
+the tenant is the row's own and never the payload's; that a money-carrying or
+personal-data-carrying payload and an unknown event type are both refused; that the event
+reaches its own tenant's subscriber and **never** a second tenant's, and that a subscription
+narrowed to one branch does not see another branch's event; that a tenant holding `Inventory`
+receives `stock.low` and one that does not receives nothing — with the refusal recorded and
+named; that quiet hours hold the event instead of dropping it; that a delivery which cannot
+succeed lands in the dead-letter log with its reason; that the webhook's signature verifies
+over the body that arrived and that a tampered body and a foreign secret do not; that the
+claim is atomic; that the settlement fires `order.paid` **once**, that a second write of an
+already-paid order fires nothing, that `stock.low` fires only on a genuine **crossing** and
+not on every write below the line, that a table turns only when its order reaches its end
+state and only on the transition, and that the clock-in and clock-out fire their own events;
+and that the ageing sweep reminds once per cycle, not twice for the same cycle, and leaves
+no trail at all when nobody has subscribed.
+
+Phase 0's, Phase A's and Phase B's proofs still pass unchanged (18 / 35 / 10 / 53 / 59 —
+**175 checks**).
+
 ### Phase 0 — the MCP server (read-only), and the two feature rows
 
 **Does:** the MCP transport on the existing FastAPI app, mounted at `/api/mcp` so the
@@ -1280,6 +1385,9 @@ its first active branch and then diverges per branch through `outlet_scope`. §8
 
 ### Phase C — the trigger layer
 
+**Status: BUILT** (POS `main` at `c353db8`; proven by `backend/scripts/test_phase_c_events.py`,
+60 checks, against the live server).
+
 **Does:** the `domain_events` outbox, written in the same transaction as the business change;
 emit the §3.5 events from the write paths; the dispatcher with its retry and dead-letter
 log, claiming rows atomically rather than relying on being the only worker (§10.1); the
@@ -1296,6 +1404,9 @@ own database, read by a worker. Nor does it deliver to a customer's push subscri
 subscriber, and a second tenant's subscriber never sees it. A second proof: a Pro tenant
 receives no `stock.low` event at all, because `Inventory` is not in that tenant's feature
 list (§4.5).
+
+*(Both proofs hold, and the code settled three questions the section used to carry — the
+transaction, the failure and the exception. §8.5.)*
 
 ### Phase D — the AI Manager surface, the metering and the cap
 
