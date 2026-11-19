@@ -5,7 +5,7 @@ description: An MCP server as the tool and identity layer, so any agent runtime 
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.5 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
+**Document Version:** 1.6 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
 the backbone, n8n was demoted to one client among many, and the tool catalogue was added ·
 **v1.2: every tool now carries the PLAN GATE of the module it touches, and the catalogue a
 tenant's agent sees is filtered by that tenant's live feature list — so when the admin moves a
@@ -17,7 +17,17 @@ plan gate applied to the events as well as the tools (§3.5) · **v1.3: the impa
 that already exist is now written down and verified against the running code — the backend
 barely moves, the frontend does not move at all, and two traps are named: the mount path
 that decides whether MCP is authenticated at all, and the plan-gate regression that a
-per-tool gate would cause in the live chatbot (§10) · **v1.4: Kens's answers are written in — the agent DRAFTS and a human APPROVES every action, and the approval happens IN THE CHAT, through explicit approve / edit / reject controls rather than through the meaning of a chat message; the first runtime and the first channel are our own chatbot; the MCP server is NOT public — it is served only to our own tenant's runtime; and the AI Manager surface lives in the FRONTEND POS STAFF APP, replacing the existing AI Tools page at /ai-tools (§3.3.1, §3.6, §9) · **v1.5: the cost question is RE-SCOPED. Kens asked the sharp version of it — "if the channel is our frontend POS, it should call our MiniMax model as existing." He is right, and §9.2 now says so: the model call is already ours, already server-side on our own key, and already gated by the `AI Chatbot` plan row, so "who pays" is settled for the pull path and the model proxy drops to a Phase F question. What actually survives is narrower and sharper: the PUSH side is the unbounded one, and it needs per-tenant attribution (the `usage` block the chatbot throws away today — §4.6) and a daily briefing cap (§9.2)**)**
+per-tool gate would cause in the live chatbot (§10) · **v1.4: Kens's answers are written in — the agent DRAFTS and a human APPROVES every action, and the approval happens IN THE CHAT, through explicit approve / edit / reject controls rather than through the meaning of a chat message; the first runtime and the first channel are our own chatbot; the MCP server is NOT public — it is served only to our own tenant's runtime; and the AI Manager surface lives in the FRONTEND POS STAFF APP, replacing the existing AI Tools page at /ai-tools (§3.3.1, §3.6, §9) · **v1.5: the cost question is RE-SCOPED. Kens asked the sharp version of it — "if the channel is our frontend POS, it should call our MiniMax model as existing." He is right, and §9.2 now says so: the model call is already ours, already server-side on our own key, and already gated by the `AI Chatbot` plan row, so "who pays" is settled for the pull path and the model proxy drops to a Phase F question. What actually survives is narrower and sharper: the PUSH side is the unbounded one, and it needs per-tenant attribution (the `usage` block the chatbot throws away today — §4.6) and a daily briefing cap (§9.2) · **v1.6: the PHASES are re-audited against the running code and
+re-ordered. Three corrections, each of them a live-code fact rather than a preference: the
+feature rows the gates name are now created in Phase 0 and only *priced* in Phase E, because
+a gate cannot check a row that does not exist yet; the "existing notification inbox" is not an
+inbox — it is the inventory alert API, every row of it carrying an `ingredient_id` — so the
+native channel gets its own generic, tenant-scoped table; and the metering and the daily
+briefing cap move forward into the push phase, so the first proactive call is metered and
+capped before it exists rather than after. Two traps found while re-auditing are named in
+Phase 0: `require_plan_feature` is a **no-op for a key caller** (it only gates a session), so
+the MCP path must check the plan itself; and a new key type that is neither `frontend` nor
+`user` is treated as a *customer* caller by `is_customer_caller` (§8)**)**
 **Owner:** Ideazes POS AI
 **Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
@@ -118,11 +128,11 @@ tenant-profile idea, and it lives in the outlet row.
 
 | Need | What already exists |
 |---|---|
-| Plan entitlement | `backend/app/services/plan_features.py` reads the website API over the house's loopback path; `require_plan_feature("<display name>")` gates a route. The feature list is stamped into the session at login. |
+| Plan entitlement | `backend/app/services/plan_features.py` reads the website API over the house's loopback path; `require_plan_feature("<the row's tab_name>")` gates a route. The feature list is stamped into the session at login. |
 | Per-tenant exception to a plan | `customer_feature_overrides` (website API) — `customer_id`, `feature_id`, `enabled`, `reason`, `created_by`. The admin route `POST /api/admin/customer-features` already writes it and pushes the change to the POS cache. **This is the hook for selling the AI Manager to one tenant without inventing a billing mechanism.** |
 | Server-to-server calls | `backend/app/routes/internal.py` — `/plan-changed`, `/subscription-changed`, `/order-paid`, all behind `require_internal_key`. The pattern for "the POS tells somebody something" exists. |
-| An inbox for things that need attention | `backend/app/routes/notifications.py` — list, unread count, mark read, plus the stock check. The bell in the staff app already exists. |
-| Push to a phone | `backend/app/services/delivery_push.py` — VAPID web push, with subscribe/unsubscribe and a payload builder. It ships to the **customer** app today; the same service can carry the manager's briefing. |
+| An inbox for things that need attention | `backend/app/routes/notifications.py` — list, unread count, mark read, plus the stock check. The bell in the staff app already exists. **But it is the *inventory* feed, not a queue**: the router is mounted at `/api/inventory/notifications`, the table is `inventory_notifications`, every row carries an `ingredient_id`, and `notification_type` is one of low stock / out of stock / critical low. The bell is also hidden outright for a tenant without an Inventory feature. A decision queue needs a new table (§5.1). |
+| Push to a phone | `backend/app/services/delivery_push.py` — VAPID web push, with subscribe/unsubscribe and a payload builder. It ships to the **customer** app today; the same service can carry the manager's briefing. **The transport is reusable; the subscription is not.** `push_subscriptions.dining_customer_id` is `NOT NULL` and `subscribe()` takes a dining member's id — every existing row is a customer's phone for delivery news. A manager's phone is a new subscription, not an existing one. |
 | An audit trail | `order_reprints` (`models.py:548`) — who, when, how many copies, why, and whether the token was on the paper. The house already has a pattern for "this was done by a human and here is the record". |
 | AI findings with an acknowledgement | `AIAlert` (`ai_alerts`) — severity, the related order/user/item, `is_acknowledged`, `acknowledged_at`, `acknowledged_by`. |
 | Tenant API keys for a connector | `api_keys` in the website API, with a `permissions` JSON column. |
@@ -136,7 +146,7 @@ tenant-profile idea, and it lives in the outlet row.
 | An audit row for AI actions | `order_reprints` is human-only; there is no AI-action log. |
 | A domain event bus | `grep` for `n8n`, `webhook` and `scheduler` in `backend/app` returns only inbound payment webhooks and `subscription_cache` comments. There is no APScheduler and no event table. The only scheduling in the box is four crontab lines (notifications at 09:00, the HitPay reconcile every 10 minutes, the delivery entitlement sweep at 03:23, a log rotation). |
 | A tenant agent profile | The bot's knowledge is code. The only tenant-owned knobs are `bot_name`, `bot_language`, `bot_greeting`, `ai_enabled`. |
-| An agent "role" in the POS | `ROLE_INTENTS` has `staff`, `manager`, `customer`, `admin` — all of them *human* roles. There is no `agent` role, so no permission namespace an agent could hold. |
+| An agent *identity* in the POS | `ROLE_INTENTS` has `staff`, `manager`, `customer`, `admin` — all of them *human* roles, and `ROLE_PERMISSIONS` is keyed by session role. There is no agent identity and none is wanted: the agent's authority belongs on its **token** (a scope plus a permission list), not in a table that describes a signed-in person. |
 | An MCP server | `grep -rn "mcp" backend/app` returns **nothing**; `backend/requirements.txt` has no MCP library. The server would be built on FastAPI, so the transport can be added without a new framework. |
 
 ---
@@ -198,12 +208,22 @@ application, not a new service. Two decisions the design must make early:
   else. **The tenant comes from the credential, never from the model's arguments** — the rule
   `chatbot_tools.py` already states in its own docstring.
 
-**The token.** The website API's `api_keys` table already carries a `permissions` JSON
-column. The proposal extends it (or adds a sibling table) with `customer_id`, `outlet_id`,
-`scope` (`read` / `draft` / `action`) and the plan row it rides on. A tenant holds one token
-for their agent, revocable like any key. It is the same token that carries `require_permission`
-and `require_plan_feature` on the routes underneath, so a lapsed plan refuses the tool call
-rather than the UI.
+**The token.** The token lives in the **POS's own** database, in a new `agent_tokens` table
+(`customer_id`, `outlet_id`, `scope` of `read` / `draft` / `action`, the plan row it rides on,
+`revoked`), and a **new lookup function** resolves it into the same `key_info` dict shape the
+rest of the app already understands — the fourth credential path beside the three hardcoded
+keys in `PERMISSIONS` (§10.1). It is deliberately *not* the website API's `api_keys` table:
+that table carries a `permissions` JSON column, but **the POS auth path never reads it** —
+`get_key_info()` matches a literal string against the hardcoded `PERMISSIONS` dict — so a row
+written there would not authenticate anything. A tenant holds one token for their agent,
+revocable like any key.
+
+**The plan is checked by the MCP layer, not by the route.** A lapsed plan must refuse the
+tool call rather than the UI, but the house's plan gate cannot do that on this path:
+`require_plan_feature` returns the credential untouched unless `key_type == "user"`, because
+a session is what carries a plan (§8, Phase 0). The MCP transport therefore reads the plan
+itself — the same `plan_cache` read and the same three states as §4.5 — at the transport and
+again inside each tool body.
 
 **One registry, two exposures.** The tool definitions live in **one** place and are rendered
 twice: as the OpenAI-style function schemas MiniMax already consumes (`tool_schemas()`) and
@@ -238,8 +258,11 @@ The tool registry grows a third kind of tool. The three kinds behave differently
 
 The rules that make this safe, each one drawn from a rule the house already enforces:
 
-- **The agent holds a role, not a god-mode key.** A new `agent` role in `ROLE_PERMISSIONS`,
-  with `ai:act` and a scoped list of the action tools it may call. It never inherits `admin:*`.
+- **The agent holds a token, not a god-mode key.** `ROLE_PERMISSIONS` maps *session* roles
+  to permissions, and the agent has no session — so its authority is the token row: a scope
+  (`read` / `draft` / `action`) checked at the transport, and a permissions list
+  (`ai:read`, `ai:act`) the tool bodies check. It never inherits `admin:*`, and it never
+  holds `ai:approve`.
 - **The server owns the money and the price.** The agent may propose a price change; the
   write goes through the same pricing path the staff screen uses, so the promotion precedence,
   the tax and the order's locked price are unchanged (`pricing-engine-and-promotions.mdx`).
@@ -248,8 +271,10 @@ The rules that make this safe, each one drawn from a rule the house already enfo
   The `order_reprints` row is the precedent; the fields are the same idea.
 - **An action that is refused is recorded as refused.** Silence is not success — the same rule
   the delivery sweep and the unattended watcher already live by.
-- **The approval is a human's, in the POS.** The approval lands in the existing notification
-  inbox. Nothing is auto-approved because a model was confident.
+- **The approval is a human's, in the POS.** The approval lands in the agent's own
+  notification feed — the new generic `agent_notifications` table (§5.1), because the
+  existing notification route is the *inventory* feed and cannot carry a decision. Nothing
+  is auto-approved because a model was confident.
 - **The MCP server refuses an action tool outright** when the credential's scope is `read`
   only. The refusal happens at the transport, before the tool body runs.
 
@@ -425,12 +450,24 @@ powers.
 **Channel A — the frontend POS app (we already have it).**
 
 The staff app's **notification bell** already polls `GET /api/inventory/notifications/`
-every **30 seconds** (`frontend/src/components/NotificationBell.jsx`) and shows a badge. The
-agent's briefing arrives the same way — as a notification row. Nothing new is needed for the
-first version of the surface; the **approval queue** (the proposals from §3.3) is the same
-table with a different kind. For a phone, `delivery_push.py` already speaks **VAPID web
-push** with a `push_subscriptions` row per tenant per endpoint — the same service can carry
-the manager's briefing.
+every **30 seconds** (`frontend/src/components/NotificationBell.jsx`) and shows a badge — but
+it is an **inventory** bell. The router is mounted at `/api/inventory/notifications`, the
+table is `inventory_notifications`, and every row carries an `ingredient_id` with a
+`notification_type` of low stock / out of stock / critical low. The bell is also hidden
+entirely for a tenant whose plan has no Inventory feature (`INVENTORY_FEATURES` in the
+component). It is an alert feed about ingredients, not a queue about decisions.
+
+So the native channel needs **one new, generic, tenant-scoped table** — `agent_notifications`
+(§5.1) — carrying the agent's briefings, its alerts and its pending approvals, each row
+addressed to an outlet with a read state. One table, three kinds, one unread count. The
+existing inventory notifications are untouched; the bell grows a second source rather than
+being bent into a shape it was never built for.
+
+For a phone, `delivery_push.py` already speaks **VAPID web push** — the transport is
+reusable. The **subscription is not**: `push_subscriptions.dining_customer_id` is `NOT NULL`
+and `subscribe()` takes a dining member's id, so every row in the table is a customer's phone
+for delivery news. A manager's phone is a new subscription (a staff-keyed row, or a sibling
+table) — new work in Phase C, not a re-use of an existing one.
 
 **Channel B — Telegram (the tenant's own channel).**
 
@@ -653,7 +690,12 @@ from the website API's `features` / `plan_features` tables, through the machiner
 already has:
 
 - `backend/app/services/plan_features.py` — `get_plan_features(tenant_id, fetch)` reads the
-  plan's feature **display names** and caches them.
+  plan's feature **names** and caches them. The name it collects is the row's `tab_name`
+  (the website API's customer-features route returns `tab_name` under the key `name`), so
+  that string — not `display_name` — is what the gate compares. Today all 44 live rows have
+  the two identical, which is why the source comment calls it "the display name"; a new row
+  must set both to the same string, or the gate compares a string that was never put in the
+  plan.
 - `backend/app/core/plan_cache.py` — the cache distinguishes three states, and the third one
   is the one that matters:
   - a **fresh or stale known list** — the tenant bought these features;
@@ -679,11 +721,19 @@ required:
 1. **At catalogue time** — `list_tools` (MCP) / the tool-schema registry returns only the
    tools whose feature rows are in this tenant's live feature list. A Pro tenant's agent is
    never even *offered* `get_inventory_levels`.
-2. **At call time** — every tool body re-checks the gate before it runs. The plan can change
+3. **At call time** — every tool body re-checks the gate before it runs. The plan can change
    mid-session: the tenant upgrades, downgrades, lapses, or an admin moves a feature row
    between plans while the agent is holding a session. The listing was true when it was made;
    the call-time check is what makes it true *now*. The read is served from
    `plan_cache`, so it is cheap — and a cache miss costs one live read, not a refusal.
+
+**And the check has to be ours on the agent's path.** `require_plan_feature` is a **no-op for
+a key caller**: it returns the credential untouched unless `key_type == "user"`, because a
+session is what carries a plan (the route dependency's own docstring says server-to-server
+callers "are not governed by a browser session and are not checked here"). The chatbot is a
+session, so its route gate works. The MCP transport is **not** — it presents a key — so a
+tool reached only through the route dependency would be **ungated**. The MCP layer checks the
+plan itself, from the same `plan_cache`, with the same three states (§8, Phase 0).
 
 **What a refusal looks like.** When a tool is called and the gate fails, the tool returns a
 **module-level refusal**, in the same shape as every other answer (the `data` field):
@@ -749,8 +799,9 @@ The fix is deliberately small, and it belongs at the call site rather than behin
 | `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. |
 | `domain_events` | The outbox: the event, the tenant, the payload, the delivery state. |
 | `event_subscriptions` | Who wants which events, on which channel, for which outlet (§3.5.1). |
+| `agent_notifications` | The native channel's rows: a briefing, an alert or a pending approval, addressed to an outlet, with its read state. **This is the table the existing inventory notifications cannot be** — theirs is an ingredient feed, and the bell that shows it is hidden without an Inventory feature (§3.5.3). |
 
-All six are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
+All seven are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
 "tenant = the restaurant group" rule the delivery leg and the AI tools already use.
 
 ### 5.2 Reused configuration
@@ -774,9 +825,10 @@ every morning for every outlet is an unbounded bill and nobody knows whose it is
 The house has two independent gates, and the agent needs both:
 
 - **The role** says what a *person* may do with a kind of data.
-- **The plan** says what the restaurant *bought*. `require_plan_feature` compares the feature's
-  **display name** against the tenant's list, which is read from the website API over the
-  house's loopback path.
+- **The plan** says what the restaurant *bought*. `require_plan_feature` compares a
+  **feature name** against the tenant's list, which is read from the website API over the
+  house's loopback path. That name is the row's `tab_name` (§4.5) — so a new feature row has
+  to carry the right `tab_name`, or the gate compares a string the plan does not hold.
 
 **Plan rows.** The live feature table holds 44 rows, of which the AI category is:
 
@@ -812,15 +864,23 @@ be sold to a single tenant on a plan that does not include it, without a new bil
 the row is written, the POS cache is notified (`notify_pos_plan_changed`), and the tenant's
 agent switches on.
 
-**The role.** The agent is not a person, so it gets its own entry in `ROLE_PERMISSIONS`:
+**The agent's authority is its token, not a role.** `ROLE_PERMISSIONS` maps **session roles**
+to permissions — the browser's signed-in user is looked up there by role
+(`get_auth_context`), and an API key carries its own permission list instead. The agent holds
+a token, not a session, so giving it an entry in `ROLE_PERMISSIONS` would describe nothing
+that exists. Its authority is the token's **scope**:
 
-- `ai:read` — everything today's tools already need.
-- `ai:act` — the draft and action tools, and nothing else.
-- `ai:approve` — **not** given to the agent. Ever. The approval is a human's.
+- `read` — everything today's tools already need.
+- `draft` — the draft tools, and nothing else.
+- `action` — the action tools, and nothing else.
 
-A human who approves an action is recorded as the approver, with their own permissions checked
-at that moment — so the manager's `ai:*` and the admin's `ai:*` still differ, and a staff
-member cannot approve a price change.
+**The human's authority is a new permission.** `ai:approve` is added to `manager`; the
+`admin` already covers it through its existing `ai:*` wildcard, and `staff` has neither — so
+a waiter cannot approve a price change. The agent's token **never** carries `ai:approve`:
+the scope has no such value, and the approval is a human's. A human who approves an action is
+recorded as the approver, with their own permissions checked **at that moment**, in their own
+session — the manager's approval and the admin's approval are separate records with separate
+permissions behind them.
 
 **The MCP token's scope is a third, separate axis.** A token's scope (`read` / `draft` /
 `action`) is checked **at the transport**, before the tool body runs — so an agent that
@@ -895,86 +955,212 @@ no change to the server. That is the whole point of the MCP decision.
 
 ## 8. The phases
 
-Each phase names what it **does not** do. Nothing in Phase A depends on Phase C, and Phase C
-does not depend on Phase D.
+*(v1.6: this section was re-audited against the live code and re-ordered. The phase letters
+are unchanged — §3.2 is still Phase 0, §3.3 Phase A, and so on — but four things moved, and
+they are listed first because they are the reason the order is what it is.)*
 
-### Phase 0 — the MCP server (read-only)
+### 8.1 What the re-audit changed
 
-**Does:** the MCP transport on the existing FastAPI app; the tenant-scoped token; the 10 read
-tools of §4.1 exposed through one registry; the plan and permission gates applied at the
-transport; the model proxy sketch.
+**1. The two feature rows move to Phase 0.** The plan gate compares a **string** — the row's
+`tab_name` — against the tenant's live feature list, and that list is read from the website
+API's `features` and `plan_features` tables. A gate can only be satisfied by a row that
+exists. So if `AI Agent` and `AI Agent Actions` are created in Phase E, then through Phases 0
+to D the gate reads "not in your plan" for every tenant including us, every gated tool
+refuses, and none of the phases can be proven at all. The rows are **data, not code**: they
+go in Phase 0, with their plan assignment, and Phase E keeps only the commercial packaging —
+the price, the tiering decision, the per-tenant override for the design partners, and the
+cost report over the usage log.
 
-**Does not:** write anything; emit events; change the chatbot's behaviour; involve n8n.
+The row has **three** places to be written, and all three are needed:
 
-**Proves:** one tenant, one outlet, one token — a client outside the POS calls
-`get_sales` and gets that outlet's numbers, and a second tenant's token gets a different
-tenant's numbers. The identity model is proven before anything risky is built on it.
+- `website_api/app/core/seed_features.py` — for a fresh install. This file is **not** the
+  source of truth for the live database: it holds 20 rows and the live `features` table holds
+  44, so 30 live rows exist only in the database. A new row goes into the seed **and** into
+  the live table.
+- the live `features` table — `name` (`ai_agent`, `ai_agent_actions`), `display_name` (`AI
+  Agent`, `AI Agent Actions`), `tab_name` (the same string), `category` (`ai`), `is_active`.
+- the live `plan_features` table — `AI Agent` to Pro and Enterprise, `AI Agent Actions` to
+  Enterprise, per §6.
+
+**The gate string is `tab_name`, not `display_name`.** The POS reads the list from
+`/api/admin/customer/{id}/features`, and that route returns the row's `tab_name` under the
+key `name` — which is the key `fetch_plan_features` collects. Today the two are identical for
+all 44 live rows, so the distinction is invisible; a new row must set both to the same
+string, or the gate compares a string that was never put in the plan.
+
+**2. The metering and the cap move forward, into Phase D.** The push side is the unbounded
+side (§9.2): the pull path is bounded by a human asking, the proactive path is bounded by
+nothing. So the `usage` log and the daily briefing cap ship **with** the briefing that first
+spends a token without being asked — not after. A cost log added the morning after the first
+unmetered briefing is a bill you can attribute but not prevent.
+
+**3. Phase A's delivery target is a new table.** The "existing notification inbox" is the
+**inventory** feed: `inventory_notifications`, every row carrying an `ingredient_id`, the
+router mounted at `/api/inventory/notifications`, and the bell hidden entirely for a tenant
+without an Inventory feature. It is an alert feed about ingredients, not a queue about
+decisions. The proposals get the new generic `agent_notifications` table (§5.1).
+
+**4. The agent's authority is its token, not a role.** `ROLE_PERMISSIONS` is a map of
+**session** roles to permissions — the browser's signed-in user is looked up there by role.
+The agent holds a token, so an entry in `ROLE_PERMISSIONS` would describe nothing that
+exists. Its authority is the token row: a **scope** (`read` / `draft` / `action`) checked at
+the transport, and a **permissions list** the tool bodies check (`ai:read`, `ai:act`).
+`ai:approve` is only ever on a human session, and the human roles gain it explicitly
+(`manager`; `admin` already covers it through its `ai:*` wildcard).
+
+### 8.2 The dependency graph
+
+```
+Phase 0 ──> Phase A ──> Phase B ──> Phase C ──> Phase D ──> Phase E ──> Phase F
+(MCP +    (the action  (the tenant  (the      (the       (the     (the
+feature   layer)        profile)    trigger)  surface)  money)   connectors)
+rows)
+```
+
+The edges that are not obvious from the list:
+
+- **C depends on A** — the native channel writes into the `agent_notifications` table Phase A
+  creates.
+- **D depends on A, B and C** — the page shows A's proposals, B's profile and C's events.
+- **E depends on nothing new in code** — it is pricing and packaging, and it can ship any
+  time after Phase 0's rows exist.
+- **F depends on A's registry and Phase 0's transport** — a foreign runtime is a client of
+  what Phase 0 already built.
+
+Nothing in Phase A depends on Phase C or Phase D. The **metering and the cap land in
+Phase D**, with the briefing that first spends a token unasked.
+
+### Phase 0 — the MCP server (read-only), and the two feature rows
+
+**Does:** the MCP transport on the existing FastAPI app, mounted at `/api/mcp` so the
+deny-by-default middleware covers it (§10.1); the tenant-scoped token — the new
+`agent_tokens` table and the new lookup that resolves it into the same `key_info` shape the
+house already understands, beside the three hardcoded keys in `PERMISSIONS`; the ten read
+tools of §4.1 exposed through one registry; the **plan gate enforced by the MCP layer
+itself**, because `require_plan_feature` is a no-op for a key caller (§4.5); the two feature
+rows and their plan assignment, written into the seed **and** the live tables (§8.1).
+
+**Does not:** write anything; call a model; change the chatbot's behaviour; involve n8n;
+**carry the model proxy** — that is Phase F, and §4.4 says why.
+
+**Proves:** one tenant, one outlet, one token — a client outside the POS calls `get_sales`
+and gets that outlet's numbers, and a second tenant's token gets a different tenant's
+numbers. The identity model is proven before anything risky is built on it. And the gate is
+proven in the same phase: a tenant whose plan does not hold the row is refused **by name** —
+*"This restaurant's plan does not include the Inventory module."* — and not by an empty
+result, because an empty result is read by the model as "there is no stock".
+
+**The two traps this phase must not walk into.** Both are live-code facts, and both are
+silent when they are wrong:
+
+- **`require_plan_feature` does not gate a key caller.** It returns the credential untouched
+  unless `key_type == "user"`, because a session is what carries a plan. The chatbot is a
+  session, so its route gate works; an MCP token is not, so the route dependency would let
+  it through untouched. The MCP layer checks the plan itself, from the same `plan_cache`,
+  with the same three states (§4.5). The token's `key_info` must also carry
+  `website_customer_id`, or the shared routes' own plan gate cannot read this tenant's plan
+  either.
+- **A key type the shared routes do not know is treated as a customer.**
+  `is_customer_caller` treats any credential whose `key_type` is not `frontend` or `user` as
+  a customer caller, and `require_shared_permission` accepts only `frontend`, `customer`
+  and `user`. An agent token typed `agent` would therefore be **refused by the shared
+  routes** and **served the public menu payload** by `menu.py` — the public half, without the
+  costing or the recipe links. The token's type is chosen with both functions in mind, and
+  that choice is part of this phase, not an afterthought.
 
 ### Phase A — the action layer
 
-**Does:** extend the tool registry with the draft and action tools of §4.3; add the `agent`
-role with `ai:act`; add the `ai_actions` audit table and the `ai_action_proposals` queue;
-deliver the proposals into the existing notification inbox; a human approves.
+**Does:** extend the tool registry with the draft and action tools of §4.3; the `ai_actions`
+audit table and the `ai_action_proposals` queue; the three explicit approval controls of
+§3.3.1 and the dedicated routes `POST /api/ai/proposals/{id}/approve|edit|reject`; the
+token's `draft` and `action` scopes and `ai:act` on its permission list; the **new**
+`agent_notifications` table and its service — the proposal queue's delivery target; the
+`ai:approve` permission added to the human roles; the approver's own session and permissions
+checked at approval time.
 
-**Does not:** emit events; run on a schedule; introduce n8n.
+**Does not:** emit events; run on a schedule; introduce n8n; invent a second approval
+channel — the words in a chat message approve nothing, ever.
 
 **Proves:** the agent can propose a purchase order from the inventory suggestion the AI
-already makes, a manager sees it in the inbox, the manager approves, a purchase order exists,
-and `ai_actions` holds the whole story.
+already makes; a manager sees the proposal **as a card with Approve / Edit / Reject**, the
+manager clicks Approve, a purchase order exists, and `ai_actions` holds the whole story —
+the audit row written **before** the action ran. And the negative proof, which is the one
+that matters: a message in the chat that says "yes, approve it" approves nothing, because
+the only path to approval is a signed request from a human's own session.
 
 ### Phase B — the tenant profile
 
 **Does:** `tenant_agent_profiles`; the profile screen; the profile seeds from the outlet's
-existing bot settings; the profile's `allowed_actions` narrows what the agent may call; the
-`runtime` field names the client.
+existing bot settings (`bot_name`, `bot_language`, `bot_greeting`, `ai_enabled` — the four
+knobs that exist today); the profile's `allowed_actions` narrows what the agent may call;
+the `runtime` field names the client.
 
 **Does not:** introduce new capabilities — it configures the ones Phase A built.
 
 **Proves:** two tenants with different personas, hours and allowed actions get visibly
 different behaviour from the same engine, and no code changed between them.
 
+*(One wrinkle to settle in the design review: the profile is one row per **tenant**, while the
+bot settings it seeds from are per **outlet** — so a group seeds from its default outlet and
+then diverges per outlet.)*
+
 ### Phase C — the trigger layer
 
 **Does:** the `domain_events` outbox, written in the same transaction as the business change;
-emit the §3.5 events from the write paths; the dispatcher with its retry and dead-letter log;
-the subscription rows; the three channels of §3.5.3 — the POS app's own notification inbox
-and web push (both already exist), the Telegram bridge (a client, like n8n), and the signed,
-tenant-scoped outbound webhook.
+emit the §3.5 events from the write paths; the dispatcher with its retry and dead-letter
+log, claiming rows atomically rather than relying on being the only worker (§10.1); the
+subscription rows; the **native** channel — the `agent_notifications` rows Phase A created,
+read by the app; the **staff web push** — a new subscription, because `push_subscriptions`
+is a customer's phone for delivery news and not a manager's (§3.5.3); the signed,
+tenant-scoped outbound webhook; the Telegram bridge (a client, like n8n).
 
-**Does not:** require n8n — the events are consumed by the native agent in Phase D; n8n is one
-possible consumer. Nor does it build a queue broker: the outbox is a table in the POS's own
-database, read by a worker.
+**Does not:** require n8n — the events are consumed by the native agent in Phase D; n8n is
+one possible consumer. Nor does it build a queue broker: the outbox is a table in the POS's
+own database, read by a worker. Nor does it deliver to a customer's push subscription.
 
 **Proves:** an order placed in one tenant produces an event that reaches that tenant's
-endpoint, signed and scoped — and that a second tenant's endpoint never sees it. A second
-proof: a Pro tenant receives no `stock.low` event at all, because `Inventory` is not in that
-tenant's feature list (§4.5).
+subscriber, and a second tenant's subscriber never sees it. A second proof: a Pro tenant
+receives no `stock.low` event at all, because `Inventory` is not in that tenant's feature
+list (§4.5).
 
-### Phase D — the AI Manager surface
+### Phase D — the AI Manager surface, the metering and the cap
 
 **Does:** the briefing, the approvals queue, the alerts, the profile screen, the channel
 settings, the agent-token screen; the native agent consumes the Phase C events and produces
-the §3.6 briefing.
+the §3.6 briefing; the **usage log** — the `usage` block MiniMax already returns, read and
+recorded with its tenant, outlet and model, at the call site (§4.6); the **daily briefing
+cap** per outlet, and what happens at the cap (§9.2).
 
-**Does not:** invent a new notification system — the inbox, the push service and the alerts
-table are reused.
+**Does not:** invent a new notification system — `agent_notifications` from Phase A and the
+`ai_alerts` table are reused as they are; nor start a proactive briefing before the usage
+log and the cap are live.
+
+**Proves:** the manager opens `/ai-tools` and sees today's briefing, the proposals waiting
+for them, and the agent's own settings — and every proactive call is attributed to a tenant
+and counted against that outlet's daily allowance. The cap is exercised before it is relied
+on: the allowance is reached, the agent goes quiet, and the quiet is a **recorded**
+decision, not a silence.
 
 ### Phase E — the money
 
-**Does:** the `ai_agent` and `ai_agent_actions` feature rows; the plan assignment; the
-per-tenant override path used for the first design partners; the cost log per tenant.
+**Does:** the price and the tiering decision for the two rows; the per-tenant override path
+used for the first design partners — `customer_feature_overrides` already exists and already
+applies, because the website API's feature endpoint reads the override map over the plan
+default, so a tenant can be granted `AI Agent` on a plan that does not carry it, with a
+reason and a `created_by`, and the POS cache is notified; the cost report over the usage log
+Phase D writes.
 
-**Does not:** change how any other plan row is priced.
+**Does not:** change how any other plan row is priced; meter tokens per call for the pull
+path — the `AI Chatbot` row *is* that price (§9.2).
 
 ### Phase F — the connectors (optional, and last)
 
 **Does:** the documented setup for a tenant's own runtime — n8n with the MCP Client Tool, a
-Telegram bridge, the signed webhook, the token.
+Telegram bridge, the signed webhook, the token; and the model proxy of §4.4, which exists
+only for a runtime we do not control holding its own LLM.
 
 **Does not:** make any runtime a dependency of the agent. If n8n is not installed, nothing
 above changes.
-
----
 
 ## 9. Kens's decisions (and the one question still open)
 
@@ -986,7 +1172,7 @@ not as a list of options — the design above has already been moved to match.)*
 | 1 | Does the agent act, or only propose? | **The agent drafts; a human approves.** | §3.3 — the `draft` and `action` tool kinds, and the `ai_actions` audit row. The agent never acts on its own. |
 | 2 | Which runtime ships first? | **Our chatbot.** | §3.2 / Phase 0 — our own POS frontend chatbot is the first MCP client. n8n, Telegram and the rest stay clients (§7). |
 | 3 | Public MCP server, or only the tenant's own runtime? | **No. Only for our tenant.** | §3.2 — the server is **not** a public MCP endpoint. It is served to our own tenant's runtime, behind the house key model, bound to one tenant (and one outlet). |
-| 4 | Which channel first? | **Our chatbot.** | §3.5.3 / Phase C — the first channel is the POS app's own surface (the chat and the staff-app inbox). The Telegram bridge and the signed webhook follow. |
+| 4 | Which channel first? | **Our chatbot.** | §3.5.3 / Phase C — the first channel is the POS app's own surface: the chat, and the new `agent_notifications` feed the app reads. The Telegram bridge and the signed webhook follow. |
 | 5 | What does it cost? | **Re-scoped in v1.5** — our chatbot calls our own MiniMax, so the pull path is already ours and already gated. | §9.2 — what survives is not *who pays* but the **push** cap and per-tenant attribution. §4.6. |
 | 6 | Approval for *every* action, or only for money? | **The agent drafts, a human approves** — for every action, not only money. | §3.3 — the approval gate is uniform. A shift swap is gated like a price change. |
 | 7 | Does the AI Manager replace the AI Tools page, or sit beside it? | **Replace the existing AI Tool screen.** | §3.6 — the surface is the staff app's `/ai-tools` page, replaced, not a second page beside it. |
@@ -1039,7 +1225,8 @@ current design bounds it. Two decisions, both small:
 **And the thing that is *not* a question.** Nobody has to decide whether a tenant is
 charged per token. We do not meter tokens for the pull path today and we should not start:
 the `AI Chatbot` row *is* the price. If a tenant wants the proactive agent, that is a **new
-feature row** (`AI Agent`, Phase E) that says what they get — not a meter on every call.
+feature row** (`AI Agent` — created in Phase 0, priced in Phase E) that says what they get —
+not a meter on every call.
 
 ---
 
@@ -1124,7 +1311,7 @@ three existing keys are untouched.
 **New tables need no migration.** `main.py` runs `Base.metadata.create_all(bind=engine)` at
 boot, plus the idempotent `_ensure_added_columns()` and `_ensure_push_schema()` belt-and-braces.
 New models are created automatically — the house pattern. `ai_actions`, `agent_tokens`,
-`domain_events` and `event_subscriptions` all follow it.
+`agent_notifications`, `domain_events` and `event_subscriptions` all follow it.
 
 **One worker.** The backend runs **one uvicorn worker** — the prepay expiry sweep depends on
 it (`main.py`: *"the backend runs ONE uvicorn worker, so there is exactly one sweep"*). MCP
@@ -1208,10 +1395,13 @@ middleware** — it is a two-line change and it should not wait for the exposure
   and the two precedents the event bus copies: `/order-paid` (an idempotent, server-to-server
   webhook) and `/plan-changed`
 - `backend/app/services/delivery_push.py` — VAPID web push
-- `backend/app/models/push.py` — the `push_subscriptions` row: one phone per tenant
-- `backend/app/routes/notifications.py` — the inbox the POS app already polls
+- `backend/app/models/push.py` — the `push_subscriptions` row: one **customer's** phone per
+  tenant (`dining_customer_id` is `NOT NULL`) — there is no staff subscription yet
+- `backend/app/routes/notifications.py` — the **inventory** notification feed the POS app
+  already polls (`/api/inventory/notifications`, `inventory_notifications`, `ingredient_id`)
 - `frontend/src/components/NotificationBell.jsx` — the 30-second poll
-  (`setInterval(..., 30000)`) that the in-app channel reuses
+  (`setInterval(..., 30000)`) of that inventory feed, itself hidden without an Inventory
+  feature
 - `website_api/app/services/plan_notify.py` — `notify_pos_plan_changed`, the push-notification
   precedent: one tenant's plan change tells the POS, and the cache drops
 - `backend/app/models/models.py` — `bot_name` / `bot_language` / `bot_greeting` / `ai_enabled`
