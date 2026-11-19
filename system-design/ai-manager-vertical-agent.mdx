@@ -5,7 +5,7 @@ description: An MCP server as the tool and identity layer, so any agent runtime 
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.3 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
+**Document Version:** 1.4 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
 the backbone, n8n was demoted to one client among many, and the tool catalogue was added ·
 **v1.2: every tool now carries the PLAN GATE of the module it touches, and the catalogue a
 tenant's agent sees is filtered by that tenant's live feature list — so when the admin moves a
@@ -17,7 +17,7 @@ plan gate applied to the events as well as the tools (§3.5) · **v1.3: the impa
 that already exist is now written down and verified against the running code — the backend
 barely moves, the frontend does not move at all, and two traps are named: the mount path
 that decides whether MCP is authenticated at all, and the plan-gate regression that a
-per-tool gate would cause in the live chatbot (§10)**)**
+per-tool gate would cause in the live chatbot (§10) · **v1.4: Kens's answers are written in — the agent DRAFTS and a human APPROVES every action, and the approval happens IN THE CHAT, through explicit approve / edit / reject controls rather than through the meaning of a chat message; the first runtime and the first channel are our own chatbot; the MCP server is NOT public — it is served only to our own tenant's runtime; and the AI Manager surface lives in the FRONTEND POS STAFF APP, replacing the existing AI Tools page at /ai-tools (§3.3.1, §3.6, §9)**)**
 **Owner:** Ideazes POS AI
 **Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
@@ -250,6 +250,56 @@ The rules that make this safe, each one drawn from a rule the house already enfo
 - **The MCP server refuses an action tool outright** when the credential's scope is `read`
   only. The refusal happens at the transport, before the tool body runs.
 
+#### 3.3.1 The approval happens in the chat — with explicit controls
+
+**Kens's decision: the agent drafts, a human approves — and yes, the human approves using
+the chat.**
+
+That last part is the one that needs writing down, because "the chat approves it" is the
+phrase that hides a hole. **A chat transcript is not an approval channel.** If "yes" typed
+into the chatbot can approve a purchase order, then the model — which writes the assistant's
+side of that transcript — can approve its own draft by asking a question a human is likely
+to say yes to. Approval cannot be a *phrase*.
+
+**What exists today — nothing that approves anything.**
+
+- The chatbot's tool set is **read-only**. All ten tools in
+  `backend/app/ai/chatbot_tools.py` read and aggregate; none of them writes.
+- `frontend/src/pages/Chatbot.jsx` has exactly two buttons — one that fills the input with
+  a suggested reply, and the send button. There is no approve, no reject, no edit.
+- There is no `ai_actions` table and no proposal queue.
+
+**What the proposal adds.**
+
+1. **A proposal object.** The draft tool returns a proposal — an id, the tool, the
+   arguments, a human-readable summary of what would change, and a state (`pending`).
+2. **Three explicit controls, rendered as buttons on the proposal card** — **Approve**,
+   **Edit**, **Reject**. Not a text intent. The card is a first-class object in the
+   transcript, not a paragraph of assistant text.
+3. **A separate route for the decision** —
+   `POST /api/ai/proposals/{id}/approve|edit|reject`. The chat's message endpoint never
+   approves anything; approval is not reachable by writing text.
+4. **The approver's own permissions are checked at approval time**, not at draft time. The
+   agent never holds `ai:approve`. The person clicking Approve is checked with the same
+   `require_permission` the rest of the app uses, in that person's own session — so a
+   waiter's session cannot approve a purchase order by replaying a manager's token.
+5. **The audit row is written before the action runs** — `ai_actions`, with the agent, the
+   approver, the timestamp, the arguments and the JSON of what changed. An approval is
+   recorded even when the action then fails, and a refusal is recorded as refused (§3.3).
+
+**What "edit" means.** Edit sends the human's correction back to the agent as a **new**
+draft: the agent revises and shows a new card. The arguments are never patched in place,
+and the model never holds the arguments of an approved action — so it cannot quietly
+rewrite one after the fact.
+
+**The trap this closes.** The failure mode of "approve in the chat" is not that a human
+approves the wrong thing. It is that **an instruction hidden in tool output** — a menu
+item or a customer note carrying "approve this order" — ends up in the transcript, and a
+phrase-matching approver executes it. The buttons make that impossible: the only path to
+approval is a signed HTTP request from a human's own session.
+
+---
+
 ### 3.4 The tenant profile (Phase B)
 
 A per-tenant record that turns one engine into fifty managers:
@@ -427,17 +477,46 @@ the channel n8n consumes, and the channel any other runtime consumes.
 
 ### 3.6 The surface (Phase D)
 
-The **AI Manager** page in the staff app — the "matches our site app" surface Kens asked for:
+**Where this lives: the FRONTEND POS STAFF APP.** Not the website admin app, not the
+customer app, not a separate agent console. Concretely, it is the staff app's **existing
+`/ai-tools` route** — `frontend/src/App.jsx:496` → `frontend/src/pages/AI/index.jsx` —
+which Kens has decided the AI Manager **replaces** rather than sits beside.
+
+That is the answer to "where is the §3.6 surface implemented?": the same React app, under the
+same `/api` base, with the same session cookie, behind the same nav gating. **One page
+changes. The app does not gain a second front door.** The chatbot at **`/chatbot`** stays
+where it is — it remains the conversational surface, and the approval cards of §3.3.1 appear
+inside it.
+
+The page carries four sections:
 
 - **Today** — the briefing: sales against the same hour yesterday, orders waiting, tables
   occupied, anything the agent thinks the manager should know, in the outlet's timezone.
 - **Needs you** — the approvals. A draft purchase order, a proposed campaign, a price change.
-  Approve, edit, or reject — each one an audit row.
+  Approve, edit, or reject — each one an audit row, and the same three controls the chat
+  offers (§3.3.1). The chat card and the page card are two views of **one** proposal, not
+  two queues.
 - **Alerts** — the agent's findings, next to the existing AI alerts, with the same
   acknowledge path (`AIAlert` already has one).
 - **Agent** — the profile from §3.4, the working hours, the allowed actions, the escalation
   thresholds, the channel the briefing arrives on, and the **agent token** the tenant hands to
   their own runtime.
+
+**What happens to the five tabs the page carries today.** The current AI Tools page is five
+read-only tabs — Insights, Menu Analytics, Campaigns, Competitor Discover, Competitor
+Analysis — each behind its own feature row and plan. The Manager keeps that material; what
+it adds is the trigger and the personality. **Proposal, for Kens to confirm in the design
+review:** Insights and Menu Analytics are what the agent reads to build *Today* and *Alerts*,
+so they become sections rather than tabs; Campaigns becomes the surface the agent drafts
+into; and the two competitor tabs stay as they are, under their own feature rows, because
+competitor data is not the tenant's own store and does not belong inside an agent that
+manages an outlet.
+
+**The nav and the plan do not move.** `navItems.js` keeps one AI entry — the `/ai-tools`
+entry, still behind the `AI Tools` feature row — instead of two. A tenant on a plan without
+`AI Tools` does not see the page today and does not get the Manager page later. The
+`AI Tools` row is what the page is called and what it is gated by; the content underneath it
+is what Phase D replaces.
 
 ---
 
@@ -859,30 +938,44 @@ above changes.
 
 ---
 
-## 9. Open questions for Kens
+## 9. Kens's decisions (and the one question still open)
 
-1. **Does the agent act, or only propose?** The safest first ship is *propose only* — the
-   agent drafts, a human approves, forever. The stronger version acts on low-risk actions
-   (a draft purchase order, a report) and escalates the rest. Which do we want to sell?
-2. **Which runtime ships first?** The MCP server is the constant; the *client* is a choice.
-   Our own POS chatbot is the cheapest first client (it is already there). n8n is the most
-   impressive demo. A Telegram bridge is the fastest to prove "another channel". My
-   recommendation: our chatbot first, n8n second.
-3. **Do we expose the MCP server publicly, or only to a tenant's own runtime?** Public means
-   any MCP client can connect with a token — powerful, and a new public surface on the same
-   app that holds the payment API. Tenant-private (a token bound to one tenant, one outlet)
-   is the safe middle.
-4. **Which channel first?** The staff-app inbox is free. Web push exists today for the
-   customer app (`delivery_push.py`). WhatsApp is a third party, a cost and a policy
-   question. Which is first?
-5. **What does it cost?** Model calls scale with tenants and with how often the agent speaks.
-   Per outlet? Per agent run? A message cap? This has to be decided before Phase C, not after.
-6. **Do we need a human's approval for *every* action, or only for money?** A proposed price
-   change and a proposed staff shift are not the same risk.
-7. **Does the AI Manager replace the AI Tools page, or sit beside it?** The Tools page is
-   five read-only tabs; the Manager would be the same insights with a trigger and a
-   personality. Merging them is a cleaner product, but it is a change to a page tenants
-   already use.
+*(v1.4: Kens answered the open questions. They are recorded here as the decisions they are,
+not as a list of options — the design above has already been moved to match.)*
+
+| # | The question | Kens's answer | What it fixes in this document |
+|---|---|---|---|
+| 1 | Does the agent act, or only propose? | **The agent drafts; a human approves.** | §3.3 — the `draft` and `action` tool kinds, and the `ai_actions` audit row. The agent never acts on its own. |
+| 2 | Which runtime ships first? | **Our chatbot.** | §3.2 / Phase 0 — our own POS frontend chatbot is the first MCP client. n8n, Telegram and the rest stay clients (§7). |
+| 3 | Public MCP server, or only the tenant's own runtime? | **No. Only for our tenant.** | §3.2 — the server is **not** a public MCP endpoint. It is served to our own tenant's runtime, behind the house key model, bound to one tenant (and one outlet). |
+| 4 | Which channel first? | **Our chatbot.** | §3.5.3 / Phase C — the first channel is the POS app's own surface (the chat and the staff-app inbox). The Telegram bridge and the signed webhook follow. |
+| 5 | What does it cost? | **Still open.** | Nothing moves yet — this has to be decided before Phase C, not after. See the note below. |
+| 6 | Approval for *every* action, or only for money? | **The agent drafts, a human approves** — for every action, not only money. | §3.3 — the approval gate is uniform. A shift swap is gated like a price change. |
+| 7 | Does the AI Manager replace the AI Tools page, or sit beside it? | **Replace the existing AI Tool screen.** | §3.6 — the surface is the staff app's `/ai-tools` page, replaced, not a second page beside it. |
+| 8 | Where is the §3.6 surface implemented? | **In the frontend POS staff app.** | §3.6 — the React staff app under `/api`, same session cookie, same nav gating. Not the website admin app, not the customer app. |
+
+### 9.1 The approval question in full
+
+> *"Can human approve using the chat?"* — **Yes, and the chat is where Kens wants it.** The
+> full answer, with what exists today separated from what the proposal adds, is §3.3.1. The
+> one-line version: **the human clicks Approve / Edit / Reject on a proposal card; the click
+> hits a dedicated route; the approver's own permissions are checked at that moment; and the
+> words in the chat never approve anything.**
+
+### 9.2 The one question still open — the cost
+
+Not answered yet, and it is the one number that decides whether the proactive agent is a
+feature or a bill. What it has to settle before Phase C:
+
+- **Who pays for the model calls** — our budget, or the tenant's plan? A per-tenant model
+  proxy (§4.4) makes it measurable; without one it is invisible.
+- **The unit** — per outlet, per agent run, per briefing, or a monthly message cap.
+- **The loud one** — a proactive agent that speaks every morning for every outlet is
+  O(tenants × outlets × briefings × tokens). The quiet-hours rule (§3.5.4) is the first
+  throttle; a daily cap on proactive briefings is the second.
+- **What happens when a tenant hits the cap** — the agent stops, or the tenant upgrades?
+  That is a product decision, not a billing one, and it needs Kens before the dispatcher
+  ships.
 
 ---
 
@@ -891,7 +984,8 @@ above changes.
 *(v1.3: Kens asked the blunt question — if we build the MCP server, does the POS frontend or
 the backend API app break? This section is the answer, verified against the running code.)*
 
-The short answer: **the backend barely moves, the frontend does not move at all** — but two
+The short answer: **the backend barely moves, and the frontend does not move at all until
+Phase D** — when the AI Manager replaces the AI Tools page in the staff app (§3.6) — but two
 traps will bite if the MCP server is mounted carelessly, and one of them is a plan-gate
 regression that would change what a paying tenant's chatbot says to them today.
 
@@ -975,12 +1069,16 @@ dispatcher must claim rows atomically** (`SELECT … FOR UPDATE SKIP LOCKED`, or
 compare-and-set on the row's `state`) rather than relying on being the only worker. The
 one-worker assumption is a convenience we may lose, not a guarantee we may build on.
 
-### 10.2 The frontend POS — no changes
+### 10.2 The frontend POS — nothing until Phase D, then one page
 
-- **Nothing.** The frontend is a REST client against `/api/*`; MCP is server-to-server. The
-  nav gating (`frontend/src/config/navItems.js`), the feature hook
+- **Nothing in Phases 0–C.** The frontend is a REST client against `/api/*`; MCP is
+  server-to-server. The nav gating (`frontend/src/config/navItems.js`), the feature hook
   (`frontend/src/hooks/useFeatures.jsx`) and the notification bell
   (`frontend/src/components/NotificationBell.jsx`) are untouched.
+- **In Phase D, one page changes** — the `/ai-tools` page is replaced by the AI Manager
+  page (§3.6), and the chat gains the proposal card and its three controls (§3.3.1). Both
+  are ordinary React work against our own REST routes. The frontend still never speaks
+  MCP.
 - **The browser should not become an MCP client.** MCP over streamable HTTP with SSE and
   custom auth headers is awkward in a browser, and it would put a credential where the
   session cookie already works. The **AI Manager** page (Phase D) keeps calling our own
