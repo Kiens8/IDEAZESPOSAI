@@ -1,29 +1,35 @@
 ---
 title: The AI Manager — a vertical agent per tenant
-description: From a chatbot that answers questions to an agent that manages the store - the action layer, the tenant profile, the event bus, and where n8n fits
+description: An MCP server as the tool and identity layer, so any agent runtime can serve a tenant - the action layer, the tenant profile, the trigger layer, and the tool catalogue
 ---
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.0 (the proposal — Nov 19, 2026)
+**Document Version:** 1.1 (the proposal — Nov 19, 2026 · revised the same day: the MCP server
+becomes the backbone, n8n is demoted to one client among many, and the tool catalogue is added)
 **Owner:** Ideazes POS AI
 **Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
 integrate the SaaS POS with something like n8n, let each tenant have their own vertical AI
-agent, an AI Manager that manages the store and matches our site app."*
+agent, an AI Manager that manages the store and matches our site app."* Then: *"I am not
+recommend create an OpenClaw agent per tenant. My purpose is to serve an AI agent per tenant —
+this AI agent can be triggered somewhere, either our frontend POS, or another channel; this
+agent can create or answer something related to their one outlet. How about the approach of an
+MCP server?"*
 
 > **Related** → `program-changes/ai-chatbot/ai-chatbot-module.mdx` (the chatbot as it is
 > built today) · `program-changes/ai-feature-gating/ai-feature-gating.mdx` (how a feature row
 > becomes a plan entitlement) · `order-flow-standards.mdx` (the order machine the agent would
 > read from and write to) · `pricing-engine-and-promotions.mdx` (who owns the money of an
-> order — the rule the agent must never break)
+> order — the rule the agent must never break) · `vera-agent.mdx` (the house pattern for an
+> agent with a hard boundary)
 
 ---
 
 ## 1. The short answer
 
-**The chatbot we have is good enough to sell. It is not an AI Manager, and n8n does not turn
-it into one.**
+**The chatbot we have is good enough to sell. It is not an AI Manager, and no integration
+tooling turns it into one.**
 
 What exists today is a **pull** model: a human asks, the bot answers from POS data. What Kens
 described is a **push** model with agency: a per-tenant agent that watches the store, knows the
@@ -40,9 +46,16 @@ three missing layers:
    to be *the tenant's* agent, its persona, SOPs, permissions and working hours have to be
    **tenant data**, not code.
 
-**n8n's place:** *downstream* of the POS, as the optional **connector layer** for tenant-owned
-automations that reach outside the product (WhatsApp, delivery aggregators, accounting).
-**Not** as the agent runtime — see §7 for why, and §6 for the shape that makes it safe.
+**The architectural answer (v1.1): the POS backend becomes an MCP server.** It is the
+**tool layer** and the **identity layer** — every tool is tenant-scoped by the credential that
+calls it, and every tool is a route underneath, so the existing gates apply for free. On top of
+that server, the **agent runtime is the tenant's choice**: our own POS frontend chatbot, n8n, a
+Telegram bridge, a WhatsApp bot, a future OpenClaw agent. We build the server once; the
+runtime is pluggable.
+
+**n8n is one client among many, not the architecture.** It has an MCP Client Tool node that
+plugs straight into its AI Agent node, so it can consume our server as-is — but nothing in the
+product depends on it, and the tenant never has to touch it.
 
 ---
 
@@ -55,7 +68,7 @@ Every line below was read from the running code, not from the docs.
 | Artifact | What it is |
 |---|---|
 | `backend/app/ai/chatbot.py` (1,295 lines) | The engine. Regex intent tables (`INTENT_PATTERNS`), a role map (`ROLE_INTENTS`), one handler per intent, and an AI fallback. |
-| `backend/app/ai/chatbot_tools.py` (537 lines) | The tool registry the fallback calls: `get_sales`, `get_orders`, `list_outlets`, `compare_outlets`, `get_tables`, `get_menu_performance`, `get_staff`, `get_customers`, `get_payments`, `get_alerts` — **10 tools, every one of them a read.** |
+| `backend/app/ai/chatbot_tools.py` (537 lines) | The tool registry the fallback calls — **10 tools, every one of them a read** (the catalogue is §4). |
 | `backend/app/ai/minimax.py` | The shared MiniMax helper. Strips the `<think>` block so reasoning never leaks into a user-visible answer. |
 | `backend/app/routes/chatbot.py` | `POST /api/chatbot/`, plus `/test`, `/greeting`, `/quick-replies`. Gated by `require_permission("ai:read")` **and** `require_plan_feature("AI Chatbot")`. |
 | `backend/app/routes/ai_chatbot.py` | `POST /api/ai/chat/order` — the customer-facing conversational order. Same two gates. |
@@ -113,6 +126,7 @@ tenant-profile idea, and it lives in the outlet row.
 | A domain event bus | `grep` for `n8n`, `webhook` and `scheduler` in `backend/app` returns only inbound payment webhooks and `subscription_cache` comments. There is no APScheduler and no event table. The only scheduling in the box is four crontab lines (notifications at 09:00, the HitPay reconcile every 10 minutes, the delivery entitlement sweep at 03:23, a log rotation). |
 | A tenant agent profile | The bot's knowledge is code. The only tenant-owned knobs are `bot_name`, `bot_language`, `bot_greeting`, `ai_enabled`. |
 | An agent "role" in the POS | `ROLE_INTENTS` has `staff`, `manager`, `customer`, `admin` — all of them *human* roles. There is no `agent` role, so no permission namespace an agent could hold. |
+| An MCP server | `grep -rn "mcp" backend/app` returns **nothing**; `backend/requirements.txt` has no MCP library. The server would be built on FastAPI, so the transport can be added without a new framework. |
 
 ---
 
@@ -121,26 +135,78 @@ tenant-profile idea, and it lives in the outlet row.
 ### 3.1 The shape
 
 ```
-                    ┌──────────────────────────────────────────┐
-  POS domain events │  order.placed · order.paid · stock.low   │  ← the trigger layer
-  (the bus)        │  staff.clocked_in · table.turned · shift   │
-                    └───────────────────┬──────────────────────┘
-                                        │
-                    ┌───────────────────▼──────────────────────┐
-  The agent core   │  tenant profile (persona, SOPs, hours)     │  ← the tenant layer
-  (in the backend) │  + tool registry (read + action + write)   │
-                    │  + approval workflow (draft → approve)    │
-                    └───────────────────┬──────────────────────┘
-                                        │
-                    ┌───────────────────▼──────────────────────┐
-  Channels         │  staff-app inbox · web push · WhatsApp     │
-                    │  (n8n is one more channel, not the brain) │
-                    └──────────────────────────────────────────┘
+        ┌────────────────────────────────────────────────────────────┐
+  MCP   │  POS BACKEND = the MCP server                              │
+ clients│  • the tool registry (one registry, exposed twice)         │
+        │  • tenant identity from the credential, never from args    │
+        │  • every tool = a gated route underneath                    │
+        │  • the tenant profile, the approvals, the audit log        │
+        └───┬──────────────┬──────────────┬──────────────┬─────────┘
+            │              │              │              │
+    ┌───────▼──────┐ ┌─────▼─────┐ ┌──────▼──────┐ ┌─────▼──────┐
+    │ our POS      │ │ n8n       │ │ Telegram /  │ │ the tenant │
+    │ frontend     │ │ (MCP      │ │ WhatsApp    │ │'s own      │
+    │ chatbot      │ │  Client)  │ │ bridge      │ │ agent      │
+    │ (in-process) │ │           │ │             │ │            │
+    └──────────────┘ └───────────┘ └─────────────┘ └────────────┘
+            ▲                                            │
+            │  the trigger layer (the one thing MCP        │
+            │  does NOT give us): order.placed,            │
+            │  stock.low, shift.ended, payment.failed      │
+            └──────────────────────────────────────────────┘
 ```
 
-**The agent core lives in the POS backend, not in n8n.** The reason is §7.
+**The POS backend owns the tools and the identity. The runtime is pluggable.**
 
-### 3.2 The action layer (Phase A)
+Why this shape and not "n8n creates the agent per tenant":
+
+- **Tenant isolation comes from the credential, not from code.** An MCP client presents a
+  token; the server resolves it to `customer_id` + `outlet_id` and binds the session to it.
+  Every tool call inside that session is scoped by construction. That is exactly the rule
+  already held in `chatbot_tools.py` — `ToolContext(db, tenant_id, default_outlet_id)` and the
+  `scope(outlet_arg)` helper, which **refuses** an outlet that is not the tenant's.
+- **One tool surface, many channels.** Kens's requirement — *"triggered from our frontend POS,
+  or another channel"* — is exactly the MCP contract. The POS frontend calls the tools
+  in-process (it already does, 10 tools behind `MAX_TOOL_ROUNDS = 3`); an external channel
+  connects over MCP. Same tools, same rules, same audit.
+- **No licence problem.** MCP is a spec, not a product. n8n's Sustainable Use License never
+  enters the picture, because n8n is a *client* of ours, not something we host and resell.
+- **The tenant's agent runtime becomes the tenant's choice.** That is the most honest reading
+  of "each tenant has its own vertical AI agent".
+
+### 3.2 The MCP server (Phase 0)
+
+**The transport.** FastAPI already serves the API; MCP is a second surface on the same
+application, not a new service. Two decisions the design must make early:
+
+- **Transport:** stdio is for local processes; a tenant's agent is remote, so the server must
+  speak **Streamable HTTP** (the current MCP remote transport). n8n's MCP Client Tool node
+  speaks it.
+- **Authentication:** the server reuses the house's key model. A tenant's agent presents an
+  API key; the server resolves it to `(customer_id, outlet_id, scope)` and refuses anything
+  else. **The tenant comes from the credential, never from the model's arguments** — the rule
+  `chatbot_tools.py` already states in its own docstring.
+
+**The token.** The website API's `api_keys` table already carries a `permissions` JSON
+column. The proposal extends it (or adds a sibling table) with `customer_id`, `outlet_id`,
+`scope` (`read` / `draft` / `action`) and the plan row it rides on. A tenant holds one token
+for their agent, revocable like any key. It is the same token that carries `require_permission`
+and `require_plan_feature` on the routes underneath, so a lapsed plan refuses the tool call
+rather than the UI.
+
+**One registry, two exposures.** The tool definitions live in **one** place and are rendered
+twice: as the OpenAI-style function schemas MiniMax already consumes (`tool_schemas()`) and
+as the MCP tool catalogue. If the two were written separately they would drift, and we would
+have two truths about what the agent can do.
+
+**What the MCP server does NOT do:**
+
+- It does **not** call the model. The *client* holds the LLM. (Consequence: per-tenant token
+  cost is invisible to us unless the client uses our model proxy — §4.4.)
+- It does **not** trigger itself. MCP is pull-based; the proactive side is §3.5.
+- It does **not** weaken a gate. Every tool is the same gated route the staff app uses.
+
+### 3.3 The action layer (Phase A)
 
 The tool registry grows a third kind of tool. The three kinds behave differently:
 
@@ -164,8 +230,10 @@ The rules that make this safe, each one drawn from a rule the house already enfo
   the delivery sweep and the unattended watcher already live by.
 - **The approval is a human's, in the POS.** The approval lands in the existing notification
   inbox. Nothing is auto-approved because a model was confident.
+- **The MCP server refuses an action tool outright** when the credential's scope is `read`
+  only. The refusal happens at the transport, before the tool body runs.
 
-### 3.3 The tenant profile (Phase B)
+### 3.4 The tenant profile (Phase B)
 
 A per-tenant record that turns one engine into fifty managers:
 
@@ -179,13 +247,15 @@ A per-tenant record that turns one engine into fifty managers:
 | `quiet_hours` | `23:00–07:00` | When the agent may not push anything. |
 | `escalation` | "money > RM 500 → notify the admin" | The tenant's own thresholds. |
 | `outlet_scope` | `["all"]` or a list | Which outlets this agent watches. |
+| `runtime` | `pos_frontend` / `n8n` / `telegram` / … | Which client runs this agent. The profile is runtime-agnostic. |
 
 This is the layer that makes the product *vertical*: the same engine, a different manager for
 every tenant, and **no code change** to onboard a new one.
 
-### 3.4 The trigger layer (Phase C)
+### 3.5 The trigger layer (Phase C)
 
-The POS starts emitting **domain events**. The minimum set for a restaurant manager:
+The POS starts emitting **domain events**. MCP is pull-based, so the proactive side needs its
+own path. The minimum set for a restaurant manager:
 
 | Event | Emitted when | A manager agent would… |
 |---|---|---|
@@ -206,12 +276,12 @@ Three implementation notes:
   that scans for rows is a guess.
 - **Deliver through the existing internal-key pattern.** `backend/app/routes/internal.py`
   already carries `/plan-changed` and `/order-paid` behind `require_internal_key`. A tenant's
-  n8n subscribes with its own key, scoped to its own tenant, and the POS signs the payload.
-- **A queue, not a synchronous call.** An event that blocks an order insert because a
-  tenant's webhook is slow is a self-inflicted outage. The insert commits; the event is
-  queued; the delivery is retried with a backoff and a dead-letter log.
+  client subscribes with its own key, scoped to its own tenant, and the POS signs the payload.
+- **A queue, not a synchronous call.** An event that blocks an order insert because a tenant's
+  webhook is slow is a self-inflicted outage. The insert commits; the event is queued; the
+  delivery is retried with a backoff and a dead-letter log.
 
-### 3.5 The surface (Phase D)
+### 3.6 The surface (Phase D)
 
 The **AI Manager** page in the staff app — the "matches our site app" surface Kens asked for:
 
@@ -221,33 +291,129 @@ The **AI Manager** page in the staff app — the "matches our site app" surface 
   Approve, edit, or reject — each one an audit row.
 - **Alerts** — the agent's findings, next to the existing AI alerts, with the same
   acknowledge path (`AIAlert` already has one).
-- **Agent** — the profile from §3.3, the working hours, the allowed actions, the escalation
-  thresholds, and the channel the briefing arrives on.
+- **Agent** — the profile from §3.4, the working hours, the allowed actions, the escalation
+  thresholds, the channel the briefing arrives on, and the **agent token** the tenant hands to
+  their own runtime.
 
 ---
 
-## 4. Data and configuration
+## 4. The tool catalogue
 
-### 4.1 New tables (proposal)
+### 4.1 The ten tools that exist today
+
+All ten live in `backend/app/ai/chatbot_tools.py` and are **read-only**. The rules they
+already obey, in the module's own words: the tenant comes from the session, never from the
+model's arguments; the money is grouped per currency and never added up; a tool allow-list,
+not a SQL generator; every answer is returned in the API's `data` field; `MAX_ROWS = 15`.
+
+| Tool | Parameters | What it answers | Notable behaviour |
+|---|---|---|---|
+| `get_sales` | `period`, `outlet` | The revenue, the order count and the average order value for a period | One bucket **per currency** — two currencies are never summed |
+| `get_orders` | `period`, `outlet` | The order counts by status, by type and by hour | The busiest hours come from this |
+| `list_outlets` | — | The group's outlets: name, currency, address, phone, tables, staff | The only tool with no parameters |
+| `compare_outlets` | `period`, `metric` | The same metric for every outlet, so they can be compared | `metric` is sales, orders or average_order_value |
+| `get_tables` | `outlet` | The table occupancy right now, per outlet | Occupied / available, up to 15 tables |
+| `get_menu_performance` | `period`, `outlet` | The best and the worst selling menu items | Cancelled lines are excluded |
+| `get_staff` | `outlet` | The headcount per outlet and per role | **Counts only, never names** |
+| `get_customers` | `period`, `outlet` | How many guests were served, and how many came back | **Counts only, never names** |
+| `get_payments` | `period`, `outlet` | The payment mix — how much came in per method | Per currency, per method |
+| `get_alerts` | `outlet`, `limit` | The recent AI alerts — what the system flagged and why | The newest first, capped at `MAX_ROWS` |
+
+The periods are a closed set: `today`, `yesterday`, `last_7_days`, `this_week`,
+`last_30_days`, `this_month`, `year`. A tool that cannot resolve a period **says so rather
+than guessing**.
+
+### 4.2 The tools we plan to add — read
+
+Every one of these has a live route or service behind it today; the work is to expose it
+through the same registry with the same tenant rules.
+
+| Tool | Backed by | What it answers |
+|---|---|---|
+| `get_inventory_levels` | `inventory.py` | Stock on hand, per ingredient, per outlet |
+| `get_low_stock` | `inventory.py`, `notifications.py` | What is below its threshold, and for which supplier |
+| `get_stock_movements` | `inventory.py` | The purchase and waste history — what is being thrown away |
+| `get_purchase_orders` | `purchase_orders.py` | The open purchase orders and their status |
+| `get_suppliers` | `suppliers.py` | The suppliers, their lead times and their prices |
+| `get_recipes` | `inventory.py` (recipes) | What is in a dish — the cost behind the price |
+| `get_promotions` | `promotions.py` | The running promotions, and how often each is used |
+| `get_vouchers` | `vouchers.py` | The issued, redeemed and expired vouchers |
+| `get_loyalty_members` | `loyalty.py` | The members, their points and their last visit — **counts and tiers, not names** |
+| `get_forecast` | `ai_forecast.py` | The demand forecast for the coming days, and the staffing it implies |
+| `get_shift` | `users.py` (clock), `staff` routes | Who is clocked in, who is not, the overtime |
+| `get_order` | `order.py` | One order — its lines, its status, its payments |
+| `get_delivery_orders` | `delivery.py`, `delivery_analytics.py` | The delivery leg — the riders, the zones, the fees |
+| `get_price_of` | `order_pricing.py`, `menu.py` | What a dish actually costs and what it sells for |
+| `search_menu` | `ai_search.py` | The search the staff already has, as a tool |
+| `get_competitors` | `competitors.py` | The tracked competitors and the price gap |
+
+### 4.3 The tools we plan to add — draft and action
+
+**Draft** (produces a proposal; changes nothing) and **action** (changes something; needs a
+human's approval and writes an `ai_actions` row). The route in the middle column is the
+existing endpoint the tool must go through — the agent never writes to the database.
+
+| Tool | Kind | Goes through | Approval |
+|---|---|---|---|
+| `draft_purchase_order` | draft | `purchase_orders.py` `POST /` | — |
+| `draft_promotion` | draft | `promotions.py` `POST /` | — |
+| `draft_campaign` | draft | `ai/__init__.py` `POST /api/ai/campaigns` | — |
+| `draft_price_change` | draft | `menu.py` / `order_pricing.py` | — |
+| `draft_stock_transfer` | draft | `transfers.py` `POST /` | — |
+| `draft_voucher_issue` | draft | `vouchers.py` `POST /issue` | — |
+| `draft_shift_swap` | draft | `users.py` (clock / roster) | — |
+| `send_purchase_order` | action | `purchase_orders.py` `PUT /{id}/status` | required |
+| `create_promotion` | action | `promotions.py` `POST /` | required |
+| `execute_campaign` | action | `ai/__init__.py` `POST /campaigns/{id}/execute` | required |
+| `apply_price_change` | action | `menu.py` | required (money) |
+| `record_stock_waste` | action | `inventory.py` `POST /stock-movements/waste` | required |
+| `issue_voucher` | action | `vouchers.py` `POST /issue` | required |
+| `acknowledge_alert` | action | `ai_security.py` `POST /alerts/{id}/acknowledge` | required |
+| `notify_staff` | action | `notifications.py` | required |
+
+**Two things deliberately absent** from the action list: anything that **refunds or voids a
+paid order**, and anything that **changes a price the customer has already been quoted**.
+Both are money, both are irreversible from the tenant's point of view, and both are the
+manager's call in person. If they are ever added, they get the strictest approval rule in the
+product — and they go to the manager, never to the agent.
+
+### 4.4 The model proxy
+
+In an MCP setup the *client* holds the LLM, so per-tenant token cost is invisible to us
+unless the client uses **our** proxy. The proposal: the backend exposes a tenant-scoped,
+OpenAI-compatible model endpoint; the client's model node points at it; the server logs tokens
+per tenant, enforces the model, caps spend, and refuses a tenant whose plan lapsed. The same
+trick the house already uses for the plan read (`plan_features.py` over the house's loopback
+path).
+
+Without this, the cost of a proactive agent is unknown and unbounded — and a proactive agent
+that talks every morning for every outlet is exactly the case that turns a margin into a loss.
+
+---
+
+## 5. Data and configuration
+
+### 5.1 New tables (proposal)
 
 | Table | Holds |
 |---|---|
-| `tenant_agent_profiles` | One row per tenant: the profile of §3.3. |
+| `tenant_agent_profiles` | One row per tenant: the profile of §3.4. |
+| `agent_tokens` | The MCP credentials: `customer_id`, `outlet_id`, `scope`, `plan row`, `revoked`. |
 | `ai_actions` | The audit row: agent, tenant, outlet, tool, arguments, result, approval, timestamps. |
 | `ai_action_proposals` | A pending draft awaiting a human — the approval queue's payload. |
 | `domain_events` | The outbox: the event, the tenant, the payload, the delivery state. |
 
-All four are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
+All five are tenant-scoped by `customer_id`, and the outlet scope is a column — the same
 "tenant = the restaurant group" rule the delivery leg and the AI tools already use.
 
-### 4.2 Reused configuration
+### 5.2 Reused configuration
 
 - `outlet_settings.bot_name` / `bot_language` / `bot_greeting` / `ai_enabled` — the profile
   **seeds** from these, so a tenant that has already named its bot sees its name carried over.
 - The feature row and the plan gate — unchanged; the AI Manager rides the existing
-  `require_plan_feature` machinery (§5).
+  `require_plan_feature` machinery (§6).
 
-### 4.3 The model
+### 5.3 The model
 
 MiniMax, as today (`settings.MINIMAX_MODEL`, the `ai/minimax.py` helper). One change worth
 making: the agent's calls should go through **one** client with a **cost log** — the number of
@@ -256,7 +422,7 @@ every morning for every outlet is an unbounded bill and nobody knows whose it is
 
 ---
 
-## 5. Plan and role gating
+## 6. Plan and role gating
 
 The house has two independent gates, and the agent needs both:
 
@@ -284,7 +450,7 @@ Starter and Basic carry **no** AI row at all.
 
 | Row | Display name | Plan |
 |---|---|---|
-| `ai_agent` | AI Agent | Pro — read-only agent (profile, briefing, inbox) |
+| `ai_agent` | AI Agent | Pro — read-only agent (MCP read tools, profile, briefing, inbox) |
 | `ai_agent_actions` | AI Agent Actions | Enterprise — the agent may also *act* (draft + action tools) |
 
 The two-row split is deliberate: **the agent that reports is a different purchase from the
@@ -309,18 +475,27 @@ A human who approves an action is recorded as the approver, with their own permi
 at that moment — so the manager's `ai:*` and the admin's `ai:*` still differ, and a staff
 member cannot approve a price change.
 
+**The MCP token's scope is a third, separate axis.** A token's scope (`read` / `draft` /
+`action`) is checked **at the transport**, before the tool body runs — so an agent that
+somehow tries an action tool with a read token is refused without the tool ever seeing the
+request.
+
 ---
 
-## 6. Where n8n fits — and where it does not
+## 7. Where n8n fits — and where it does not
 
-### 6.1 What n8n is good at
+*(v1.1: this section was rewritten. In v1.0 n8n was the proposed agent runtime; Kens pushed
+back on that and proposed MCP instead. The verdict is now the opposite: n8n is one client
+among many.)*
+
+### 7.1 What n8n is good at
 
 - Letting a **tenant** wire their own automations without us building each one: WhatsApp
   broadcasts, a delivery aggregator, an accounting export, a Google Sheet, a Telegram channel.
 - Surviving the long tail of integrations we would never ship.
 - Being **visible** to the tenant — the flow is in a UI they can open and read.
 
-### 6.2 What n8n is bad at, for this job
+### 7.2 What n8n is bad at, for this job
 
 | Problem | Why n8n does not solve it |
 |---|---|
@@ -329,41 +504,49 @@ member cannot approve a price change.
 | **Plan gating** | `require_plan_feature` refuses a route for a tenant that did not buy it. A tenant's n8n flow is outside that gate unless we make it call our gated routes — at which point n8n is a caller, not the brain. |
 | **The agent's own identity** | The agent needs a tenant profile, a working-hours rule, an escalation threshold and an audit trail. That is data the POS must own; it cannot live in a workflow JSON. |
 | **Cost** | A proactive agent that runs every morning for every outlet is a per-tenant bill (model calls + n8n executions). That has to be priced deliberately, not discovered later. |
+| **The licence, if the tenant ever logs in** | n8n is under the **Sustainable Use License**, which restricts hosting n8n as a service to clients and embedding it in a product without a commercial agreement. Running n8n internally, one instance, one workflow per tenant, is ordinary internal use and is fine. Giving the tenant a login into our n8n is selling access to n8n — that needs a commercial licence, and the per-project RBAC that isolates one tenant's workflows from another's is an Enterprise feature (Community Edition has no project isolation at all). |
 
-### 6.3 The shape that works
+### 7.3 The shape that works
 
-**The POS owns the agent; n8n is a channel and a connector, downstream of a signed webhook.**
+**The POS owns the agent's tools and identity; n8n is a client.**
 
-```
-tenant's n8n  ──POST──▶  POS outbound webhook  ──▶  tenant's n8n
-                          (signed, tenant-scoped,
-                           plan-gated, queued)
-```
+n8n has an **MCP Client Tool** node — an MCP client that attaches to an AI Agent node's
+tools — so n8n consumes our MCP server as-is, with no bespoke integration code. A tenant's
+n8n workflow becomes: *a trigger (schedule or our webhook) → the AI Agent node → the MCP
+Client Tool pointing at our server → our tools → the answer.* The tenant's own runtime, the
+tenant's own connectors, and **not one line of our code in the loop**.
 
-- The POS emits `domain_events` and delivers them to a **signed, tenant-scoped endpoint**.
-- The tenant's n8n receives them, does whatever the tenant wants, and may call back into the
-  POS's **gated** API routes — which re-check the plan and the permissions.
-- If the tenant does not want n8n at all, the same events feed the native agent core
-  (§3.1) and the staff-app inbox. **n8n is optional; the product is not.**
+But the same shape serves a Telegram bridge, a WhatsApp bot, or a future OpenClaw agent with
+no change to the server. That is the whole point of the MCP decision.
 
-This is also the cheapest way to *test* the push layer: stand up one n8n, subscribe, and see
-what the events look like, before building the native consumer.
+**If n8n is not installed, nothing above changes.** The product does not depend on it.
 
 ---
 
-## 7. The phases
+## 8. The phases
 
 Each phase names what it **does not** do. Nothing in Phase A depends on Phase C, and Phase C
 does not depend on Phase D.
 
+### Phase 0 — the MCP server (read-only)
+
+**Does:** the MCP transport on the existing FastAPI app; the tenant-scoped token; the 10 read
+tools of §4.1 exposed through one registry; the plan and permission gates applied at the
+transport; the model proxy sketch.
+
+**Does not:** write anything; emit events; change the chatbot's behaviour; involve n8n.
+
+**Proves:** one tenant, one outlet, one token — a client outside the POS calls
+`get_sales` and gets that outlet's numbers, and a second tenant's token gets a different
+tenant's numbers. The identity model is proven before anything risky is built on it.
+
 ### Phase A — the action layer
 
-**Does:** extend the tool registry with draft and action tools; add the `agent` role with
-`ai:act`; add the `ai_actions` audit table and the `ai_action_proposals` queue; deliver the
-proposals into the existing notification inbox; a human approves.
+**Does:** extend the tool registry with the draft and action tools of §4.3; add the `agent`
+role with `ai:act`; add the `ai_actions` audit table and the `ai_action_proposals` queue;
+deliver the proposals into the existing notification inbox; a human approves.
 
-**Does not:** emit events; run on a schedule; change the chatbot's read behaviour; introduce
-n8n.
+**Does not:** emit events; run on a schedule; introduce n8n.
 
 **Proves:** the agent can propose a purchase order from the inventory suggestion the AI
 already makes, a manager sees it in the inbox, the manager approves, a purchase order exists,
@@ -372,16 +555,17 @@ and `ai_actions` holds the whole story.
 ### Phase B — the tenant profile
 
 **Does:** `tenant_agent_profiles`; the profile screen; the profile seeds from the outlet's
-existing bot settings; the profile's `allowed_actions` narrows what the agent may call.
+existing bot settings; the profile's `allowed_actions` narrows what the agent may call; the
+`runtime` field names the client.
 
 **Does not:** introduce new capabilities — it configures the ones Phase A built.
 
 **Proves:** two tenants with different personas, hours and allowed actions get visibly
 different behaviour from the same engine, and no code changed between them.
 
-### Phase C — the event bus
+### Phase C — the trigger layer
 
-**Does:** the `domain_events` outbox; emit the §3.4 events from the write paths; the signed,
+**Does:** the `domain_events` outbox; emit the §3.5 events from the write paths; the signed,
 tenant-scoped outbound webhook; the queue, the retry and the dead-letter log.
 
 **Does not:** require n8n — the events are consumed by the native agent in Phase D; n8n is one
@@ -393,7 +577,8 @@ endpoint, signed and scoped — and that a second tenant's endpoint never sees i
 ### Phase D — the AI Manager surface
 
 **Does:** the briefing, the approvals queue, the alerts, the profile screen, the channel
-settings; the native agent consumes the Phase C events and produces the §3.5 briefing.
+settings, the agent-token screen; the native agent consumes the Phase C events and produces
+the §3.6 briefing.
 
 **Does not:** invent a new notification system — the inbox, the push service and the alerts
 table are reused.
@@ -405,60 +590,64 @@ per-tenant override path used for the first design partners; the cost log per te
 
 **Does not:** change how any other plan row is priced.
 
-### Phase F — n8n as the connector (optional, and last)
+### Phase F — the connectors (optional, and last)
 
-**Does:** the documented n8n setup for a tenant — the signed webhook, the key, the example
-flows.
+**Does:** the documented setup for a tenant's own runtime — n8n with the MCP Client Tool, a
+Telegram bridge, the signed webhook, the token.
 
-**Does not:** make n8n a dependency of the agent. If n8n is not installed, nothing above
-changes.
+**Does not:** make any runtime a dependency of the agent. If n8n is not installed, nothing
+above changes.
 
 ---
 
-## 8. Open questions for Kens
+## 9. Open questions for Kens
 
 1. **Does the agent act, or only propose?** The safest first ship is *propose only* — the
    agent drafts, a human approves, forever. The stronger version acts on low-risk actions
    (a draft purchase order, a report) and escalates the rest. Which do we want to sell?
-2. **Where does the agent live?** In the POS backend (one engine, tenant data, no extra
-   runtime), or as a separate OpenClaw agent per tenant (maximum isolation, real operational
-   independence, more moving parts)? The house already runs a separate agent for a very
-   different job (`vera-agent.mdx`) — the same pattern is available here.
-3. **Which channel first?** The staff-app inbox is free. Web push exists today for the
+2. **Which runtime ships first?** The MCP server is the constant; the *client* is a choice.
+   Our own POS chatbot is the cheapest first client (it is already there). n8n is the most
+   impressive demo. A Telegram bridge is the fastest to prove "another channel". My
+   recommendation: our chatbot first, n8n second.
+3. **Do we expose the MCP server publicly, or only to a tenant's own runtime?** Public means
+   any MCP client can connect with a token — powerful, and a new public surface on the same
+   app that holds the payment API. Tenant-private (a token bound to one tenant, one outlet)
+   is the safe middle.
+4. **Which channel first?** The staff-app inbox is free. Web push exists today for the
    customer app (`delivery_push.py`). WhatsApp is a third party, a cost and a policy
    question. Which is first?
-4. **What does it cost?** Model calls scale with tenants and with how often the agent speaks.
+5. **What does it cost?** Model calls scale with tenants and with how often the agent speaks.
    Per outlet? Per agent run? A message cap? This has to be decided before Phase C, not after.
-5. **Do we need a human's approval for *every* action, or only for money?** A proposed price
+6. **Do we need a human's approval for *every* action, or only for money?** A proposed price
    change and a proposed staff shift are not the same risk.
-6. **Does the AI Manager replace the AI Tools page, or sit beside it?** The Tools page is
+7. **Does the AI Manager replace the AI Tools page, or sit beside it?** The Tools page is
    five read-only tabs; the Manager would be the same insights with a trigger and a
    personality. Merging them is a cleaner product, but it is a change to a page tenants
    already use.
-7. **Is n8n per tenant, or one house instance with per-tenant credentials?** One instance is
-   far cheaper to run; per-tenant is closer to isolation. My recommendation is **one instance,
-   one credential set per tenant, keyed by tenant id** — but that is a decision, not a fact.
 
 ---
 
-## 9. The sources
+## 10. The sources
 
 - `backend/app/ai/chatbot.py` — the engine: `INTENT_PATTERNS`, `ROLE_INTENTS`,
   `MAX_TOOL_ROUNDS = 3`, `_handle_ai_fallback`, the admin-only tool branch
-- `backend/app/ai/chatbot_tools.py` — `TOOLS`, `tool_schemas()`, `run_tool()`, `ToolContext`
+- `backend/app/ai/chatbot_tools.py` — `TOOLS`, `tool_schemas()`, `run_tool()`, `ToolContext`,
+  `MAX_ROWS`, `PERIODS`, `ToolError` — and the module docstring's four rails
 - `backend/app/ai/minimax.py` — the shared MiniMax helper and the `<think>` strip
 - `backend/app/routes/chatbot.py`, `backend/app/routes/ai_chatbot.py` — the two chatbot routes
   and their two gates
 - `backend/app/routes/ai/__init__.py` — insights, menu analytics, the campaign CRUD
 - `backend/app/routes/ai_forecast.py`, `ai_inventory.py`, `ai_orders.py`, `ai_search.py`,
   `ai_security.py` — the other AI surfaces
+- `backend/app/routes/purchase_orders.py`, `promotions.py`, `vouchers.py`, `inventory.py`,
+  `transfers.py`, `tables.py`, `users.py`, `notifications.py`, `competitors.py`,
+  `suppliers.py` — the write routes the future tools go through
 - `backend/app/middleware/auth.py` — `ROLE_PERMISSIONS`, `PERMISSIONS` (the three key types),
   `require_permission`, `require_plan_feature`, `key_info_has_permission`
 - `backend/app/services/plan_features.py` — the plan read over the house's loopback path
 - `backend/app/core/plan_cache.py`, `backend/app/middleware/subscription.py` — the cache and
   the notification that keeps it fresh
 - `backend/app/routes/internal.py` — the server-to-server pattern (`require_internal_key`)
-- `backend/app/routes/notifications.py` — the inbox the approvals would land in
 - `backend/app/services/delivery_push.py` — VAPID web push
 - `backend/app/models/models.py` — `bot_name` / `bot_language` / `bot_greeting` / `ai_enabled`
   (496-499), `OrderReprint` (548), `AIAlert` (576), `AIInsightCache`
@@ -478,3 +667,7 @@ changes.
   gating rule
 - `order-flow-standards.mdx`, `pricing-engine-and-promotions.mdx` — the machine and the money
   rules the agent must not break
+- n8n documentation — the **MCP Client Tool** node (an MCP client that attaches to an AI
+  Agent node's tools) and the **Sustainable Use License** (the restriction on hosting n8n as
+  a service to clients); the per-project RBAC that isolates tenants is an Enterprise /
+  Cloud Pro feature
