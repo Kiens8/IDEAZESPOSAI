@@ -5,7 +5,7 @@ description: An MCP server as the tool and identity layer, so any agent runtime 
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.4 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
+**Document Version:** 1.5 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
 the backbone, n8n was demoted to one client among many, and the tool catalogue was added ·
 **v1.2: every tool now carries the PLAN GATE of the module it touches, and the catalogue a
 tenant's agent sees is filtered by that tenant's live feature list — so when the admin moves a
@@ -17,7 +17,7 @@ plan gate applied to the events as well as the tools (§3.5) · **v1.3: the impa
 that already exist is now written down and verified against the running code — the backend
 barely moves, the frontend does not move at all, and two traps are named: the mount path
 that decides whether MCP is authenticated at all, and the plan-gate regression that a
-per-tool gate would cause in the live chatbot (§10) · **v1.4: Kens's answers are written in — the agent DRAFTS and a human APPROVES every action, and the approval happens IN THE CHAT, through explicit approve / edit / reject controls rather than through the meaning of a chat message; the first runtime and the first channel are our own chatbot; the MCP server is NOT public — it is served only to our own tenant's runtime; and the AI Manager surface lives in the FRONTEND POS STAFF APP, replacing the existing AI Tools page at /ai-tools (§3.3.1, §3.6, §9)**)**
+per-tool gate would cause in the live chatbot (§10) · **v1.4: Kens's answers are written in — the agent DRAFTS and a human APPROVES every action, and the approval happens IN THE CHAT, through explicit approve / edit / reject controls rather than through the meaning of a chat message; the first runtime and the first channel are our own chatbot; the MCP server is NOT public — it is served only to our own tenant's runtime; and the AI Manager surface lives in the FRONTEND POS STAFF APP, replacing the existing AI Tools page at /ai-tools (§3.3.1, §3.6, §9) · **v1.5: the cost question is RE-SCOPED. Kens asked the sharp version of it — "if the channel is our frontend POS, it should call our MiniMax model as existing." He is right, and §9.2 now says so: the model call is already ours, already server-side on our own key, and already gated by the `AI Chatbot` plan row, so "who pays" is settled for the pull path and the model proxy drops to a Phase F question. What actually survives is narrower and sharper: the PUSH side is the unbounded one, and it needs per-tenant attribution (the `usage` block the chatbot throws away today — §4.6) and a daily briefing cap (§9.2)**)**
 **Owner:** Ideazes POS AI
 **Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
@@ -218,8 +218,11 @@ change mid-session. The full rule, and why it is data rather than code, is §4.5
 
 **What the MCP server does NOT do:**
 
-- It does **not** call the model. The *client* holds the LLM. (Consequence: per-tenant token
-  cost is invisible to us unless the client uses our model proxy — §4.4.)
+- It does **not** call the model. The *client* holds the LLM. (Consequence: the cost of a
+  **foreign** client's model calls is invisible to us unless the client uses our model proxy
+  — §4.4. **Our own runtime is the exception**: our chatbot calls MiniMax from our own
+  backend on our own key, so that cost is already ours — though today we throw the number
+  away instead of recording it. §4.6.)
 - It does **not** trigger itself. MCP is pull-based; the proactive side is §3.5.
 - It does **not** weaken a gate. Every tool is the same gated route the staff app uses.
 
@@ -616,17 +619,28 @@ Both are money, both are irreversible from the tenant's point of view, and both 
 manager's call in person. If they are ever added, they get the strictest approval rule in the
 product — and they go to the manager, never to the agent.
 
-### 4.4 The model proxy
+### 4.4 The model proxy — a Phase F question, not a Phase 0 one
 
-In an MCP setup the *client* holds the LLM, so per-tenant token cost is invisible to us
-unless the client uses **our** proxy. The proposal: the backend exposes a tenant-scoped,
-OpenAI-compatible model endpoint; the client's model node points at it; the server logs tokens
-per tenant, enforces the model, caps spend, and refuses a tenant whose plan lapsed. The same
-trick the house already uses for the plan read (`plan_features.py` over the house's loopback
-path).
+In an MCP setup the *client* holds the LLM. For a **foreign** runtime — n8n, a Telegram
+bridge, a tenant's own agent — that means per-tenant token cost is invisible to us, because
+their model key, their bill. The proxy closes that: the backend exposes a tenant-scoped,
+OpenAI-compatible model endpoint, the client's model node points at it, and the server logs
+tokens per tenant, enforces the model, caps spend, and refuses a tenant whose plan lapsed.
+The same trick the house already uses for the plan read (`plan_features.py` over the
+house's loopback path).
 
-Without this, the cost of a proactive agent is unknown and unbounded — and a proactive agent
-that talks every morning for every outlet is exactly the case that turns a margin into a loss.
+**But our own runtime does not need it, and that changes the priority.** Our chatbot calls
+MiniMax from our own backend, on our own key — `ai/chatbot.py` posts to
+`settings.MINIMAX_BASE_URL` with `settings.MINIMAX_API_KEY`. The browser never holds a model
+key; it posts to `/api/chatbot/` and the backend does the rest. So for the runtime Kens
+picked first, the cost is **already ours, already attributed to a tenant by the request, and
+already gated** by `require_plan_feature("AI Chatbot")`. There is nothing for a proxy to
+discover.
+
+That is why the proxy is **Phase F**, where it belongs: it exists for the tenant who brings
+their own runtime, and it is only worth building once that tenant actually exists. For the
+proactive agent, the cheaper and more direct instrument is **§4.6** — record the `usage`
+block the response already carries, at the call site we already own.
 
 ### 4.5 The gate every tool carries
 
@@ -698,6 +712,30 @@ Per-tool gating closes both, and it is the difference between an agent that is *
 business* and an agent that is *about the plan*.
 
 ---
+
+### 4.6 The metering we do not have
+
+The MiniMax API returns a `usage` object with every response — prompt tokens, completion
+tokens, and for a reasoning model like `MiniMax-M3`, the thinking tokens as well. **Today the
+chatbot discards it.** The parser keeps `choices[0].message` and nothing else
+(`ai/chatbot.py`), so there is no token count anywhere in the product — `grep` for
+`prompt_tokens` across the backend returns nothing.
+
+That is acceptable while the model is only ever called because a human asked something, and
+the `AI Chatbot` plan row is the price. It stops being acceptable the moment the agent
+speaks **on its own**, because then two questions become unanswerable: which tenant spent
+the tokens, and when to stop.
+
+The fix is deliberately small, and it belongs at the call site rather than behind a proxy:
+
+- Read `usage` off the response and log it with the tenant, the outlet and the model.
+- One row per call is enough to start.
+- **Size the cap with the amplification in mind.** `MAX_TOOL_ROUNDS = 3` means one question
+  can cost up to three round-trips, each up to `max_tokens: 800`, and `MiniMax-M3` is a
+  *reasoning* model — it spends part of the budget thinking before it answers. One question
+  is not one token count. (The translator already learned this the hard way:
+  `TRANSLATION_MAX_TOKENS = 16000`, with the comment *"With a small ceiling the response
+  comes back empty and nothing gets translated."*)
 
 ## 5. Data and configuration
 
@@ -949,7 +987,7 @@ not as a list of options — the design above has already been moved to match.)*
 | 2 | Which runtime ships first? | **Our chatbot.** | §3.2 / Phase 0 — our own POS frontend chatbot is the first MCP client. n8n, Telegram and the rest stay clients (§7). |
 | 3 | Public MCP server, or only the tenant's own runtime? | **No. Only for our tenant.** | §3.2 — the server is **not** a public MCP endpoint. It is served to our own tenant's runtime, behind the house key model, bound to one tenant (and one outlet). |
 | 4 | Which channel first? | **Our chatbot.** | §3.5.3 / Phase C — the first channel is the POS app's own surface (the chat and the staff-app inbox). The Telegram bridge and the signed webhook follow. |
-| 5 | What does it cost? | **Still open.** | Nothing moves yet — this has to be decided before Phase C, not after. See the note below. |
+| 5 | What does it cost? | **Re-scoped in v1.5** — our chatbot calls our own MiniMax, so the pull path is already ours and already gated. | §9.2 — what survives is not *who pays* but the **push** cap and per-tenant attribution. §4.6. |
 | 6 | Approval for *every* action, or only for money? | **The agent drafts, a human approves** — for every action, not only money. | §3.3 — the approval gate is uniform. A shift swap is gated like a price change. |
 | 7 | Does the AI Manager replace the AI Tools page, or sit beside it? | **Replace the existing AI Tool screen.** | §3.6 — the surface is the staff app's `/ai-tools` page, replaced, not a second page beside it. |
 | 8 | Where is the §3.6 surface implemented? | **In the frontend POS staff app.** | §3.6 — the React staff app under `/api`, same session cookie, same nav gating. Not the website admin app, not the customer app. |
@@ -962,20 +1000,46 @@ not as a list of options — the design above has already been moved to match.)*
 > hits a dedicated route; the approver's own permissions are checked at that moment; and the
 > words in the chat never approve anything.**
 
-### 9.2 The one question still open — the cost
+### 9.2 The cost question — re-scoped
 
-Not answered yet, and it is the one number that decides whether the proactive agent is a
-feature or a bill. What it has to settle before Phase C:
+*(v1.5: Kens pushed back on the original version of this section — "if the channel is our
+frontend POS, it should call our MiniMax model as existing." He is right, and this is now
+the narrower question that survives his answer.)*
 
-- **Who pays for the model calls** — our budget, or the tenant's plan? A per-tenant model
-  proxy (§4.4) makes it measurable; without one it is invisible.
-- **The unit** — per outlet, per agent run, per briefing, or a monthly message cap.
-- **The loud one** — a proactive agent that speaks every morning for every outlet is
-  O(tenants × outlets × briefings × tokens). The quiet-hours rule (§3.5.4) is the first
-  throttle; a daily cap on proactive briefings is the second.
-- **What happens when a tenant hits the cap** — the agent stops, or the tenant upgrades?
-  That is a product decision, not a billing one, and it needs Kens before the dispatcher
-  ships.
+**What the answer already settles.** For our frontend POS channel there is no new decision
+here. The model call is the one we already make:
+
+- The call is **server-side, on our key, in our own backend** — `ai/chatbot.py` posts to
+  `settings.MINIMAX_BASE_URL` with `settings.MINIMAX_API_KEY`. The browser never holds a
+  model key; it posts to `/api/chatbot/` and the backend does the rest.
+- The route is **already gated** — `require_permission("ai:read")` and
+  `require_plan_feature("AI Chatbot")`, and `ai_chatbot` is a Pro+ row. A tenant without
+  the feature cannot spend a token.
+- Only the roles that need it reach the model at all — `admin` and `manager`. `staff` and
+  `customer` are answered from the intent handlers and never call MiniMax.
+
+So **"who pays for the model calls" is answered for the pull path: we do, on our own
+account, and the tenant has already bought the row that lets them spend it.** The model
+proxy (§4.4) therefore drops to Phase F — it only matters when a runtime we do not control
+is holding the LLM.
+
+**What genuinely remains — the push side, and it is a different question.** The pull path is
+bounded by human behaviour: the cost scales with how often the staff ask. The proactive
+agent is not. A morning briefing for every outlet, every tenant, whether or not anyone
+reads it, is O(tenants × outlets × briefings × tool-rounds × tokens), and nothing in the
+current design bounds it. Two decisions, both small:
+
+1. **Attribution — which tenant spent the tokens?** This is **not** answered today, and it
+   is not a proxy problem: the `usage` block comes back in every MiniMax response and the
+   chatbot throws it away. Recording it is a few lines at the call site (§4.6).
+2. **The cap — how many proactive briefings per outlet per day, and what happens at the
+   cap?** The agent goes quiet, or the tenant is told it has reached its allowance? Quiet
+   hours (§3.5.4) is the first throttle; a daily briefing cap is the second.
+
+**And the thing that is *not* a question.** Nobody has to decide whether a tenant is
+charged per token. We do not meter tokens for the pull path today and we should not start:
+the `AI Chatbot` row *is* the price. If a tenant wants the proactive agent, that is a **new
+feature row** (`AI Agent`, Phase E) that says what they get — not a meter on every call.
 
 ---
 
