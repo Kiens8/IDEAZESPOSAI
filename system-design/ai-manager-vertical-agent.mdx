@@ -5,7 +5,7 @@ description: An MCP server as the tool and identity layer, so any agent runtime 
 
 # The AI Manager — a vertical agent per tenant
 
-**Document Version:** 1.2 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
+**Document Version:** 1.3 (the proposal — Nov 19, 2026 · v1.1 the same day: the MCP server became
 the backbone, n8n was demoted to one client among many, and the tool catalogue was added ·
 **v1.2: every tool now carries the PLAN GATE of the module it touches, and the catalogue a
 tenant's agent sees is filtered by that tenant's live feature list — so when the admin moves a
@@ -13,7 +13,11 @@ feature row from Enterprise to Pro, the tool follows with no code change (§4.5)
 layer is now written out as a real EVENT BUS — an outbox written in the transaction, a
 dispatcher, per-tenant subscriptions, three channels (the POS app's own inbox and web push,
 a Telegram bridge, a signed webhook), at-least-once delivery with a dead-letter log, and the
-plan gate applied to the events as well as the tools (§3.5)**)
+plan gate applied to the events as well as the tools (§3.5) · **v1.3: the impact on the apps
+that already exist is now written down and verified against the running code — the backend
+barely moves, the frontend does not move at all, and two traps are named: the mount path
+that decides whether MCP is authenticated at all, and the plan-gate regression that a
+per-tool gate would cause in the live chatbot (§10)**)**
 **Owner:** Ideazes POS AI
 **Status:** **Proposal.** Nothing in it is built. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
@@ -882,10 +886,144 @@ above changes.
 
 ---
 
-## 10. The sources
+## 10. Impact on the existing apps
 
+*(v1.3: Kens asked the blunt question — if we build the MCP server, does the POS frontend or
+the backend API app break? This section is the answer, verified against the running code.)*
+
+The short answer: **the backend barely moves, the frontend does not move at all** — but two
+traps will bite if the MCP server is mounted carelessly, and one of them is a plan-gate
+regression that would change what a paying tenant's chatbot says to them today.
+
+### 10.1 The backend API app — four things, and one of them is a trap
+
+**The existing tools are reusable as-is. Zero edits to `chatbot_tools.py`.**
+
+`backend/app/chatbot_tools.py` (really `backend/app/ai/chatbot_tools.py`) already exposes
+everything an MCP server needs:
+
+| It already has | Why it matters for MCP |
+|---|---|
+| `TOOLS` — a dict of ten name → function | The registry the MCP `list_tools` enumerates |
+| `tool_schemas()` — the OpenAI-style function schemas | The MCP tool schemas, same source |
+| `run_tool(ctx, name, arguments)` | The MCP tool dispatcher, unchanged |
+| `ToolContext(db, tenant_id, default_outlet_id)` | The credential → tenant binding |
+| `ToolError` | The refusal shape the MCP layer returns |
+| `MAX_ROWS = 15`, `PERIODS` | The existing rails, inherited for free |
+
+The decisive detail: **`ToolContext` takes the tenant as a constructor argument.** The tenant
+is not read from the session *inside* the tool — the caller supplies it. So an MCP server
+builds the same `ToolContext` from a token's tenant and calls the same functions. The rule
+"the tenant comes from the credential, never from the model's arguments" is not something
+MCP has to re-implement; it is already the shape of the code.
+
+**Trap 1 — the mount path decides whether MCP is authenticated at all.**
+
+`backend/app/main.py` denies by default, but only for one prefix:
+
+```python
+if path.startswith("/api/") and not _is_public_api_path(path):
+    ...  # 401 without a credential
+```
+
+MCP's conventional path is `/mcp`. **Mount it there and the authentication middleware never
+runs.** The `SubscriptionAccessMiddleware` has the same `/api` prefix test, so it would skip
+as well. The endpoint would be open.
+
+The fix is a prefix, not a rewrite: **mount at `/api/mcp`**, so the existing deny-by-default
+covers it — and still verify the token explicitly inside the MCP layer, because the
+middleware proves *a credential exists*, not *the credential is an agent token*. Two checks,
+two different jobs.
+
+**Trap 2 — per-tool plan gating changes the live chatbot's behaviour.**
+
+Today the chatbot's ten tools are gated **once, at the route**, by
+`require_plan_feature("AI Chatbot")` — no tool carries its own module gate. The moment the
+gate moves down into the tool bodies (§4.5), a tenant whose plan holds `AI Chatbot` but not
+`AI Insights` starts getting `get_alerts` refused — **inside the chatbot they use every
+day**. That is a plan-gate regression shipped alongside a new transport, and it is invisible
+until a tenant notices.
+
+The rule this section proposes:
+
+> **Phase 0 ships the tool-level gate on the MCP path only.** The chatbot's behaviour changes
+> in a later, deliberate step — with its own note, its own test, and its own release.
+
+Note also that `get_alerts` reads the AI alerts, and `ai_security.py`, `ai_forecast.py` and
+`ai_orders.py` carry **no plan gate at all** today — only `ai:read`. So the chatbot is
+already reaching past the tenant's paid features. That is the bug §4.5 fixes, but the fix
+must not be a surprise.
+
+**The key system needs one new lookup, not a change.**
+
+`middleware/auth.py` holds a **hardcoded three-tier key table** (`PERMISSIONS`: the frontend
+key, the customer key, the external key) and `get_key_info()` matches a literal string
+against it. A tenant-scoped, revocable, per-outlet MCP token cannot live there — that table
+is static config, not data. So the `agent_tokens` table (§5.1) is read by a **new function**
+that returns the same `key_info` dict shape the rest of the app already understands. The
+three existing keys are untouched.
+
+**New tables need no migration.** `main.py` runs `Base.metadata.create_all(bind=engine)` at
+boot, plus the idempotent `_ensure_added_columns()` and `_ensure_push_schema()` belt-and-braces.
+New models are created automatically — the house pattern. `ai_actions`, `agent_tokens`,
+`domain_events` and `event_subscriptions` all follow it.
+
+**One worker.** The backend runs **one uvicorn worker** — the prepay expiry sweep depends on
+it (`main.py`: *"the backend runs ONE uvicorn worker, so there is exactly one sweep"*). MCP
+over HTTP is stateless, so a second worker is not required and not harmful. But the **event
+dispatcher must claim rows atomically** (`SELECT … FOR UPDATE SKIP LOCKED`, or a
+compare-and-set on the row's `state`) rather than relying on being the only worker. The
+one-worker assumption is a convenience we may lose, not a guarantee we may build on.
+
+### 10.2 The frontend POS — no changes
+
+- **Nothing.** The frontend is a REST client against `/api/*`; MCP is server-to-server. The
+  nav gating (`frontend/src/config/navItems.js`), the feature hook
+  (`frontend/src/hooks/useFeatures.jsx`) and the notification bell
+  (`frontend/src/components/NotificationBell.jsx`) are untouched.
+- **The browser should not become an MCP client.** MCP over streamable HTTP with SSE and
+  custom auth headers is awkward in a browser, and it would put a credential where the
+  session cookie already works. The **AI Manager** page (Phase D) keeps calling our own
+  REST routes; the backend is what speaks MCP. The browser stays inside the cookie model it
+  already understands.
+- **The one behavioural change reaches the frontend indirectly** — through the chatbot's
+  answers. That is Trap 2 above, and it is why the gate change is staged.
+
+### 10.3 The do-not-touch list
+
+Things that look like they should change, and must not:
+
+| Do not | Why |
+|---|---|
+| Move or rename `app/ai/chatbot_tools.py` | `ai/chatbot.py` imports `ToolContext`, `run_tool` and `tool_schemas` from it (line 1157). Add `app/ai/mcp_server.py` **beside** it and import from it — one registry, two consumers, no move. |
+| Change the three hardcoded keys in `PERMISSIONS` | They serve the frontend, the customer app and the external developer. The agent token is a **fourth, separate** path. |
+| Change `require_authentication`'s behaviour | It is deny-by-default and correct. The MCP mount simply has to live under the prefix it already guards. |
+| Re-gate the chatbot's existing ten tools in Phase 0 | A plan-gate regression in the product a paying tenant uses today (§10.1, Trap 2). |
+| Add an Alembic migration | There is no Alembic. `create_all` at boot is the pattern. |
+| Add an MCP client to the browser bundle | The session cookie is the browser's credential. |
+
+### 10.4 A security note found while reading
+
+`main.py` imports `TrustedHostMiddleware` (line 13) but **never adds it** — `add_middleware`
+is called only twice, for CORS and for `SubscriptionAccessMiddleware`. The app therefore
+accepts any `Host` header today.
+
+That is pre-existing and unrelated to MCP. But it becomes relevant the moment the MCP
+server is reachable from outside the box: the `Host` header is the cheapest way to bind a
+virtual host to an app that does not check it. **When the MCP server is exposed, add the
+middleware** — it is a two-line change and it should not wait for the exposure.
+
+---
+
+## 11. The sources
+
+- `backend/app/main.py` — the app wiring: `require_authentication` (deny-by-default, but only
+  for `/api/`), `SubscriptionAccessMiddleware`, the CORS registration, `create_all` at the
+  boot, the one-uvicorn-worker note, and the `TrustedHostMiddleware` that is imported but
+  never added (§10)
 - `backend/app/ai/chatbot.py` — the engine: `INTENT_PATTERNS`, `ROLE_INTENTS`,
   `MAX_TOOL_ROUNDS = 3`, `_handle_ai_fallback`, the admin-only tool branch
+  (line 1157 imports `ToolContext` / `run_tool` / `tool_schemas` — the import §10.3 protects)
 - `backend/app/ai/chatbot_tools.py` — `TOOLS`, `tool_schemas()`, `run_tool()`, `ToolContext`,
   `MAX_ROWS`, `PERIODS`, `ToolError` — and the module docstring's four rails
 - `backend/app/ai/minimax.py` — the shared MiniMax helper and the `<think>` strip
@@ -897,8 +1035,10 @@ above changes.
 - `backend/app/routes/purchase_orders.py`, `promotions.py`, `vouchers.py`, `inventory.py`,
   `transfers.py`, `tables.py`, `users.py`, `notifications.py`, `competitors.py`,
   `suppliers.py` — the write routes the future tools go through
-- `backend/app/middleware/auth.py` — `ROLE_PERMISSIONS`, `PERMISSIONS` (the three key types),
-  `require_permission`, `require_plan_feature`, `key_info_has_permission`
+- `backend/app/middleware/auth.py` — `ROLE_PERMISSIONS`, `PERMISSIONS` (the three hardcoded
+  key types), `require_permission`, `require_plan_feature`, `key_info_has_permission`,
+  `get_auth_context` (the session wins over the key), `verify_api_key` (the `X-API-Key`
+  header, the IP allow-list, the rate limit)
 - `backend/app/services/plan_features.py` — the plan read over the house's loopback path
 - `backend/app/core/plan_cache.py`, `backend/app/middleware/subscription.py` — the cache and
   the notification that keeps it fresh
