@@ -35,9 +35,9 @@ artifact against a live operation), not whether it needs approval; the approval 
 house's own routes with the **approver's signed session**, so every house gate — the
 permission, the plan, the tenancy, the pricing path — applies to that person; `notify_staff`
 is gated on `Staff`, because the live catalogue has no `Notifications` row; and the approver
-must present a **signed session**, not merely hold the permission. · **v1.8: Phase B is BUILT, and the one wrinkle Phase B was carrying is now settled by the code rather than left as a question for the design review. The tenant profile is the THIRD GATE and the lowest one: it may only NARROW what the plan and the token's scope already allow, and it never narrows the read tools — so configuring a profile can only ever make the agent more careful, never less (§8.4). The profile is addressed by the signed-in session's tenant and NEVER by a query parameter, so one tenant can neither read nor write another's. The seed copies the tenant's first active branch's bot settings, and falls back to the house chatbot's own default — **"Lumi"** — when that branch has no settings row, so a seeded profile is never nameless. The profile's own routes are a MANAGEMENT surface: a manager and an admin may read, only an admin may write, and the floor has neither. The **profile screen moves to Phase D**, which is the only phase allowed to move the frontend at all (§10.2) — Phase B ships the API and the engine's use of it, and the doc's frontend rule stands untouched. · **v1.9: Phase C is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.5. The short version: the event is written **in the caller's transaction** and the caller commits, so the event and the business change land together or neither does — and an emitter that FAILS never rolls back a successful write, because a live payment must not fall over because a row could not be written. The tenant of an event comes from the **row that was just written**, never from the payload, and the payload carries ids and small facts only: no money, no personal data. The dispatcher claims its rows with a **compare-and-set**, so two workers racing for one row produce one winner — the single uvicorn worker is a convenience, not a guarantee. The plan gate applies to the events too: a tenant without `Inventory` receives no `stock.low`, and the refusal is **VISIBLE** rather than silent. Quiet hours **HOLD** an eligible event until the tenant's day starts; they never drop it. And one event is the honest exception to the house rule: `order.stalled` has no business write behind it, because an order stalls when the **CLOCK** moves — so it is swept, and its event id is derived from the order and the cycle, which is what stops the sweep reminding twice.**)**
+must present a **signed session**, not merely hold the permission. · **v1.8: Phase B is BUILT, and the one wrinkle Phase B was carrying is now settled by the code rather than left as a question for the design review. The tenant profile is the THIRD GATE and the lowest one: it may only NARROW what the plan and the token's scope already allow, and it never narrows the read tools — so configuring a profile can only ever make the agent more careful, never less (§8.4). The profile is addressed by the signed-in session's tenant and NEVER by a query parameter, so one tenant can neither read nor write another's. The seed copies the tenant's first active branch's bot settings, and falls back to the house chatbot's own default — **"Lumi"** — when that branch has no settings row, so a seeded profile is never nameless. The profile's own routes are a MANAGEMENT surface: a manager and an admin may read, only an admin may write, and the floor has neither. The **profile screen moves to Phase D**, which is the only phase allowed to move the frontend at all (§10.2) — Phase B ships the API and the engine's use of it, and the doc's frontend rule stands untouched. · **v1.9: Phase C is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.5. The short version: the event is written **in the caller's transaction** and the caller commits, so the event and the business change land together or neither does — and an emitter that FAILS never rolls back a successful write, because a live payment must not fall over because a row could not be written. The tenant of an event comes from the **row that was just written**, never from the payload, and the payload carries ids and small facts only: no money, no personal data. The dispatcher claims its rows with a **compare-and-set**, so two workers racing for one row produce one winner — the single uvicorn worker is a convenience, not a guarantee. The plan gate applies to the events too: a tenant without `Inventory` receives no `stock.low`, and the refusal is **VISIBLE** rather than silent. Quiet hours **HOLD** an eligible event until the tenant's day starts; they never drop it. And one event is the honest exception to the house rule: `order.stalled` has no business write behind it, because an order stalls when the **CLOCK** moves — so it is swept, and its event id is derived from the order and the cycle, which is what stops the sweep reminding twice.**)** · **v1.10: Phase D is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.6. The short version: the CHECKS RUN IN A FIXED ORDER — the plan gate, then the quiet hours, then the daily allowance, and only then the model — because the quiet hours are a rule about the MOMENT and the allowance a rule about the COUNT, and the cap is counted per outlet per **tenant-local day**, so the day's boundary is the branch's. An **unreadable plan RAISES** rather than masquerading as a refusal, because the two are opposite answers: one is a platform fault, the other the tenant's own decision. And every refusal leaves a **VISIBLE ROW** — `call`, `cap_reached`, `quiet_hours`, `plan_blocked` and `failed` are five distinct kinds, and a dropped briefing that left no trace would be indistinguishable from one that was never due. A briefing is exactly ONE model call, and the reasoning tokens are a **breakdown** of the completion tokens, never an extra charge on top.**)** · **v1.11: Phase E is BUILT, and the money is settled by the code rather than left as a question for the design review. The recorded answers are in §8.7. The short version: the two agent rows are priced as **ADD-ONS**, in a table of their own (`feature_prices`) that is not the plan price table, because a plan price says what a SUBSCRIPTION costs and this says what a FEATURE costs when it is granted on top of a plan. The add-on is priced at the level of the plan that already carries the row — `ai_agent` at $20/month, `ai_agent_actions` at $50/month, in USD and MYR separately — because the MODEL is not what is being priced (a briefing costs about $0.0018 at the published card) but the **push path** is: the agent speaks first, whether or not a person reads it. `ai_chatbot` is deliberately NOT priced as an add-on — §9.2 settles that the row *is* the price of the pull path. The override path had **two real defects**: it dropped the `reason` and never recorded the `created_by`, and it notified the POS **before the commit**, so the POS could cache the OLD features as fresh and the change would sit in the database and not in the product. Both are fixed, and the admin UI now asks for the reason. And the cost report is a REPORT, not a bill: it prices Phase D's log at the **published** card, names that card and its source, treats an unknown model as **unpriced rather than free**, and never bills the reasoning tokens twice.**)**
 **Owner:** Ideazes POS AI
-**Status:** **Proposal, partly built.** Phase 0, Phase A, Phase B and Phase C are BUILT and proven against the live server (§8.3, §8.4, §8.5); Phase D onward is still the design below. It is the design Kens asked for after the
+**Status:** **Proposal, partly built.** Phase 0, Phase A, Phase B, Phase C, Phase D and Phase E are BUILT and proven against the live server (§8.3, §8.4, §8.5, §8.6, §8.7); Phase F onward is still the design below. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
 integrate the SaaS POS with something like n8n, let each tenant have their own vertical AI
 agent, an AI Manager that manages the store and matches our site app."* Then: *"I am not
@@ -1298,6 +1298,101 @@ no trail at all when nobody has subscribed.
 
 Phase 0's, Phase A's and Phase B's proofs still pass unchanged (18 / 35 / 10 / 53 / 59 —
 **175 checks**).
+
+### 8.6 What Phase D's implementation settled
+
+Phase D was the surface and the meter, so its questions were about **what a refusal looks
+like, what a briefing counts, and where the day starts**. The code answered them, and this
+is the record.
+
+**1. THE ORDER OF THE CHECKS IS FIXED, AND IT IS NOT THE OBVIOUS ONE.** The plan gate, then
+the quiet hours, then the daily allowance, and only then the model. The quiet hours sit
+**above** the allowance because a tenant's own hours are a rule about the moment, while the
+allowance is a rule about the count — and the cap is counted per outlet per **tenant-local
+day**, so the day's boundary is the branch's, not the server's.
+
+**2. AN UNREADABLE PLAN IS NOT A REFUSAL.** A plan that cannot be read raises; it never
+masquerades as a tenant who was refused. The two answers mean opposite things — one is a
+platform fault, the other is a decision the tenant's plan made — and collapsing them would
+have recorded the platform's failure as the tenant's fault.
+
+**3. THE QUIET IS A RECORDED DECISION, NEVER A SILENCE.** Four distinct kinds —
+`call`, `cap_reached`, `quiet_hours`, `plan_blocked`, `failed` — and every one of them
+leaves a row the tenant can read. A dropped briefing that left no trace is indistinguishable
+from a briefing that was never due.
+
+**4. A BRIEFING IS EXACTLY ONE MODEL CALL.** It records the tenant, the outlet, the model,
+the purpose and the token usage. The reasoning tokens are a **breakdown** of the completion
+tokens, never an extra charge on top of them — and when MiniMax omits `total_tokens`, the
+fallback is prompt + completion, not prompt + completion + thinking.
+
+**5. THE PULL PATH IS METERED BUT NOT CHARGED AGAINST THE ALLOWANCE.** The cap counts
+`briefing` calls only. The chatbot is the price of the pull path (§9.2), and the meter never
+changes what a tenant pays.
+
+**What was proven.** `backend/scripts/test_phase_d_manager.py` — **41 checks**, each in its
+own in-memory world, covering the routes and their mounting; the tenant being the session's
+tenant and never a body's or a query parameter's; the order of the four checks; the four
+decision kinds staying distinct; an unreadable plan raising rather than refusing; the
+allowance being per outlet per tenant-local day; the reasoning tokens being a breakdown; and
+the channel settings being real.
+
+### 8.7 What Phase E's implementation settled
+
+Phase E was the money, so its questions were about **what the two rows cost, what an
+add-on price is, and when the POS is told**. The code answered them, and this is the record.
+
+**1. THE ADD-ON PRICE IS A TABLE OF ITS OWN.** `feature_prices` prices a **FEATURE**; it is
+not `plan_prices`, which prices a subscription. The two are billed on different schedules,
+and nothing about an add-on changes how any plan is priced. One price per feature per
+currency, enforced by a unique constraint — a second row for the same pair would be a
+second price for the same thing.
+
+**2. THE ADD-ON IS PRICED AT THE LEVEL OF THE PLAN THAT ALREADY CARRIES THE ROW.** The model
+is not what is being priced: at the published card ($0.30/M in, $1.20/M out on MiniMax-M3) a
+briefing of ~2k prompt and ~1k completion tokens costs about $0.0018. What is being priced
+is the **push path** — the agent speaks first, whether or not a person reads it. So
+`ai_agent` is priced at Pro's $20/month and `ai_agent_actions` at Enterprise's $50/month
+(USD and MYR, per currency), and a design partner granted the add-on pays no more than they
+would on the plan. `ai_chatbot` is **not** priced as an add-on: §9.2 settles that the row
+*is* the price of the pull path, and pricing it twice would charge twice for one thing.
+
+**3. THE MONEY IS GROUPED BY CURRENCY, AND THERE IS NO TOTAL ACROSS CURRENCIES.** The
+add-on payload is a map of currency to amount. The cost report's money is a map too. Adding
+USD to MYR would produce a number nobody can pay.
+
+**4. THE OVERRIDE RECORDS WHY, AND WHO.** `customer_feature_overrides` had `reason` and
+`created_by` columns and the design asked for both — but the route dropped the reason and
+never wrote the author, so every override in the table had neither. Both are recorded now,
+and the admin UI asks for the reason when an override is granted on top of a plan that does
+not carry the row, because that is the case where the plan and the override disagree and the
+disagreement needs a why.
+
+**5. THE POS IS NOTIFIED AFTER THE COMMIT, NEVER BEFORE.** Both paths had the same race:
+the customer override and `PUT /plan-features` notified the POS backend **before** the
+database commit. The POS reads the features from that database, so a notification that
+arrives early lets it read the **old** set and cache it as fresh — and nothing would tell it
+again. The change would sit in the database and not in the product. The notification now
+follows the commit, and the proof watches the moment the notification fires and checks that
+the committed row was already visible and already carried its reason.
+
+**6. THE COST REPORT IS A REPORT, NOT A BILL.** It reads Phase D's log and prices it at the
+**published** card, and it names the card and its source so a number is never free-floating.
+A model with no rate in the card is **unpriced**, not free: a silent zero would understate
+the bill and make the report lie. The reasoning tokens are a breakdown and are never billed
+twice. The route is scoped to the session's tenant, and an outlet filter is checked against
+that session.
+
+**What was proven.** `backend/scripts/test_phase_e_money.py` — **28 checks** — and
+`website_api/scripts/test_phase_e_pricing.py` — **35 checks** — each in its own world, the
+live database never opened. They cover: the rate card being the published one; the cost
+being the tokens at that rate; the reasoning tokens not being billed twice; an unknown model
+being unpriced rather than free; the money being a map of currency with no cross-currency
+total; the report being the tenant's own; the four decision kinds being counted apart and
+costing nothing; the add-on price being its own table with one price per currency; the two
+AI rows carrying their decided prices and the chatbot row not carrying one; the override
+recording its reason and its author; the override still winning over the plan; and the POS
+being notified **after** the commit on both paths.
 
 ### Phase 0 — the MCP server (read-only), and the two feature rows
 
