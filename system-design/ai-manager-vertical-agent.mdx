@@ -35,9 +35,9 @@ artifact against a live operation), not whether it needs approval; the approval 
 house's own routes with the **approver's signed session**, so every house gate — the
 permission, the plan, the tenancy, the pricing path — applies to that person; `notify_staff`
 is gated on `Staff`, because the live catalogue has no `Notifications` row; and the approver
-must present a **signed session**, not merely hold the permission. · **v1.8: Phase B is BUILT, and the one wrinkle Phase B was carrying is now settled by the code rather than left as a question for the design review. The tenant profile is the THIRD GATE and the lowest one: it may only NARROW what the plan and the token's scope already allow, and it never narrows the read tools — so configuring a profile can only ever make the agent more careful, never less (§8.4). The profile is addressed by the signed-in session's tenant and NEVER by a query parameter, so one tenant can neither read nor write another's. The seed copies the tenant's first active branch's bot settings, and falls back to the house chatbot's own default — **"Lumi"** — when that branch has no settings row, so a seeded profile is never nameless. The profile's own routes are a MANAGEMENT surface: a manager and an admin may read, only an admin may write, and the floor has neither. The **profile screen moves to Phase D**, which is the only phase allowed to move the frontend at all (§10.2) — Phase B ships the API and the engine's use of it, and the doc's frontend rule stands untouched. · **v1.9: Phase C is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.5. The short version: the event is written **in the caller's transaction** and the caller commits, so the event and the business change land together or neither does — and an emitter that FAILS never rolls back a successful write, because a live payment must not fall over because a row could not be written. The tenant of an event comes from the **row that was just written**, never from the payload, and the payload carries ids and small facts only: no money, no personal data. The dispatcher claims its rows with a **compare-and-set**, so two workers racing for one row produce one winner — the single uvicorn worker is a convenience, not a guarantee. The plan gate applies to the events too: a tenant without `Inventory` receives no `stock.low`, and the refusal is **VISIBLE** rather than silent. Quiet hours **HOLD** an eligible event until the tenant's day starts; they never drop it. And one event is the honest exception to the house rule: `order.stalled` has no business write behind it, because an order stalls when the **CLOCK** moves — so it is swept, and its event id is derived from the order and the cycle, which is what stops the sweep reminding twice.**)** · **v1.10: Phase D is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.6. The short version: the CHECKS RUN IN A FIXED ORDER — the plan gate, then the quiet hours, then the daily allowance, and only then the model — because the quiet hours are a rule about the MOMENT and the allowance a rule about the COUNT, and the cap is counted per outlet per **tenant-local day**, so the day's boundary is the branch's. An **unreadable plan RAISES** rather than masquerading as a refusal, because the two are opposite answers: one is a platform fault, the other the tenant's own decision. And every refusal leaves a **VISIBLE ROW** — `call`, `cap_reached`, `quiet_hours`, `plan_blocked` and `failed` are five distinct kinds, and a dropped briefing that left no trace would be indistinguishable from one that was never due. A briefing is exactly ONE model call, and the reasoning tokens are a **breakdown** of the completion tokens, never an extra charge on top.**)** · **v1.11: Phase E is BUILT, and the money is settled by the code rather than left as a question for the design review. The recorded answers are in §8.7. The short version: the two agent rows are priced as **ADD-ONS**, in a table of their own (`feature_prices`) that is not the plan price table, because a plan price says what a SUBSCRIPTION costs and this says what a FEATURE costs when it is granted on top of a plan. The add-on is priced at the level of the plan that already carries the row — `ai_agent` at $20/month, `ai_agent_actions` at $50/month, in USD and MYR separately — because the MODEL is not what is being priced (a briefing costs about $0.0018 at the published card) but the **push path** is: the agent speaks first, whether or not a person reads it. `ai_chatbot` is deliberately NOT priced as an add-on — §9.2 settles that the row *is* the price of the pull path. The override path had **two real defects**: it dropped the `reason` and never recorded the `created_by`, and it notified the POS **before the commit**, so the POS could cache the OLD features as fresh and the change would sit in the database and not in the product. Both are fixed, and the admin UI now asks for the reason. And the cost report is a REPORT, not a bill: it prices Phase D's log at the **published** card, names that card and its source, treats an unknown model as **unpriced rather than free**, and never bills the reasoning tokens twice.**)** · **v1.12: the WHOLE Phase A–E surface is verified in ONE sweep, and the sweep found a fact about the PROOFS themselves that is worth writing down. The recorded answers are in §8.8. All nine proofs are green — 377 checks — and the sweep also settled the question that was open at the end of Phase E: the two proofs that had been failing were not failing because of a defect. The tenant PROFILE row narrows the tool catalogue, and the house's own tenant 1 carries a live profile from the Phase B work, so a proof that ran against the live house without first taking that profile away was reading yesterday's state instead of the code's. The fix is ISOLATION, not a product change: a proof now takes the profile away for the run and gives it back exactly as it found it. The rule this settles is a standing one — **a proof must control its own starting state, and a live row that narrows behaviour is the first thing to suspect when a proof fails for a reason the code cannot explain.** The negative control is what proved it: the pre-Phase-E code against the same database failed identically, and the same code against the same database with the row removed passed.**)**
+must present a **signed session**, not merely hold the permission. · **v1.8: Phase B is BUILT, and the one wrinkle Phase B was carrying is now settled by the code rather than left as a question for the design review. The tenant profile is the THIRD GATE and the lowest one: it may only NARROW what the plan and the token's scope already allow, and it never narrows the read tools — so configuring a profile can only ever make the agent more careful, never less (§8.4). The profile is addressed by the signed-in session's tenant and NEVER by a query parameter, so one tenant can neither read nor write another's. The seed copies the tenant's first active branch's bot settings, and falls back to the house chatbot's own default — **"Lumi"** — when that branch has no settings row, so a seeded profile is never nameless. The profile's own routes are a MANAGEMENT surface: a manager and an admin may read, only an admin may write, and the floor has neither. The **profile screen moves to Phase D**, which is the only phase allowed to move the frontend at all (§10.2) — Phase B ships the API and the engine's use of it, and the doc's frontend rule stands untouched. · **v1.9: Phase C is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.5. The short version: the event is written **in the caller's transaction** and the caller commits, so the event and the business change land together or neither does — and an emitter that FAILS never rolls back a successful write, because a live payment must not fall over because a row could not be written. The tenant of an event comes from the **row that was just written**, never from the payload, and the payload carries ids and small facts only: no money, no personal data. The dispatcher claims its rows with a **compare-and-set**, so two workers racing for one row produce one winner — the single uvicorn worker is a convenience, not a guarantee. The plan gate applies to the events too: a tenant without `Inventory` receives no `stock.low`, and the refusal is **VISIBLE** rather than silent. Quiet hours **HOLD** an eligible event until the tenant's day starts; they never drop it. And one event is the honest exception to the house rule: `order.stalled` has no business write behind it, because an order stalls when the **CLOCK** moves — so it is swept, and its event id is derived from the order and the cycle, which is what stops the sweep reminding twice.**)** · **v1.10: Phase D is BUILT, and the three places the design left room are now settled by the code rather than left as a question for the design review. The recorded answers are in §8.6. The short version: the CHECKS RUN IN A FIXED ORDER — the plan gate, then the quiet hours, then the daily allowance, and only then the model — because the quiet hours are a rule about the MOMENT and the allowance a rule about the COUNT, and the cap is counted per outlet per **tenant-local day**, so the day's boundary is the branch's. An **unreadable plan RAISES** rather than masquerading as a refusal, because the two are opposite answers: one is a platform fault, the other the tenant's own decision. And every refusal leaves a **VISIBLE ROW** — `call`, `cap_reached`, `quiet_hours`, `plan_blocked` and `failed` are five distinct kinds, and a dropped briefing that left no trace would be indistinguishable from one that was never due. A briefing is exactly ONE model call, and the reasoning tokens are a **breakdown** of the completion tokens, never an extra charge on top.**)** · **v1.11: Phase E is BUILT, and the money is settled by the code rather than left as a question for the design review. The recorded answers are in §8.7. The short version: the two agent rows are priced as **ADD-ONS**, in a table of their own (`feature_prices`) that is not the plan price table, because a plan price says what a SUBSCRIPTION costs and this says what a FEATURE costs when it is granted on top of a plan. The add-on is priced at the level of the plan that already carries the row — `ai_agent` at $20/month, `ai_agent_actions` at $50/month, in USD and MYR separately — because the MODEL is not what is being priced (a briefing costs about $0.0018 at the published card) but the **push path** is: the agent speaks first, whether or not a person reads it. `ai_chatbot` is deliberately NOT priced as an add-on — §9.2 settles that the row *is* the price of the pull path. The override path had **two real defects**: it dropped the `reason` and never recorded the `created_by`, and it notified the POS **before the commit**, so the POS could cache the OLD features as fresh and the change would sit in the database and not in the product. Both are fixed, and the admin UI now asks for the reason. And the cost report is a REPORT, not a bill: it prices Phase D's log at the **published** card, names that card and its source, treats an unknown model as **unpriced rather than free**, and never bills the reasoning tokens twice.**)** · **v1.12: the WHOLE Phase A–E surface is verified in ONE sweep, and the sweep found a fact about the PROOFS themselves that is worth writing down. The recorded answers are in §8.8. All nine proofs are green — 377 checks — and the sweep also settled the question that was open at the end of Phase E: the two proofs that had been failing were not failing because of a defect. The tenant PROFILE row narrows the tool catalogue, and the house's own tenant 1 carries a live profile from the Phase B work, so a proof that ran against the live house without first taking that profile away was reading yesterday's state instead of the code's. The fix is ISOLATION, not a product change: a proof now takes the profile away for the run and gives it back exactly as it found it. The rule this settles is a standing one — **a proof must control its own starting state, and a live row that narrows behaviour is the first thing to suspect when a proof fails for a reason the code cannot explain.** The negative control is what proved it: the pre-Phase-E code against the same database failed identically, and the same code against the same database with the row removed passed.** · **v1.13: the five AI Manager fixes Kens named are in, as five commits, and the recorded answers are in §8.9. The short version: a **profile that does not reach the screen the tenant actually uses is not a profile**, so the tenant's own agent now governs the ORDINARY chatbot — its voice, its scope, and the scope reaching the chatbot's TOOLS — while still only NARROWING, and leaving the guest's assistant and the no-profile case exactly as they were. A **field that is stored looks exactly like a field that works**, so the catalogue is in the BACKEND, because the backend is the code that reads those fields, and each of the twelve says whether it is IN USE or STORED ONLY and WHERE it is read — `sop` and `runtime` are stored and nothing reads them yet. And a **threshold nobody evaluates is a note to oneself**, so the escalation settings became a SCHEMA (§3.4), they are evaluated against the outlet's real numbers, and the Agent tab shows the MEASURED value beside the threshold — while the threshold decides WHEN, the profile decides WHETHER MAY, and a refusal is reported rather than swallowed.**)**
 **Owner:** Ideazes POS AI
-**Status:** **Proposal, partly built.** Phase 0, Phase A, Phase B, Phase C, Phase D and Phase E are BUILT, and the whole Phase A–E surface is verified in one sweep — 377 checks across nine proofs, all green (§8.8). The answers are recorded in §8.3, §8.4, §8.5, §8.6, §8.7 and §8.8; Phase F onward is still the design below. It is the design Kens asked for after the
+**Status:** **Proposal, partly built.** Phase 0, Phase A, Phase B, Phase C, Phase D and Phase E are BUILT, and the whole Phase A–E surface is verified in one sweep — 377 checks across nine proofs, all green (§8.8). The five AI Manager fixes Kens named are also in, as five commits with their own proofs (§8.9). The answers are recorded in §8.3, §8.4, §8.5, §8.6, §8.7, §8.8 and §8.9; Phase F onward is still the design below. It is the design Kens asked for after the
 current chatbot was reviewed: *"is it enough for the current state, or do we move forward —
 integrate the SaaS POS with something like n8n, let each tenant have their own vertical AI
 agent, an AI Manager that manages the store and matches our site app."* Then: *"I am not
@@ -355,11 +355,30 @@ A per-tenant record that turns one engine into fifty managers:
 | `sop` (list) | "Every morning at 09:30, check yesterday's waste vs sales and message the kitchen." | The tenant's own procedure. |
 | `allowed_actions` | `["draft_purchase_order", "draft_campaign"]` | What this agent may ever do. Empty set = read-only for the draft and action tools. |
 | `quiet_hours` | `23:00–07:00` | When the agent may not push anything. |
-| `escalation` | "money > RM 500 → notify the admin" | The tenant's own thresholds. |
+| `escalation` | `{"metric": "waiting_orders", "operator": ">=", "value": 5, "severity": "high", "action": "notify_staff"}` | The tenant's own thresholds — a SCHEMA, not free text, and measured against the outlet's real numbers (§8.9). |
 | `outlet_scope` | `["all"]` or a list of branch ids | Which outlets this agent watches. |
 | `runtime` | `pos_frontend` / `n8n` / `telegram` / … | Which client runs this agent. The profile is runtime-agnostic. |
 | `ai_enabled` | `true` | Whether the tenant's agent is switched on at all. |
 | `is_active` | `true` | Whether this profile narrows the agent. A profile the tenant has switched off narrows nothing. |
+
+**The `escalation` field is a schema, and it is evaluated.** The design first sketched it as
+free text — *"money > RM 500 → notify the admin"* — and that was the honest shape of a
+*threshold the code cannot check*. A note to oneself that the house never once looks at is
+not a threshold, and a screen that shows it next to a working rule makes it look like one.
+The built shape is a rule with a **metric the house can measure** (`waiting_orders`,
+`sales_drop_pct`, `occupied_tables`, `open_alerts`), a **comparison**, a **number**, a
+**severity** and an **action**; a metric that does not exist, a value that is not a number,
+a comparison that is not one of `>=` `>` `<=` `<`, and an action that is not ours are all
+**refused** — the same rule the allow-list follows, for the same reason: a typo must not
+leave the agent quietly unable to do what the screen promised. The threshold decides **WHEN**;
+the profile's `allowed_actions` decide **WHETHER MAY** — and a refusal is reported rather
+than swallowed, because silence must never mean "healthy".
+
+The tenant's **older free-text rules are kept**, under `legacy_rules`, and are **never
+evaluated** — there was no evaluator before the real schema, so they were never thresholds.
+They survive a save of the Agent tab, and the screen says plainly that they are inert,
+because the tenant's own words are the tenant's business even when the house cannot act
+on them.
 
 This is the layer that makes the product *vertical*: the same engine, a different manager for
 every tenant, and **no code change** to onboard a new one.
@@ -1450,6 +1469,67 @@ the live databases:
 
 **377 checks, all green.** Phase 0 and Phases A–E are built and verified together, in one
 run, with the isolation rule in place.
+
+### 8.9 What the AI Manager fixes settled
+
+Five problems Kens named, five commits, and the answers are worth writing down because three
+of them are the same mistake wearing different clothes.
+
+**1. A PROFILE THAT DOES NOT REACH THE SCREEN IS NOT A PROFILE.** The tenant profile was
+the agent's identity, and the agent was reachable only through the MCP transport — while the
+chatbot the staff and the admin actually talk to every day knew nothing about it. The
+profile's name, greeting and system prompt are now the chatbot's, and its outlet scope
+narrows the branches: a branch outside the scope is **refused**, not answered, and the scope
+reaches the chatbot's **tools** as well, so the model cannot reach past it with a tool call.
+It only narrows — the **guest's** assistant is not the tenant's agent and keeps the branch's
+own voice, the profile's prompt cannot widen what the plan allows, and with **no** profile
+the Phase A behaviour is untouched. The rule: *a configuration the tenant cannot see taking
+effect is not a configuration.*
+
+**2. A FIELD THAT IS STORED LOOKS EXACTLY LIKE A FIELD THAT WORKS.** The profile has twelve
+fields, and the honest answer differs per field: some are read by a running part of the
+system, some are stored and displayed. A tenant who sets a stored field reasonably expects
+it to work. So the catalogue is in the **backend** — because the backend is the code that
+reads these fields — and each field says whether it is **IN USE** or **STORED ONLY**, and
+**where** it is read. `sop` and `runtime` are stored and nothing reads them yet, and the
+screen says so. The rule: *a stored field must be labelled as stored.*
+
+**3. A THRESHOLD NOBODY EVALUATES IS A NOTE TO ONESELF.** The Agent tab showed the
+escalation settings as raw JSON and nothing ever looked at them. They are now a **schema**
+(§3.4) and they are **evaluated**, with the **measured value** shown beside the threshold —
+because a screen that showed only the rules would be showing a note to oneself. The rule:
+*the threshold decides WHEN, the profile decides WHETHER MAY, and a refusal is reported
+rather than swallowed.*
+
+**4. TWO SURFACES, TWO GATES.** The AI Manager and the AI Tools were one page, so the
+tenant's agent and the analytics it reads shared a navigation entry, a route and a gate.
+They are now separate screens with separate gates — and `AI Agent Actions` is **not** the
+AI Manager's gate, because it is the gate for the *actions the agent may take*. Using it as
+the gate for the screen meant a tenant could see the tools and not the agent.
+
+**5. A STALE WRITE IS A LOST UPDATE.** The Profile screen round-tripped the stored
+escalation value on every save, so saving a profile could quietly **revert** a threshold
+the tenant had just set in the Agent tab. The Profile screen no longer carries the
+thresholds at all — they belong to the Agent tab, and the field is left out of the body so
+the server keeps what is stored. The same shape of bug is why the older free-text rules
+are **kept but never evaluated**, and shown as inert.
+
+**What was proven.** The five fixes, each with its own proof, against the live server and
+the live databases:
+
+| Proof | Checks |
+|---|---|
+| `backend/scripts/test_ai_manager_fixes.py` | 47 / 47 |
+| `frontend/scripts/test-ai-manager.mjs` | 34 / 34 |
+| `backend/scripts/test_mcp_profile.py` (the house proof, still green) | 59 / 59 |
+
+The frontend proof **bundles the real `NAV_ITEMS` and the real screens** and reads them,
+rather than asserting that a string appears somewhere. The backend proof takes the tenant's
+live profile away for the run and gives it back exactly as it found it, by the §8.8
+isolation rule. And the house's own MCP proof caught a real regression during this work —
+the strict threshold schema refused the legacy free-text shape, which would have made the
+Profile screen's save fail with a 400 on any tenant carrying old rules. The rules are now
+**kept, not refused**, and never evaluated.
 
 ### Phase 0 — the MCP server (read-only), and the two feature rows
 
