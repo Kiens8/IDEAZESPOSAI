@@ -1,0 +1,59 @@
+---
+title: Web Agent
+description: Talk to your restaurant group's own AI agent inside the POS - your own voice, your own procedure, and only the branches it watches.
+---
+
+# Web Agent
+
+The **Web Agent** is a chat window inside the POS that talks to **your restaurant group's own agent** — the one you configure in the AI Manager. It answers in the name and voice you gave it, follows the procedure you wrote for it, and only sees the branches you put it in charge of.
+
+Open it from the sidebar with **Web Agent**. It is for managers and admins.
+
+<Note>
+The **AI Chatbot** is a different thing, and it is still there. The chatbot is the house's assistant — it speaks for the restaurant, in the branch's voice. The Web Agent is **yours**: your name, your greeting, your language, your standing instructions. See [AI Chatbot](ai-chatbot).
+</Note>
+
+## When the screen appears
+
+Two things have to be true, and the server checks both of them every single time you open the screen.
+
+1. **Your plan includes the AI Agent feature.** This is the same feature the AI Manager runs on. It does **not** require the AI Agent Actions feature — the Web Agent never writes anything, so it does not ask you to buy the write access.
+2. **You have configured an agent profile.** The profile **is** the agent — its name, its voice, its procedure, its branches. Without one there is no agent to talk to, so the entry stays out of the menu.
+
+If either one is missing, the menu does not show **Web Agent**. If you go to the screen directly, it tells you which one is missing and where to fix it.
+
+## Getting to the screen
+
+There are two ways in, and they both land on the same screen.
+
+- **The sidebar** — **Web Agent**, next to **AI Manager**.
+- **The AI Manager's profile tab** — the **Talk to your agent** box at the top, with an **Open web agent** button. The button only appears when your profile is switched on and the agent is switched on, because a switched-off agent has no screen to open.
+
+## What you see
+
+- **The header** carries your agent's name and a **Read-only** marker.
+- **The conversation** — your messages on the right, your agent's on the left. The agent opens with **your** greeting, in **your** language.
+- **The message box** at the bottom.
+
+Your agent's name, greeting and language all come from the profile, so it introduces itself the way you told it to.
+
+## What it knows
+
+Your agent answers from the branches in its **scope** — the branch list you set on the profile. If you ask it about a branch that is not in its scope, it **refuses** rather than answering, and so does the branch selection itself: a branch outside the scope cannot be reached from this screen at all.
+
+## What it does not do
+
+The Web Agent **reads and talks**. That is the whole of it.
+
+It does not take orders, take payment, change an order, change your menu, or change anything on your restaurant. It does not draft proposals, and it does not raise alerts on its own. Every write the agent can ever make still happens on its own screen, under its own permissions, and a manager still approves each one.
+
+<Note>
+The list of actions your agent is allowed to make is **reported** on this screen, so you can see what it may do elsewhere. Reporting it is not doing it.
+</Note>
+
+## Related documentation
+
+- [AI Chatbot](ai-chatbot) — the house's assistant, in the branch's voice.
+- [AI tools](ai-tools) — the AI Insights, Menu Analytics, campaigns and competitor screens.
+- [Connect your own agent runtime](ai-connectors) — the agent token, the MCP server and the model proxy.
+- [POS app guide](overview)
