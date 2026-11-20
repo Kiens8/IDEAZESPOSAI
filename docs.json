@@ -106,6 +106,12 @@
       }
     ]
   },
+  "redirects": [
+    {
+      "source": "/admin/internal/settings",
+      "destination": "/admin-app/settings"
+    }
+  ],
   "navbar": {
     "links": [
       {
