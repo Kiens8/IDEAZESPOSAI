@@ -1,0 +1,367 @@
+---
+title: Connect your own agent runtime
+description: Connect n8n, a Telegram bridge, or your own service to your restaurant's AI Manager - the agent token, the MCP server, the model proxy, and the signed webhook.
+---
+
+# Connect your own agent runtime
+
+Your restaurant's AI Manager can work with a runtime you control. Connect n8n, a Telegram bridge, or a service you write yourself, and it reads your live data through the MCP server, receives your events on a signed webhook, and drafts work for a manager to approve.
+
+The connection is optional. Nothing above depends on it, and your POS works exactly the same whether a runtime is connected or not.
+
+## What you can connect
+
+There are three pieces, and you may use any of them.
+
+- **The MCP server** — your runtime's tool layer. It reads your sales, orders, menu, staff, tables, outlets, customers, payments and alerts, and it drafts changes for a manager to approve.
+- **The model proxy** — an OpenAI-compatible model endpoint, for a runtime that holds its own model key. The proxy runs the call on our key, records the tokens against your restaurant, and enforces your daily allowance.
+- **The signed webhook** — your runtime's event feed. It receives the events you subscribe to, signed, so it can tell a real delivery from a forged one.
+
+<Note>
+The AI Manager is a **manager and admin** feature. Your plan needs the `AI Agent` feature, and a staff account cannot connect a runtime at all.
+</Note>
+
+## Before you start
+
+You need three things.
+
+- An **admin** account on your restaurant. Creating a token is an admin action.
+- Your plan needs the `AI Agent` feature.
+- The address of your POS installation — for example `https://app.ideazes.com`. Every path below is relative to it.
+
+## Step 1 — Create the agent token
+
+The token is the credential your runtime presents. It is shown **once** and cannot be read back, because we store only its SHA-256 hash.
+
+From your admin session, call the token route:
+
+```bash
+curl -X POST https://app.ideazes.com/api/ai/connectors/token \
+  -H "Content-Type: application/json" \
+  -b "session=<your session cookie>" \
+  -d '{"scope": "read", "name": "n8n runtime"}'
+```
+
+The answer carries the token and says so:
+
+```json
+{
+  "token": "agt_…",
+  "token_shown_once": true,
+  "prefix": "agt_xxxxxx",
+  "scope": "read",
+  "note": "Copy this token into the runtime's configuration now. It is not stored in readable form and it cannot be shown again."
+}
+```
+
+Copy the token into your runtime's configuration now. If you lose it, create another one.
+
+You can also create a token on the server:
+
+```bash
+python3 scripts/agent_token.py create --customer-id 1 --scope read --name "n8n runtime"
+```
+
+### The scope ladder
+
+The scope decides how much the token may reach.
+
+| Scope | What it may do |
+|---|---|
+| `read` | Read your data through the MCP server. |
+| `draft` | Also draft a change for a manager to approve. |
+| `action` | Also file an action for approval. |
+
+`action` is safe because an action **proposes**. It never changes anything by itself. A person approves it, through their own signed session, and only then does the change happen.
+
+### One branch or all of them
+
+A token without `outlet_id` sees every branch of your restaurant. A token with one sees only that branch, and its daily allowance is counted for that branch.
+
+## Step 2 — Read your connector settings
+
+The setup route answers from your live configuration, so it cannot drift from the code. It is a read, and it hands out no secret.
+
+```bash
+curl https://app.ideazes.com/api/ai/connectors/setup -b "session=<your session cookie>"
+```
+
+```json
+{
+  "mcp": {
+    "path": "/api/mcp",
+    "method": "POST",
+    "header": "X-Agent-Token",
+    "note": "Streamable HTTP. One POST carries one JSON-RPC message. The token travels in the X-Agent-Token header."
+  },
+  "proxy": {
+    "base_path": "/api/agent-proxy/v1",
+    "models": ["MiniMax-M3", "MiniMax-M3.1-Flash"],
+    "default_model": "MiniMax-M3"
+  },
+  "token": {
+    "prefix": "agt_xxxxxx",
+    "scope": "read",
+    "name": "n8n runtime",
+    "created_at": "2026-11-20T08:00:00"
+  },
+  "subscriptions": []
+}
+```
+
+The token here is a **prefix** only. That is how you tell two tokens apart without the secret ever being stored. The `subscriptions` list shows where your events currently arrive.
+
+## Step 3 — Connect the MCP server
+
+The MCP server lives at `/api/mcp` and speaks JSON-RPC 2.0 over HTTP POST. One POST carries one message.
+
+Send the token in the `X-Agent-Token` header. An ordinary API key and a staff session are both refused there — the agent token is the only credential that works.
+
+### In n8n
+
+Add an **MCP Client Tool** node to your workflow and set three things.
+
+- The **transport** is Streamable HTTP.
+- The **server URL** is `https://app.ideazes.com/api/mcp`.
+- The **header** is `X-Agent-Token` with the value `agt_…`.
+
+The node then lists your tools. The ten read tools are `get_sales`, `get_orders`, `list_outlets`, `compare_outlets`, `get_tables`, `get_menu_performance`, `get_staff`, `get_customers`, `get_payments` and `get_alerts`.
+
+### By hand
+
+Every call is a POST of one JSON-RPC message.
+
+```bash
+curl -X POST https://app.ideazes.com/api/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-Agent-Token: agt_…" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}'
+```
+
+Calling a tool looks like this:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "get_sales",
+    "arguments": { "period": "today" }
+  }
+}
+```
+
+The answer carries the house's `data` field, and the tenant is always the one the token belongs to. A branch id in the arguments is a request inside your restaurant — it can never reach another restaurant's data.
+
+<Warning>
+The server answers requests only. It never opens a server-to-client stream, so a client that tries to open one gets a `405` with the reason. Your runtime polls the tools instead.
+</Warning>
+
+## Step 4 — Use the model proxy
+
+The proxy exists for a runtime that holds its own model key. Your runtime points its model node at the proxy, and we run the call on our key — which means the tokens are recorded against your restaurant and counted against your daily allowance.
+
+The base path is `/api/agent-proxy/v1`. Send the agent token as a Bearer token, which is what an OpenAI-compatible client does by default.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://app.ideazes.com/api/agent-proxy/v1",
+    api_key="agt_…",
+)
+
+answer = client.chat.completions.create(
+    model="MiniMax-M3",
+    messages=[{"role": "user", "content": "How many orders are waiting?"}],
+)
+
+print(answer.choices[0].message.content)
+print(answer.usage.total_tokens)
+```
+
+The models served are `MiniMax-M3` and `MiniMax-M3.1-Flash`. Ask the proxy what it serves with `GET /api/agent-proxy/v1/models`.
+
+### The rules it enforces
+
+- **The plan gate** — your plan must hold the `AI Agent` feature. Without it the call is refused, and the refusal names the feature.
+- **The subscription gate** — a restaurant whose subscription lapsed is refused before the call.
+- **The model allowlist** — a model outside the list is refused by name, and the message tells you which models you may use.
+- **The daily allowance** — the tokens are counted on your restaurant's local day, and the call is refused once the allowance is spent.
+- **The output ceiling** — a request may not ask for more than the maximum output tokens we allow.
+
+### The answers it gives
+
+| Status | What it means |
+|---|---|
+| `401` | The token is missing, unknown, revoked or expired. |
+| `403` | Your plan or your subscription does not allow it. |
+| `400` | The request itself — an unknown model, or `stream: true`. |
+| `429` | The daily allowance is spent. |
+| `503` | We could not read your plan. This is our fault, not yours. |
+| `502` | The model call failed. |
+
+Errors come back in the OpenAI shape, with the reason in `error.message`:
+
+```json
+{
+  "error": {
+    "message": "This restaurant's agent runtime may only use MiniMax-M3, MiniMax-M3.1-Flash.",
+    "type": "invalid_request_error",
+    "code": null
+  }
+}
+```
+
+<Warning>
+The proxy does not stream. Send `stream: false` and read the whole answer. A request that asks for a stream is refused with a `400` rather than quietly ignored.
+</Warning>
+
+## Step 5 — Receive events on a signed webhook
+
+Your runtime can be told what is happening in your restaurant. Subscribe, and the POS posts the event to your endpoint.
+
+```bash
+curl -X POST https://app.ideazes.com/api/ai-events/subscriptions \
+  -H "Content-Type: application/json" \
+  -b "session=<your session cookie>" \
+  -d '{
+    "channel": "webhook",
+    "runtime": "n8n",
+    "endpoint": "https://your-runtime.example/hook",
+    "event_types": ["order.paid", "stock.low"]
+  }'
+```
+
+The answer carries the **signing secret**, once. Copy it into your runtime's configuration now — it cannot be shown again, and you can subscribe again for a new one.
+
+The event types are `order.placed`, `order.paid`, `order.stalled`, `payment.failed`, `refund.issued`, `shift.ended`, `staff.clocked_in`, `stock.low` and `table.turned`. Leave `event_types` empty to receive every event.
+
+### What the delivery carries
+
+The body says which order and what happened. It carries **no money and no personal data** — your runtime fetches the detail through a tool, under your plan.
+
+```json
+{
+  "event_id": "…",
+  "event_type": "stock.low",
+  "customer_id": 1,
+  "outlet_id": 2,
+  "payload": { "ingredient": "Coconut milk" },
+  "occurred_at": "2026-11-20T08:14:00"
+}
+```
+
+The headers are the house's own:
+
+| Header | What it carries |
+|---|---|
+| `X-POS-Signature` | `t=<timestamp>,v1=<signature>` |
+| `X-POS-Timestamp` | The Unix timestamp the signature was made at. |
+| `X-POS-Event-Id` | The event's id. |
+| `X-POS-Event-Type` | The event's type. |
+| `X-POS-Tenant-Id` | Your restaurant's id. |
+
+### Verifying the signature
+
+The signature is an HMAC-SHA256 over `<timestamp>.<body>`, in the same shape Stripe uses. Verify it against the **raw** body — a body you have parsed and re-serialised will not verify.
+
+```python
+import hashlib
+import hmac
+import time
+
+
+def verify(secret, raw_body: bytes, signature_header: str, tolerance: int = 300) -> bool:
+    parts = dict(part.split("=", 1) for part in signature_header.split(","))
+    timestamp = parts["t"]
+
+    # A replayed delivery is a delivery from the past. Refuse it.
+    if abs(time.time() - int(timestamp)) > tolerance:
+        return False
+
+    signed = ("%s.%s" % (timestamp, raw_body.decode("utf-8"))).encode("utf-8")
+    expected = hmac.new(
+        secret.encode("utf-8"), signed, hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(expected, parts["v1"])
+```
+
+```javascript
+const crypto = require('crypto');
+
+function verify(secret, rawBody, signatureHeader, toleranceSeconds = 300) {
+  const parts = Object.fromEntries(
+    signatureHeader.split(',').map((part) => part.split('='))
+  );
+
+  const timestamp = Number(parts.t);
+  if (Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds) {
+    return false;
+  }
+
+  const signed = `${parts.t}.${rawBody}`;
+  const expected = crypto
+    .createHmac('sha256', secret)
+    .update(signed, 'utf8')
+    .digest('hex');
+
+  if (expected.length !== parts.v1.length) return false;
+  return crypto.timingSafeEqual(
+    Buffer.from(expected, 'utf8'),
+    Buffer.from(parts.v1, 'utf8')
+  );
+}
+```
+
+Answer with a `2xx`. A non-`2xx` answer marks the delivery as failed, and it is retried — five attempts, backing off 30, 60, 120 and 240 seconds. Answer only once you have the event safely.
+
+## Step 6 — Run a Telegram bridge
+
+The Telegram leg is a signed webhook with the chat attached. Your bridge receives the event, calls the MCP server with the tenant's token, and answers in the chat.
+
+```bash
+curl -X POST https://app.ideazes.com/api/ai-events/subscriptions \
+  -H "Content-Type: application/json" \
+  -b "session=<your session cookie>" \
+  -d '{
+    "channel": "telegram",
+    "runtime": "telegram_bridge",
+    "endpoint": "https://your-bridge.example/telegram",
+    "chat_id": "-1001234567890",
+    "bot_token_ref": "your-secret-store/telegram-bot-token"
+  }'
+```
+
+Three fields matter.
+
+- The **`chat_id`** is where the bridge answers.
+- The **`bot_token_ref`** is a **reference**, not the token. Your bridge resolves it from its own secret store, so your Telegram credential never sits in our database and a stolen database row does not become a stolen bot.
+- The **`endpoint`** is your bridge. The POS POSTs the event there, signed exactly as in step 5, with `chat_id`, `runtime` and `bot_token_ref` attached to the body.
+
+The bridge then calls the MCP server with the agent token, and the answer is what the manager sees.
+
+## The rules your runtime lives under
+
+- **The agent drafts; a human approves.** No scope lets a runtime change your data on its own. An action stores a proposal, and a person approves it through their own signed session, with their own permissions.
+- **The tenant is the credential.** Your restaurant is the one the token was issued to. There is no parameter that can move a request to another restaurant.
+- **The token has two doors.** It works on `/api/mcp` and on `/api/agent-proxy`, and nowhere else. Presenting it to an ordinary API route is refused.
+- **A refusal is visible.** A call that was not made leaves a row saying why — the plan, the allowance, or a failure. A quiet runtime is never mistaken for a healthy one.
+
+## Troubleshooting
+
+**`401` on the MCP server.** The token is missing, unknown, revoked or expired. Check the header name is `X-Agent-Token` and that the token has not been revoked. A revoked token is refused the same way as an unknown one.
+
+**`403` naming a feature.** Your plan does not hold the `AI Agent` feature. A plan that could not be read gives a `503` instead, because that is our fault and not yours.
+
+**The proxy refuses the model.** Only `MiniMax-M3` and `MiniMax-M3.1-Flash` are served. The refusal message lists them.
+
+**The proxy refuses a stream.** It does not stream. Send `stream: false`.
+
+**The webhook signature never verifies.** You are probably verifying a re-serialised body. Use the raw bytes exactly as they arrived, and read the timestamp from `X-POS-Timestamp` or from the `t=` part of the signature.
+
+**The events do not arrive.** Check the subscription is enabled and the endpoint answers with a `2xx`. Failed deliveries are kept as dead letters and can be read through the events API.
+
+**The tools list is empty.** Your plan holds the feature, but not the module a tool touches. Each tool carries the plan row of the module it reads, so a tenant without `Reports` is offered no sales tool.
