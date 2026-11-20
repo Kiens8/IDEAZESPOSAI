@@ -22,6 +22,15 @@ Two things have to be true, and the server checks both of them every single time
 
 If either one is missing, the menu does not show **Web Agent**. If you go to the screen directly, it tells you which one is missing and where to fix it.
 
+## If the screen says it cannot be reached
+
+This is different from the two cases above, and it is worth telling them apart:
+
+- **"Your plan does not include…"** or **"you have not configured an agent profile"** — these are about **your** account. The screen is working and it is telling you the truth about what is missing.
+- **"The web agent could not be reached"** — the screen could not get an answer from the server at all. Nothing about your account was checked or refused. It usually means the server is running older code than the page you are looking at, and it is fixed by **restarting the backend service**, not by changing anything in your account.
+
+If you see the second one, your plan and your profile are probably fine — tell whoever runs your server to restart it.
+
 ## Getting to the screen
 
 There are two ways in, and they both land on the same screen.
