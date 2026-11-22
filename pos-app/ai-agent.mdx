@@ -17,17 +17,22 @@ The **AI Chatbot** is a different thing, and it is still there. The chatbot is t
 
 Two things have to be true, and the server checks both of them every single time you open the screen.
 
-1. **Your plan includes the AI Agent feature.** This is the same feature the AI Manager runs on. It does **not** require the AI Agent Actions feature — the Web Agent never writes anything, so it does not ask you to buy the write access.
+1. **Your plan includes the AI Agent feature.** This is the same feature the AI Manager runs on. The screen itself does **not** require the AI Agent Actions feature — talking to your agent never needs it. That second feature is what lets your agent **propose** changes, and it is described under [What it may propose](#what-it-may-propose).
 2. **You have configured an agent profile.** The profile **is** the agent — its name, its voice, its procedure, its branches. Without one there is no agent to talk to, so the entry stays out of the menu.
 
 If either one is missing, the menu does not show **Web Agent**. If you go to the screen directly, it tells you which one is missing and where to fix it.
 
+- **"This restaurant group has not configured an AI agent profile yet."** — no profile exists yet. Configure one in the AI Manager.
+- **"The agent profile is switched off."** — the profile exists but is switched off. Switch it on in the AI Manager.
+- **"The agent itself is switched off."** — the profile is on, but the agent inside it is off.
+- **"This restaurant group's plan does not include the AI Agent feature."** — the plan is what is missing.
+
 ## If the screen says it cannot be reached
 
-This is different from the two cases above, and it is worth telling them apart:
+This is different from the cases above, and it is worth telling them apart:
 
 - **"Your plan does not include…"** or **"you have not configured an agent profile"** — these are about **your** account. The screen is working and it is telling you the truth about what is missing.
-- **"The web agent could not be reached"** — the screen could not get an answer from the server at all. Nothing about your account was checked or refused. It usually means the server is running older code than the page you are looking at, and it is fixed by **restarting the backend service**, not by changing anything in your account.
+- **"The web agent could not be reached. Please try again."** — the screen could not get an answer from the server at all. Nothing about your account was checked or refused. It usually means the server is running older code than the page you are looking at, and it is fixed by **restarting the backend service**, not by changing anything in your account.
 
 If you see the second one, your plan and your profile are probably fine — tell whoever runs your server to restart it.
 
@@ -40,24 +45,57 @@ There are two ways in, and they both land on the same screen.
 
 ## What you see
 
-- **The header** carries your agent's name and a **Read-only** marker.
-- **The conversation** — your messages on the right, your agent's on the left. The agent opens with **your** greeting, in **your** language.
+- **The header** carries your agent's name and a marker that says what the agent may do here: **Read-only** when your agent has nothing it may propose, and **Can propose** when it has.
+- **The capability panel** — **What this agent can do** — sits above the conversation. It lists the tools your agent may read and the tools it may ask to change, with a count for each. The list is the plan and your profile intersected, checked on the server, so a tool that is not on it cannot be used.
+- **The conversation** — your messages on the right, your agent's on the left. The agent opens with **your** greeting, in **your** language, and its answers are formatted as text. When the server refuses something, the refusal is shown in the server's own words.
 - **The message box** at the bottom.
 
 Your agent's name, greeting and language all come from the profile, so it introduces itself the way you told it to.
 
 ## What it knows
 
-Your agent answers from the branches in its **scope** — the branch list you set on the profile. If you ask it about a branch that is not in its scope, it **refuses** rather than answering, and so does the branch selection itself: a branch outside the scope cannot be reached from this screen at all.
+Your agent answers from the branches in its **scope** — the branch list you set on the profile. If you ask it about a branch that is not in its scope, it **refuses** rather than answering.
+
+The screen has no branch picker of its own. It asks about the branch you are signed in at, and the server checks that branch against the scope on every message. If you switch branches in the header, the agent **refuses** to answer for a branch outside its scope — the refusal comes from the server, in its own words, not from the screen.
 
 ## What it does not do
 
-The Web Agent **reads and talks**. That is the whole of it.
+The Web Agent never changes your restaurant by itself. It reads, it talks, and — when your plan holds the **AI Agent Actions** row — it may **propose** a change.
 
-It does not take orders, take payment, change an order, change your menu, or change anything on your restaurant. It does not draft proposals, and it does not raise alerts on its own. Every write the agent can ever make still happens on its own screen, under its own permissions, and a manager still approves each one.
+A proposal is a frozen plan, not a change. It appears under the answer that asked for it, and you approve, edit or reject it there. Nothing happens until a member of staff with the right permission approves it, and the agent cannot approve its own proposal.
+
+It does not take orders and it does not take payment. There is no action for either.
+
+## What it may propose
+
+Proposing needs **two** things on top of the screen's own two gates:
+
+- **Your plan holds the AI Agent Actions feature.** A plan may hold AI Agent without holding AI Agent Actions, and then your agent may read but not propose.
+- **Your profile allows it.** The profile's allow-list may only narrow what the plan allows — it can take tools away, never add them.
+
+On top of that, the person signed in must hold the **approve** permission. A person who may only read never sees the proposal tools at all.
+
+The tools it may propose are the drafts and the actions:
+
+- **Drafts** — a purchase order, a promotion, a campaign, a price change, a stock transfer, a voucher issue, a shift swap.
+- **Actions** — send a purchase order, create a promotion, run a campaign, apply a price change, record stock waste, acknowledge an alert, issue a voucher, notify staff.
+
+### Approving a proposal
+
+The proposal card sits under the answer that asked for it, with three controls.
+
+- **Approve** — applies the change. The card then says the change has been applied.
+- **Edit** — opens the arguments so you can correct them. Saving creates a **new version** of the proposal and **supersedes** the old one; it never rewrites the frozen arguments in place. The old card says it was corrected and replaced.
+- **Reject** — nothing was changed.
+
+Every proposal carries a note saying that nothing has happened yet and a member of staff with the right permission has to approve it. The agent cannot approve its own proposal.
 
 <Note>
-The list of actions your agent is allowed to make is **reported** on this screen, so you can see what it may do elsewhere. Reporting it is not doing it.
+These are the same proposals the AI Manager's **Needs you** list shows — one queue, two views. A manager may approve in either place, and it is the same record either way.
+</Note>
+
+<Note>
+The capability panel is **reported** on this screen, so you can see exactly what this agent may do here. Reporting it is not doing it.
 </Note>
 
 ## Related documentation

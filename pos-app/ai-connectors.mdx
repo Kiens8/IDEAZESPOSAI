@@ -25,7 +25,7 @@ The AI Manager is a **manager and admin** feature. Your plan needs the `AI Agent
 
 You need three things.
 
-- An **admin** account on your restaurant. Creating a token is an admin action.
+- An **admin** account on your restaurant. Creating a token is an admin action. The server's own staff key carries the same permission, so a script on the server can create tokens too.
 - Your plan needs the `AI Agent` feature.
 - The address of your POS installation — for example `https://app.ideazes.com`. Every path below is relative to it.
 
@@ -50,6 +50,8 @@ The answer carries the token and says so:
   "token_shown_once": true,
   "prefix": "agt_xxxxxx",
   "scope": "read",
+  "outlet_id": null,
+  "name": "n8n runtime",
   "note": "Copy this token into the runtime's configuration now. It is not stored in readable form and it cannot be shown again."
 }
 ```
@@ -78,6 +80,13 @@ The scope decides how much the token may reach.
 
 A token without `outlet_id` sees every branch of your restaurant. A token with one sees only that branch, and its daily allowance is counted for that branch.
 
+A token may also carry an expiry date. Once it passes, the token is refused like any other unknown one. You can list and revoke tokens on the server:
+
+```bash
+python3 scripts/agent_token.py list --customer-id 1
+python3 scripts/agent_token.py revoke --id 12
+```
+
 ## Step 2 — Read your connector settings
 
 The setup route answers from your live configuration, so it cannot drift from the code. It is a read, and it hands out no secret.
@@ -97,7 +106,8 @@ curl https://app.ideazes.com/api/ai/connectors/setup -b "session=<your session c
   "proxy": {
     "base_path": "/api/agent-proxy/v1",
     "models": ["MiniMax-M3", "MiniMax-M3.1-Flash"],
-    "default_model": "MiniMax-M3"
+    "default_model": "MiniMax-M3",
+    "note": "OpenAI-compatible. Point the runtime's model node at /api/agent-proxy/v1 and send the token as a Bearer token."
   },
   "token": {
     "prefix": "agt_xxxxxx",
@@ -105,11 +115,14 @@ curl https://app.ideazes.com/api/ai/connectors/setup -b "session=<your session c
     "name": "n8n runtime",
     "created_at": "2026-11-20T08:00:00"
   },
-  "subscriptions": []
+  "subscriptions": [],
+  "runtime": "n8n",
+  "runtime_detail": "a sentence saying why",
+  "runtime_sources": []
 }
 ```
 
-The token here is a **prefix** only. That is how you tell two tokens apart without the secret ever being stored. The `subscriptions` list shows where your events currently arrive.
+The token here is a **prefix** only. That is how you tell two tokens apart without the secret ever being stored. The `subscriptions` list shows where your events currently arrive — each entry carries its `id`, `channel`, `runtime`, `endpoint`, `chat_id`, `outlet_id` and `event_types`. The `token` is `null` when the restaurant has no token yet. The `runtime` fields describe the client you are actually on, derived from your live records.
 
 ## Step 3 — Connect the MCP server
 
@@ -125,7 +138,17 @@ Add an **MCP Client Tool** node to your workflow and set three things.
 - The **server URL** is `https://app.ideazes.com/api/mcp`.
 - The **header** is `X-Agent-Token` with the value `agt_…`.
 
-The node then lists your tools. The ten read tools are `get_sales`, `get_orders`, `list_outlets`, `compare_outlets`, `get_tables`, `get_menu_performance`, `get_staff`, `get_customers`, `get_payments` and `get_alerts`.
+The node then lists your tools. The eleven read tools are `get_sales`, `get_orders`, `list_outlets`, `compare_outlets`, `get_tables`, `get_menu_performance`, `get_menu_items`, `get_staff`, `get_customers`, `get_payments` and `get_alerts`.
+
+Each read tool carries the plan row of the module it reads, so a restaurant without `Reports` is offered no sales tool.
+
+### The write tools
+
+A token may also reach tools that draft and file changes. They need the `AI Agent Actions` plan row on top of the `AI Agent` row, and the token's own scope has to cover them.
+
+The seven **draft** tools are `draft_purchase_order`, `draft_promotion`, `draft_campaign`, `draft_price_change`, `draft_stock_transfer`, `draft_voucher_issue` and `draft_shift_swap`. The eight **action** tools are `send_purchase_order`, `create_promotion`, `execute_campaign`, `apply_price_change`, `record_stock_waste`, `acknowledge_alert`, `issue_voucher` and `notify_staff`.
+
+None of them changes anything on its own. A draft stores a proposal and an action files one, and a person with the approve permission approves it from the AI Manager or the Web Agent.
 
 ### By hand
 
@@ -158,6 +181,15 @@ The answer carries the house's `data` field, and the tenant is always the one th
 The server answers requests only. It never opens a server-to-client stream, so a client that tries to open one gets a `405` with the reason. Your runtime polls the tools instead.
 </Warning>
 
+### The limits the transport enforces
+
+- **120 calls a minute**, per token. Going over it gives a `429`.
+- **256 KB a request.** A bigger body gives a `413`.
+- **20 messages a batch.** JSON-RPC allows a batch, but one request is still one request.
+- **One call, one result, for 60 seconds.** A draft or an action repeated inside that window returns the **same** proposal instead of creating a second one. This is what stops an agent that retries from filing the same purchase order twice.
+
+A request that asks for `text/event-stream` is answered with a single server-sent event instead of a JSON body.
+
 ## Step 4 — Use the model proxy
 
 The proxy exists for a runtime that holds its own model key. Your runtime points its model node at the proxy, and we run the call on our key — which means the tokens are recorded against your restaurant and counted against your daily allowance.
@@ -189,7 +221,7 @@ The models served are `MiniMax-M3` and `MiniMax-M3.1-Flash`. Ask the proxy what 
 - **The subscription gate** — a restaurant whose subscription lapsed is refused before the call.
 - **The model allowlist** — a model outside the list is refused by name, and the message tells you which models you may use.
 - **The daily allowance** — the tokens are counted on your restaurant's local day, and the call is refused once the allowance is spent.
-- **The output ceiling** — a request may not ask for more than the maximum output tokens we allow.
+- **The output ceiling** — a request that asks for more output tokens than we allow is quietly trimmed to the ceiling. The call still succeeds; the answer is just shorter.
 
 ### The answers it gives
 
@@ -223,7 +255,7 @@ The proxy does not stream. Send `stream: false` and read the whole answer. A req
 Your runtime can be told what is happening in your restaurant. Subscribe, and the POS posts the event to your endpoint.
 
 ```bash
-curl -X POST https://app.ideazes.com/api/ai-events/subscriptions \
+curl -X POST https://app.ideazes.com/api/ai/events/subscriptions \
   -H "Content-Type: application/json" \
   -b "session=<your session cookie>" \
   -d '{
@@ -234,7 +266,7 @@ curl -X POST https://app.ideazes.com/api/ai-events/subscriptions \
   }'
 ```
 
-The answer carries the **signing secret**, once. Copy it into your runtime's configuration now — it cannot be shown again, and you can subscribe again for a new one.
+The answer carries the **signing secret**, once, inside the `subscription` object. Copy it into your runtime's configuration now — it cannot be shown again, and you can subscribe again for a new one.
 
 The event types are `order.placed`, `order.paid`, `order.stalled`, `payment.failed`, `refund.issued`, `shift.ended`, `staff.clocked_in`, `stock.low` and `table.turned`. Leave `event_types` empty to receive every event.
 
@@ -318,12 +350,14 @@ function verify(secret, rawBody, signatureHeader, toleranceSeconds = 300) {
 
 Answer with a `2xx`. A non-`2xx` answer marks the delivery as failed, and it is retried — five attempts, backing off 30, 60, 120 and 240 seconds. Answer only once you have the event safely.
 
+A `404`, `410`, `401` or `403` is treated as **permanent**: the delivery goes straight to the dead-letter log and is never retried, because a wrong path or a revoked signature will not fix itself in a minute.
+
 ## Step 6 — Run a Telegram bridge
 
 The Telegram leg is a signed webhook with the chat attached. Your bridge receives the event, calls the MCP server with the tenant's token, and answers in the chat.
 
 ```bash
-curl -X POST https://app.ideazes.com/api/ai-events/subscriptions \
+curl -X POST https://app.ideazes.com/api/ai/events/subscriptions \
   -H "Content-Type: application/json" \
   -b "session=<your session cookie>" \
   -d '{
@@ -343,11 +377,26 @@ Three fields matter.
 
 The bridge then calls the MCP server with the agent token, and the answer is what the manager sees.
 
+## The events API
+
+The same base path carries the whole subscription API, so you can read and change your subscriptions without leaving it.
+
+| Route | What it does |
+|---|---|
+| `GET /api/ai/events/subscriptions` | List your subscriptions, with the live event-type and channel catalogue. |
+| `POST /api/ai/events/subscriptions` | Create one. |
+| `PATCH /api/ai/events/subscriptions/{id}` | Change one — its endpoint, its event types, its quiet hours, or whether it is enabled. |
+| `DELETE /api/ai/events/subscriptions/{id}` | Remove one. |
+| `GET /api/ai/events/dead-letters` | Read the deliveries that failed for good. |
+| `POST /api/ai/events/dead-letters/{id}/requeue` | Send one of them again. |
+
+Besides the webhook and the Telegram bridge, the house knows two more channels: `in_app`, which delivers inside the POS, and `staff_push`, which uses the staff push subscription routes to reach a phone.
+
 ## The rules your runtime lives under
 
 - **The agent drafts; a human approves.** No scope lets a runtime change your data on its own. An action stores a proposal, and a person approves it through their own signed session, with their own permissions.
 - **The tenant is the credential.** Your restaurant is the one the token was issued to. There is no parameter that can move a request to another restaurant.
-- **The token has two doors.** It works on `/api/mcp` and on `/api/agent-proxy`, and nowhere else. Presenting it to an ordinary API route is refused.
+- **The token has two doors.** It works on `/api/mcp` and on `/api/agent-proxy`, and nowhere else. Presenting it to an ordinary API route is refused with a `403`.
 - **A refusal is visible.** A call that was not made leaves a row saying why — the plan, the allowance, or a failure. A quiet runtime is never mistaken for a healthy one.
 
 ## Troubleshooting
