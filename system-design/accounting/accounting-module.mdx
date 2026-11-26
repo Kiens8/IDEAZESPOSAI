@@ -1,0 +1,716 @@
+---
+title: Cloud accounting for the multi-tenant POS - the books the restaurant can see
+description: The POS knows every sale, every tax and every purchase, but it cannot answer what the business earned. This is the plan for a per-tenant double-entry ledger inside the platform, a chart of accounts, fiscal years, and the statements a tenant's accountant signs
+---
+
+**Document Version:** 1.0
+**Created:** 2026-11-26
+**Status:** **PROPOSAL, NOT YET BUILT** - Kens asked for the proposal on 26 Nov 2026. Nothing in this document is code. Every table, endpoint and screen named here is a PROPOSAL until a phase says it is built.
+**Scope:** a NEW module in the POS backend (`backend/app/`), a NEW section in the POS frontend (`frontend/src/`), a NEW set of plan feature rows in the website API (`website_api/`), and a NEW database migration. **It touches no existing accounting code, because there is none** (verified - see §3).
+**Related:** `malaysia-e-invoice.mdx` (the tax invoice to LHDN - a DIFFERENT rail, see §2.4) - `multi-currency-money.mdx` (never sum across currencies - §4.3) - `api-authentication-strategy.mdx` (the auth rails - §6) - `reports-and-analytics-fixes.mdx` (the Reports screen this module sits next to) - `pricing-engine-and-promotions.mdx` (where the discount comes from - §4.5) - `order-flow-standards.mdx` (the order states - §4.4) - `system-design/accounting/external-connector.mdx` (the Xero and Bukku connector - §8)
+
+---
+
+## The shape of it
+
+**The POS already knows every number an accountant needs. It just cannot add them up.**
+
+A tenant's own outlet sold 200 covers last month. The POS holds the gross, the
+discount, the SST, the payment method of every single one of them, the recipe cost
+of every dish, the purchase orders that filled the fridge and the stock movement
+that recorded the waste. What it cannot do is say **RM 41,280 revenue, RM 1,914
+cost of goods, RM 39,366 gross profit** - because there is no chart of accounts,
+no journal, no fiscal year, and no statement of any kind in the product today.
+
+**This is a plan to add one.** A **per-tenant set of books** inside the platform:
+
+- a **chart of accounts** the tenant owns (seeded with a restaurant chart, editable),
+- **double-entry journals** written automatically when money moves (an order paid, a
+  purchase received, a stock bin wasted),
+- **fiscal years and periods** that can be locked so last quarter cannot be rewritten,
+- **the statements** - profit and loss, balance sheet, trial balance, general ledger,
+  tax summary - and a screen the tenant's accountant can open.
+
+**Two things it is not.** It is **not** a second e-Invoice system (`malaysia-e-invoice.mdx`
+owns that rail - §2.4). And it is **not** us becoming an accounting software vendor
+that competes with AutoCount in Malaysia or Xero in the world - the **feature set is
+modelled on Bukku and Xero**, and §8 is the connector that lets a tenant who already
+keeps their books in Xero or Bukku push ours into theirs.
+
+---
+
+## Why this is a POS problem and not an accounting problem
+
+Two facts make the books a natural part of this product rather than a bolt-on:
+
+1. **The transaction is the clock.** A restaurant sells 200 covers a day, and every
+   one of them is a fact the POS already holds in its own tables. An accountant
+   working from a PDF of the sales loses the discount source, the payment method and
+   the line cost - the three things that decide whether the number is right.
+2. **The tenant already lives in this product.** They chose it because it runs the
+   floor. Asking them to re-key the same month into a second system is the failure
+   mode of every accounting add-on ever bolted onto a POS.
+
+**And one fact makes it hard, which is why the market looks the way it does.** In
+Malaysia the incumbent pattern (recorded in `malaysia-e-invoice.mdx` §"How the market
+does it") is **POS -> accounting -> a separate e-Invoice submission**: AutoCount is
+the Malaysian accounting/POS incumbent, and the supplier issues the receipt while the
+accounting system files the month with LHDN. **The gap we can own** is the middle
+step - the books themselves - because the POS is the only place that has the
+transaction *and* the cost *and* the tax treatment *at the moment of the sale*.
+
+---
+
+## What is there today - verified, not assumed
+
+Every claim in this table was read out of the live code on 26 Nov 2026.
+
+| What accounting needs | What the POS has today | Verdict |
+|---|---|---|
+| A chart of accounts | none - no `chart_of_accounts`, no `ledger`, no `journal_entry` anywhere in `backend/app/models/` | **Missing** |
+| A journal | none - `Payment` (`models.py:374`) and `OrderPayment` (`models.py:578`) are payment records, not debit/credit postings | **Missing** |
+| Invoices | none - no invoice entity exists; an order is not an invoice | **Missing** |
+| Accounts receivable | `Order.customer_id` (`models.py:227`) is the **tenant**, not a debtor; `dining_customer_id` (`models.py:241`) is the guest. No debtor/credit-customer entity | **Missing** |
+| Accounts payable | `PurchaseOrder` (`supplier.py:60`) and `PurchaseOrderItem` (`supplier.py:85`) exist, but nothing books them to a payable account | **Partial** |
+| Revenue | `Order.subtotal` / `discount` / `tax` / `total` (`models.py:284-295`) | **Present** |
+| Discount provenance | `Order.discount_source` (`models.py:292`) - voucher / promotion / manual / none | **Present** |
+| Tax treatment | `OutletSettings.tax_enabled` / `sst_enabled` / `sst_rate` / `vat_enabled` / `vat_rate` / `service_tax_enabled` / `service_tax_rate` / `tax_inclusive` / `tax_id` (`models.py:427-435`) | **Present** |
+| Cost of goods | `OrderItem.frozen_cost` (`models.py:338`) - the recipe cost frozen at the sale; NULL means unknown, never zero | **Present** |
+| Stock movements | `stock_movements` (`inventory.py:78`) - purchase / usage / adjustment / waste / transfer_out / transfer_in, with `reference_id` pointing at the order | **Present** |
+| Fiscal periods | none - no period, no year, no lock | **Missing** |
+| Statements | the Reports screen has exactly three endpoints - `/menu-mix` (`reports.py:79`), `/audit` (`reports.py:412`), `/summary` (`reports.py:734`). **No P&L, no balance sheet, no trial balance, no general ledger** | **Missing** |
+| Currency | `Order.currency` (`models.py:277`) snapshots the outlet's price currency; `OutletSettings.currency_code` (`models.py:420`) sets it | **Present** |
+
+**Two findings that shape the whole design.**
+
+**Finding 1 - the money in the POS is a float, and a ledger cannot be a float.**
+`Order.subtotal`, `discount`, `tax`, `total` and `Payment.amount` are all `Float`
+(`models.py:284-295`, `models.py:379`). A float cannot hold 0.1 + 0.2, and a ledger
+that balances to the cent is the entire point. Meanwhile the purchase side is
+already **integer cents** (`PurchaseOrder.total_amount`, `PurchaseOrderItem.unit_price`
+and `subtotal` - `supplier.py:67`, `:93`, `:95`) and the supplier price list is
+**DECIMAL(10,4)** (`supplier.py:45`). So the codebase already carries three money
+representations. §4.1 settles this.
+
+**Finding 2 - the platform already has a proven tenant rail, and the books must ride it.**
+Every reporting endpoint answers the same four questions before it answers the fifth
+(`reports.py:18-24`): *who may call it* (`require_staff_permission`), *whose data*
+(`require_outlet_tenant` - the outlet must belong to the tenant of the session, **never
+to a `customer_id` in the query string**), *did the tenant buy it*
+(`require_plan_feature`), *does the UI agree*. The accounting module answers the same
+four questions the same way. Nothing new is invented.
+
+---
+
+## The design - the shape of the books
+
+### 2.1 Who owns the books
+
+**One set of books per tenant. The outlet is a dimension inside them, not a second set of books.**
+
+The tenant is the `Customer` row (`models.py:26`) - the restaurant group - which
+carries `website_customer_id` (`models.py:40`), the link to the website API where
+the plan lives. An `Outlet` (`models.py:86`) is a branch of that group. A tenant with
+three branches wants three sets of P&L columns and **one** balance sheet, the way a
+real group reports - not three disconnected books and not one book that cannot say
+which branch earned it.
+
+So every accounting row carries `customer_id` (the tenant) **and** `outlet_id`
+(the branch the money moved in). The tenant is the owner; the outlet is the filter.
+The financial year belongs to the tenant.
+
+### 2.2 The components
+
+| Component | What it holds | Where it lives |
+|---|---|---|
+| **Chart of accounts** | the tenant's accounts, their type, their mapping to the POS | `acc_accounts` |
+| **Journal** | the postings - one header, many lines, debits equal credits | `acc_journals` + `acc_journal_lines` |
+| **Fiscal calendar** | the years and the periods, each open / locked / closed | `acc_fiscal_years` + `acc_periods` |
+| **Sales ledger (AR)** | invoices raised from orders, what is owed, what is paid | `acc_invoices` + `acc_debtors` |
+| **Purchase ledger (AP)** | bills raised from received purchase orders, what is owed to suppliers | `acc_bills` |
+| **Bank** | the cash and card accounts, the transactions, the reconciliation | `acc_bank_accounts` + `acc_bank_transactions` |
+| **Tax** | the SST / VAT / service tax rates and the codes they post to | `acc_tax_codes` (seeded from `OutletSettings`) |
+| **Connector** (optional) | the tenant's Xero or Bukku account and the mapping to it | `acc_connections` + `acc_connection_mappings` |
+| **Statement engine** | P&L, balance sheet, trial balance, general ledger, tax summary | reads the journal; writes nothing |
+
+**The chart of accounts is the tenant's, not ours.** We seed it with a restaurant
+chart at first use; from that day the tenant edits it. Deleting an account that has
+postings is refused - the postings would lose their meaning. This is the same shape
+as the Xero and Bukku models, and it is what makes the connector in §8 possible.
+
+### 2.3 The account types - chosen to map 1:1 to Bukku and Xero
+
+The type list is taken from the **Bukku** account model, which is the same shape
+Xero uses and covers every accounting standard we care about:
+
+`current_assets`, `non_current_assets`, `other_assets`, `current_liabilities`,
+`non_current_liabilities`, `equity`, `income`, `other_income`, `expenses`,
+`cost_of_sales`
+
+Plus Bukku's `system_type` - `accounts_receivable`, `accounts_payable`, `inventory` -
+for the three accounts the system itself must know about. Those three are what make
+an auto-posting rule possible ("this order paid on credit goes to the receivable
+account"), and they are why the seed chart is marked `is_system` and cannot be
+deleted.
+
+**The seeded restaurant chart** (PROPOSAL - the tenant renames it freely):
+
+| Code | Account | Type | Why it exists |
+|---|---|---|---|
+| 1000 | Cash on hand | current_assets | the till |
+| 1010 | Bank - settlement | current_assets | card / QR / e-wallet money in transit |
+| 1100 | Accounts receivable | current_assets | system type - what a corporate table owes |
+| 1200 | Inventory | current_assets | system type - ingredients on hand |
+| 2000 | Accounts payable | current_liabilities | system type - what we owe suppliers |
+| 2100 | SST payable | current_liabilities | the tax we collected and must remit |
+| 2200 | Service tax payable | current_liabilities | the 10% service charge tax |
+| 3000 | Owner's capital | equity | the money the owner put in |
+| 3100 | Retained earnings | equity | last year's profit, carried |
+| 4000 | Food sales | income | the main revenue |
+| 4010 | Beverage sales | income | the bar |
+| 4020 | Delivery revenue | income | the delivery fee |
+| 4030 | Service charge | income | the 10% on the bill |
+| 4100 | Discount given | other_income | vouchers and promotions - contra revenue |
+| 5000 | Cost of goods sold | cost_of_sales | the recipe cost of what we sold |
+| 5100 | Purchases - unclassified | expenses | consumables bought outside the recipe |
+| 6000 | Wastage | expenses | the bin |
+| 6010 | Rent, utilities, wages | expenses | the overheads, set up per tenant |
+
+### 2.4 The rail this module must not cross: the e-Invoice
+
+**The e-Invoice is a tax document for LHDN. The books are the tenant's internal
+record. They are not the same thing, and this module does not replace the
+e-Invoice rail.**
+
+`malaysia-e-invoice.mdx` already draws the line: the tax invoice is issued on
+request at the counter, the monthly consolidated e-Invoice is the artefact, and the
+whole flow is a *document* pipeline (UBL 2.1 JSON, a taxpayer id, a certificate).
+
+What this module produces instead: **journals, accounts, periods and statements.**
+The overlap is exactly one field - the tax amount - and the rule is:
+
+> The **tax amount** comes from the POS pricing service (which already computes it
+> correctly on the amount the guest pays - `order_pricing.py:61`), and the same
+> amount is posted to the tax payable account. The **e-Invoice** rail reads that
+> amount for its document. Neither rail computes tax on its own, and neither one
+> may quietly restate the other.
+
+The tenant's SST return and their accountant's books both fall out of the same
+journal. A separate tax computation would be a third answer to the same question,
+and three answers is one too many.
+
+---
+
+## The design - the data
+
+### 3.1 The tables
+
+All PROPOSAL. Every one carries `customer_id` (the tenant) and, where the money
+moved in a branch, `outlet_id`. All money columns are **integer minor units**
+(cents) - see §4.1.
+
+| Table | The columns that matter |
+|---|---|
+| `acc_accounts` | `id`, `customer_id`, `outlet_id` (NULL = all outlets), `code`, `name`, `type` (the ten types), `system_type` (the three), `parent_id`, `tax_code`, `currency`, `is_system`, `is_active`, `created_at` |
+| `acc_journals` | `id`, `customer_id`, `outlet_id`, `journal_date`, `memo`, `source_type` (order / purchase / stock / manual / system / opening), `source_id`, `period_id`, `status` (draft / posted / void), `is_reversal`, `reverses_journal_id`, `created_by`, `created_at`, `posted_at` |
+| `acc_journal_lines` | `id`, `journal_id`, `account_id`, `debit_minor`, `credit_minor`, `currency`, `tax_code`, `outlet_id`, `description` |
+| `acc_fiscal_years` | `id`, `customer_id`, `name` (`2026`), `starts_on`, `ends_on`, `status` (open / closed) |
+| `acc_periods` | `id`, `fiscal_year_id`, `customer_id`, `name` (`2026-01`), `starts_on`, `ends_on`, `status` (open / locked / closed), `closed_at`, `closed_by` |
+| `acc_debtors` | `id`, `customer_id`, `name`, `phone`, `email`, `tax_id`, `credit_limit_minor`, `created_at` |
+| `acc_invoices` | `id`, `customer_id`, `outlet_id`, `invoice_number`, `debtor_id`, `order_id`, `issue_date`, `due_date`, `currency`, `subtotal_minor`, `tax_minor`, `total_minor`, `paid_minor`, `status` (draft / issued / paid / void), `source` (pos / manual) |
+| `acc_bills` | `id`, `customer_id`, `outlet_id`, `bill_number`, `supplier_id`, `purchase_order_id`, `bill_date`, `due_date`, `subtotal_minor`, `tax_minor`, `total_minor`, `paid_minor`, `status` |
+| `acc_bank_accounts` | `id`, `customer_id`, `outlet_id`, `account_id`, `name`, `currency`, `opening_balance_minor` |
+| `acc_bank_transactions` | `id`, `customer_id`, `bank_account_id`, `txn_date`, `amount_minor`, `direction` (in / out), `description`, `counterparty`, `journal_id`, `reconciled`, `statement_ref` |
+| `acc_tax_codes` | `id`, `customer_id`, `code`, `name`, `rate_bp` (basis points - an integer, not a float), `tax_type` (sst / vat / service_tax / zero), `gl_account_id` |
+| `acc_connections` | `id`, `customer_id`, `provider` (`xero` / `bukku`), `external_tenant_ref`, `access_token_enc`, `refresh_token_enc`, `status`, `last_sync_at`, `last_error` |
+| `acc_connection_mappings` | `id`, `connection_id`, `local_account_id`, `external_account_ref`, `external_account_type`, `mapped_at` |
+
+**The token columns are encrypted at rest.** The e-Invoice module already holds ERP
+credentials encrypted (`malaysia-e-invoice.mdx` §"The tables" - `client_id` /
+`client_secret` encrypted, the tenant's own). The connector holds an accounting
+provider's token, which is the same class of secret - it can move money in the
+tenant's books.
+
+### 3.2 The audit rule
+
+**A posted journal is never edited and never deleted.** A mistake is corrected by
+posting a **reversal** that carries `reverses_journal_id` pointing at the original,
+and then a fresh journal. The original stays, so the tenant's accountant can see
+what happened and when it was corrected.
+
+This is the same rule the POS already follows with the receipt reprint log and the
+void report (`reports.py:412`): money that moved leaves a mark. A ledger without
+that rule is a spreadsheet with extra steps.
+
+### 3.3 The fiscal year, the periods and the lock
+
+- A tenant's **fiscal year** is created at first use and can be named freely
+  (`FY2026`, `Jan-Dec 2026`). It matches the calendar year by default; a tenant who
+  files on a different year sets it once.
+- A **period** is a month inside the year. Months are created automatically when
+  the year is.
+- **Locking a period** is the point of the whole feature. When a period is locked:
+  - a journal dated inside it is **refused** - the API answers `409` with the
+    period name and the date that would have been posted;
+  - a **posting dated today** that belongs to last month is **refused** the same way;
+  - a **reversal** of a journal inside a locked period is refused - the correction
+    belongs in the current open period, which is how a real accountant does it;
+  - the locked period's balances are **frozen** - the statement of that month can
+    never change again, which is what makes the number the tenant's accountant
+    signed.
+
+Closing a year additionally carries the **retained earnings** into the next year's
+opening balances and posts the **closing entry**. That is the only entry the system
+writes on its own without a source document.
+
+---
+
+## The design - the money
+
+### 4.1 Money is integer minor units, everywhere, in the books
+
+**Every `*_minor` column is an integer number of cents. Never a float. Never a
+decimal string.** `RM 41,280.50` is stored as `4128050` with `currency = 'MYR'`.
+
+Why, given the POS already uses floats:
+
+- A ledger that balances to the cent is the entire point. Float arithmetic does not
+  guarantee it.
+- The purchase side is **already integer cents** (`supplier.py:67`, `:93`). The books
+  read from those rows directly; making the sales side cents too means the two
+  halves of the business use one arithmetic.
+- The one rounding that must happen is **at the boundary**, and it must happen
+  **once**. When a POS order is posted, the float order total is converted to cents
+  **once**, half-up, and **that rounded value is the ledger's truth**. The ledger
+  never re-reads the float. A float `total` of `123.456789` becomes `12346` cents -
+  and the order screen shows the same `123.46` the guest paid, because the rounding
+  difference is under a cent and the ledger absorbs it in the rounding account.
+
+**A rounding account is a first-class account** (`Rounding differences`,
+`other_income`), so that the pennies that arise from the float boundary have a home
+and the trial balance still balances to the cent.
+
+### 4.2 The chart of accounts is the tenant's
+
+Seeded once per tenant at first use from §2.3, then it is theirs. They rename
+`4000 Food sales` to whatever their accountant calls it. They add `6100 Gas
+bills`. They can restrict an account to one outlet (`outlet_id`) - a tenant whose
+kitchen and its bar file separately may want a `5100 Bar supplies` account that only
+the bar posts to.
+
+Three accounts are **system** accounts: `Accounts receivable`, `Accounts payable`
+and `Inventory`. The auto-posting rules (§4.5) need them, so they cannot be deleted
+and they cannot be moved to another type.
+
+### 4.3 Currency: one book, several currencies, never one sum
+
+The tenant's books have a **base currency** (the outlet's `currency_code`,
+`models.py:420`). A transaction in another currency is stored in its own currency
+**and** in the base currency at the rate of the day, in the same journal - two
+`currency` values on the lines.
+
+**The rule from `multi-currency-money.mdx` holds without exception: amounts in
+different currencies are never summed.** The P&L is reported per currency, or in
+the base currency at a stated rate with the rate visible. The same rule already
+governs the admin dashboard, so the tenant sees one behaviour across the product.
+
+### 4.4 When a journal is written
+
+A journal is written when **money moves**, not when a screen is opened. The
+triggers, all PROPOSAL:
+
+| Trigger | Source of truth | What is posted |
+|---|---|---|
+| An order is **paid** | `Order.payment_status` becomes `paid` | the sale (§4.5) |
+| An order is **voided** | `Order.status` becomes `cancelled` | a reversal of the sale journal |
+| An order is **refunded** | `Payment` / `OrderPayment` shows a refund | a reversal of the payment journal |
+| A purchase order is **received** | `PurchaseOrder.status` becomes `received` | the stock in, the bill out (§5.2) |
+| Stock is **wasted or adjusted** | `stock_movements` with `waste` / `adjustment` | the expense out, the stock down |
+| A **bill is paid** | `acc_bills.paid_minor` changes | the payable down, the bank down |
+| An **invoice is paid** | `acc_invoices.paid_minor` changes | the receivable down, the bank up |
+| A **bank transaction is imported** | a statement import | the bank against a suspense account |
+| A **period is closed** | the year-end close | retained earnings, and nothing else |
+
+**One rule on timing:** the POS knows the moment of the sale, but a restaurant with
+`prepay_online` and `postpay` (`models.py:272`) has two different cash moments. A
+journal is dated when the **payment** is taken, and an unpaid order posts nothing
+until it is paid - unless it is a credit sale to a corporate debtor (§5.3), which
+posts on the invoice.
+
+### 4.5 The auto-posting rules - the heart of the module
+
+Every rule below is PROPOSAL, and every rule is **per tenant, per outlet,
+configurable** - the tenant can point any of these at a different account. The
+defaults are what §2.3 describes.
+
+**The sale.** One order paid RM 100.00 (subtotal RM 100.00, discount RM 10.00,
+SST RM 5.40, paid by card):
+
+| Line | Account | Debit | Credit |
+|---|---|---|---|
+| 1 | `1010 Bank - settlement` | RM 95.40 | |
+| 2 | `4100 Discount given` | RM 10.00 | |
+| 3 | `4000 Food sales` | | RM 100.00 |
+| 4 | `2100 SST payable` | | RM 5.40 |
+
+Debits RM 105.40, credits RM 105.40. The tax is on the amount the guest **pays**
+(RM 90.00) - which is exactly what `order_pricing.py:61` already does, so the
+book and the receipt say the same number.
+
+**The discount is its own account, not a smaller sale.** `Order.discount_source`
+(`models.py:292`) says whether it came from a voucher, a promotion or the manager's
+own hand - and those are three different things to an accountant (a voucher breaks a
+liability, a promotion is marketing spend, a manual discount is contra revenue). We
+post it to `4100 Discount given` and record the source on the line, so the tenant
+can split the three later without re-reading the orders.
+
+**The payment method picks the debit account.** Cash goes to `1000 Cash on hand`;
+card, DuitNow QR, Touch 'n Go, GrabPay and Boost go to `1010 Bank - settlement`
+until the money actually lands - which is why that account exists and why it is a
+settlement account and not a bank account.
+
+**The cost of goods.** When the order is ready, the POS already writes the stock
+movement (`order.py:236`, `movement_type='usage'`) and it already froze the line
+cost (`OrderItem.frozen_cost`, `models.py:338`). The journal reads the frozen
+cost - **never the live recipe price**, because the margin of an order sold in
+October must not be rewritten by October's price:
+
+| Line | Account | Debit | Credit |
+|---|---|---|---|
+| 1 | `5000 Cost of goods sold` | RM 21.30 | |
+| 2 | `1200 Inventory` | | RM 21.30 |
+
+**The frozen cost is the same number the Reports screen uses.** The margin rule in
+`reports.py:96-130` - the recipe when the tenant has Inventory, the estimate
+otherwise, and `cost_known: false` (never zero) when neither - must be the **one**
+rule. The accounting margin and the operational margin must not disagree; if they
+do, one of them is wrong and the tenant cannot tell which.
+
+**A line with no known cost posts nothing to COGS**, and the tenant is told. It
+does not post zero cost - zero is a lie, and `frozen_cost` is already NULL for
+"unknown" rather than 0.0 for that reason.
+
+**The reversal.** An order voided after it was paid posts the mirror image of the
+sale journal, with `reverses_journal_id` set. The stock movement that came with it
+is reversed the same way. The void report (`reports.py:412`) and the books tell the
+same story.
+
+### 4.6 The manual journal
+
+A tenant's accountant will need to post something the POS did not generate: an
+accrual, an adjustment, a depreciation, a correction. So there is a **manual
+journal** screen - but it is a **journal**, not a shortcut around one: it has the
+same debit/credit lines, the same period lock, the same audit rule, and it posts
+into the same charts. The only difference is that its `source_type` is `manual`
+and it has a memo instead of an order.
+
+---
+
+## The design - the statements and the screens
+
+### 5.1 What the statements are
+
+| Statement | The question it answers | Built from |
+|---|---|---|
+| **Profit and loss** | what did the business earn, and what did it cost? | journal lines in the period, grouped by account type |
+| **Balance sheet** | what does the tenant own, owe, and have left? | journal lines up to the date, grouped by balance-sheet type |
+| **Trial balance** | does the whole thing add up? | every account's debit and credit total, and the grand total that must be equal |
+| **General ledger** | what happened to this one account? | the lines of one account, in date order |
+| **Tax summary** | what SST did we collect, and what may we claim? | the tax-coded lines by `acc_tax_codes` |
+| **Cash and bank summary** | where is the money? | the bank accounts' balances, reconciled and not |
+| **Sales by category** | which menu lines earn, and which only fill seats? | the same revenue accounts, with the `frozen_cost` margin |
+
+**Every statement is per outlet and consolidated**, in one screen: pick the outlet
+or pick "all outlets". The consolidation is the tenant's whole group; the outlet
+columns are its branches.
+
+**The trial balance is the honesty check.** If the debits and the credits differ by
+one cent, the statements are not shown as final - the screen says so and names the
+out-of-balance amount. A platform that shows a P&L from an unbalanced ledger is
+teaching the tenant to trust a number that is wrong.
+
+### 5.2 Purchases - the bill
+
+When a `PurchaseOrder` reaches `received` (`supplier.py:60`), the books post it:
+
+| Line | Account | Debit | Credit |
+|---|---|---|---|
+| 1 | `1200 Inventory` (or `5100 Purchases`) | the ingredient's value | |
+| 2 | `2000 Accounts payable` | | the supplier's total |
+
+The bill is then paid by a bank transaction: `2000 Accounts payable` down,
+`1010 Bank - settlement` down. The purchase order's money is **already integer
+cents** (`supplier.py:67`, `:93`), so this path needs no conversion at all - which
+is exactly why §4.1 chose cents.
+
+### 5.3 Receivables - the debtor the POS does not have
+
+The POS has no debtor entity today (§3). A corporate table that eats every month
+and pays at the end needs one, or the books cannot show what is owed.
+
+`acc_debtors` is that entity: name, phone, tax id, credit limit. An order can be
+raised against a debtor instead of being paid at the counter - the invoice posts
+`1100 Accounts receivable` instead of the bank, and the payment later clears it.
+**This is a new POS behaviour, not only a new screen**, so it is Phase 4 (§9) and
+it is the one item in this document that touches the order flow.
+
+### 5.4 The screens
+
+A new **Accounting** section in the POS navigation (gated by the new plan feature,
+§6):
+
+| Screen | What it does |
+|---|---|
+| **Accounting - Overview** | the month in one view: revenue, COGS, gross profit, cash, tax collected, and the last closed period |
+| **Accounting - Chart of accounts** | the tenant's accounts; add, rename, deactivate; the system accounts marked and locked |
+| **Accounting - Journal** | every journal, filterable by period, outlet, source and account; a journal opens to its lines |
+| **Accounting - New journal** | the manual journal (§4.6) - debit/credit lines, the account picker, the live balance check |
+| **Accounting - Sales invoices** | the AR ledger: raised, unpaid, overdue, paid |
+| **Accounting - Bills** | the AP ledger: what we owe each supplier |
+| **Accounting - Bank** | the cash and settlement accounts, the transactions, the reconciliation |
+| **Accounting - Tax** | the SST / VAT summary for the period and the codes behind it |
+| **Accounting - Reports** | P&L, balance sheet, trial balance, general ledger - each printable and exportable |
+| **Accounting - Settings** | the fiscal year, the periods, the lock, the base currency, the account mappings |
+| **Accounting - Connections** | the optional Xero / Bukku connector (§8) |
+
+**The design of every one of these screens follows the header standard Kens set for
+the whole app** (the 40x40 purple-to-indigo tile with a white 22px icon, the title
+beside it, the 14px grey description under it - the Order screen is the reference),
+and the responsive rules the other screens already follow.
+
+---
+
+## The plan and the role gating
+
+### 6.1 The plan - two feature rows, and they are DATA
+
+The plan assignment is **not code**. It is a row in `plan_features` in the website
+API (`website_api/app/models/models.py:245`), and the POS reads it through
+`fetch_plan_features(customer_id)` (`backend/app/services/plan_features.py:71`) and
+stamps the list into the session at login (`backend/app/middleware/auth.py:839`).
+
+So the accounting module is gated by **two new feature rows**:
+
+| Feature row | Unlocks |
+|---|---|
+| `Accounting` | the books, the journals, the statements, the Accounting section in the navigation |
+| `Accounting Connector` | the Xero / Bukku connection and its mapping screens (§8) |
+
+Moving either between plans is a **data change** - exactly the pattern the delivery
+module already uses (`delivery_service.py:50` - "the assignment is DATA, so moving
+the module to another plan is a `plan_features` change and not a code change").
+
+The POS enforces the row with `require_plan_feature("Accounting")` - the same
+dependency the Reports screen uses (`reports.py:23`). The frontend asks the same
+entitlements endpoint it asks today (`entitlements.py:97` `/features`,
+`entitlements.py:120` `/plan-limits`), so the navigation and the API cannot
+disagree.
+
+### 6.2 The roles
+
+The accounting permissions are added to `ROLE_PERMISSIONS`
+(`backend/app/middleware/auth.py:45`) as a new namespace:
+
+| Permission | admin | manager | staff |
+|---|---|---|---|
+| `accounting:read` - the statements and the journals | yes | yes | **no** |
+| `accounting:write` - manual journals, invoices, bills, reconciliation | yes | yes | **no** |
+| `accounting:close` - lock a period, close a year | yes | **no** | no |
+
+**Two deliberate lines.** The **floor does not see the books** - a staff member's
+job is the order, not the profit of the restaurant; that is the same decision the
+`staff` role already makes about the reports. And **closing a year is the owner's
+alone** - the same shape as the AI Manager's `ai:approve`, which the manager holds
+and the floor does not (`auth.py:45`, the comment on `ai:approve`). A year-end close
+is a statement to the tax authority and to the bank; one person signs it.
+
+### 6.3 The tenant rail - unchanged, and the same four questions
+
+Every accounting endpoint answers the four questions the Reports screen answers
+(`reports.py:18-24`), in the same order:
+
+1. **Who may call it** - `require_staff_permission("accounting:read")` or
+   `accounting:write`, namespaced `staff:` so the frontend key satisfies it through
+   its `staff:*` grant while the customer key and the external key - which carry no
+   `staff:*` grant at all - are refused with 403 (`auth.py:765-790`).
+2. **Whose data** - `require_tenant_claim(request)` (`app/core/tenant.py:77`) then
+   `require_outlet_tenant(db, outlet_id, tenant_id)` (`app/core/tenant.py:188`).
+   **The tenant is never taken from a query string.** A caller who asks for
+   another tenant's `outlet_id` is refused, exactly as today.
+3. **Did the tenant buy it** - `require_plan_feature("Accounting")`.
+4. **Does the UI agree** - the navigation asks the same entitlements endpoint the
+   API uses.
+
+**There is no new tenant rule in this module, and that is the point.** The books
+are the tenant's most sensitive data in the product - the profit, the payroll
+provider's invoices, the bank balance - and they ride the rail that was already
+built and proved, unchanged.
+
+---
+
+## The phased plan
+
+Each phase says what it does **not** do, because the boundary is the design.
+
+### Phase 0 - the foundation (the tables, the chart, the years)
+
+The accounting tables, the seeded chart of accounts, the fiscal years and periods,
+the account settings, the money conversion at the boundary, the permissions, the
+plan rows.
+
+**Does NOT:** post any journal, show any statement, or change any order. The books
+exist and are empty. Phase 0 is where the migration is written and the rounding
+rule is proved against the existing float totals.
+
+### Phase 1 - the sale
+
+The sale journal, the discount line, the tax line, the payment-method routing, the
+reversal on a void, the cost of goods from `frozen_cost`, and the period lock.
+
+**Does NOT:** handle purchases, receivables, the bank, or a year-end close. One
+journal family only.
+
+### Phase 2 - the purchases and the stock
+
+The bill from a received purchase order, the waste and adjustment journals, the
+payment of a bill, the purchase ledger screen.
+
+**Does NOT:** touch the sale side, which Phase 1 already froze - if Phase 2
+reveals a mistake in the sale rules, the sale rules change and the affected periods
+are re-opened by an admin, deliberately and visibly.
+
+### Phase 3 - the statements
+
+P&L, balance sheet, trial balance, general ledger, tax summary, the cash summary -
+per outlet and consolidated, printable and exportable, with the trial-balance check
+that refuses to present an unbalanced ledger as final.
+
+**Does NOT:** make any number up. Every figure is a sum of posted journal lines.
+
+### Phase 4 - the receivables
+
+The debtor entity, the credit sale at the counter, the AR ledger, the invoice
+numbering, the overdue view. **This is the only phase that changes the order
+flow**, so it is the last of the core.
+
+**Does NOT:** change the walk-in path, the prepayment path, or anything about how
+a normal customer pays.
+
+### Phase 5 - the fiscal year
+
+The year-end close, the retained earnings carry-forward, the opening balances for
+a tenant who joins mid-life with money already in the bank, and the export of a
+closed year to their accountant.
+
+**Does NOT:** re-open a closed year on its own. An admin may re-open a locked
+period - it is recorded, and the re-opening is visible in the audit.
+
+### Phase 6 - the connector
+
+The Xero and Bukku connection, the account mapping, the push of journals and
+invoices, the sync log. This is `external-connector.mdx` and it is **optional for
+every tenant** - the books in Phase 5 are complete without it.
+
+**Does NOT:** make the external system the source of truth. Ours is; the connector
+pushes.
+
+---
+
+## What this design does NOT claim
+
+- **It does not claim the tenant's books are statutory records.** The platform
+  produces a proper double-entry ledger, but the tenant's accountant and the tax
+  authority decide what is filed. Nothing here is a certified accounting system.
+- **It does not claim to replace the e-Invoice rail.** §2.4. The tax document is
+  `malaysia-e-invoice.mdx`'s job.
+- **It does not claim to make the tenant's reporting work in another currency.**
+  §4.3 - amounts in different currencies are never summed, and the platform says so
+  rather than guessing a rate.
+- **It does not claim the historical data is converted.** A tenant who switches on
+  in November gets **opening balances**, not a reconstructed past. The POS's own
+  reports remain the history.
+- **It does not claim to be an audit.** The audit rule (§3.2) makes the books
+  honest and traceable; it does not make them audited.
+- **It does not claim the connector is two-way.** §8 - ours is the source of truth.
+- **It does not claim a bank feed.** Bank transactions are entered or imported; a
+  live feed is a separate project.
+
+---
+
+## The open questions
+
+1. **Cash basis or accrual?** Most small restaurants report on a cash basis - the
+   money is the money. Accrual (and the debtor ledger in Phase 4) implies a
+   choice. Our PROPOSAL: cash basis by default, accrual available per tenant.
+2. **Is the fiscal year the calendar year?** The PROPOSAL is yes by default and
+   settable. A tenant who files on a fiscal year ending in June sets it once.
+3. **Do we support more than one base currency per tenant?** The PROPOSAL is no -
+   one base, many transaction currencies. A group with, say, a Malaysian and a
+   Cambodian entity under one tenant may need two sets of books. That would break
+   §2.1's "one set of books per tenant".
+4. **Who signs the year?** `accounting:close` is the admin today (§6.2). Should a
+   tenant be able to grant it to a specific accountant who is not the admin - the
+   owner of a group with a bookkeeper outside the business?
+5. **Does the connector need to be able to pull back?** Today the design is
+   push-only. If a tenant's accountant edits a journal in Xero, we do not see it.
+   Two-way sync is a different product.
+6. **How much history is migrated?** The PROPOSAL is opening balances only (§
+   "What this design does NOT claim"). A tenant who wants March through October
+   reconstructed needs the float order totals - which is possible, but it means
+   importing the orders and re-running the rules, and the frozen costs for old
+   orders may be NULL for orders placed before the freeze existed.
+7. **Does a credit sale change the order flow's shape?** Phase 4 introduces the
+   debtor at the counter. That touches the payment panel and the receipt - the two
+   screens Kens and the team look at most. The alternative (a credit sale only
+   from the Accounting section, creating an invoice that is not an order) is less
+   coherent but much smaller.
+8. **Per-outlet or per-tenant books for the balances?** The PROPOSAL is one set of
+   books with the outlet as a dimension. A tenant whose branches are separate
+   legal entities wants separate balance sheets - that is question 3 again, seen
+   from the legal side.
+9. **Does the bank reconciliation need to be in this project?** Phase 2 posts
+   bills and payments; reconciling a bank statement against them is more work and
+   could be a Phase 7.
+
+---
+
+## The sources
+
+**The code (read on 26 Nov 2026, at commit `d83d6bf` of `Kiens8/POS_AI`):**
+
+- `backend/app/models/models.py` - `Customer` (`:26`), `User` (`:52`), `Outlet`
+  (`:86`), `Plan` (`:11`), `Order` (`:219`), `OrderItem` (`:316`), `Payment`
+  (`:374`), `OutletSettings` (`:393`), `OrderPayment` (`:578`)
+- `backend/app/models/supplier.py` - `PurchaseOrder` (`:60`), `PurchaseOrderItem`
+  (`:85`)
+- `backend/app/models/inventory.py` - `stock_movements` (`:78`), `recipes` (`:41`)
+- `backend/app/models/loyalty.py` - `DiningCustomer` (`:45`)
+- `backend/app/routes/reports.py` - the three endpoints (`:79`, `:412`, `:734`), the
+  four rails (`:18-24`), the cost rule (`:96-130`)
+- `backend/app/routes/order.py` - the stock movement on order ready (`:236`)
+- `backend/app/services/order_pricing.py` - the tax on the amount paid (`:61`)
+- `backend/app/middleware/auth.py` - `ROLE_PERMISSIONS` (`:45`),
+  `require_staff_permission` (`:765`), `require_plan_feature` (`:839`)
+- `backend/app/core/tenant.py` - `require_tenant_claim` (`:77`),
+  `require_outlet_tenant` (`:188`)
+- `backend/app/services/plan_features.py` - `fetch_plan_features` (`:71`)
+- `backend/app/routes/entitlements.py` - `/features` (`:97`), `/plan-limits` (`:120`)
+- `website_api/app/models/models.py` - `PlanFeature` (`:245`)
+
+**The sibling designs in this repository:**
+
+- `malaysia-e-invoice.mdx` - the tax invoice rail, and the market's shape (§2.4)
+- `multi-currency-money.mdx` - the rule that amounts are never summed across
+  currencies (§4.3)
+- `api-authentication-strategy.mdx` - the auth rails (§6.3)
+- `pricing-engine-and-promotions.mdx` - where the discount comes from (§4.5)
+- `order-flow-standards.mdx` - the order states and the payment timing (§4.4)
+
+**The reference products (read on 26 Nov 2026):**
+
+- <https://developers.bukku.my/> - the account model, the account types, the
+  `system_type`s, the Journal Entry and Bank APIs, the rate limit
+- <https://developer.xero.com/documentation/api/accounting/overview> - the endpoint
+  families, the difference between Journals and Manual Journals, the tenant model
+- `system-design/accounting/external-connector.mdx` - the connector this design
+  leaves open (§8)

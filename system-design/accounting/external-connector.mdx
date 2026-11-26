@@ -1,0 +1,329 @@
+---
+title: The Xero and Bukku connector - pushing the tenant's books into the accountant's system
+description: How a tenant who already keeps their books in Xero or Bukku gets our journals and invoices into their own accounting system, without making that system the source of truth and without letting a push become a data leak
+---
+
+**Document Version:** 1.0
+**Created:** 2026-11-26
+**Status:** **PROPOSAL, NOT YET BUILT.** This is the connector described in `accounting-module.mdx` §8. Nothing here exists.
+**Scope:** the `Accounting Connector` plan feature row, the `acc_connections` and `acc_connection_mappings` tables, the outbound sync worker, and the Accounting - Connections screen.
+**Related:** `system-design/accounting/accounting-module.mdx` (the books this connector pushes) - `malaysia-e-invoice.mdx` (the ERP credentials pattern this connector follows) - `api-authentication-strategy.mdx` (the token handling)
+
+---
+
+## The shape of it
+
+**The connector is optional. Every tenant can ignore it and still have complete books.**
+
+That sentence is the design. The books in `accounting-module.mdx` are the product;
+the connector is a convenience for the tenant whose accountant already works in
+Xero or Bukku and will not look at our statements.
+
+**One direction, one source of truth.** Our ledger is the truth. The connector
+**pushes** journals, invoices and bills to the tenant's external system. We do not
+read their ledger back and we do not let them edit ours through the connector.
+A tenant who edits a journal in Xero does not change our books - and we say so
+plainly in the connection screen, because a silent two-way expectation is how a
+finance tool loses a customer's trust.
+
+**Why push rather than "be" Xero:** the tenant's accountant has a filing habit, a
+template, a colleague and a workflow we cannot replace. The correct integration is
+the one that puts our numbers where they already work, in a form their system
+understands, and then gets out of the way.
+
+---
+
+## What each provider gives us
+
+### Xero
+
+Read on 26 Nov 2026 from <https://developer.xero.com/documentation/api/accounting/overview>.
+
+| Fact | What it means for the connector |
+|---|---|
+| The Accounting API is a family of endpoints - Accounts, Contacts, Invoices, Credit Notes, Items, Currencies, TaxRates, Journals, Manual Journals, Bank Transactions, Purchase Orders, Organisation, Payments, Prepayments, Overpayments, Tracking Categories, Budgets, History and Notes, Attachments | we map our entities onto the ones we need and ignore the rest |
+| **`GET Journals` is read-only** - the documentation says to use **Manual Journals** to create journals | we create journals through `ManualJournals`, not `Journals`. This is the single most important fact for the design |
+| **`GET Journals` returns at most 100 per response** (the high-volume threshold) | any read we do is paged; any write we do is chunked |
+| The **Journals endpoint** requires a use-case approval and the **Advanced** tier | the connector must degrade gracefully - a tenant on a lower tier loses the journal push and keeps the invoice push |
+| **Organisation** gives the base currency and the fiscal year | we read it at connect time and show the tenant their external base currency next to ours, so a mismatch is visible before the first push |
+| **TaxRates** are per-organisation, with a `Type` (TAX / NO tax) and a `Status` | our `acc_tax_codes` map to their tax rates by id |
+| **Accounts** carry a `Type` (BANK, CURRLIAB, DEPRECIATN, DIRECTCOSTS, EXPENSE, FIXED, INVENTORY, LIABILITY, NONCURRENT, OTHERINCOME, OVERHEADS, PREPAYMENT, REVENUE, SALES, TERMLIAB, CURRLIAB) and a `Code` | a mapping table, not a conversion - see §3 |
+| **OAuth 2** with a tenant id per authorisation, plus **Webhooks** | one authorisation per external tenant; our push does not need webhooks in v1 (we do not read back) |
+| **Rate limits** and a concurrency cap on the API | our worker is rate-limited per connection and retries with backoff |
+
+**What we push to Xero:** one **Manual Journal** per our journal (with `LineAmount` and a `TaxType` where relevant), one **Invoice** per our AR invoice, one **Contact** per our debtor, and the **Account** and **TaxRate** setups they are mapped to.
+
+### Bukku
+
+Read on 26 Nov 2026 from <https://developers.bukku.my/>.
+
+| Fact | What it means for the connector |
+|---|---|
+| Auth is a **Bearer token** plus a **`Company-Subdomain`** header - the subdomain selects the company | our connection row holds the subdomain alongside the encrypted token, and every request carries both |
+| The rate limit is **600 requests per minute** | our worker stays well inside it and treats it as a hard ceiling, not a target |
+| The endpoint families are **Contacts, Products, Sales, Purchase, Bank, Stock, Accounting - Journal Entry, Accounting - Account** | the Bukku side of the connector is smaller than the Xero side - no tax rate object, the tax lives on the line |
+| **Journal Entry** carries `journal_items[].account_id` - a debit/credit amount and an account per item | a near-direct match to our `acc_journal_lines` |
+| **Account** carries `type` (the ten accounting types) and `system_type` (`accounts_receivable`, `accounts_payable`, `inventory`) | our chart of accounts maps almost one-to-one - §3 |
+| Some endpoints have **eligibility rules**: an invoice's `receivable_account_id` must be an `accounts_receivable` account, a bill's `payable_account_id` must be `accounts_payable`, `default_income_account_id` must be income or other_income, `default_expense_account_id` must be expenses or cost_of_sales, `sale_account_id` must be income or other_income, `purchase_account_id` must be expenses or cost_of_sales, `inventory_account_id` must be an `inventory` account, and a **stock adjustment's account must be expenses or cost_of_sales** | our system accounts are exactly the three that satisfy these - §3.2 - so the connector can check eligibility before the first push and say which account is wrong |
+| **Bank deposit** carries `account_id` and `fee_account_id`; a **transfer** needs two different balance-sheet accounts | our bill payments and our settlement movements map to these |
+| Bukku is **MyInvois-ready** | relevant to the e-Invoice rail, not to this connector |
+| API access is requested from Bukku; there are **staging and production** servers | the connection screen must let a tenant connect to **staging first** - a tenant who pushes to production on the first try is a support ticket |
+
+**What we push to Bukku:** one **Journal Entry** per our journal, one **Sales transaction** per our invoice, one **Contact** per our debtor, and the **Account** setup they are mapped to.
+
+---
+
+## The mapping
+
+### 3.1 The account map
+
+Our `acc_accounts` has a `type` from the same ten-type list Bukku uses, and a
+`system_type` for the three system accounts. So the map is **by type, not by
+name** - the tenant renames `4000 Food sales` to `Sales - F&B` and the mapping
+does not break.
+
+The mapping table is `acc_connection_mappings`: one row per our account, holding
+the external account's id and its type. The connection screen is a two-column
+picker - our account on the left, theirs on the right - and it **refuses to save a
+pairing whose types disagree**. A `REVENUE` account cannot be mapped to an
+`EXPENSE` account, because that would silently misstate their books and there is no
+way for the tenant to notice.
+
+**Our accounts are pushed to them once, at connect time**, using their own account
+types. The tenant can pre-create accounts in Xero or Bukku and map to those
+instead - both paths are supported, and the second is the normal one for a tenant
+whose accountant already set the chart up.
+
+### 3.2 The three system accounts and why they are not optional
+
+Bukku's eligibility rules above mean that an invoice cannot be raised without an
+`accounts_receivable` account, a bill without an `accounts_payable` account, and
+stock cannot be adjusted without an `inventory` account and an expense account.
+Our seed chart (§2.3 of the main document) marks exactly these three as
+`is_system`, and they are the accounts the connector requires.
+
+**So the connector's setup screen checks them first**, before anything else, and
+tells the tenant plainly: *your receivable account is not mapped - invoices cannot
+be pushed yet.* The push queue does not silently skip them.
+
+### 3.3 The entity map
+
+| Ours | Xero | Bukku |
+|---|---|---|
+| `acc_debtors` | Contact | Contact |
+| `acc_invoices` | Invoice | Sales transaction |
+| `acc_bills` | no equivalent push in v1 | Purchase transaction |
+| `acc_journals` | Manual Journal | Journal Entry |
+| `acc_accounts` | Account | Account |
+| `acc_tax_codes` | TaxRate | the tax on the line |
+| `acc_bank_transactions` | Bank Transaction | Bank transaction |
+
+**The journal push is the important one.** Every posted journal becomes one
+external journal with one line per our line, carrying the account mapping and the
+tax code. A journal we void, we push as a reversing entry - the same audit rule as
+our own books (§3.2 of the main document).
+
+**What is NOT pushed:** the tenant's chart of accounts is not overwritten, their
+accounts are not deleted, our period locks are not their period locks, and
+**nothing is ever pushed to an external system that the tenant has not explicitly
+enabled** - each push type (journals, invoices, bills, contacts) is a separate
+switch in the connection screen, on by default only for the type the tenant
+enabled.
+
+---
+
+## The design of the push
+
+### 4.1 The queue, not the request
+
+**A push never happens inside a customer request.** The POS order screen must not
+wait on Xero's API - that is how a payment screen ends up timing out because a
+third party is slow.
+
+So: the journal is written to our ledger (that is the truth, and it is immediate),
+and the connector's worker picks up the outbound work from a queue table. The
+customer's order is never blocked, and a Xero outage does not stop the restaurant
+from taking money.
+
+### 4.2 Idempotency - the rule that stops double-posting
+
+Every outbound item carries a **stable key**: `connection_id` + `local_id` +
+`push_type`. Before pushing, the worker checks whether that key was already
+pushed successfully. If it was, it skips. **A journal is pushed once, ever.**
+
+The mapping table also stores the external id we were given, so a later push
+updates the same external object instead of creating a second one. Without this,
+a retried push would double a tenant's revenue in their accountant's system - the
+one failure mode that ends the integration permanently.
+
+### 4.3 The rate limits and the backoff
+
+- **Xero** - the worker reads the response headers and honours the API's own
+  limits; the concurrency is capped per connection.
+- **Bukku** - the ceiling is 600 requests per minute, and the worker targets well
+  under it.
+- **Both** - a `429` or a `5xx` is retried with exponential backoff and jitter.
+  The attempt count is recorded; after a small number of attempts the item goes to
+  a **failed** state with the error, and it is visible in the sync log.
+- **Both** - the worker is per-tenant and serial per connection. Two workers never
+  push into the same external tenant at the same time, so the ordering of journals
+  matches the ordering in our books.
+
+### 4.4 The sync log
+
+The connection screen has a **sync log**: every push attempt, with the time, the
+entity, the result, and the external id it got. A tenant who says "my March
+revenue is wrong in Xero" can be answered in minutes, from the log, instead of by
+guessing.
+
+The log also holds the **failures**, and they are actionable: *Bill 00123 was
+rejected - account 6100 Gas bills is mapped to an account of type EXPENSE but the
+Bukku endpoint requires income for a sale*. Bukku's eligibility rules are exactly
+the kind of thing that is invisible until it is a message the tenant can read.
+
+---
+
+## The credentials
+
+**The tokens are secrets and they are encrypted at rest**, in `acc_connections`:
+`access_token_enc`, `refresh_token_enc`. Never in plaintext, never in the
+frontend, never in a log line, never in an error message.
+
+The pattern is the one the e-Invoice module already uses for the tenant's ERP
+credentials (`malaysia-e-invoice.mdx` §"The tables" - the `client_id` /
+`client_secret` columns are encrypted, and the tenant's own token is stored on the
+tenant). Two things follow from it:
+
+- **The tenant's own connection, on the tenant's own row.** Nothing is shared
+  between tenants, and there is no central pool of accounting credentials.
+- **The decrypt happens inside the connector service**, at the moment of the
+  request, and the plaintext token lives in memory for the length of that request
+  and no longer.
+
+**The tenant sees the connection state, never the token.** The screen shows
+"Connected to Xero - organisation name - last pushed 4 minutes ago", with a
+**disconnect** button. Disconnect revokes and deletes the tokens and the mappings;
+it does not delete what was already pushed (that is the tenant's external system
+and the external system's own undo).
+
+**The access token is refreshed by the worker**, not by the frontend, and a failed
+refresh marks the connection `needs_reauth` and tells the tenant - rather than
+failing silently for a week.
+
+---
+
+## The screens
+
+| Screen | What it does |
+|---|---|
+| **Accounting - Connections** | the list of connections (one per provider per tenant), the connect button, the disconnect button, the sync log |
+| **Connect wizard - Xero** | the OAuth consent, the organisation picker, the base currency check, the account mapping, the test push, the enable switches |
+| **Connect wizard - Bukku** | the token and subdomain, the company check, the account mapping, the test push, the enable switches |
+| **Mapping table** | our account on the left, theirs on the right, with the type mismatch refused and the three system accounts flagged when they are unmapped |
+| **Sync log** | every attempt, every result, every external id |
+
+The wizard ends with a **test push** - one journal, one invoice - that the tenant
+sees in their own Xero or Bukku before the first real one goes. A tenant who has
+seen the test arrive should not be surprised by the live data.
+
+**The gateway model is the POS's own.** Xero is OAuth - the tenant authorises in
+their browser and we hold the token; Bukku is a token and a subdomain the tenant
+gives us. Neither route can see another tenant's connection.
+
+---
+
+## The phased plan
+
+### Phase 6.1 - the connection and the mapping
+
+The tables, the credential encryption, the Xero OAuth flow, the Bukku token flow,
+the organisation/company check, the account mapping screen with its type check and
+the three system-account flags.
+
+**Does NOT:** push anything. The test push at the end of the wizard is manual and
+one journal only.
+
+### Phase 6.2 - the journal push
+
+The queue, the idempotency key, the worker, the rate limiting, the backoff, the
+sync log. Our journals go out as Xero Manual Journals and Bukku Journal Entries.
+
+**Does NOT:** push invoices, bills or contacts yet. One entity type, proved
+end-to-end, before the queue carries three.
+
+### Phase 6.3 - invoices, bills and contacts
+
+The debtor contacts, the AR invoices, the AP bills, each behind its own enable
+switch.
+
+**Does NOT:** change what is pushed automatically. The switches stay explicit.
+
+### Phase 6.4 - the resilience
+
+The reauth flow, the failed-item retry, the connection health, the "what is not
+pushed yet" report, and the alert when a connection has been failing for a while.
+
+---
+
+## What this design does NOT claim
+
+- **It does not claim two-way sync.** Ours is the source of truth. A journal
+  edited in Xero does not come back. §"The shape of it".
+- **It does not claim the external system is a certified book.** Pushing a
+  balanced journal to a tenant's accountant does not make the tenant's filing
+  correct - that is the accountant's and the tenant's responsibility.
+- **It does not claim every tenant plan can use it.** It is the
+  `Accounting Connector` plan feature row, separate from `Accounting`.
+- **It does not claim the token can be recovered.** It is encrypted at rest and
+  deleted on disconnect; a lost token means a reauth, by design.
+- **It does not claim the pushed history is complete.** Only what is pushed goes
+  out - a tenant who connects in November pushes from November.
+- **It does not claim a Xero tenant who edits the chart stays in sync.** Our
+  mapping is ours; a change in their chart surfaces as a mapping error in the sync
+  log, not as a silent mis-mapping.
+
+---
+
+## The open questions
+
+1. **Does the tenant want their bills pushed too?** A bill in Xero is a Bill
+   object, which Bukku does not expose in the same shape. Pushing bills to Xero
+   but not to Bukku is an asymmetry we should decide deliberately.
+2. **What is our own equivalent of their tax settings?** Xero's TaxRates and
+   Bukku's line-level tax do not match. Our `acc_tax_codes` is the neutral
+   middle; the connector maps it either way.
+3. **Does the push include the frozen cost?** Our COGS journals carry the recipe
+   cost frozen at the sale. Pushing them makes their gross profit match ours -
+   but their own stock system may compute a different cost. Their accountant needs
+   to know which one the number came from.
+4. **How far back does the first push go?** The PROPOSAL is from the connect date
+   forward, with an explicit re-push of a chosen period. A full historical push
+   is a separate job.
+5. **What happens to the connection when a tenant leaves?** The connection is
+   deleted with the tenant. The data already pushed lives in their system.
+6. **Should a failed push ever block a period close?** The PROPOSAL is no - our
+   books close on our own facts, and the connector reports what it could not push.
+   The alternative is safer for the external book and worse for the tenant's
+   workflow.
+
+---
+
+## The sources
+
+**The providers (read on 26 Nov 2026):**
+
+- <https://developers.bukku.my/> - the account model and its `type` and
+  `system_type`, the Journal Entry and Account endpoints, the Bank and Stock
+  endpoints, the endpoint eligibility rules, the Bearer + Company-Subdomain auth,
+  the 600 requests per minute limit, the staging and production servers
+- <https://developer.xero.com/documentation/api/accounting/overview> - the
+  endpoint families, Manual Journals versus the read-only Journals endpoint, the
+  100-per-response limit, the Accounts and TaxRates models, the Organisation
+  endpoint, the use-case and tier requirement on the Journals endpoint
+
+**The sibling designs in this repository:**
+
+- `system-design/accounting/accounting-module.mdx` - the ledger, the chart of
+  accounts, the audit rule, the fiscal lock
+- `malaysia-e-invoice.mdx` - the encrypted ERP credential pattern and the tenant's
+  own credential row
