@@ -207,9 +207,13 @@ Public, documented, versioned - the API is the product for the third-party case.
 
 The website API remains the only billing system. Two shapes on it:
 
-**Shape 1 - the add-on (this is how the first revenue arrives).** A new `Feature` row - `accounting` - with `FeaturePrice` rows per currency, exactly like the two AI rows (`ai_agent` at MYR 80 / USD 20, `ai_agent_actions` at MYR 240 / USD 50). A POS tenant buys the add-on and the accounting service grants it. **No new plan, no new checkout, no new billing code** - `FeaturePrice` was built for exactly this, and it is per-currency so MYR and USD are never added together.
+**Shape 1 - the add-on (this is how the first revenue arrives).** A new `Feature` row - `accounting` - with `FeaturePrice` rows per currency, exactly like the two AI rows (`ai_agent` at MYR 80 / USD 20, `ai_agent_actions` at MYR 240 / USD 50). A POS tenant buys the add-on and the accounting service grants it.
+
+**The entitlement is free. The purchase is not - and the earlier draft of this document said both were free.** `FeaturePrice` was built for exactly this and it is per-currency, so MYR and USD are never added together, and the grant side already exists: a `plan_features` row, or a `CustomerFeatureOverride` row written by an admin (`website_api/app/routes/admin.py:1011`). **But nothing in the live website API lets a customer buy a feature add-on.** The only routes that touch a `FeaturePrice` are admin routes (`admin.py:1045`, `:1081`, `:1121`, `:1189`); the only `checkout.Session.create` calls are for a plan, an upgrade proration and an invoice payment (`website_api/app/routes/subscription.py:464`, `:834`, `:1483`, `website_api/app/routes/billing.py:436`); and every `Invoice` row is created inside the subscription and webhook flows. **The two AI add-ons are not sold to customers today either - an admin grants them, and the `FeaturePrice` row is the catalogue that admin grants against.** So the first revenue of this project needs **a purchase path**: a checkout that takes a `FeaturePrice`, a webhook that grants the feature on payment, and an invoice. That is real work, and it is in Phase 0 - because Phase 2's own proof ("a POS tenant buys the add-on") cannot happen without it.
 
 **Shape 2 - the standalone product (later).** New `subscription_plans` rows for the accounting product, distinguished by a new `product` discriminator column (`'pos'` / `'accounting'`) so the two catalogues stay separate under one table. A tenant with no POS subscribes to an accounting plan and never touches a POS plan.
+
+**Three live facts about Shape 2 that the earlier draft did not know.** The live `SubscriptionPlan` has **no `product` column** (`website_api/app/models/models.py:6`) - the discriminator is a schema change, not a naming convention. It **does** have `is_published` (`models.py:25`), so the accounting catalogue publishes and unpublishes on its own without touching the POS catalogue - the separation is one column and one seed. And the checkout the standalone product uses **cannot be the existing `create-checkout` route**: that route hard-codes `'currency': 'usd'` and names the product `"IDEAZES POS"` (`website_api/app/routes/subscription.py:839`, `:841`), while the subscription checkout resolves the currency properly through `resolve_price_safe` (`website_api/app/services/plan_pricing.py:115`, used at `subscription.py:471`). **A standalone accounting plan sold in MYR through `create-checkout` would be charged in dollars.**
 
 **Which plans carry what is data, not code.** The house rule holds: the database is the truth, the seed is only what a fresh install starts with - and `website_api/app/core/ai_addon_prices.py` says so in as many words, with a `--check` migration that reports the drift. The accounting service reads its entitlements exactly as the POS does - one call, one internal key, one list of feature names.
 
@@ -241,17 +245,63 @@ A **new web app**, separate from the POS frontend, because the accountant's work
 
 Each phase says what it does **not** do, because the boundary is the design. **The POS binding is Phase 2 and it is the centre of this plan** - its full contract is in `pos-integration.mdx`, and the POS-side work it needs is listed there as ten prerequisites.
 
-**The order of the phases is a commercial one as much as a technical one.** Phase 2 is the first revenue. Phases 0 and 1 are the proof that the engine is right. Phase 6 is the door that lets a tenant who already keeps books elsewhere in - and it is deliberately last, because a tenant does not need it to start.
+**The order of the phases is a commercial one as much as a technical one.** Phase 2 is the first revenue *from the wedge*. Phases 0 and 1 are the proof that the engine is right. Phase 6 is the door that lets a tenant who already keeps books elsewhere in - and it is deliberately last, because a tenant does not need it to start.
 
-### Phase 0 - the service skeleton
+**One correction the earlier draft of this plan needed, and it is a consequence of the audit.** Because 0b builds a real purchase path, **Phase 1 becomes genuinely sellable - and it says so itself.** "Sellable on its own to an accountant with no POS" was always true of the *product*; what was missing was the *money path* to take a subscription for it. So there are now two first revenues, and the documents should not blur them:
+
+| | What it is | When | Why it matters |
+|---|---|---|---|
+| **The standalone revenue** | a tenant with no POS subscribes to an accounting plan and buys books | **Phase 1** | it is money that does not depend on the binding working, and it is money from a customer the POS could never have had - **the displacement case, tested early** |
+| **The wedge revenue** | an existing POS tenant buys the add-on and sees their month's books appear with nobody typing | **Phase 2** | **it is the proof that the binding is worth paying for**, and it is the gate: if the add-on does not sell to tenants we already have, the displacement story to tenants we do not have is a hypothesis with a large build cost behind it |
+
+**The discipline survives, and it is the discipline that matters.** The revenue gate is still a gate, but it now guards the *displacement* bet rather than the whole business. **Phase 2 must sell before Phase 6 is built.** Phase 1 selling is a hedge; Phase 2 selling is the thesis.
+
+**Phase 0 has two halves, and the second one is what the earlier draft of this plan left out.** The service - the deployable, the database, the tenant model, the money rules - is **0a**. **0b is the account: how a customer arrives, how they pay, and how the books come into existence for them.** Without 0b there is no tenant, and without a tenant there is no revenue in any later phase. It was missing because the plan was written as if the accounting service were a module inside a POS that already has customers - and it is not; it is a service that has to acquire its own.
+
+### Phase 0a - the service
 
 **The deliverable:** the new deployable with its own Postgres database; the tenant model (platform customer -> accounting tenant -> books); the website API's `product` discriminator and the `accounting` feature row with its `FeaturePrice` rows; the API key and OAuth surfaces; the entitlement call; the audit rule; the money rules (integer minor units throughout, one rounding at the boundary); and an empty chart of accounts with the F&B preset loaded.
 
-**The proof:** a tenant with the add-on can be created, can authenticate, and sees a valid but empty set of books. The rounding rule is proved against the POS's existing float totals - a sample of real orders is converted and the totals are checked.
+**The proof:** a tenant can be created, can authenticate, and sees a valid but empty set of books. The rounding rule is proved against the POS's existing float totals - a sample of real orders is converted and the totals are checked.
 
 **Does NOT:** post a journal, show a statement, or touch the POS. The books exist and are empty.
 
 **This is where the schema migration is written** - the database revision that creates the tables. Greenfield; nothing is being migrated.
+
+### Phase 0b - the account and the purchase
+
+**The deliverable:** the signup that creates an accounting-only customer with **no POS tenant at all**; the provisioning that turns a paid customer into an accounting tenant with books; the purchase path that sells the add-on and the standalone plan; the invoices that record it; and the account lifecycle around it - cancel, downgrade, export, delete.
+
+**The proof:** a customer who has never touched a POS can sign up, pay, and land in a working set of books - and a POS tenant who buys the add-on is charged once and provisioned once, not twice.
+
+**Does NOT:** post a journal. **It makes a customer into a tenant, and that is all.**
+
+**Why this is Phase 0 and not a later phase - four live facts that force it.**
+
+1. **The signup cannot be reused as it is.** Every website customer is auto-provisioned a POS account at signup (`website_api/app/routes/auth.py:143-161` -> `provision_pos_account`), and again when a subscription is created (`website_api/app/routes/subscription.py:577`), and again in the Stripe webhook (`website_api/app/routes/webhooks.py:683`). **So today there is no way to be a customer without a POS tenant** - which contradicts this document's own tenant model, where "a tenant who buys accounting without a POS has a platform customer and an accounting tenant and no POS tenant". The provisioning call has to become conditional on what was bought, and it is three call sites, not one.
+
+2. **The customer record asks for a restaurant name.** `WebsiteCustomer.restaurant_name` is `nullable=False` (`website_api/app/models/models.py:77`) and the signup schema requires it (`website_api/app/routes/auth.py:28-33`). An accountant buying books for a company has no restaurant name to type. Either the column gives way or the accounting-only signup takes a different shape - and the first is a schema migration, so it belongs in Phase 0 with the other schema work.
+
+3. **There is no purchase path for an add-on, and this document's earlier draft said there was.** The only routes that touch a `FeaturePrice` are admin routes (`website_api/app/routes/admin.py:1045`, `:1081`, `:1121`, `:1189`); the only route that grants a feature to a customer is an admin writing a `CustomerFeatureOverride` (`admin.py:987`, `:1011`); and every Stripe checkout in the codebase prices a plan or an invoice - never a `FeaturePrice` (`website_api/app/routes/subscription.py:464`, `:834`, `:1483`, `website_api/app/routes/billing.py:436`). **The two AI add-ons are not bought by customers today either - an admin grants them.** So the earlier claim "no new plan, no new checkout, no new billing code" was wrong: the purchase path is new code. **Phase 2's own proof - "a POS tenant buys the add-on" - cannot happen until it exists, so it is Phase 0 work, not Phase 2 work.**
+
+4. **The standalone checkout cannot be the existing one.** `SubscriptionPlan` has no `product` column (`website_api/app/models/models.py:6`), so the two catalogues cannot be told apart yet - the discriminator is a schema change, not a naming convention. And `create-checkout` hard-codes `'currency': 'usd'` and names the product `"IDEAZES POS"` (`website_api/app/routes/subscription.py:839`, `:841`), **so a standalone accounting plan sold through it would be charged in dollars.** The currency-resolving checkout is the other one (`subscription.py:464`, resolving at `:471` through `resolve_price_safe`, `website_api/app/services/plan_pricing.py:115`). One good fact: `is_published` already exists on the plan (`models.py:25`), so the accounting catalogue publishes and unpublishes on its own without touching the POS one.
+
+**One thing that does NOT need to change: the entitlement read.** The accounting service asks the website API what a customer is entitled to exactly as the POS does - by the platform customer's id, against the admin route that merges the plan's features with the customer's overrides (`website_api/app/routes/admin.py:1216`, reached by the POS at `backend/app/services/plan_features.py:71` over the internal key at `core/config.py:148`). That route is keyed by the platform customer, not by a POS tenant, **so it already works for a customer who has no POS.** The tenant of the books is still derived from the books, never from the caller.
+
+### Phase 0c - the operations that make it a service
+
+**The deliverable:** the database lifecycle (the schema migration, the nightly verified backup, the restore drill); the readiness and liveness surfaces; the monitoring; the alerting; and the runbooks.
+
+**The proof:** the service is restored from a backup into a fresh environment and a tenant's books are read back correctly - **a backup that has never been restored is a hypothesis**, and the restore drill is part of Phase 0, not an afterthought.
+
+**Does NOT:** add a feature. **It makes the service survivable.**
+
+**Why this is Phase 0: the live operations cover two databases, and this service is a third.**
+
+- **The existing backup proves its copies, which is the standard to copy - but it only knows two files.** `scripts/pos_backup.py` takes a consistent snapshot via SQLite's online backup API, runs `PRAGMA integrity_check`, compares the row counts of every representative table before and after the copy, and only then renames the file into place - and it is scheduled by `posai-backup.timer` at 22:00 UTC with `Persistent=true`, so a missed run catches up on the next boot. The two databases it protects are `database/pos_ai.db` and `website_api/website_api.db`. **The accounting service's Postgres is not in that list and cannot be: the script's whole method is SQLite's online backup API, which has no Postgres equivalent.** Postgres needs `pg_dump` (or a base backup), and it needs the same three proofs - the dump restores, the row counts are right, and the restore is atomic - because a ledger is worth more than a POS and loses more.
+- **The existing health checks are liveness, not readiness.** `backend/app/main.py:619` and `website_api/app/main.py:71` both return `{"status": "healthy"}` without touching a database. That is correct for a liveness probe - it answers "is the process up" - and useless for readiness, because a service whose Postgres is unreachable is still "healthy" and would still be sent traffic. **The accounting service needs both: a liveness probe that stays shallow, and a readiness probe that actually checks the database and the billing spine**, because the accounting service cannot serve a book without Postgres and cannot know a tenant's entitlement without the website API.
+- **There is no alerting story for a service that does not exist yet, so this one gets written.** The host does run a failed-unit notifier (`posai-backup.service` -> `OnFailure=posai-backup-notify.service`), and the POS runs a minute-level event dispatcher and a nightly entitlement sweep as cron jobs. **The accounting service follows the same shape:** the dispatcher that delivers the POS's events in, the nightly reconciliation, and a failure path that reaches a human instead of a log file nobody reads.
+- **And a runbook, because the two questions a customer asks at 2am are always the same.** "Can you restore me?" and "why is my revenue wrong?" The first is answered by the restore drill above. The second is answered by the reconciliation screen in Phase 2c - **which is why the reconciliation is the answer to the second question and not only a product feature.**
 
 ### Phase 1 - the ledger and the statements
 

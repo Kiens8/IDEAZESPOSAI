@@ -394,6 +394,30 @@ The reauth flow, the failed-item retry, the connection health, the "what is not 
 
 The payroll posting contract and the payroll accounts, then the bank statement import and the reconciliation.
 
+### The operations that run all of it
+
+**The connectors are the part of the service that talks to something we do not control, so this is where the operational work concentrates.** The accounting service's own lifecycle - the backup, the restore drill, the readiness probe - is in `accounting-service.mdx` (Phase 0c); this section is the connector-specific half.
+
+**What the live code already does, and what it therefore expects:**
+
+| The live thing | What it is | What the connector inherits |
+|---|---|---|
+| `backend/app/services/domain_events.py` - `dispatch_once` (`:704`), `dead_letters` (`:870`), `requeue_dead_letter` (`:899`) | the at-least-once delivery, the backoff, the dead-letter queue | the connector's inbound side **is** this queue. The accounting service subscribes; it does not build a queue. |
+| `backend/app/core/tenant.py` - `require_tenant_claim` (`:77`), `KEY_CANNOT_PICK_TENANT` (`:41`) | the claim-never-an-authority rule | every connector inherits it unchanged. A credential that names no tenant is refused, not guessed. |
+| `scripts/pos_backup.py` + `posai-backup.timer` | the verified nightly backup with `Persistent=true` | the standard to copy - but it protects two SQLite files, and the connector's own state lives in the accounting service's Postgres. |
+| `backend/app/main.py:619` - `/health` returning `{"status": "healthy"}` | liveness | the connector's liveness follows. **Its readiness does not:** a connector whose queue cannot drain is alive and not ready. |
+| the cron jobs (the minute-level `dispatch_events.py`, the nightly `sweep_delivery_entitlement.py`) | scheduled work on the host | the connector's dispatcher and its nightly reconciliation follow the same shape, because a service that only runs when someone opens a screen is not a service. |
+
+**What is new, because the service is new:**
+
+- **A liveness probe and a readiness probe, told apart.** Liveness answers "is the process up" and stays shallow - the same shape as the existing `/health`. Readiness answers "can this service actually do its job right now", which for the accounting service means the Postgres connection, the migration state, **and the website API being reachable** - because the entitlement read is on the request path and a tenant who cannot be checked cannot be served. For the connectors specifically, readiness also means the delivery worker is running and the queue is not full.
+- **A backup that covers the connector's own state.** The connector tables - `acc_tenant_sources`, the sync log, the dead letters, the encrypted credentials, the account mappings - are in the accounting service's Postgres, and they are part of the tenant's book-keeping state. **They are in scope of the Postgres backup and the restore drill**, and the credential table is the one row type where a restore must be handled with care: a restored credential is still encrypted at rest, and a restored token that the provider has revoked shows up as `needs_reauth` rather than as a silent failure.
+- **A dead-letter path that reaches a human.** The POS's dead-letter handling is already visible (`services/domain_events.py:870`) and it is **not swallowed** - a dead letter on a sale journal means the tenant's revenue is understated by that amount. The connector half adds the other direction: a dead letter on an *outbound* push (to Xero, to Bukku) means the tenant's accountant cannot see the numbers they expect, and the tenant must be able to see it, count it, and retry it from the Connections screen.
+- **Alerting with a threshold, not a presence.** "The connection is failing" is not an alert; "the connection has failed for more than N minutes" is - because a single transient failure is normal and a sustained one is the tenant's books drifting away from their accountant's. The same rule for the inbound side: the daily reconciliation's difference is the alert, and the threshold is set so that a rounding difference does not page anyone at 2am.
+- **A runbook, because the questions repeat.** Three entries, three questions: *how do I restore a tenant's books?* (the restore drill), *why is my revenue different from the POS?* (the reconciliation screen), *why did my Xero push stop?* (the sync log and the reauth flow). **A connector that fails with no runbook is a connector that generates a 2am phone call, and the phone call is the most expensive thing in this business.**
+
+**What this section does NOT claim:** it does not claim the connectors are monitored as well as the POS is today, because they are not - the POS has cron jobs and a failed-unit notifier, and the accounting service will have the same floor and then some. It does not claim a restore drill happens on a schedule the reader can audit, because it is a design proposal, not a built thing.
+
 ---
 
 ## What this design does NOT claim

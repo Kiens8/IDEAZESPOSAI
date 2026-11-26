@@ -42,11 +42,25 @@ The website API is the single billing and entitlement system (`website_api/app/m
 
 A new `Feature` row - `accounting` - with `FeaturePrice` rows per currency. This is exactly the shape the two AI add-ons already use (`ai_agent` at MYR 80 / USD 20 monthly, MYR 800 / USD 200 annual; `ai_agent_actions` at MYR 240 / USD 50 monthly, MYR 2400 / USD 500 annual). **A POS tenant buys the add-on and the accounting service grants it.**
 
-**Why this shape first, and it is not a compromise:** it needs **no new checkout code, no new plan rows, no new subscription logic**. The entitlement is a `plan_features` row, and the plan assignment is **data, not code** - the same rule the delivery module already follows (`delivery_service.py:50`). The accounting service asks the website API for its entitlements exactly as the POS does (`fetch_plan_features`, `backend/app/services/plan_features.py:71`, over the internal key at `core/config.py:148`).
+**Why this shape first, and it is not a compromise:** the entitlement is a `plan_features` row and the plan assignment is **data, not code** - the same rule the delivery module already follows (`delivery_service.py:50`). The accounting service asks the website API for its entitlements exactly as the POS does (`fetch_plan_features`, `backend/app/services/plan_features.py:71`, over the internal key at `core/config.py:148`).
 
-**Shape 2 - the standalone product. Later.**
+**But an earlier draft of this document claimed this shape needed "no new checkout code, no new plan rows, no new subscription logic". That was wrong, and the live code says so plainly.** The *entitlement* half of the shape is already built and needs nothing. The *purchase* half does not exist:
+
+- **Nothing in the codebase sells a `FeaturePrice`.** The only routes that read one are admin routes (`website_api/app/routes/admin.py:1045`, `:1081`, `:1121`, `:1189`); the only route that grants a feature to a customer writes a `CustomerFeatureOverride` as an admin (`admin.py:987`, `:1011`). **The two AI add-ons are granted by an admin, not bought by a customer** - so the add-on as a *purchase* is new behaviour for the whole platform, not just for accounting.
+- **Every Stripe checkout prices a plan or an invoice, never a feature.** `website_api/app/routes/subscription.py:464` (subscription), `:834` (upgrade), `:1483` (proration), `website_api/app/routes/billing.py:436` (invoice payment).
+- **So the add-on needs four pieces of new work, all of it Phase 0:** a checkout that accepts a `FeaturePrice` and resolves its price for the right currency and billing cycle; a webhook that grants the entitlement on `payment_succeeded`; the invoice record; and the cancellation/dunning path. Without them, "a POS tenant buys the add-on" is a sentence in a design document rather than something a customer can do.
+
+**What does NOT need to change is the billing catalogue itself.** `FeaturePrice` rows per currency are data, and the house rule (the live database is the truth, the seed only starts a fresh install) already covers them.
+
+**Shape 2 - the standalone product. Later in the sequence, and it is the more valuable sale.**
 
 New `subscription_plans` rows for the accounting product, distinguished by a new **`product` discriminator** (`'pos'` / `'accounting'`) so two catalogues live under one table without mixing. A tenant with no POS subscribes to an accounting plan and never touches a POS plan.
+
+**The discriminator is a schema change, and so are two of its consequences.** `SubscriptionPlan` has no `product` column today (`website_api/app/models/models.py:6`); adding one is Phase 0 work, not Phase 6 work, because the accounting catalogue has to be publishable from the start. `is_published` already exists on the plan (`models.py:25`), so publishing and unpublishing an accounting plan needs no new column.
+
+**The existing checkout cannot be reused for this shape as it stands.** `create-checkout` hard-codes `'currency': 'usd'` and names the product `"IDEAZES POS"` (`website_api/app/routes/subscription.py:839`, `:841`) - a standalone Malaysian accounting plan sold through it would be charged in dollars. The currency-resolving path is the other one (`subscription.py:464`, resolving at `:471` via `resolve_price_safe`, `website_api/app/services/plan_pricing.py:115`), and a standalone checkout resolves the plan's price the same way - **the price comes from the plan's own price rows, never from a hard-coded literal.**
+
+**The signup cannot be reused either.** Every website customer is auto-provisioned a POS account (`website_api/app/routes/auth.py:143-161` -> `provision_pos_account`), again on subscription creation (`website_api/app/routes/subscription.py:577`) and again in the webhook (`website_api/app/routes/webhooks.py:683`). **Today it is impossible to be a customer without a POS tenant** - which is the opposite of the tenant model this proposal sells. The provisioning becomes conditional on the product bought, and `WebsiteCustomer.restaurant_name` - `nullable=False` (`models.py:77`) - stops being the right question for an accountant buying books for a company.
 
 **The house rule holds throughout:** the database is the truth and the seed is only what a fresh install starts with - `website_api/app/core/ai_addon_prices.py` says so in as many words, with a `--check` migration that reports the drift. **Every price in this document is a proposal for a seed, not a hard-coded value.**
 
@@ -60,7 +74,9 @@ New `subscription_plans` rows for the accounting product, distinguished by a new
 | **6** | **the books-first switch**: bring a third-party POS's sales in | **the fragmented-stack owner** | **the displacement: the tenant switches without switching their POS** |
 | **7** | the accountant workspace, the payroll posting, the bank feed | the accountant | the suite - one login, many books |
 
-**The critical discipline: Phase 2 must sell before Phase 6 is built.** If the add-on does not sell to tenants we already have, the displacement story to tenants we do not have is a hypothesis with a large build cost behind it. **The phase gate is a revenue gate, not a completion gate.**
+**Two first revenues, and the difference between them matters.** The live-code audit found that the add-on had **no purchase path at all** - no customer-facing checkout for a `FeaturePrice`, no payment webhook that grants a feature, no invoice for one. So Phase 0 now builds the purchase machinery, which means **the standalone accounting plan is sellable from Phase 1**: a tenant with no POS subscribes and pays. That is the first revenue, and it is money from a customer the POS could never have had.
+
+**But the gate that decides the business is still Phase 2.** The add-on - our POS writing an existing POS tenant's books with nobody typing - is the **proof that the binding is worth paying for**, and it is the only thing that validates the displacement thesis before Phase 6 spends a lot of build on it. **The critical discipline: Phase 2 must sell before Phase 6 is built.** If the add-on does not sell to tenants we already have, the displacement story to tenants we do not have is a hypothesis with a large build cost behind it. **The phase gate is a revenue gate, not a completion gate** - and Phase 1 selling is a hedge, Phase 2 selling is the thesis.
 
 ### 2.3 The pricing - a proposal
 
@@ -236,7 +252,7 @@ Xero and Bukku have accountants, bank feeds, payroll, years of data and hundreds
 
 **How it stays sane:**
 
-- **The phases are revenue gates, not completion gates.** Phase 2 must sell before Phase 6 is built. If the add-on does not sell to the base we have, **we stop** - and the sunk cost is one service, one ledger and one connector, which is reusable.
+- **The phases are revenue gates, not completion gates.** Phase 2 must sell before Phase 6 is built. If the add-on does not sell to the base we have, **we stop** - and the sunk cost is one service, one ledger and one connector, which is reusable. **The standalone plan selling from Phase 1 does not weaken this gate - it is the hedge, and the hedge is not the thesis.**
 - **The standalone architecture is not wasted if the accounting product fails.** The ledger, the statements, the trial balance and the accountant-facing UI are all things a **POS-first** product still wants. **This is the strongest hedge in the plan: if we retreat to "accounting as a POS feature", we keep the engine and throw away only the tenancy and the API surface.**
 - **The repo stays one repo.** The accounting service lives in `POS_AI` alongside `backend/` and `website_api/` - so retreat is a deletion, not an extraction.
 
