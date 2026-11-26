@@ -6,7 +6,7 @@ description: The commercial case for the standalone accounting service - the pac
 **Document Version:** 1.0 (rewritten 26 Nov 2026)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every price, every number and every phase gate here is a proposal.
-**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (this one)
+**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (this one) - `purchase-path.mdx` (the purchase path and the revenue gate) - `operations.mdx` (the service's operations)
 
 ---
 
@@ -24,7 +24,7 @@ The customer we are looking at is not "a restaurant that wants accounting". It i
 
 | The customer | What they run today | What they want | How we reach them |
 |---|---|---|---|
-| **The F&B operator** | our POS + a spreadsheet + a payroll package | to stop re-typing the month | the POS add-on - the first revenue |
+| **The F&B operator** | our POS + a spreadsheet + a payroll package | to stop re-typing the month | the POS add-on - the wedge revenue |
 | **The fragmented-stack owner** | FeedMe or AutoCount + a separate accounting package + payroll | to replace three subscriptions with one | the books-first switch (§3) |
 | **The accountant** | a practice managing 20 clients across 4 accounting systems | one login, many books | the accountant workspace (later) |
 
@@ -38,7 +38,7 @@ The customer we are looking at is not "a restaurant that wants accounting". It i
 
 The website API is the single billing and entitlement system (`website_api/app/models/models.py`): `WebsiteCustomer` (`:70`), `Subscription` (`:95`), `SubscriptionPlan` (`:6`), `Feature` (`:228`), `PlanFeature` (`:245`), `FeaturePrice` (`:258`), `CustomerFeatureOverride` (`:299`).
 
-**Shape 1 - the add-on. This is how the first revenue arrives.**
+**Shape 1 - the add-on. This is how the wedge revenue arrives - and the wedge revenue is the thesis.**
 
 A new `Feature` row - `accounting` - with `FeaturePrice` rows per currency. This is exactly the shape the two AI add-ons already use (`ai_agent` at MYR 80 / USD 20 monthly, MYR 800 / USD 200 annual; `ai_agent_actions` at MYR 240 / USD 50 monthly, MYR 2400 / USD 500 annual). **A POS tenant buys the add-on and the accounting service grants it.**
 
@@ -138,7 +138,7 @@ New `subscription_plans` rows for the accounting product, distinguished by a new
 | **2. The POS** | their POS moves to us, their books stay here | the books are already here and already correct - the POS is now a configuration change, not a switch |
 | **3. Payroll** | their payroll moves to us | the posting contract is already there |
 
-**Step 1 is the wedge** and it is the reason to build the standalone architecture *first*, even though the first revenue comes from the POS add-on. The add-on sells to tenants we have; the standalone architecture is what makes the tenants we do not have reachable at all.
+**Step 1 is the wedge** and it is the reason to build the standalone architecture *first*, even though the standalone plan can be sold from Phase 1 and the add-on only lands in Phase 2. The add-on sells to tenants we have; the standalone architecture is what makes the tenants we do not have reachable at all.
 
 **Step 2 is what makes the switch permanent.** Once the books depend on our POS, the tenant has nothing left to migrate back to, and the incumbent stack loses a system it cannot get back. That is the compounding effect of binding the two.
 
@@ -232,7 +232,7 @@ What we know factually:
 - **The market's shape is documented** in `malaysia-e-invoice.mdx` - a typical F&B operator runs a POS, an accounting package and a MyInvois bridge, and the seam between them is manual.
 - **The number that matters is the count of Malaysian F&B establishments running a fragmented stack**, and **we have not measured it**. A real figure needs the number of registered food-service premises, their POS penetration, and their accounting-package penetration - which is a research task, not something to guess at in a design document.
 
-**So the honest framing of the market question is: this is a wedge, not a market, until it is measured.** The first revenue is ten tenants' worth of add-on. The displacement thesis is a hypothesis with a cheap test: **ask twenty POS tenants how many systems they run and whether they would replace their accounting package.** If the answer is "one" for most and "four" for a third, the wedge is real. **That is a week of work and it should happen before Phase 6 is built.**
+**So the honest framing of the market question is: this is a wedge, not a market, until it is measured.** The first money is ten standalone plans, and the money that decides the business is ten tenants' worth of add-on. The displacement thesis is a hypothesis with a cheap test: **ask twenty POS tenants how many systems they run and whether they would replace their accounting package.** If the answer is "one" for most and "four" for a third, the wedge is real. **That is a week of work and it should happen before Phase 6 is built.**
 
 ---
 
@@ -248,7 +248,7 @@ Xero and Bukku have accountants, bank feeds, payroll, years of data and hundreds
 
 ### 6.2 We may be building a big thing to sell a small thing
 
-**This is the sharpest risk in Option C, and it should not be softened.** We build a standalone service with its own database, its own tenancy, its own API and its own web app - and the first revenue is an add-on to tenants we already have, sold at MYR 149.
+**This is the sharpest risk in Option C, and it should not be softened.** We build a standalone service with its own database, its own tenancy, its own API and its own web app - and the money that decides whether it was worth it is an add-on to tenants we already have, sold at MYR 149.
 
 **How it stays sane:**
 
@@ -258,7 +258,7 @@ Xero and Bukku have accountants, bank feeds, payroll, years of data and hundreds
 
 ### 6.3 The POS tenants might not want to pay for accounting
 
-They may say the POS already tells them enough, or that their accountant already has the books. **This is the most likely failure of the first revenue.**
+They may say the POS already tells them enough, or that their accountant already has the books. **This is the most likely failure of the wedge revenue.**
 
 **The mitigation, and it is a product decision rather than a sales one:** the value is the **frozen cost, the discount source and the outlet dimension** - the three facts an accountant's spreadsheet never has. **If the demo shows only revenue, it will fail.** If the demo shows the margin, computed from the recipe cost at the moment of the sale, it is a different product from a spreadsheet. **This is why `ledger-and-money.mdx` §4.4 insists the COGS journal reads `frozen_cost` and never the live recipe price** - the demo depends on it.
 
@@ -278,7 +278,7 @@ A per-tenant support cost that scales with the tenant's complexity, against a pr
 |---|---|---|---|
 | 1 | The add-on price | MYR 149 / USD 35 monthly, annual at ten months | It must be under the labour it removes, and above the cost of serving |
 | 2 | The standalone plan prices | MYR 99 / 199 / 349 | The Starter is the book alone and must be cheap; the Pro carries the connectors |
-| 3 | Which is the priority - the add-on or the displacement? | **The add-on first** - it is cheaper to sell and it proves the engine | The displacement story is a hypothesis until the parallel run proves it |
+| 3 | Which is the priority - the add-on or the displacement? | **The add-on is the thesis and the gate** - it is cheaper to sell, it proves the engine, and Phase 2 must sell before Phase 6 is built. The standalone plan can sell from Phase 1 as a hedge | The displacement story is a hypothesis until the parallel run proves it |
 | 4 | Does the accountant workspace move earlier than Phase 7? | **Yes, if the displacement is the priority** - it is the channel | An accountant on twenty books is the cheapest distribution we have |
 | 5 | Do we measure the market before Phase 6? | **Yes** - twenty POS tenants, one question | It is a week of work against a large build |
 | 6 | Is the e-Invoice rail a cost line or a feature? | **A feature** - direct submission, our credential model, no per-document cost | It removes a cost from the unit economics |
@@ -308,6 +308,8 @@ A per-tenant support cost that scales with the tenant's complexity, against a pr
 - `ledger-and-money.mdx` - the engine, the margin rule the demo depends on
 - `connectors-and-switching.mdx` - the other connectors, the switch, the parallel run
 - `pos-integration.mdx` - the binding to our own POS
+- `purchase-path.mdx` - the purchase path, the two revenue paths, the gate
+- `operations.mdx` - the backup, the restore drill, the runbooks
 - `malaysia-e-invoice.mdx` - the market's shape, and the compliance rail
 - `multi-currency-money.mdx` - why the price list has a row per currency
 - `pricing-engine-and-promotions.mdx` - the discount's provenance, which is the margin story

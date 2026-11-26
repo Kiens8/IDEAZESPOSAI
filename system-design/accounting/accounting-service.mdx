@@ -11,6 +11,8 @@ description: A standalone multi-tenant accounting SaaS with its own tenants, its
 - `ledger-and-money.mdx` - the double-entry engine: the chart of accounts, the journals, the fiscal periods, the money rules, the statements.
 - `pos-integration.mdx` - **the binding to our own POS**, in full: the event contract, the financial snapshot API, the idempotency and replay rules, the journal mapping, and the six findings from the live POS code that change the design.
 - `connectors-and-switching.mdx` - the other connectors: a third-party POS may push in, the books may push out to Xero or Bukku, a payroll system posts in, and a business that already keeps its books elsewhere may be brought across.
+- `purchase-path.mdx` - **the Phase 0b specification, in full**: the signup that does not create a POS tenant, the checkout that charges the right currency, the webhook that grants the entitlement, the persistence model for a purchase that is not a plan, and the renewal, cancellation and dunning that follow it.
+- `operations.mdx` - **the Phase 0c specification**: the database lifecycle, the verified backup and the restore drill, readiness and dependency checks, monitoring and alerting, the scheduled work, and the runbooks.
 - `business-model.mdx` - who pays, what it costs, how we displace the incumbent stack, and the honest case against this.
 
 ---
@@ -21,7 +23,7 @@ This is the second version of this proposal, and the framing changed, so the cha
 
 **What we are building: a standalone, multi-tenant cloud accounting service.** Its own database. Its own tenants - a tenant who never buys our POS can have books here. Its own public API, shaped like Bukku's and Xero's. Its own billing, its own plans, its own customers.
 
-**What we sell first: an add-on to the POS tenants we already have.** The service is built in its final shape from day one, but the first revenue comes from existing POS tenants buying accounting as a priced add-on. That is the "build B's architecture, sell A's packaging" decision.
+**What we sell first: the accounting product itself, sold two ways.** The service is built in its final shape from day one. The first revenue chronologically is a customer with no POS subscribing to the standalone accounting plan; the second is an existing POS tenant buying accounting as a priced add-on. That is the "build B's architecture, sell A's packaging" decision - and the two sales have different jobs: **the standalone sale is the hedge, the add-on sale is the thesis** (the phases section below says this in a table).
 
 **Why: the fragmentation.** A tenant's business today is four or five separate systems that do not speak to each other - a POS, an accounting package, a payroll system, a bank portal, maybe a separate e-Invoice bridge. Every figure is re-typed by hand at least once, and the tenant pays five subscriptions to run one restaurant. **The binding is the product: one identity, one chart of accounts, one set of books, and the POS writes into them automatically.** A tenant who switches to us does not switch to "an accounting system" - they switch from five subscriptions to one.
 
@@ -207,9 +209,9 @@ Public, documented, versioned - the API is the product for the third-party case.
 
 The website API remains the only billing system. Two shapes on it:
 
-**Shape 1 - the add-on (this is how the first revenue arrives).** A new `Feature` row - `accounting` - with `FeaturePrice` rows per currency, exactly like the two AI rows (`ai_agent` at MYR 80 / USD 20, `ai_agent_actions` at MYR 240 / USD 50). A POS tenant buys the add-on and the accounting service grants it.
+**Shape 1 - the add-on (this is how the wedge revenue arrives).** A new `Feature` row - `accounting` - with `FeaturePrice` rows per currency, exactly like the two AI rows (`ai_agent` at MYR 80 / USD 20, `ai_agent_actions` at MYR 240 / USD 50). A POS tenant buys the add-on and the accounting service grants it.
 
-**The entitlement is free. The purchase is not - and the earlier draft of this document said both were free.** `FeaturePrice` was built for exactly this and it is per-currency, so MYR and USD are never added together, and the grant side already exists: a `plan_features` row, or a `CustomerFeatureOverride` row written by an admin (`website_api/app/routes/admin.py:1011`). **But nothing in the live website API lets a customer buy a feature add-on.** The only routes that touch a `FeaturePrice` are admin routes (`admin.py:1045`, `:1081`, `:1121`, `:1189`); the only `checkout.Session.create` calls are for a plan, an upgrade proration and an invoice payment (`website_api/app/routes/subscription.py:464`, `:834`, `:1483`, `website_api/app/routes/billing.py:436`); and every `Invoice` row is created inside the subscription and webhook flows. **The two AI add-ons are not sold to customers today either - an admin grants them, and the `FeaturePrice` row is the catalogue that admin grants against.** So the first revenue of this project needs **a purchase path**: a checkout that takes a `FeaturePrice`, a webhook that grants the feature on payment, and an invoice. That is real work, and it is in Phase 0 - because Phase 2's own proof ("a POS tenant buys the add-on") cannot happen without it.
+**The entitlement is free. The purchase is not - and the earlier draft of this document said both were free.** `FeaturePrice` was built for exactly this and it is per-currency, so MYR and USD are never added together, and the grant side already exists: a `plan_features` row, or a `CustomerFeatureOverride` row written by an admin (`website_api/app/routes/admin.py:1011`). **But nothing in the live website API lets a customer buy a feature add-on.** The only routes that touch a `FeaturePrice` are admin routes (`admin.py:1045`, `:1081`, `:1121`, `:1189`); the only `checkout.Session.create` calls are for a plan, an upgrade proration and an invoice payment (`website_api/app/routes/subscription.py:464`, `:834`, `:1483`, `website_api/app/routes/billing.py:436`); and every `Invoice` row is created inside the subscription and webhook flows. **The two AI add-ons are not sold to customers today either - an admin grants them, and the `FeaturePrice` row is the catalogue that admin grants against.** So the revenue of this project needs **a purchase path**: a checkout that takes a `FeaturePrice`, a webhook that grants the feature on payment, and an invoice. That is real work, and it is in Phase 0 - because Phase 2's own proof ("a POS tenant buys the add-on") cannot happen without it. **The full specification is `purchase-path.mdx`.**
 
 **Shape 2 - the standalone product (later).** New `subscription_plans` rows for the accounting product, distinguished by a new `product` discriminator column (`'pos'` / `'accounting'`) so the two catalogues stay separate under one table. A tenant with no POS subscribes to an accounting plan and never touches a POS plan.
 
@@ -286,11 +288,19 @@ Each phase says what it does **not** do, because the boundary is the design. **T
 
 4. **The standalone checkout cannot be the existing one.** `SubscriptionPlan` has no `product` column (`website_api/app/models/models.py:6`), so the two catalogues cannot be told apart yet - the discriminator is a schema change, not a naming convention. And `create-checkout` hard-codes `'currency': 'usd'` and names the product `"IDEAZES POS"` (`website_api/app/routes/subscription.py:839`, `:841`), **so a standalone accounting plan sold through it would be charged in dollars.** The currency-resolving checkout is the other one (`subscription.py:464`, resolving at `:471` through `resolve_price_safe`, `website_api/app/services/plan_pricing.py:115`). One good fact: `is_published` already exists on the plan (`models.py:25`), so the accounting catalogue publishes and unpublishes on its own without touching the POS one.
 
-**One thing that does NOT need to change: the entitlement read.** The accounting service asks the website API what a customer is entitled to exactly as the POS does - by the platform customer's id, against the admin route that merges the plan's features with the customer's overrides (`website_api/app/routes/admin.py:1216`, reached by the POS at `backend/app/services/plan_features.py:71` over the internal key at `core/config.py:148`). That route is keyed by the platform customer, not by a POS tenant, **so it already works for a customer who has no POS.** The tenant of the books is still derived from the books, never from the caller.
+**One thing that does NOT need to change: the entitlement read's shape.** The accounting service asks the website API what a customer is entitled to exactly as the POS does - by the platform customer's id, against the admin route that merges the plan's features with the customer's overrides (`website_api/app/routes/admin.py:1216`, reached by the POS at `backend/app/services/plan_features.py:71` over the internal key at `core/config.py:148`). That route is keyed by the platform customer, not by a POS tenant, **so it already works for a customer who has no POS.** The tenant of the books is still derived from the books, never from the caller.
+
+**But the read's CONTENT does change, and this is where the earlier draft of this document was wrong.** That route merges a *plan's* features with a *customer's* overrides - it has no notion of a **standalone feature purchase**. A customer who bought the accounting add-on without a POS plan has no plan for the merge to read, so the route as it stands returns nothing for them. So the entitlement read becomes **product-scoped and a union of three sources** (`purchase-path.mdx` Decision 5):
+
+- an active **plan** subscription for the requested product,
+- an active **feature subscription** for the requested product,
+- an enabled `CustomerFeatureOverride`.
+
+**The shape survives because the key is still the platform customer id. The content does not, because "what is this customer entitled to" now has an answer that is not a plan.**
 
 ### Phase 0c - the operations that make it a service
 
-**The deliverable:** the database lifecycle (the schema migration, the nightly verified backup, the restore drill); the readiness and liveness surfaces; the monitoring; the alerting; and the runbooks.
+**The deliverable:** the database lifecycle (the schema migration, the nightly verified backup, the restore drill); the readiness and liveness surfaces; the monitoring; the alerting; and the runbooks. **The full specification is `operations.mdx`.**
 
 **The proof:** the service is restored from a backup into a fresh environment and a tenant's books are read back correctly - **a backup that has never been restored is a hypothesis**, and the restore drill is part of Phase 0, not an afterthought.
 
@@ -313,7 +323,7 @@ Each phase says what it does **not** do, because the boundary is the design. **T
 
 ### Phase 2 - the POS binding
 
-**The centre of the plan, and the first revenue.** Full contract in `pos-integration.mdx`.
+**The centre of the plan, and the wedge revenue.** Full contract in `pos-integration.mdx`.
 
 | Sub-phase | What it delivers |
 |---|---|
@@ -396,6 +406,7 @@ The e-Invoice design's own facts all support the move and none of them block it:
 5. **Does the accountant workspace come earlier than Phase 7?** The accountant is the sticky party, and Phase 7 is late. Does the multi-client workspace belong in Phase 1, when it is the only reason a non-POS tenant would join?
 6. **Who signs the year?** `owner` only, today. Should a tenant be able to grant it to an accountant who is not the owner?
 7. **Do we keep the accounting screens in the POS frontend as well?** A POS tenant may expect accounting inside the POS they know. One web app is cleaner; two is friendlier.
+8. **Do these design documents go into the Mintlify navigation?** `docs.json` has no `system-design` entries at all, so nothing in this folder is published today. **The recommendation is to keep it that way for now** - these are internal proposals, several of them explicitly marked *PROPOSAL, NOT YET BUILT*, and publishing a proposal as customer documentation would promise something that does not exist. The question becomes real when the accounting product has a web app and needs its own published docs - and then the right answer is probably a **separate docs group** with only the customer-facing pages, not this folder wholesale.
 
 ---
 

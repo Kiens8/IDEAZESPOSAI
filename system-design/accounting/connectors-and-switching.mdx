@@ -7,7 +7,7 @@ description: The connectors that write into the ledger - our POS pushing in on t
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists.
 **The direction reversed.** The version this replaces described a connector that pushed **out** of a POS-internal module into the tenant's Xero or Bukku. Under the standalone framing the accounting service **is** the book, and the connectors point **in**: our POS pushes sales in, another vendor's POS may push sales in, a payroll system posts in. The push-out to Xero or Bukku survives as one connector among several, because a tenant whose accountant works in Xero still needs their numbers there.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the engine these connectors write into) - `pos-integration.mdx` (our own POS, in full) - `business-model.mdx` (the commercial case for the binding) - `malaysia-e-invoice.mdx` (the encrypted ERP credential pattern these connectors follow)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the engine these connectors write into) - `pos-integration.mdx` (our own POS, in full) - `business-model.mdx` (the commercial case for the binding) - `purchase-path.mdx` (the purchase path) - `operations.mdx` (the service's operations) - `malaysia-e-invoice.mdx` (the encrypted ERP credential pattern these connectors follow)
 
 ---
 
@@ -21,7 +21,7 @@ The previous version of this document was about pushing our journals into someon
 
 | Connector | Direction | What it carries | Why it matters |
 |---|---|---|---|
-| **Our POS** | **in** | every sale, its discount, its tax, its cost, its outlet | the revenue line, automatically, with zero re-keying - this is the first revenue. **Its own document: `pos-integration.mdx`** |
+| **Our POS** | **in** | every sale, its discount, its tax, its cost, its outlet | the revenue line, automatically, with zero re-keying - this is the wedge revenue. **Its own document: `pos-integration.mdx`** |
 | **A third-party POS** | **in** | the same sales facts, from a POS that is not ours | **the displacement case** - the tenant who has AutoCount's POS and a separate accounting package can keep the POS and move the books |
 | **Payroll** | **in** | salary, EPF, SOCSO, EIS, PCB - as journals | the fragmented stack's third pillar; we accept the postings before we build the module |
 | **A bank feed** | **in** | the statement | reconciliation - later |
@@ -372,7 +372,7 @@ The wizard ends with a **test push** - one journal, one invoice - that the tenan
 
 **The detail is in `pos-integration.mdx`.** In short: the POS prerequisites first (a frozen settlement row, the accounting event types, a refund path), then the snapshot API and the first balanced journal, then the reconciliation and the backfill, then the voids, the refunds and the purchases.
 
-**Does NOT:** touch receivables or a year-end close. **This is the first revenue phase.**
+**Does NOT:** touch receivables or a year-end close. **This is the wedge revenue phase.**
 
 ### Phase 6.1 - the third-party POS and the switch
 
@@ -472,5 +472,7 @@ The payroll posting contract and the payroll accounts, then the bank statement i
 - `ledger-and-money.mdx` - the ledger, the chart of accounts, the audit rule, the fiscal lock
 - `pos-integration.mdx` - the binding to our own POS, in full
 - `business-model.mdx` - the commercial case for the binding
+- `purchase-path.mdx` - the purchase path and the entitlement the connectors' products are sold under
+- `operations.mdx` - the backup, the restore drill, the reconciliation and the runbooks
 - `malaysia-e-invoice.mdx` - the encrypted ERP credential pattern
 - `api-authentication-strategy.mdx` - the auth rails

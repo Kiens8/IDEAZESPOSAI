@@ -7,7 +7,7 @@ description: The accounting engine behind the service - the chart of accounts, j
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every table, rule and screen named here is a proposal until a phase says it is built.
 **The owner of this engine changed.** This document was first written for a module inside the POS backend. It is now the ledger of a **standalone accounting service** (`accounting-service.mdx`). The accounting rules did not change; the **tenant of the books** did - from "the POS tenant" to "the accounting tenant, which is a legal entity". That one change is applied consistently below and flagged where it matters.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (who else writes into this ledger) - `business-model.mdx` (who pays for it) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (who else writes into this ledger) - `business-model.mdx` (who pays for it) - `purchase-path.mdx` (how the tenant pays for it) - `operations.mdx` (how the ledger is protected and restored) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states)
 
 ---
 
@@ -415,6 +415,8 @@ So the accounting service is gated by a feature row - **`accounting`** - plus **
 - `connectors-and-switching.mdx` - the other connectors, and the switch path
 - `pos-integration.mdx` - the binding to our own POS, in full
 - `business-model.mdx` - the commercial case
+- `purchase-path.mdx` - the purchase path and the entitlement
+- `operations.mdx` - the backup, the restore drill, the runbooks that protect this ledger
 - `malaysia-e-invoice.mdx` - the tax invoice rail, and the market's shape
 - `multi-currency-money.mdx` - the rule that amounts are never summed across currencies
 - `api-authentication-strategy.mdx` - the auth rails
