@@ -1,0 +1,380 @@
+---
+title: The POS integration - how a sale reaches the books, and what the POS must change first
+description: The binding between our SaaS POS and the standalone accounting service - the event contract, the financial snapshot API, the idempotency and replay rules, the journal mapping, and the six findings from the live code that change the design
+---
+
+**Document Version:** 1.0 (26 Nov 2026 - written against the live POS at commit `d83d6bf`)
+**Created:** 26 Nov 2026
+**Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists. The POS side of this document describes changes that have not been made.
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the ledger these journals are written into) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (the commercial case) - `multi-currency-money.mdx` (the rule that amounts are never summed across currencies)
+
+---
+
+## The recommendation, in one paragraph
+
+**The event is a signal. The money comes from a snapshot. The journal is decided on the accounting side.** Our POS already has everything needed to signal that a sale happened - a transactional outbox with retry, backoff, dead letters and a stable event id (`domain_events` / `event_deliveries`, `services/domain_events.py:704`) - so the POS does not need a new queue. It needs three things the live code does not have yet: **its own accounting event types**, because the existing ones are gated behind a feature the accounting tenant may not buy; **a frozen settlement record**, because the figures on a live order row are mutable and are erased by a cancellation; and **a snapshot API** that returns that frozen record to the accounting service, authenticated and scoped to one tenant. The accounting service then turns each snapshot into one balanced journal, using rules the POS alone can supply: the discount's provenance, the cost frozen at the moment of sale, the outlet, and the tax breakdown.
+
+**The one rule that governs the whole design: the event carries no money and no personal data.** The live emitters already hold that rule - `emit_order_paid` puts `order_id`, `order_number` and `payment_method` in the payload and nothing else, and its own docstring says *"the amount is NOT here"* (`services/event_emitters.py:75`). The outbox's own model comment says *"Ids and small facts only. No money, no personal data"* (`models/domain_event.py:107`). **This design keeps that rule rather than breaking it.**
+
+---
+
+## The shape of it
+
+Three hops, each with one job:
+
+```
+  the POS                    the accounting service
+  ───────                    ──────────────────────
+  1. the sale is written
+     └─ frozen settlement ──►  4. one journal is posted
+        row (new)                    (balanced, idempotent)
+
+  2. an accounting event  ──►  3. the snapshot is fetched
+     is emitted (signal)          (the authoritative figures)
+```
+
+| Hop | What it is | What it carries | What it must not carry |
+|---|---|---|---|
+| **1. the frozen settlement** | a new immutable row on the POS, written in the same transaction as the payment | the figures as they were at settlement: subtotal, discount and its source, the tax breakdown, the total, the tender, the settlement time | anything that changes afterwards - this row is never updated |
+| **2. the accounting event** | a new event type on the existing outbox | ids and small facts: the order id, the outlet, the event id, the event type | **no money, no personal data** |
+| **3. the snapshot fetch** | an authenticated POS endpoint | the frozen settlement, the order's lines, the costs, the outlet, the currency | another tenant's data |
+| **4. the journal** | an accounting-side decision | debits and credits that balance | an unbalanced pair, ever |
+
+**Why the event cannot carry the money.** Not only because the house rule says so, but because the live emitters are the reason the rule exists: the same outbox feeds the AI agent, the staff push, the Telegram bridge and tenant webhooks (`services/event_channels.py:386`). A payload with money in it would leak a tenant's takings into an agent's prompt and into a tenant-run webhook. **The signal is deliberately poor, and the accounting service goes and asks for the figures properly.**
+
+**Why the fetch must read a frozen row and not the live order.** Because the live order is mutable and, in one case, destructive. `cancel_order` sets `subtotal`, `tax`, `discount` and `total` to `0.0` (`routes/order.py:1592-1595`), and `cancel_order_item` does the same when the last live item is removed (`routes/order.py:1694-1696`). A snapshot fetched after a cancellation returns zeros. A frozen row written at settlement does not.
+
+---
+
+## What the live POS gives us
+
+Read out of the live code on 26 Nov 2026 at commit `d83d6bf` of `Kiens8/POS_AI`.
+
+| What this integration needs | What the live POS has | Verdict |
+|---|---|---|
+| A transactional outbox | `domain_events` (`models/domain_event.py:89`), `event_subscriptions` (`:159`), `event_deliveries` (`:239`) | **reuse** |
+| At-least-once with a stable id | `event_id` is `unique` and survives every retry (`models/domain_event.py:95`) | **reuse** |
+| Atomic claiming | compare-and-set on `state` (`services/domain_events.py:704`) | **reuse** |
+| Retry with backoff | `_backoff` (`services/domain_events.py:698`) | **reuse** |
+| Visible dead letters | `dead_letters` (`:870`), `requeue_dead_letter` (`:899`) | **reuse** |
+| One delivery row per pair | `UniqueConstraint(event_id, subscription_id)` (`models/domain_event.py:270`) | **reuse** |
+| Machine-to-machine signing | the webhook channel signs body + timestamp + tenant with the subscription's secret (`services/event_channels.py:275`) | **reuse** |
+| A signal that a sale settled | `order.paid`, emitted on every settlement path (`services/event_emitters.py:75`) | **reuse, under a new name** |
+| The money of the sale | `Order.subtotal` / `discount` / `tax` / `total` - `Float` (`models/models.py:284-295`) | **copy, then freeze** |
+| The discount's provenance | `Order.discount_source` - `voucher` / `promotion` / `manual` / `none` (`models/models.py:292`) | **use** |
+| The cost frozen at the sale | `OrderItem.frozen_cost` - `NULL` means unknown, never zero (`models/models.py:338`) | **use** |
+| The tax breakdown | **computed, never persisted** - `compute_totals` returns it (`services/order_pricing.py:69`), the order keeps one float (`models/models.py:294`) | **fix** |
+| The settlement time | **does not exist on the order** - `paid_at` lives on the legacy, unused `Payment` model (`models/models.py:383`) | **fix** |
+| The tender breakdown | **only partly exists** - `OrderPayment` rows are written for a split bill (`routes/order.py:1368`) and for cash on delivery (`routes/delivery_tracking.py:501`), but **not** by the ordinary counter payment | **fix** |
+| A purchase signal | **none** - `receive_purchase_order` writes the stock movement and emits nothing (`routes/purchase_orders.py:238`) | **add** |
+| A refund signal | **none** - `refund.issued` is in the catalogue (`services/domain_events.py:138`) and no emitter calls it | **add** |
+| A tenant rule that cannot be faked | `core/tenant.py` - the `customer_id` parameter is a claim, never an authority (`core/tenant.py:28`, `:56`, `:77`) | **inherit** |
+| The entitlement spine | the website API's `Feature` / `FeaturePrice` rows (`website_api/app/models/models.py:228`, `:258`) | **extend** |
+
+---
+
+## Six findings that change the design
+
+These came out of the live code and each one moves something. They are listed here because **five of them contradict what the earlier draft of this proposal assumed**, and a design that ignores them will post the wrong journals.
+
+### Finding 1 - the payload carries no money, and it is deliberate
+
+`emit_order_paid` writes exactly three fields:
+
+```python
+payload={
+    "order_id": order.id,
+    "order_number": order.order_number,
+    "payment_method": order.payment_method,
+}
+```
+
+and its docstring says *"the payment method is a small fact and it is useful to an agent closing a shift count; **the amount is NOT here**"* (`services/event_emitters.py:75-91`). `emit_order_placed` is the same shape (`services/event_emitters.py:54`). `emit_stock_low` even explains why it withholds a number - *"the agent reads the level through a tool"* (`services/event_emitters.py:94`).
+
+**The earlier draft of this proposal said the opposite** - that the payload should carry the amounts *"as they were at the moment of the fact"*. That was a reasonable instinct (a fetched row may have moved on) but it breaks the rule the whole outbox is built on, and it leaks a tenant's takings into the agent channel. **The design below gets the same safety a different way: the POS freezes the settlement at the moment of the fact, and the accounting service reads the frozen copy.** The number is just as true, and it never leaves the POS in a push.
+
+### Finding 2 - the existing events are gated behind a feature the accounting tenant may not buy
+
+Every event the dispatcher delivers is gated by `plan_allows`, which requires **`BASE_FEATURE` - the literal string `"AI Agent"`** - plus the event's own module (`services/domain_events.py:146`, `:349`). The gate is evaluated **once per event**, before the subscriptions are even matched (`services/domain_events.py:731`). A tenant whose plan does not hold the AI Agent feature has the event **skipped for every subscriber**, with the delivery row marked `skipped` and the reason recorded (`services/domain_events.py:745-760`).
+
+**So the accounting integration cannot ride on `order.paid`.** If it did, an accounting-only tenant - one who bought the books and not the agent - would have every sale skipped, and the books would silently stay empty. That is the worst possible failure for a ledger.
+
+**The fix is small and it is in the POS's favour: the accounting events are their own event types, and the catalogue decides what they need.**
+
+| Change | Where | What it does |
+|---|---|---|
+| a per-type base feature | `EVENT_CATALOGUE` (`services/domain_events.py:97`) | each catalogue entry may name the feature it needs; today every entry implicitly needs `"AI Agent"` |
+| accounting event types | the same catalogue | `accounting.order_settled`, `accounting.order_voided`, `accounting.refund_issued`, `accounting.purchase_received`, `accounting.stock_adjusted` |
+| the gate reads the entry | `plan_allows` (`services/domain_events.py:349`) | the needed set becomes `[entry.base_feature, entry.module]` instead of `[BASE_FEATURE, entry.module]` |
+
+**The agent's gate does not move.** An agent event still needs `"AI Agent"`, exactly as today. Only the new accounting types carry their own requirement - the accounting add-on feature, whose name in the website API is a proposal (the add-on rows are `ai_agent` and `ai_agent_actions` today, `website_api/app/models/models.py:228`).
+
+**And the events are emitted for every tenant, not only for the ones who bought accounting.** The gate is a *delivery* decision; the emit is a *record* decision, and a sale that happened must never be invisible. The cost is one small row per settlement. The alternative - checking the feature list at emit time - risks a sale being dropped because the feature cache was stale at the exact moment of the sale, and **silence must never mean healthy** (`models/domain_event.py:239`).
+
+### Finding 3 - the figures on a live order row are mutable, and a cancellation erases them
+
+Three separate ways an order's money can move after it was written:
+
+- **A cancellation zeroes it.** `cancel_order` writes `subtotal = tax = discount = total = 0.0` (`routes/order.py:1592-1595`). `cancel_order_item` does the same when the last live item is removed (`routes/order.py:1694-1696`).
+- **An item cancellation reprices.** `cancel_order_item` calls `reprice_order`, which recomputes the discount from its source - a voucher is recomputed, a promotion is re-evaluated, a manual amount is kept (`services/order_pricing.py:270`).
+- **The tax settings can change.** The tax comes from the outlet's settings at the moment of pricing (`services/tax_service.py:27`), and nothing freezes the rate on the order.
+
+**The consequence: the accounting service cannot re-read a live order row and trust it.** It would get a number that moved.
+
+**The fix: the frozen settlement row.** When an order is marked paid, the POS writes one immutable row holding the figures as they were. The order row keeps its own behaviour - the cancellation still zeroes it, because that is what the till needs - and the frozen row is what the books are written from.
+
+The frozen row is written **in the same transaction as the payment**, so it cannot exist without the payment and cannot be missing because of a crash. This is the same rule the outbox already follows: the event and the business write commit together or neither (`services/domain_events.py:269`).
+
+### Finding 4 - a settled sale cannot be voided or refunded today, because the POS has no refund path
+
+`cancel_order` refuses to cancel a paid order and says *"Please process a refund instead"* (`routes/order.py:1575`). `cancel_order_item` refuses too (*"Cannot modify a paid order"*, `routes/order.py:1656`). **And there is no refund path to go to.** `payment_status = "refunded"` appears in the model's comment (`models/models.py:260`) and in one report's filter (`routes/reports.py:451`), and **nowhere else** - no route writes it, no service writes it. The catalogue declares `refund.issued` (`services/domain_events.py:138`) and **no emitter calls it**.
+
+**So the floor can settle a sale that the books can never take back.** For an accounting product that is not a missing feature, it is a correctness hole: a tenant refunds a customer at the counter, the books still show the sale, and the tenant's revenue is wrong with no way to correct it in the product.
+
+**This is a POS prerequisite, and it comes before the accounting integration, not after it.** A refund write path (a refund record, a `refund.issued` emitter, and the payment row it belongs to) is listed in the prerequisites below. **Until it exists, the accounting service has no reversal source for a settled sale, and we should not pretend otherwise.**
+
+### Finding 5 - the ordinary counter payment writes no payment row
+
+`OrderPayment` rows are written in exactly two places: a split bill (`routes/order.py:1368`) and cash on delivery (`routes/delivery_tracking.py:501`). The ordinary counter payment - `PATCH /{order_id}/payment` -> `OrderService.update_payment_status` (`routes/order.py:1255`, `services/order_service.py:1235`) - sets `order.payment_status` and `order.payment_method` and **writes no payment row at all**.
+
+The legacy `Payment` model has a `paid_at` column (`models/models.py:383`), but grepping the live code finds no construction of it anywhere: it is dead.
+
+**Two consequences.** First, the settlement time of an ordinary sale exists nowhere - `order.updated_at` changes on every later write and cannot stand in for it. Second, a snapshot that reads only `order_payments` would find nothing for the commonest sale of the day.
+
+**The fix is in the same place as the frozen settlement row: write the payment row on every settlement path.** Then the tender breakdown, the settlement time and the frozen figures all come from one place, and the snapshot has a single source to read.
+
+### Finding 6 - the purchase side has no event source, though its money is already clean
+
+`receive_purchase_order` writes a `stock_movements` row with `movement_type='purchase'` (`routes/purchase_orders.py:265`) and updates the order, and emits nothing. There is no emitter in that file.
+
+**The good news is in the same place: the purchase money is already integer minor units.** `PurchaseOrder.total_amount` and `PurchaseOrderItem.unit_price` are cents, and the supplier price list is `DECIMAL(10,4)` (`models/supplier.py:45`, `:58`, `:83`). So the purchase side needs no conversion at the boundary - the sales side is the float side, and the boundary rule in `ledger-and-money.mdx` §3.4 applies there only.
+
+**The fix: one emitter**, `accounting.purchase_received`, and a `stock_movements`-driven `accounting.stock_adjusted` for waste and adjustments.
+
+---
+
+## The three contracts
+
+### 5.1 The POS to accounting event contract
+
+**Direction:** the POS pushes, the accounting service receives. This is the existing outbox with a new event type and a new subscriber.
+
+**The event types.**
+
+| Event type | Fires when | Payload | Module it needs |
+|---|---|---|---|
+| `accounting.order_settled` | an order transitions to paid, on any of the four settlement paths | `order_id`, `order_number`, `outlet_id`, `payment_method`, `settlement_id` | the accounting add-on |
+| `accounting.order_voided` | an order is cancelled | `order_id`, `order_number`, `outlet_id`, `reason` | the accounting add-on |
+| `accounting.refund_issued` | a refund is recorded | `order_id`, `refund_id`, `outlet_id` | the accounting add-on |
+| `accounting.purchase_received` | a purchase order is received | `purchase_order_id`, `outlet_id`, `supplier_id` | the accounting add-on |
+| `accounting.stock_adjusted` | a waste or an adjustment is written | `movement_id`, `outlet_id`, `movement_type` | the accounting add-on |
+
+**Every payload is ids and small facts.** No amount, no tax figure, no customer name, no address, no phone. That is the house rule and the outbox's own contract (`models/domain_event.py:107`).
+
+**The four settlement paths all emit.** The counter payment (`services/order_service.py:1235`), a split bill settling (`routes/order.py:1400`), cash on delivery (`routes/delivery_tracking.py:501`), and the website API's internal payment (`routes/internal.py:206`) all set `payment_status = "paid"` and all already emit `order.paid`. The accounting event is emitted beside it, in the same transaction.
+
+**Delivery is at-least-once, signed, and per-tenant.**
+
+- **Signed.** The accounting service's ingest endpoint is authenticated with the source's secret, signed exactly as the webhook channel signs - the signature covers the body, the timestamp and the tenant (`services/event_channels.py:255-283`). The headers are `SIGNATURE_HEADER`, `TIMESTAMP_HEADER`, `EVENT_ID_HEADER`, `EVENT_TYPE_HEADER`, `TENANT_HEADER`.
+- **At-least-once.** The event may be delivered twice. The accounting service dedupes on `event_id`, which is unique and survives retries (`models/domain_event.py:95`).
+- **Per-tenant.** The subscriber row carries the tenant and the outbox never fans out across tenants (`services/domain_events.py:652-671`).
+- **Never blocking the floor.** A delivery failure is retried with backoff and then dead-lettered. **The order is never blocked by the ledger, and the ledger never silently misses an order** - that is the property the outbox already has.
+
+**Dead letters are visible on both sides.** The POS keeps its own (`services/domain_events.py:870`) and the accounting service keeps the mirror: the event arrived, was rejected, and why. A tenant's accountant must be able to answer *"is my month complete?"* without asking support.
+
+### 5.2 The financial snapshot API
+
+**Direction:** the accounting service pulls. This is the API that replaces the money in the payload.
+
+**Authentication: one key, one tenant.** The POS holds an `accounting_sources` row per binding - the POS tenant, the accounting tenant it writes into, the key hash, its status. The accounting service holds the key, encrypted at rest. The key names exactly one POS tenant, so **the tenant comes from the credential and never from the request** - the rule `core/tenant.py` already states, where a credential that names no tenant is refused with `KEY_CANNOT_PICK_TENANT` (`core/tenant.py:41`).
+
+**The endpoints.**
+
+| Endpoint | What it returns |
+|---|---|
+| `GET /internal/accounting/orders/{order_id}/settlement` | the frozen settlement, the order's lines with their frozen costs, the outlet, the currency, the business date |
+| `GET /internal/accounting/orders?outlet_id=&from=&to=&cursor=` | a page of frozen settlements in a window - the backfill and the reconciliation feed |
+| `GET /internal/accounting/reconciliation/{date}` | the POS's own totals for a day: gross, discount, tax, net, tender split, per outlet - what the floor believes it took |
+
+**Every response is scoped twice**: the key names the tenant, and the order's own `customer_id` and outlet are checked against it before anything is returned. A key that names tenant A cannot read tenant B's order by guessing its id.
+
+**What the snapshot returns, and what it refuses to return.**
+
+| Returned | Refused, and why |
+|---|---|
+| the frozen settlement: subtotal, discount, discount source, tax breakdown, total, tender, settlement time | the guest's name, phone or address - the books do not need it, and the customer is not our data to move |
+| the order's lines with `frozen_cost` per line | the guest's identity attached to a line |
+| the outlet id and the order's currency | any other tenant's order, even by id |
+| the tender split, when the order has payment rows | a float re-read of a live order row - the frozen row is the truth |
+
+### 5.3 The backfill and the reconciliation contract
+
+**Two questions, two endpoints.** *"What did I miss?"* is answered by the windowed list; *"is the month right?"* is answered by the reconciliation endpoint.
+
+**Backfill** is a page of frozen settlements for a window. It is how a tenant connects accounting and sees their own month immediately, and how a dead letter is recovered without waiting for a retry. The window is bounded and the page is cursor-based - a month of a busy restaurant is thousands of rows, not one response.
+
+**Reconciliation** compares two numbers that already exist: the POS's own daily totals and the accounting service's posted journals for the same day and outlet. **They must agree to the cent.** When they do not, the difference is shown, by outlet and by line, on a screen the tenant can act on - the same screen that shows the dead letters.
+
+**Reconciliation is the safety net for everything.** An event lost, a delivery dead-lettered, a fetch that failed - the reconciliation run notices the missing order and pulls it. That is why the reconciliation endpoint is not a nice-to-have: **it is what makes the whole integration safe to ship.**
+
+---
+
+## The rules the accounting side obeys
+
+| Rule | What it means | Why |
+|---|---|---|
+| **Idempotency, twice over** | the delivery is deduped on `event_id`; the posting is deduped on `(source, order_id, posting_kind)` | the first stops the same event being processed twice; the second stops two different events for the same sale being posted twice |
+| **The snapshot is the unit of truth** | the journal is built from the frozen settlement, not from the event | the event is a pointer; the snapshot is the fact |
+| **Order does not matter** | the accounting service never assumes `order.placed` arrived before `order.paid` | the outbox is at-least-once and unordered; the snapshot is self-contained |
+| **A duplicate is a duplicate, not an error** | it is counted and skipped, never retried | a retried delivery after a timeout must never double a tenant's revenue in their own books |
+| **A reversal is a new fact** | a refund or a void is keyed separately and points at the journal it reverses through `reverses_journal_id` | a reversal is not a repeat of the sale |
+| **Nothing is silently dropped** | an unmappable tender, a missing cost, an unreadable plan - each is a flagged item on a screen | the failure mode that ends a finance integration is a quiet one |
+| **Dead letters are requeueable** | the POS's `requeue_dead_letter` (`services/domain_events.py:899`) re-delivers the same `event_id`, and the service dedupes it | recovery must not require a code change |
+
+---
+
+## How the facts become journals
+
+**One settled sale, one journal.** The journal is balanced by construction: the debits equal the credits, and if they do not, it is refused.
+
+| The POS fact | Where it lives | The journal line |
+|---|---|---|
+| the money that was taken | the frozen settlement's total | **Debit** the settlement account the tender maps to - cash, card, DuitNow, Touch 'n Go, e-wallet |
+| the revenue | subtotal less discount | **Credit** revenue, net of tax |
+| the tax | the frozen settlement's tax breakdown | **Credit** the output tax account for each code - SST, VAT, service tax |
+| the discount | `discount_source` - `voucher`, `promotion`, `manual`, `none` | folded into the net revenue by default, **or** credited to a discount account the tenant maps - the tenant's choice, and the POS is what makes the choice possible |
+| the cost of the sale | `OrderItem.frozen_cost` per line | **Debit** cost of goods sold, **Credit** inventory |
+| the outlet | the order's `outlet_id` | the branch dimension on every line |
+| the currency | the order's `currency` (`models/models.py:277`) | never summed with another currency (`multi-currency-money.mdx`) |
+
+**The three things only our POS can say.**
+
+- **The discount's provenance.** A voucher, a promotion and a manager's own hand are three different things to an accountant (`models/models.py:292`). A generic connector sends "a discount of 4.50" and the accountant cannot tell a marketing spend from a cashier's error.
+- **The cost frozen at the sale.** `frozen_cost` is the recipe's cost on the day of the sale, not today's (`models/models.py:338`). The margin of an order sold in October is not rewritten by October's ingredient price.
+- **The tax breakdown.** The tax service returns SST, VAT and service tax separately (`services/tax_service.py:69-78`), and the tax may be inclusive (`OutletSettings.tax_inclusive`, `models/models.py:435`). **None of it is on the order today** - which is why the frozen settlement has to carry it.
+
+**The decisions the tenant makes, and the defaults we propose.**
+
+| Decision | The options | The proposed default |
+|---|---|---|
+| when revenue is recognised | the business date, or the settlement date | **the business date** for F&B - the meal is the sale; the settlement date is when the cash landed |
+| how a discount is treated | net of revenue, or a discount account | **net of revenue**, with the source recorded so it can be split later |
+| tax inclusive or exclusive | read from the order's frozen settlement | **taken from the snapshot**, never recomputed from the outlet's current setting |
+| an unknown cost | post revenue only and flag, or refuse the sale | **post revenue and flag it** - `frozen_cost IS NULL` means unknown, never zero, and COGS is incomplete, not wrong |
+| an unmappable tender | hold it, or guess an account | **hold it in suspense and flag it** - never guess |
+
+**The credit side of the floor, and what it posts.**
+
+| The fact | The journal |
+|---|---|
+| a received purchase (`routes/purchase_orders.py:238`) | **Debit** inventory, **Credit** accounts payable or cash - and this money is already in cents |
+| a waste or an adjustment | **Debit** waste or adjustment expense, **Credit** inventory |
+| a void of an **unpaid** order | **no journal** - nothing was recognised. But the stock usage is not reversed, which is a leak, and it is in the prerequisites |
+| a refund of a **paid** order | **the reversing entry**, linked to the original journal - and this path does not exist in the POS today (Finding 4) |
+
+---
+
+## Tenant isolation
+
+The rules that make this safe are inherited from the POS and restated here, because a ledger is a more attractive target than an order.
+
+- **The tenant comes from the credential, never from the request.** The accounting source's key names one POS tenant. A request body that names a different tenant is ignored, not obeyed - the `customer_id` parameter is a *claim*, never an authority (`core/tenant.py:28`, `:56`, `:77`).
+- **Every fetched order is checked against the key's tenant** before a single figure is returned.
+- **The POS tenant and the accounting tenant are linked by a row, not inferred.** The link is explicit and one-to-many: one POS tenant may post into one accounting tenant, and a group running three companies' books keeps three links. The link lives in `acc_tenant_sources` (`accounting-service.mdx` §"The data model").
+- **The books are per legal entity.** One accounting tenant is one registered entity. A group with three companies has three sets of books, and the tax settings, the fiscal year, the chart-of-accounts mapping and the bank accounts are per tenant and per entity - never shared.
+- **The accounting service does not write to the POS's customer table.** A tenant who buys the books without a POS has an accounting tenant and no POS customer. The POS's `Customer` model stays the POS's.
+- **Roles and entitlements are checked on every accounting route and screen.** `owner`, `accountant`, and a read-only `staff` - and the floor has no accounting role at all. The plan feature is checked on the accounting routes the way the POS checks it (`middleware/auth.py:839`).
+- **Provider credentials are encrypted at rest and never reach the frontend.** The source key lives encrypted on the accounting side, hashed on the POS side. The Xero and Bukku tokens follow the pattern the e-Invoice module already uses (`malaysia-e-invoice.mdx`).
+
+---
+
+## The prerequisites in the POS
+
+**These are changes to the POS, and they come first.** The accounting service cannot post a correct journal without them. Listed in the order they block work.
+
+| # | The change | Where | Why it blocks |
+|---|---|---|---|
+| **P1** | a frozen settlement row, written in the payment's transaction | new table beside `Order` | the live order row is mutable and a cancellation erases it (Finding 3) |
+| **P2** | the tax breakdown on the frozen row - SST, VAT, service tax, the rate, whether it is inclusive | new table | it is computed and thrown away today (`services/order_pricing.py:69`) |
+| **P3** | a settlement time on the frozen row | new table | an ordinary sale has no settlement timestamp anywhere today (Finding 5) |
+| **P4** | a payment row on every settlement path, not only split and cash-on-delivery | `services/order_service.py:1235`, `routes/order.py:1368`, `routes/delivery_tracking.py:501`, `routes/internal.py:206` | the tender breakdown of the commonest sale is otherwise missing (Finding 5) |
+| **P5** | the accounting event types, and a per-type base feature in the catalogue | `services/domain_events.py:97`, `:146`, `:349` | the existing events are gated behind `"AI Agent"` (Finding 2) |
+| **P6** | the emitters, beside the existing ones | `services/event_emitters.py` | the signal has to exist before the service can consume it |
+| **P7** | a refund path - a refund record, a payment row, the emitter | new | a settled sale cannot be taken back today (Finding 4) |
+| **P8** | the snapshot API and the reconciliation endpoint | new router, alongside `routes/internal.py` | this is where the money comes from |
+| **P9** | a reversing stock movement when an order is voided | `routes/order.py:1540` | the stock usage at `routes/order.py:236` is never reversed, so a voided order leaves the stock short |
+| **P10** | a purchase emitter | `routes/purchase_orders.py:238` | the purchase side is silent today (Finding 6) |
+
+**P1 through P4 are one table and one writer.** They are worth doing together, because they are the same fact written once: *what was sold, for how much, taxed how, paid how, and when*.
+
+---
+
+## The phases
+
+The phases below are the POS-integration phases. **The service's own phases are in `accounting-service.mdx` §"The phases", and Phase 2 there is this document.**
+
+| Phase | What it delivers | What it does **not** do |
+|---|---|---|
+| **2a - the POS prerequisites** | P1 through P7 and P10: the frozen settlement, the event types, the emitters, the refund path | touch the ledger; the books stay empty |
+| **2b - the API and the first journal** | P8: the snapshot API, the reconciliation endpoint, the accounting service's ingestion, and **one settled sale producing one balanced journal** | touch purchases, receivables, or a year-end close |
+| **2c - the reconciliation and the backfill** | the windowed backfill, the daily reconciliation, the dead-letter screen on both sides, and the tenant-visible difference | change anything about how the journal is built |
+| **2d - the voids, the refunds and the purchases** | the reversal path against a real refund, the purchase and stock journals | touch receivables |
+
+**2b is the first revenue phase.** A POS tenant buys the accounting add-on and sees their own month's books appear without anyone typing anything.
+
+**Phase 2 does not change how the POS sells.** It writes one extra row per settlement, emits one extra event, and adds an internal API. **The floor never waits for the books.**
+
+---
+
+## What this design does NOT claim
+
+- **It does not claim the event carries the money.** It deliberately does not, and the design gets its safety from a frozen row instead (`Finding 1`).
+- **It does not claim the POS can void a settled sale.** It cannot today, and the refund path is a prerequisite, not an assumption (`Finding 4`).
+- **It does not claim the tax breakdown is available.** It is not persisted, and P2 is what makes it available (`Finding 2`, P2).
+- **It does not claim the connector is two-way.** The books are the truth once written; a journal edited elsewhere does not come back.
+- **It does not claim a third-party POS gets this depth.** A POS that is not ours cannot give a frozen cost or a discount source; its connector degrades honestly (`connectors-and-switching.mdx` §3.1).
+- **It does not claim the integration is complete without reconciliation.** The reconciliation endpoint is what makes it safe, not a nicety.
+
+---
+
+## The open questions
+
+1. **Do the accounting events ride on the existing outbox or on a queue of their own?** The proposal is the existing outbox, because the retry, the dead letters and the claiming are already proven - and the cost is one extra row per settlement for tenants who will never buy accounting. The alternative is a dedicated table with its own worker, and it duplicates machinery we have.
+2. **Should the frozen settlement be a new table or a set of columns on the order?** The proposal is a new table, because a cancellation zeroes the order's columns and we need a row that survives that.
+3. **Is the settlement date or the business date the revenue date?** The proposal is the business date for F&B. A tenant whose accounting basis is cash will want the settlement date - and that is a setting, not a fork in the engine.
+4. **Does a split bill become one journal or several?** The proposal is one journal per sale, with the tender split on separate debit lines - because the sale is one sale even when it was paid in three pieces.
+5. **Do we void the order row's figures when a refund is issued?** The proposal is no - the frozen settlement is immutable, and the refund is a separate reversing entry. A tenant's *floor* view must still show what was sold.
+6. **Does the reconciliation run daily, or on demand?** The proposal is daily, and on demand from the screen - because a difference nobody looks at is the same as a difference nobody sees.
+
+---
+
+## The sources
+
+**The code (read on 26 Nov 2026, at commit `d83d6bf` of `Kiens8/POS_AI`):**
+
+- `backend/app/models/models.py` - `Order` (`:219`), `payment_mode` (`:272`), `currency` (`:277`), `subtotal` (`:284`), `discount_source` (`:292`), `tax` (`:294`), `total` (`:295`), `OrderItem` (`:316`), `frozen_cost` (`:338`), `is_cancelled`, `Payment` - the legacy model with `paid_at` (`:374`, `:383`), `OutletSettings` (`:393`), `tax_enabled` (`:427`), `tax_inclusive` (`:435`), `OrderPayment` (`:578`)
+- `backend/app/models/domain_event.py` - `domain_events` (`:89`), `event_id` (`:95`), the payload rule (`:107`), `event_subscriptions` (`:159`), `event_deliveries` (`:239`), the uniqueness constraint (`:270`)
+- `backend/app/services/domain_events.py` - `EVENT_CATALOGUE` (`:97`), `refund.issued` (`:138`), `BASE_FEATURE` (`:146`), `CHANNELS` (`:154`), `emit_event` (`:269`), `tenant_features` (`:325`), `plan_allows` (`:349`), `_matching_subscriptions` (`:652`), `_delivery_row` (`:674`), `_backoff` (`:698`), `dispatch_once` (`:704`), the gate call (`:731`), the skip path (`:745`), `dead_letters` (`:870`), `requeue_dead_letter` (`:899`)
+- `backend/app/services/event_emitters.py` - `emit_order_placed` (`:54`), `emit_order_paid` (`:75`), `emit_stock_low` (`:94`)
+- `backend/app/services/event_channels.py` - the webhook signing (`:255`, `:275`), the channel dispatch (`:386`)
+- `backend/app/services/order_service.py` - the frozen cost at placement (`:138`, `:159`, `:635`, `:919`), `update_payment_status` (`:1235`)
+- `backend/app/services/order_pricing.py` - `compute_totals` (`:46`), the tax breakdown (`:69`), `reprice_order` (`:270`)
+- `backend/app/services/tax_service.py` - `calculate_tax` (`:27`), the breakdown (`:69-78`)
+- `backend/app/routes/order.py` - the usage stock movement (`:236`), the counter payment route (`:1255`), the split payment (`:1368`), the settled emit (`:1400`), `cancel_order` (`:1540`), the paid guard (`:1575`), the zeroing (`:1592`), `cancel_order_item` (`:1622`), the paid guard (`:1656`), the reprice (`:1681`), the void zeroing (`:1694`)
+- `backend/app/routes/delivery_tracking.py` - the cash-on-delivery payment row (`:501`)
+- `backend/app/routes/internal.py` - `require_internal_key` (`:44`), the tenant check (`:170`), the payment (`:206`)
+- `backend/app/routes/purchase_orders.py` - `receive_purchase_order` (`:238`), the purchase movement (`:265`)
+- `backend/app/models/inventory.py` - `stock_movements` (`:76`), the movement types
+- `backend/app/models/supplier.py` - the price list `DECIMAL(10,4)` (`:45`), `PurchaseOrder` (`:58`), `PurchaseOrderItem` (`:83`)
+- `backend/app/core/tenant.py` - `TENANT_CLAIM_PARAM` (`:28`), `KEY_CANNOT_PICK_TENANT` (`:41`), `get_tenant_claim` (`:56`), `require_tenant_claim` (`:77`), `require_outlet_tenant` (`:188`)
+- `backend/app/middleware/auth.py` - `ROLE_PERMISSIONS` (`:45`), `require_plan_feature` (`:839`)
+- `website_api/app/models/models.py` - `Feature` (`:228`), `PlanFeature` (`:245`), `FeaturePrice` (`:258`), `CustomerFeatureOverride` (`:299`)
+
+**The sibling designs in this repository:**
+
+- `accounting-service.mdx` - the service, the tenant model, the phases
+- `ledger-and-money.mdx` - the ledger, the chart of accounts, the period lock, the money rules
+- `connectors-and-switching.mdx` - the other connectors and the switch
+- `business-model.mdx` - the commercial case
+- `multi-currency-money.mdx` - the rule that amounts are never summed across currencies
+- `malaysia-e-invoice.mdx` - the encrypted credential pattern

@@ -6,7 +6,7 @@ description: The commercial case for the standalone accounting service - the pac
 **Document Version:** 1.0 (rewritten 26 Nov 2026)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every price, every number and every phase gate here is a proposal.
-**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `connectors-and-switching.mdx` (the binding and the migration) - `business-model.mdx` (this one)
+**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (this one)
 
 ---
 
@@ -119,7 +119,7 @@ New `subscription_plans` rows for the accounting product, distinguished by a new
 | Step | What moves | Why the tenant accepts it |
 |---|---|---|
 | **1. The books** | their accounting moves to us, their POS stays | they keep the floor exactly as it is; nothing operational changes; the re-keying stops |
-| **2. The POS** | their POS moves to us, their books stay here | the books are already here and already correct - the POS is now a configuration change, not a migration |
+| **2. The POS** | their POS moves to us, their books stay here | the books are already here and already correct - the POS is now a configuration change, not a switch |
 | **3. Payroll** | their payroll moves to us | the posting contract is already there |
 
 **Step 1 is the wedge** and it is the reason to build the standalone architecture *first*, even though the first revenue comes from the POS add-on. The add-on sells to tenants we have; the standalone architecture is what makes the tenants we do not have reachable at all.
@@ -158,7 +158,7 @@ Unlike the AI features, a double-entry ledger is **deterministic**. Posting rule
 | **Support** | human hours | **the real cost, and the one that scales badly** - see §4.3 |
 | **Encryption and key management** | the source credentials | small, but it is a hard requirement, not an option |
 
-**The cost that is easy to underestimate is support.** An accounting product's questions are hard: "why is my March different from the accountant's?", "which period did that land in?", "this is wrong, fix it". **Every one of those is a conversation with a tenant who cares about their money.** The migration (§3 of `connectors-and-switching.mdx`) is where the support cost concentrates.
+**The cost that is easy to underestimate is support.** An accounting product's questions are hard: "why is my March different from the accountant's?", "which period did that land in?", "this is wrong, fix it". **Every one of those is a conversation with a tenant who cares about their money.** The switch (§5 of `connectors-and-switching.mdx`) is where the support cost concentrates.
 
 ### 4.2 The revenue
 
@@ -197,7 +197,7 @@ Every POS tenant is a candidate today. The pitch is a **demonstration, not a pit
 The pitch is not "our accounting is better". It is: **your POS already knows everything; our books will be filled in; you keep the till you have.** The proof is the side-by-side parallel run, not a demo.
 
 - **The cycle is long** - the owner, the accountant, and the incumbent vendor's renewal date all matter.
-- **The incumbent vendor will discount.** A POS vendor losing your accounting business discounts hard at renewal. **So the timing is the renewal date**, and the migration must be ready before that date, not after it.
+- **The incumbent vendor will discount.** A POS vendor losing your accounting business discounts hard at renewal. **So the timing is the renewal date**, and the switch must be ready before that date, not after it.
 - **The accountant is the way in.** An accountant who has seen our parallel run once is worth more than ten owner demos, because an accountant recommends us to the next client. **The accountant workspace (Phase 7) is therefore not a "nice to have later"** - it is the channel. This is `accounting-service.mdx`'s open question 5, and this document's answer is: **move it earlier if the books-first switch is the priority.**
 
 ### 5.3 Sequence 3 - the accountant
@@ -290,7 +290,8 @@ A per-tenant support cost that scales with the tenant's complexity, against a pr
 
 - `accounting-service.mdx` - the service, the tenant model, the phases
 - `ledger-and-money.mdx` - the engine, the margin rule the demo depends on
-- `connectors-and-switching.mdx` - the binding, the switch, the parallel run
+- `connectors-and-switching.mdx` - the other connectors, the switch, the parallel run
+- `pos-integration.mdx` - the binding to our own POS
 - `malaysia-e-invoice.mdx` - the market's shape, and the compliance rail
 - `multi-currency-money.mdx` - why the price list has a row per currency
 - `pricing-engine-and-promotions.mdx` - the discount's provenance, which is the margin story

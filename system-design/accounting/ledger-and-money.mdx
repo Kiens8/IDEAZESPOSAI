@@ -7,7 +7,7 @@ description: The accounting engine behind the service - the chart of accounts, j
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every table, rule and screen named here is a proposal until a phase says it is built.
 **The owner of this engine changed.** This document was first written for a module inside the POS backend. It is now the ledger of a **standalone accounting service** (`accounting-service.mdx`). The accounting rules did not change; the **tenant of the books** did - from "the POS tenant" to "the accounting tenant, which is a legal entity". That one change is applied consistently below and flagged where it matters.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `connectors-and-switching.mdx` (who writes into this ledger) - `business-model.mdx` (who pays for it) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (who else writes into this ledger) - `business-model.mdx` (who pays for it) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states)
 
 ---
 
@@ -60,7 +60,7 @@ Every reporting endpoint answers the same four questions before it answers the f
 **Under the standalone framing this rail is copied, not shared.** The accounting service has its own database and its own sessions, so it cannot call the POS's `require_outlet_tenant`. **But it adopts the rule verbatim, with the same names and the same refusal behaviour** - because the alternative is inventing a second, weaker tenant rule for the most sensitive data in the product. The accounting service's equivalent is stated in §3.5.
 
 **Finding 3 - the outbox already exists, and it is the answer to "how does a sale get into the ledger".**
-`domain_events` (`models/domain_event.py:89`), `event_subscriptions` (`:159`) and `event_deliveries` (`:239`), with a dispatcher (`services/domain_events.py:704`) that retries with backoff, writes **dead letters** (`:870`) and can requeue them (`:899`). **A journal is posted from an event, not from a request.** The sale path already has exactly the machinery this needs - the connector spec in `connectors-and-switching.mdx` §3 is a channel on this outbox, not a new queue.
+`domain_events` (`models/domain_event.py:89`), `event_subscriptions` (`:159`) and `event_deliveries` (`:239`), with a dispatcher (`services/domain_events.py:704`) that retries with backoff, writes **dead letters** (`:870`) and can requeue them (`:899`). **A journal is posted from a snapshot, not from a request.** The sale path already has exactly the machinery this needs - the connector spec in `pos-integration.mdx` is a channel on this outbox, not a new queue.
 
 ---
 
@@ -412,7 +412,8 @@ So the accounting service is gated by a feature row - **`accounting`** - plus **
 **The sibling designs in this repository:**
 
 - `accounting-service.mdx` - the service, the tenant model, the phases
-- `connectors-and-switching.mdx` - who writes into this ledger, and the switch path
+- `connectors-and-switching.mdx` - the other connectors, and the switch path
+- `pos-integration.mdx` - the binding to our own POS, in full
 - `business-model.mdx` - the commercial case
 - `malaysia-e-invoice.mdx` - the tax invoice rail, and the market's shape
 - `multi-currency-money.mdx` - the rule that amounts are never summed across currencies

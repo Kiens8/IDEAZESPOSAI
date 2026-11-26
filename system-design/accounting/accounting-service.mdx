@@ -9,7 +9,8 @@ description: A standalone multi-tenant accounting SaaS with its own tenants, its
 **The documents in this folder:**
 - `accounting-service.mdx` - **this one.** The product, the tenant model, the service boundary, the API, the billing, the phases.
 - `ledger-and-money.mdx` - the double-entry engine: the chart of accounts, the journals, the fiscal periods, the money rules, the statements.
-- `connectors-and-switching.mdx` - the binding: the POS pushes in, a third-party POS may push in, the books may push out to Xero or Bukku, and a business that already keeps its books elsewhere may be brought across.
+- `pos-integration.mdx` - **the binding to our own POS**, in full: the event contract, the financial snapshot API, the idempotency and replay rules, the journal mapping, and the six findings from the live POS code that change the design.
+- `connectors-and-switching.mdx` - the other connectors: a third-party POS may push in, the books may push out to Xero or Bukku, a payroll system posts in, and a business that already keeps its books elsewhere may be brought across.
 - `business-model.mdx` - who pays, what it costs, how we displace the incumbent stack, and the honest case against this.
 
 ---
@@ -32,6 +33,8 @@ This is the second version of this proposal, and the framing changed, so the cha
 | **The billing** | a feature row on a POS plan | a **separate product** with its own plans, sold first as a priced add-on |
 | **The connector direction** | the module wrote into the POS | the **POS pushes into the accounting service**; the service also accepts other sources |
 | **The legal-entity boundary** | a footnote | a **first-class decision** - a group with three companies has three sets of books |
+
+**One more change, made after the live POS was read in full.** The POS binding is no longer a paragraph in `connectors-and-switching.mdx` - it is its own document, `pos-integration.mdx`, because reading the live code changed it in six ways. **The most important:** the POS's existing events are gated behind a feature called `"AI Agent"` (`services/domain_events.py:146`), so an accounting-only tenant would have had every sale **silently skipped**. The accounting events are therefore their own event types with their own gate. The other five are in `pos-integration.mdx` §"Six findings".
 
 The full audit of the first version - what the live code does and does not have - is in `ledger-and-money.mdx` §2. It was read out of the live code on 26 Nov 2026 and has not been re-derived here.
 
@@ -103,7 +106,11 @@ Read out of the live code on 26 Nov 2026 at commit `d83d6bf` of `Kiens8/POS_AI`.
 
 **Three findings that shape the service.**
 
-**Finding 1 - the outbox already exists, and it is exactly right for this.** `domain_events` + `event_deliveries` + a dispatcher with exponential backoff, dead letters and a **visible** plan gate is the machinery a POS-to-accounting push needs. The POS does not need a new queue; it needs a new **channel**.
+**Finding 1 - the outbox already exists, and it is right for this - with one important catch.** `domain_events` + `event_deliveries` + a dispatcher with exponential backoff, dead letters and a **visible** plan gate is the machinery a POS-to-accounting push needs. The POS does not need a new queue; it needs a new **channel**.
+
+**The catch, found by reading the dispatcher rather than the emitter.** The plan gate is evaluated **once per event**, and it requires `BASE_FEATURE` - the literal string `"AI Agent"` - plus the event's own module (`services/domain_events.py:146`, `:349`, `:731`). A tenant who bought the books and not the agent would have had **every sale skipped**, with the reason recorded on the delivery row and the event marked delivered (`services/domain_events.py:745-760`).
+
+**So the accounting events are their own event types, and the catalogue decides what each one needs.** The agent's gate does not move. This is Finding 2 in `pos-integration.mdx`, and it is the single most consequential thing the live code told us.
 
 **Finding 2 - the entitlement spine is the website API, not the POS.** The POS's own `plans` table (`models.py:11`) holds three rows and is used by nothing that gates a feature; entitlement comes from the website API via `fetch_plan_features(customer_id)` (`services/plan_features.py:71`) over `X-API-Key` (`core/config.py:148`). **The accounting service asks the website API for its entitlements the same way.** One billing spine, two products.
 
@@ -232,55 +239,78 @@ A **new web app**, separate from the POS frontend, because the accountant's work
 
 ## The phases
 
-Each phase says what it does **not** do, because the boundary is the design.
+Each phase says what it does **not** do, because the boundary is the design. **The POS binding is Phase 2 and it is the centre of this plan** - its full contract is in `pos-integration.mdx`, and the POS-side work it needs is listed there as ten prerequisites.
+
+**The order of the phases is a commercial one as much as a technical one.** Phase 2 is the first revenue. Phases 0 and 1 are the proof that the engine is right. Phase 6 is the door that lets a tenant who already keeps books elsewhere in - and it is deliberately last, because a tenant does not need it to start.
 
 ### Phase 0 - the service skeleton
 
-The new deployable, its Postgres database, the tenant model (platform customer -> accounting tenant -> books), the website API's `product` discriminator and the `accounting` feature row, the API key and OAuth surfaces, the entitlement call, the audit rule, the money rules, and the empty chart of accounts.
+**The deliverable:** the new deployable with its own Postgres database; the tenant model (platform customer -> accounting tenant -> books); the website API's `product` discriminator and the `accounting` feature row with its `FeaturePrice` rows; the API key and OAuth surfaces; the entitlement call; the audit rule; the money rules (integer minor units throughout, one rounding at the boundary); and an empty chart of accounts with the F&B preset loaded.
 
-**Does NOT:** post a journal, show a statement, or touch the POS. The books exist and are empty. This is where the **schema migration** is written - the database revision that creates the tables - and the rounding rule is proved against the existing float totals.
+**The proof:** a tenant with the add-on can be created, can authenticate, and sees a valid but empty set of books. The rounding rule is proved against the POS's existing float totals - a sample of real orders is converted and the totals are checked.
+
+**Does NOT:** post a journal, show a statement, or touch the POS. The books exist and are empty.
+
+**This is where the schema migration is written** - the database revision that creates the tables. Greenfield; nothing is being migrated.
 
 ### Phase 1 - the ledger and the statements
 
-The chart of accounts, the journals, the fiscal years and the lock, the statements (P&L, balance sheet, trial balance, general ledger, tax summary), per outlet and consolidated, and the **trial-balance check that refuses to present an unbalanced ledger as final**.
+**The deliverable:** the chart of accounts (add, rename, deactivate, map to an external system); the journals, with debits equal to credits or the journal is refused; the fiscal years, the periods and the lock; and the statements - P&L, balance sheet, trial balance, general ledger, tax summary - per outlet and consolidated.
 
-**Does NOT:** connect to any source. Everything is entered by hand or by API by hand. This phase proves the engine and the screens, and it is sellable on its own to an accountant with no POS.
+**The proof:** the trial-balance check **refuses to present an unbalanced ledger as final**, and a period that is locked refuses a posting.
+
+**Does NOT:** connect to any source. Everything is entered by hand. **This phase proves the engine and the screens, and it is sellable on its own to an accountant with no POS** - which is how the product survives if the POS binding takes longer than planned.
 
 ### Phase 2 - the POS binding
 
-Our POS pushes its sales into the service: the **outbound channel on the existing outbox**, the idempotency key, the auto-posting rules, the reversal on a void, and the reconciliation view that shows the POS's numbers beside the books' numbers so a mismatch is visible on the floor.
+**The centre of the plan, and the first revenue.** Full contract in `pos-integration.mdx`.
 
-**Does NOT:** touch purchases, receivables or a year-end close. One journal family only.
+| Sub-phase | What it delivers |
+|---|---|
+| **2a - the POS prerequisites** | the frozen settlement row (the figures as they were at settlement, written in the payment's transaction); the tax breakdown and the settlement time, which the POS computes and throws away today; a payment row on every settlement path; the accounting event types with their own entitlement gate, so an accounting-only tenant is never skipped; the emitters; the refund path, which the POS does not have today |
+| **2b - the API and the first journal** | the snapshot API and the reconciliation endpoint on the POS; the accounting service's ingestion; and **one settled sale producing one balanced journal** |
+| **2c - the reconciliation and the backfill** | the windowed backfill, the daily reconciliation, the dead-letter screen on both sides, and the tenant-visible difference |
+| **2d - the voids, the refunds and the purchases** | the reversal path against a real refund, and the purchase and stock journals |
 
-**This is the first revenue phase** - an existing POS tenant buys the add-on and sees their own month's books appear without anyone typing anything.
+**The proof:** a POS tenant buys the add-on and sees their own month's books appear without anyone typing anything - and the reconciliation shows the POS's daily totals beside the books' totals, to the cent.
+
+**Does NOT:** touch receivables or a year-end close. One journal family, then the second.
+
+**Why the prerequisites come first.** Every one of them is a gap the live code has today, and each of them would make the books quietly wrong rather than loudly broken: the AI Agent gate would skip every sale; a cancellation erases the order's totals; the tax breakdown is not persisted; the commonest sale of the day writes no payment row; and a settled sale cannot be refunded at all.
 
 ### Phase 3 - purchases, stock and the bank
 
-The bill from a received purchase order, the waste and adjustment journals, the payment of a bill, the bank accounts and their transactions, and the reconciliation.
+**The deliverable:** the bill from a received purchase order, the waste and adjustment journals, the payment of a bill, the bank accounts and their transactions, and the reconciliation.
 
-**Does NOT:** change the sale side, which Phase 2 froze. If Phase 3 reveals a mistake in the sale rules, the sale rules change and the affected periods are re-opened by an owner, deliberately and visibly.
+**The proof:** the purchase money needs no conversion at the boundary - `PurchaseOrder.total_amount` and `PurchaseOrderItem.unit_price` are already integer cents (`models/supplier.py:58`, `:83`), while the sales side is the float side.
+
+**Does NOT:** change the sale side, which Phase 2 froze. **If Phase 3 reveals a mistake in the sale rules, the sale rules change and the affected periods are re-opened by an owner, deliberately and visibly.**
 
 ### Phase 4 - receivables
 
-The debtor entity, the credit sale at the counter, the AR ledger, the invoice numbering, the overdue view. **This is the only phase that changes the order flow**, so it is last of the core.
+**The deliverable:** the debtor entity, the credit sale at the counter, the AR ledger, the invoice numbering, the overdue view.
 
-**Does NOT:** change how a normal customer pays.
+**Does NOT:** change how a normal customer pays. **This is the only phase that changes the order flow**, so it is last of the core.
 
 ### Phase 5 - the fiscal year
 
-The year-end close, the retained earnings carry-forward, the opening balances for a tenant who joins mid-life with money already in the bank, and the export of a closed year to their accountant.
+**The deliverable:** the year-end close, the retained earnings carry-forward, the opening balances for a tenant who joins mid-life with money already in the bank, and the export of a closed year to their accountant.
 
 **Does NOT:** re-open a closed year on its own. An owner may re-open a locked period - it is recorded, and the re-opening is visible.
 
 ### Phase 6 - the third-party sources and the switch
 
-The inbound contract for a **POS that is not ours**, the switch path for a business that already keeps its books elsewhere (chart of accounts, opening balances, an opening period, a parallel-run month), and the outbound connectors to Xero and Bukku.
+**The deliverable:** the inbound contract for a **POS that is not ours**, the switch path for a business that already keeps its books elsewhere (chart of accounts, opening balances, an opening period, a parallel-run month), and the outbound connectors to Xero and Bukku.
 
 **Does NOT:** make the external system the source of truth. Ours is; the connector pushes.
 
+**This phase is the displacement wedge**, and it is the last because a tenant does not need it to start - they need it to bring their history with them.
+
 ### Phase 7 - the suite
 
-The payroll posting contract, the bank feed, and the accountant's multi-client workspace - one accountant, many tenants. **This is where the fragmentation thesis is finished**: the tenant's accountant stops having five logins.
+**The deliverable:** the payroll posting contract, the bank feed, and the accountant's multi-client workspace - one accountant, many tenants.
+
+**This is where the fragmentation thesis is finished:** the tenant's accountant stops having five logins.
 
 ---
 
@@ -347,7 +377,8 @@ The e-Invoice design's own facts all support the move and none of them block it:
 **The sibling designs in this repository:**
 
 - `ledger-and-money.mdx` - the double-entry engine
-- `connectors-and-switching.mdx` - the binding
+- `pos-integration.mdx` - the binding to our own POS, in full
+- `connectors-and-switching.mdx` - the other connectors and the switch
 - `business-model.mdx` - the commercial case
 - `malaysia-e-invoice.mdx` - the tax document rail, and the market's shape
 - `multi-currency-money.mdx` - the rule that amounts are never summed across currencies

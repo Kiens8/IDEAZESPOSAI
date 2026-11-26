@@ -7,7 +7,7 @@ description: The connectors that write into the ledger - our POS pushing in on t
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists.
 **The direction reversed.** The version this replaces described a connector that pushed **out** of a POS-internal module into the tenant's Xero or Bukku. Under the standalone framing the accounting service **is** the book, and the connectors point **in**: our POS pushes sales in, another vendor's POS may push sales in, a payroll system posts in. The push-out to Xero or Bukku survives as one connector among several, because a tenant whose accountant works in Xero still needs their numbers there.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the ledger these connectors write into) - `business-model.mdx` (the commercial case for the binding) - `malaysia-e-invoice.mdx` (the encrypted ERP credential pattern these connectors follow)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the engine these connectors write into) - `pos-integration.mdx` (our own POS, in full) - `business-model.mdx` (the commercial case for the binding) - `malaysia-e-invoice.mdx` (the encrypted ERP credential pattern these connectors follow)
 
 ---
 
@@ -21,7 +21,7 @@ The previous version of this document was about pushing our journals into someon
 
 | Connector | Direction | What it carries | Why it matters |
 |---|---|---|---|
-| **Our POS** | **in** | every sale, its discount, its tax, its cost, its outlet | the revenue line, automatically, with zero re-keying - this is the first revenue |
+| **Our POS** | **in** | every sale, its discount, its tax, its cost, its outlet | the revenue line, automatically, with zero re-keying - this is the first revenue. **Its own document: `pos-integration.mdx`** |
 | **A third-party POS** | **in** | the same sales facts, from a POS that is not ours | **the displacement case** - the tenant who has AutoCount's POS and a separate accounting package can keep the POS and move the books |
 | **Payroll** | **in** | salary, EPF, SOCSO, EIS, PCB - as journals | the fragmented stack's third pillar; we accept the postings before we build the module |
 | **A bank feed** | **in** | the statement | reconciliation - later |
@@ -73,20 +73,25 @@ That is a **transactional outbox with retry, backoff and a visible failure state
 
 ### 2.2 The events
 
-The events are **PROPOSAL**. Each names the fact that changed and carries enough to post a journal without reading the POS again.
+**The full contract is in `pos-integration.mdx`** - the event types, the payload rule, the snapshot API, the idempotency and replay rules, and the journal mapping. This section is the summary; that document is the detail, and it was written against the live code.
+
+**An earlier draft of this document proposed that the event payload carry the amounts.** The live code says the opposite, and the live code wins: `emit_order_paid` puts only `order_id`, `order_number` and `payment_method` in the payload, and its own docstring says *"the amount is NOT here"* (`services/event_emitters.py:75`). The outbox's own model comment says *"Ids and small facts only. No money, no personal data"* (`models/domain_event.py:107`).
+
+**So the event carries no money.** The reasoning that made the earlier draft want the amounts in the payload was sound - a consumer that re-reads the order row can see a *different* number than the event described, because the row changed in between - but the fix is not to leak money into a bus that also feeds the AI agent and tenant webhooks. **The fix is a frozen settlement row on the POS, written in the payment's transaction, and a snapshot API the accounting service reads.** The number is just as true, and it never leaves the POS in a push.
+
+The events are **PROPOSAL**, and they are the accounting service's own event types - not the agent's `order.paid`, which is gated behind a feature the accounting tenant may not buy (`pos-integration.mdx` Finding 2).
 
 | Event | Fires when | Carries |
 |---|---|---|
-| `order.paid` | `Order.payment_status` becomes `paid` | the order id, the outlet, the currency, the subtotal, the discount and its source, the tax lines, the total, the payment method, the order date |
-| `order.voided` | `Order.status` becomes `cancelled` | the order id - the consumer reads the journal it posted and reverses it |
-| `order.refunded` | a refund is recorded | the payment id, the amount, the reason |
-| `order.costed` | the order is ready and the stock movement is written | the order id, the line costs from `frozen_cost` |
-| `purchase.received` | `PurchaseOrder.status` becomes `received` | the purchase order id, the supplier, the lines, the total |
-| `stock.adjusted` | a waste or an adjustment is written | the movement id, the amount, the reason |
+| `accounting.order_settled` | `Order.payment_status` becomes `paid`, on any of the four settlement paths | the order id, the order number, the outlet, the payment method, the settlement id |
+| `accounting.order_voided` | `Order.status` becomes `cancelled` | the order id, the outlet, the reason |
+| `accounting.refund_issued` | a refund is recorded | the order id, the refund id, the outlet |
+| `accounting.purchase_received` | `PurchaseOrder.status` becomes `received` | the purchase order id, the outlet, the supplier id |
+| `accounting.stock_adjusted` | a waste or an adjustment is written | the movement id, the outlet, the movement type |
 
-**The payload carries the numbers, not just the ids.** An event that only carries an id forces the consumer to call back into the POS - and a callback can see a *different* number than the event described, because the row changed in between. The event carries the amounts **as they were at the moment of the fact**.
+**The money comes from the snapshot.** The accounting service fetches the frozen settlement - the subtotal, the discount and its source, the tax breakdown, the total, the tender, the settlement time - through an authenticated, tenant-scoped POS API (`pos-integration.mdx` §5.2).
 
-**One rule on the money in the payload:** the POS's money is a float, and the payload carries it as a float, because that is what the source holds. **The conversion to integer cents happens once, on the accounting side, at the boundary** (`ledger-and-money.mdx` §3.4). The accounting service is the only place that rounds, and the rounded value is the ledger's truth.
+**One rule on the money at the boundary:** the POS's sales money is a float and the snapshot carries it as a float, because that is what the source holds. **The conversion to integer cents happens once, on the accounting side, at the boundary** (`ledger-and-money.mdx` §3.4). The accounting service is the only place that rounds, and the rounded value is the ledger's truth. The purchase side needs no conversion - `PurchaseOrder.total_amount` and `PurchaseOrderItem.unit_price` are already cents (`models/supplier.py:58`, `:83`).
 
 ### 2.3 The idempotency key
 
@@ -284,10 +289,10 @@ The pattern is the one the e-Invoice module already uses for the tenant's ERP cr
 
 ## The switch - bringing across a business that already has books
 
-**Read this first, because "migration" is used in two senses in this repository and they are not the same thing.**
+**Read this first, because the word "migration" has one sense in this folder and it is not this one.**
 
-- **A schema migration** is the database revision that creates our tables. It is greenfield - nothing is being migrated, the tables are simply created. That is what `accounting-service.mdx` Phase 0 means by "the migration is written".
-- **This section is the switch** - the customer-facing path that lets a business which *already keeps books somewhere else* move those books here.
+- **A schema migration** is the database revision that creates our tables. It is greenfield - nothing is being migrated, the tables are simply created. That is what `accounting-service.mdx` Phase 0 means by "the migration is written", and it is the **only** thing the word means anywhere in this folder.
+- **This section is the switch** - the customer-facing path that lets a business which *already keeps books somewhere else* move those books here. It is called the switch, never the migration.
 
 **And this section is for exactly one customer.** A business that is starting from nothing - a new restaurant, a new company - **does not need any of this**. It signs up, the books are created empty, and the sales fill them forward from day one. There is nothing to bring across.
 
@@ -308,11 +313,11 @@ A tenant on FeedMe + AutoCount + a payroll package has **three systems and five 
 
 **Step 2 is the one that has to be right.** Every account's balance at the cutover date is entered as a single opening journal - debits and credits, balanced, dated the cutover day, and marked `source_type = 'opening'`. **Everything after that date is ours.**
 
-**Step 3 is the one that has to be easy.** A side-by-side comparison screen: our P&L for the month, their P&L for the month, and the difference **by account**. The tenant's accountant looks at that screen and either agrees or does not - which is the actual trust mechanism for a migration, and it is much cheaper for both sides than an argument about whose numbers are right.
+**Step 3 is the one that has to be easy.** A side-by-side comparison screen: our P&L for the month, their P&L for the month, and the difference **by account**. The tenant's accountant looks at that screen and either agrees or does not - which is the actual trust mechanism for the switch, and it is much cheaper for both sides than an argument about whose numbers are right.
 
 ### 5.2 What we do NOT bring across
 
-- **We do not reconstruct their history.** Their past lives in their old system. They get opening balances and a forward book. This is stated plainly at the start of a migration, because a tenant who expects three years of reconstructed history and gets an opening balance feels cheated - and the fix is a sentence in the sales conversation, not a feature.
+- **We do not reconstruct their history.** Their past lives in their old system. They get opening balances and a forward book. This is stated plainly at the start of the switch, because a tenant who expects three years of reconstructed history and gets an opening balance feels cheated - and the fix is a sentence in the sales conversation, not a feature.
 - **We do not import their transactions.** Same reason, with one exception: their **sales** can be imported, because a month's sales is exactly what our POS connector would have pushed. **This is the real answer for a tenant whose POS is not ours** - if their old POS can export a month's sales in any structured form, those sales can be loaded as the first month in our books, and the tenant sees their own history in our product on day one.
 - **We do not import their payroll history** beyond the opening balance.
 - **We do not import their chart with their types** - we map by type, and where a type does not fit, the mapping screen asks the tenant.
@@ -353,7 +358,7 @@ A tenant on FeedMe + AutoCount + a payroll package has **three systems and five 
 | **Payroll** | the accounts the payroll postings need, and the account the net pay comes out of |
 | **Xero / Bukku wizard** | the OAuth consent or the token and subdomain, the organisation check, the base currency check, the account mapping, the test push, the enable switches |
 | **Mapping table** | our account on the left, theirs on the right, with the type mismatch refused and the three system accounts flagged when they are unmapped |
-| **Migration** | the four steps - chart, opening balances, parallel run, cutover - and the side-by-side comparison |
+| **The switch** | the four steps - chart, opening balances, parallel run, cutover - and the side-by-side comparison |
 
 The wizard ends with a **test push** - one journal, one invoice - that the tenant sees in their own Xero or Bukku before the first real one goes. **A tenant who has seen the test arrive should not be surprised by the live data.**
 
@@ -365,9 +370,9 @@ The wizard ends with a **test push** - one journal, one invoice - that the tenan
 
 ### Phase 2 - our POS pushes in
 
-The outbox channel, the events, the idempotency key, the auto-posting rules, the reversal on a void, and the reconciliation view that shows the POS's numbers beside the books' numbers so a mismatch is visible on the floor.
+**The detail is in `pos-integration.mdx`.** In short: the POS prerequisites first (a frozen settlement row, the accounting event types, a refund path), then the snapshot API and the first balanced journal, then the reconciliation and the backfill, then the voids, the refunds and the purchases.
 
-**Does NOT:** touch purchases, receivables or a year-end close. One journal family only. **This is the first revenue phase.**
+**Does NOT:** touch receivables or a year-end close. **This is the first revenue phase.**
 
 ### Phase 6.1 - the third-party POS and the switch
 
@@ -441,6 +446,7 @@ The payroll posting contract and the payroll accounts, then the bank statement i
 
 - `accounting-service.mdx` - the service and the tenant model
 - `ledger-and-money.mdx` - the ledger, the chart of accounts, the audit rule, the fiscal lock
+- `pos-integration.mdx` - the binding to our own POS, in full
 - `business-model.mdx` - the commercial case for the binding
 - `malaysia-e-invoice.mdx` - the encrypted ERP credential pattern
 - `api-authentication-strategy.mdx` - the auth rails
