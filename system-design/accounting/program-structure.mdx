@@ -3,7 +3,7 @@ title: The program structure - where the code lives and what may touch what
 description: The concrete structure of the accounting program - the repository layout, the module tree of the accounting service, the process and port map, the data ownership map, the compatibility rules that keep the POS untouched, and the import rules that keep the modules apart
 ---
 
-**Document Version:** 1.0 (27 Nov 2026 - written against the live `Kiens8/POS_AI` at commit `d83d6bf`, and the live host)
+**Document Version:** 1.1 (27 Nov 2026 - the repository boundary, and the internal tenant's place in the tree)
 **Created:** 27 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists. Everything it describes about the existing POS was read on 26-27 Nov 2026.
 **Related:** `accounting-service.mdx` (the service, the phases) - `purchase-path.mdx` (the account and the purchase) - `operations.mdx` (the operations) - `ledger-and-money.mdx` (the engine) - `pos-integration.mdx` (the binding)
@@ -42,47 +42,144 @@ The accounting program touches three existing things, and each of them is touche
 
 ## 2. The repository layout
 
-**The accounting program lives in the existing `Kiens8/POS_AI` repository, as two new top-level directories.** The house pattern is that **each top-level directory is a deployable unit** - `backend/` (the POS API), `website_api/` (the billing API), `frontend/` (the POS staff app), `admin/` (the admin panel), `site/` (the marketing site), `customer-app/` (the ordering PWA). The accounting program adds two more.
+**Two questions, and they are separate: where the design documents live, and where the accounting source lives.**
+
+### 2.1 The design documents live in `Kiens8/IDEAZESPOSAI` - decided
+
+**The eight (now nine) accounting design documents live in the `Kiens8/IDEAZESPOSAI` repository, under `system-design/accounting/`.** That is decided and it is not revisited here.
+
+**This is where the house already keeps its design documents, and the live code already points at them.** `website_api/scripts/send_notifications.py:595` carries the comment *"The promotion (system-design/plan-promotion.mdx)"*, and `website_api/scripts/test_promotion.py:1` opens with *"The promotion, end to end (system-design/plan-promotion.mdx)"* - the running code references a design document by that path. **The design documents are a first-class artifact of the product, not a folder inside a code repository**, and they sit in the repository that publishes them.
+
+**A practical consequence, and it is the reason the split is clean:** the design repository is a **documentation site** (`docs.json`, `index.mdx`, Mintlify) and the accounting source is **a service with a database, a systemd unit, a backup job and a port**. Those are different kinds of repository, and the accounting source does not belong in a Mintlify site repository any more than it belongs in the POS's code repository.
+
+### 2.2 Where the accounting source lives - OPEN, and the recommendation is a dedicated repository
+
+**This is still open, and it is Kens's decision.** It is recorded here with the recommendation and the reasoning, so that the decision is made once, in the open, rather than by drift.
+
+**The recommendation: a dedicated `IDEAZES_Accounting` repository** for the accounting service, the accountant-facing web app, and the accounting deploy/ and tests.
+
+**The reason the shared spine does not argue for one repository.** The billing and entitlement spine is shared between the POS product and the accounting product, and Phase 0b changes it. **But the spine is shared as an HTTP contract, not as code.** The accounting service calls the website API's entitlement route over HTTP, with its own server key; it must never `import` from `website_api/`, for the same reason it must never import from `backend/` (§6.1). **Once that rule holds, a shared spine gives no reason to share a repository - and several reasons not to.**
+
+**What a separate repository actually buys:**
+
+- **An independent release and rollback unit.** The accounting service is a different deployable on a different port (`8100`), a different domain, its own database, its own systemd unit and its own backup job. One repository means one tag, one release train, one rollback - so a broken accounting release at 2am holds the POS's release hostage.
+- **An independent CI pipeline.** Neither repository has a workflow today (verified: no `.github/` in `Kiens8/POS_AI` and none in `Kiens8/IDEAZESPOSAI`). When one is added, a separate repository means accounting can go green and ship without the POS's test suite running, and the POS release does not wait on accounting's.
+- **A licensing boundary.** The design repository's `LICENSE` is the Mintlify template's **MIT with `Copyright (c) 2026 Mintlify`** on it, and `Kiens8/POS_AI` has **no `LICENSE` file at all** (both verified 27 Nov 2026). **The accounting product is a commercial product and needs its own explicit licence**, and it cannot have one if it shares a repository with something that has none.
+- **An operational boundary.** The accounting service's backup, restore drill, alerting and runbooks are its own (`operations.mdx`). A repository boundary is where those live, and where a future operator looks for them.
+
+**The honest counter-argument, stated so the decision is made against it:** the shared spine is a real coupling, and a repository boundary does not remove it. If the entitlement route changes shape and the accounting service does not change with it, the accounting service breaks. **That is why the rule is a contract and not a folder:** the spine's shape is pinned by a **test** (the union returns byte-identical output for every existing customer, §4 Rule 1), not by the two consumers living in the same tree. A monorepo makes the coupling *visible in a diff*; a contract makes it visible in a *failing test*. **The second is a stronger guarantee, because it cannot be skipped by a merge.**
+
+**What holds whichever way Kens decides it** - and these are the rules the code must obey regardless:
+
+1. **The accounting service imports nothing from `backend/` and nothing from `website_api/`.** The tenant module and the money module are *patterns to copy*, not libraries to import.
+2. **Nothing imports anything from the accounting service.** The dependency arrow points one way, and only as HTTP.
+3. **The accounting source is its own deployable**, with its own working directory, its own process, its own database and its own backup unit - in a monorepo as well as in its own repository.
+4. **The design documents live in `Kiens8/IDEAZESPOSAI`**, in either case, and they are versioned with the program rather than with the code that does not exist yet.
+
+**The recommendation is a dedicated repository, on the strength of independent release, independent CI, the licensing boundary and operational isolation - with the shared spine held by a contract and a test rather than by a folder.**
+
+### 2.3 The layout, whichever repository it is in
+
+**The accounting service is a self-contained deployable with its own top-level root.** In a monorepo it is a top-level directory beside `backend/` and `website_api/`; in its own repository it is the repository's own root. **The tree below is the same either way**, and it is the house's shape - the POS backend is `app/{models,routes,services,core,middleware}`, the website API is `app/{models,routes,services,core,invoices,emails}` - with two additions the house does not need.
 
 ```
-Kiens8/POS_AI/
-├── backend/                 # the POS API              - unchanged until Phase 2
-├── website_api/             # the billing spine       - changed in Phase 0b
-├── frontend/                # the POS staff app       - unchanged
-├── admin/                   # the admin panel         - unchanged
-├── site/                    # the marketing site      - unchanged
-├── customer-app/            # the ordering PWA        - unchanged
+IDEAZES_Accounting/                # (or accounting/ beside backend/ in a monorepo)
+├── app/
+│   ├── main.py                    # FastAPI app, router wiring, lifespan, /livez /readyz /healthz
+│   │
+│   ├── core/                      # configuration, the database, and the isolation boundary
+│   │   ├── config.py              # pydantic-settings, like website_api/app/core/config.py
+│   │   ├── database.py            # the Postgres engine and session
+│   │   ├── tenant.py              # ★ THE ISOLATION BOUNDARY - see section 6
+│   │   ├── auth.py                # service credentials, tenant-scoped tokens
+│   │   ├── money.py               # ★ minor units, and the ONE rounding point
+│   │   ├── errors.py              # the error shape the API returns
+│   │   └── logging.py             # structured logs, tenant id in every line
+│   │
+│   ├── models/                    # SQLAlchemy 2.0 models - the data, nothing else
+│   │   ├── tenant.py              # accounting_tenant, accounting_tenant_link, membership
+│   │   ├── accounts.py            # chart_of_accounts, account_mappings, account_balances
+│   │   ├── journal.py             # journals, journal_lines, fiscal_years, fiscal_periods
+│   │   ├── tax.py                 # tax_settings, tax_codes, tax_summary
+│   │   ├── bank.py                # bank_accounts, bank_transactions, bank_reconciliations
+│   │   ├── purchase.py            # purchases, purchase_lines, stock_movements
+│   │   ├── receivable.py           # invoices, invoice_lines, payments, credit_notes
+│   │   ├── connector.py           # connector_configs, sync_state, dead_letters
+│   │   └── audit.py               # audit_log - every posted, voided, locked, unlocked
+│   │
+│   ├── schemas/                   # Pydantic request and response models
+│   │   ├── account.py
+│   │   ├── journal.py
+│   │   ├── statement.py
+│   │   └── ...
+│   │
+│   ├── routes/                    # HTTP - parse, authorise, delegate, serialise. No business rules.
+│   │   ├── accounts.py            # the chart of accounts
+│   │   ├── journals.py            # post, void, list
+│   │   ├── statements.py          # P&L, balance sheet, trial balance, general ledger, tax summary
+│   │   ├── bank.py
+│   │   ├── tax.py
+│   │   ├── fiscal.py              # years, periods, the lock
+│   │   ├── admin.py               # tenant-scoped admin: users, settings, export
+│   │   ├── health.py              # /livez /readyz /healthz - the three surfaces
+│   │   └── connectors/            # one module per outside system
+│   │       ├── pos_ours.py        # Phase 2 - our own POS
+│   │       ├── billing_ours.py    # Phase 1 - our own subscription revenue (internal-tenant.mdx)
+│   │       ├── pos_thirdparty.py  # Phase 6 - FeedMe, AutoCount
+│   │       ├── xero.py            # Phase 6
+│   │       ├── bukku.py           # Phase 6
+│   │       └── payroll.py         # Phase 6 - postings in, no module
+│   │
+│   ├── services/                  # the behaviour - the business rules live here
+│   │   ├── ledger.py              # ★ THE ENGINE - post, balance, void, reverse
+│   │   ├── chart.py               # chart provisioning and the F&B preset
+│   │   ├── fiscal.py              # period open/close/lock, year-end carry-forward
+│   │   ├── statements.py          # the statement builders
+│   │   ├── reconciliation.py      # POS vs books, bank vs books
+│   │   ├── entitlement.py         # reads the website API - the service decides nothing
+│   │   ├── provisioning.py        # the lazy, idempotent tenant creation
+│   │   └── billing_sync.py        # renewal and dunning, driven by entitlement
+│   │
+│   ├── connectors/                # the adapters to the outside world
+│   │   ├── base.py                # ★ the Connector interface - one method to implement
+│   │   ├── pos_ours/
+│   │   │   ├── adapter.py         # pull the snapshot, apply the mapping
+│   │   │   └── mapping.py         # sale -> journal lines
+│   │   ├── billing_ours/
+│   │   │   ├── adapter.py         # pull our subscription invoices from the billing feed
+│   │   │   └── mapping.py         # invoice -> revenue / deferred revenue / release
+│   │   ├── pos_thirdparty/
+│   │   ├── xero/
+│   │   ├── bukku/
+│   │   └── payroll/
+│   │
+│   ├── jobs/                      # the scheduled work - the same three as the house
+│   │   ├── dispatcher.py           # minute-level: events -> journals
+│   │   ├── reconcile.py            # nightly: books vs sources, named difference
+│   │   └── renewal.py             # nightly: renewal invoices and dunning
+│   │
+│   ├── migrations/                # the schema, as numbered SQL
+│   │   ├── 0001_tenants.sql
+│   │   ├── 0002_accounts.sql
+│   │   └── ...
+│   │
+│   └── tests/
+│       ├── unit/                  # ★ the engine, with no database at all
+│       └── integration/           # against a real Postgres
 │
-├── accounting/              # NEW - the accounting API        (Phase 0a)
-│   └── app/ ...             # the module tree, in section 3
-│
-├── accounting-web/          # NEW - the accountant-facing web app   (Phase 1)
-│
-├── database/                # the POS SQLite file       - unchanged
-│   └── init_db.py
-├── deploy/                  # systemd + logrotate       - extended in Phase 0c
-│   ├── systemd/
-│   │   ├── posai-backup.{service,timer}          - existing
-│   │   ├── posai-backup-notify.service            - existing
-│   │   ├── posai-session-prune.{service,timer}   - existing
-│   │   ├── posai-accounting-backup.{service,timer}      - NEW (Phase 0c)
-│   │   └── posai-accounting-backup-notify.service       - NEW (Phase 0c)
-│   └── logrotate/posai                            - extended (Phase 0c)
-├── scripts/                 # pos_backup.py, prune_staff_sessions.py
-└── start-services.sh        # pm2 orchestration          - extended (Phase 0a)
+├── requirements.txt
+├── run_accounting.sh              # mirrors backend/run_pos_backend.sh and website_api/run_api_site.sh
+└── .env.example
 ```
 
-**Why the same repository and not a new one.** Three reasons, in order of weight:
+### 2.4 What the POS repository keeps
 
-1. **The billing spine is shared, and it lives in `website_api/`.** Phase 0b changes that spine - the product discriminator, the feature subscription table, the entitlement union, the checkout route, the webhook branch, the conditional POS provisioning. **A repository boundary does not make a shared spine any less shared**; it only makes the change harder to see. If the accounting service is in this repository, a change to the entitlement route and a change to the accounting service that depends on it are **reviewed in the same diff and land in the same release.**
-2. **The deploy conventions are here** - the pm2 orchestration in `start-services.sh`, the systemd units in `deploy/systemd/`, the logrotate policy in `deploy/logrotate/posai`, the `deploy/logrotate/posai` source-of-truth comment pattern that says "if you change one, change the other and re-copy". **A new repository means a new set of conventions, invented from scratch, and a second place where the backup rules live.**
-3. **The hard isolation boundary is the database and the API, not the repository.** `accounting-service.mdx` §"The service boundary" already made this argument. Putting the code in a separate repository would create a *paper* boundary where a *real* one already exists, and the paper one would be the one that leaks.
+**If the accounting service goes to its own repository, `Kiens8/POS_AI` changes in exactly two places, and both are already scheduled:**
 
-**What a separate repository would buy, honestly:** an independent release cadence and a permission boundary. The release cadence is already handled by pm2 and systemd - the accounting service restarts independently of the POS. The permission boundary is real but small, and it is better enforced by the API key and the tenant claim than by a repository.
+- **`website_api/`** - the Phase 0b purchase path, the product discriminator, the entitlement union, the conditional POS provisioning, and (from `internal-tenant.mdx`) the `period_start` / `period_end` columns on `invoices` and the read-only `GET /api/internal/billing/ledger-events` feed.
+- **`backend/`** - the ten Phase 2 prerequisites, and nothing before Phase 2.
 
-**One repository, two deployables.** The rule that keeps the boundary honest: **the accounting service imports nothing from `backend/`, and nothing from `backend/` imports anything from `accounting/`.** Section 6.
-
----
+**Everything else in `Kiens8/POS_AI` is untouched by the accounting program**, in either repository layout.
 
 ## 3. The module tree of the accounting service
 
@@ -347,6 +444,7 @@ The POS caches a tenant's feature list for **300 seconds** (`backend/app/core/pl
 | **0b** | the account and the purchase - **mostly in `website_api/`** | `website_api/app/{models,routes,services}` - the product discriminator, `feature_subscriptions`, the checkout route, the webhook branch, the entitlement union, the conditional provisioning; and in `accounting/`: `services/provisioning.py`, `services/entitlement.py` |
 | **0c** | the operations - the backup unit, the restore drill, the alerting, the runbooks | `deploy/systemd/posai-accounting-backup.*`, `deploy/logrotate/posai`, `accounting/app/routes/health.py` |
 | **1** | the ledger and the statements, and the accountant-facing app | `accounting/app/{models/journal,services/ledger,services/fiscal,services/statements,routes/statements}` + `accounting-web/` |
+| **1b** | the internal tenant, the billing feed, and our own revenue in our books | `accounting/app/{models/tenant,connectors/billing_ours,routes/connectors/billing_ours}` + the read-only feed in `website_api/` - **see `internal-tenant.mdx`** |
 | **2** | the POS binding | the ten prerequisites **in `backend/`**, and `accounting/app/connectors/pos_ours/` + `accounting/app/routes/connectors/pos_ours.py` |
 | **3-7** | purchases, receivables, the fiscal year, the other sources, the suite | `accounting/app/models/{purchase,receivable}.py`, `accounting/app/connectors/{pos_thirdparty,xero,bukku,payroll}/` |
 
@@ -381,9 +479,11 @@ The POS caches a tenant's feature list for **300 seconds** (`backend/app/core/pl
 ## The open questions
 
 1. **Does the accountant-facing app go in `accounting-web/` or inside `accounting/`?** The house's pattern says top-level. But the accounting service is a *product*, not a feature of the POS, and a self-contained directory is easier to move out later if it becomes its own repository. **The honest answer is that it does not matter much and should be decided by whoever writes the first screen.**
-2. **Is one Postgres instance enough, and where does it live?** The host runs everything on one box today. The accounting service gets its own database on it. **The first account needs more than one box, and the backup story changes when it does.**
-3. **Does the accounting API get a public API key model like the POS's, or is it session-only?** The public API is the displacement play - a third-party POS or a payroll system posting in. **The key model, its scopes, and its tenant binding are a Phase 2b decision.**
-4. **Does the accountant-facing app live at `books.ideazes.com` or inside `site.ideazes.com`?** The marketing site is Next.js and the accountant app is a React SPA. **One domain or two is a branding decision with a technical consequence, and it should be made before the first screen is built.**
+2. **Which repository holds the accounting source?** §2 has the argument; **the recommendation is a dedicated `IDEAZES_Accounting`**, and the decision is Kens's. **The design documents' home is not part of this question - they stay in `Kiens8/IDEAZESPOSAI` either way.**
+3. **Is one Postgres instance enough, and where does it live?** The host runs everything on one box today. The accounting service gets its own database on it. **The first account needs more than one box, and the backup story changes when it does.**
+4. **Does the accounting API get a public API key model like the POS's, or is it session-only?** The public API is the displacement play - a third-party POS or a payroll system posting in. **The key model, its scopes, and its tenant binding are a Phase 2b decision.**
+5. **Does the accountant-facing app live at `books.ideazes.com` or inside `site.ideazes.com`?** The marketing site is Next.js and the accountant app is a React SPA. **One domain or two is a branding decision with a technical consequence, and it should be made before the first screen is built.**
+6. **What licence does the accounting source carry?** The accounting product is commercial, so it needs an explicit licence - and `Kiens8/IDEAZESPOSAI` currently carries the Mintlify template's MIT with Mintlify's copyright on it, while `Kiens8/POS_AI` has no `LICENSE` at all (both verified 27 Nov 2026). **This is decided together with the repository question, and it is decided before the first commit.**
 
 ---
 

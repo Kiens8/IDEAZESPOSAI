@@ -3,10 +3,10 @@ title: The purchase path - how a customer arrives, pays, and gets their books
 description: The Phase 0b specification, written against the live website API - the signup that does not create a POS tenant, the checkout that charges the right currency, the webhook that grants the entitlement, and the persistence model for a purchase that is not a plan
 ---
 
-**Document Version:** 1.0 (26 Nov 2026 - written against the live website API at commit `d83d6bf`)
+**Document Version:** 1.1 (27 Nov 2026 - the internal grant, and the service period on the invoice)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every table, route and column named here is a proposal. The citations are real - the code they point at is the code that runs.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `business-model.mdx` (the commercial case) - `operations.mdx` (the Phase 0c operations: backup, readiness, alerting, runbooks) - `program-structure.mdx` (where the purchase path's code lives, and the compatibility rules it must honour) - `multi-currency-money.mdx` (the rule that amounts are never summed across currencies)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `business-model.mdx` (the commercial case) - `operations.mdx` (the Phase 0c operations: backup, readiness, alerting, runbooks) - `program-structure.mdx` (where the purchase path's code lives, and the compatibility rules it must honour) - `multi-currency-money.mdx` (the rule that amounts are never summed across currencies) - `internal-tenant.mdx` (the internal tenant, our own revenue, and the dogfooding contract)
 
 ---
 
@@ -197,6 +197,15 @@ POST /api/features/{feature_id}/checkout
 
 ## Decision 4 - the grant
 
+**And one grant that is not a purchase: our own.**
+
+IDEAZES is a tenant of its own accounting product. **The internal tenant's entitlement is granted, not bought**, and the mechanism is the one the live code already has - a `CustomerFeatureOverride` row (`website_api/app/models/models.py:299`), written by `POST /api/admin/customer-features` (`website_api/app/routes/admin.py:969`), which carries the feature, an `enabled` flag, a `reason` and who wrote it.
+
+**That row is already one of the three sources in the entitlement union of Decision 5**, so the internal tenant needs **no new grant mechanism and no new code path** - one seeded row for our platform customer id, against the feature whose `product == 'accounting'`, with a reason that says what it is. **And it is auditable by the same admin screen that audits a customer's grant.**
+
+**We do not create a subscription for ourselves, so no invoice, no payment, no revenue, and no intercompany balance.** The full reasoning, and what would happen if we invoiced ourselves, is in `internal-tenant.mdx` §2.
+
+
 **The live facts.**
 
 - `checkout.session.completed` is handled by `handle_checkout_completed` (`website_api/app/routes/webhooks.py:353`). The session's **mode** decides what the event means: `payment` settles an existing invoice, `subscription` with an `invoice_id` in the metadata settles an existing invoice and creates the recurring subscription, and anything else is a **new subscription**.
@@ -321,6 +330,7 @@ features.product             String(20), NOT NULL, default 'pos'   -- 'pos' | 'a
 | **new table** `feature_subscriptions` | - | the add-on purchase |
 | `feature_subscription_id` (FK, nullable) | `invoices` | an invoice that is not about a plan |
 | `accounting` feature row | `features` | the feature the add-on grants |
+| `period_start` / `period_end` (DateTime, nullable) | `invoices` | **the service period the invoice paid for** - the subscription's period is advanced by the renewal job when it issues the invoice, so the invoice must carry its own (`internal-tenant.mdx` §3.3) |
 | `accounting` feature price rows | `feature_prices` | the add-on's price, per currency |
 
 **The house rule holds throughout: the database is the truth and the seed is only what a fresh install starts with.** `website_api/app/core/ai_addon_prices.py` says so in as many words, and `scripts/migrate_feature_prices.py --check` reports the drift. **The same pattern applies here** - a seed for the accounting feature prices, and a `--check` mode on the migration that reports when the live database disagrees with it.

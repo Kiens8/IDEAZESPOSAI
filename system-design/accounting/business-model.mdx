@@ -3,10 +3,10 @@ title: The business - who pays, what it costs, and how we displace the incumbent
 description: The commercial case for the standalone accounting service - the packaging that sells first, the pricing built on the existing add-on spine, the displacement thesis against fragmented customer stacks, the unit economics, and the honest case against the whole idea
 ---
 
-**Document Version:** 1.0 (rewritten 26 Nov 2026)
+**Document Version:** 1.1 (27 Nov 2026 - the internal tenant, and the revenue it does not count)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every price, every number and every phase gate here is a proposal.
-**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (this one) - `purchase-path.mdx` (the purchase path and the revenue gate) - `operations.mdx` (the service's operations) - `program-structure.mdx` (where the code lives, and what the phases add where)
+**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (this one) - `purchase-path.mdx` (the purchase path and the revenue gate) - `operations.mdx` (the service's operations) - `program-structure.mdx` (where the code lives, and what the phases add where) - `internal-tenant.mdx` (the internal tenant, our own revenue, and the dogfooding contract)
 
 ---
 
@@ -75,6 +75,13 @@ New `subscription_plans` rows for the accounting product, distinguished by a new
 | **7** | the accountant workspace, the payroll posting, the bank feed | the accountant | the suite - one login, many books |
 
 **Two first revenues, and the difference between them matters.** The live-code audit found that the add-on had **no purchase path at all** - no customer-facing checkout for a `FeaturePrice`, no payment webhook that grants a feature, no invoice for one. So Phase 0 now builds the purchase machinery, which means **the standalone accounting plan is sellable from Phase 1**: a tenant with no POS subscribes and pays. That is the first revenue, and it is money from a customer the POS could never have had.
+
+**A third thing that is not revenue, and it must never be counted as revenue.** We are a customer of our own accounting product - there is an internal tenant whose books are ours, and a connector that carries our own subscription revenue into them (`internal-tenant.mdx`). **That is dogfooding, and its commercial value is what it proves, not what it earns.** Two consequences, both of which have to be enforced rather than intended:
+
+- **We do not invoice ourselves.** The internal tenant's use of the accounting product is **granted**, never billed - so **our own use creates no revenue and no intercompany balance** (`internal-tenant.mdx` §2.3). If it were invoiced, we would be recognising revenue we did not earn, and carrying a balance that has to be eliminated on consolidation.
+- **MRR does not include us.** The internal tenant is not a subscriber, is not counted in the subscriber count, and does not appear in the revenue line of any report. **Our books are the proof; the P&L is the product's customers.**
+
+**What the internal tenant IS worth commercially:** it is the fastest way to find out the engine is wrong - a customer's first month is not the place to discover that the deferred revenue release is a month off - and it is the most honest demo there is, because it is a real business's numbers in our own product.
 
 **But the gate that decides the business is still Phase 2.** The add-on - our POS writing an existing POS tenant's books with nobody typing - is the **proof that the binding is worth paying for**, and it is the only thing that validates the displacement thesis before Phase 6 spends a lot of build on it. **The critical discipline: Phase 2 must sell before Phase 6 is built.** If the add-on does not sell to tenants we already have, the displacement story to tenants we do not have is a hypothesis with a large build cost behind it. **The phase gate is a revenue gate, not a completion gate** - and Phase 1 selling is a hedge, Phase 2 selling is the thesis.
 
@@ -283,6 +290,8 @@ A per-tenant support cost that scales with the tenant's complexity, against a pr
 | 5 | Do we measure the market before Phase 6? | **Yes** - twenty POS tenants, one question | It is a week of work against a large build |
 | 6 | Is the e-Invoice rail a cost line or a feature? | **A feature** - direct submission, our credential model, no per-document cost | It removes a cost from the unit economics |
 | 7 | Do we build the bank feed? | **Later, and only if the economics hold** - a paid feed is a real per-tenant cost | It is the only line in §4.1 that scales with a third party's pricing |
+| 8 | Which legal entity holds the internal tenant, and is it granted or billed? | **Granted, never billed** - and the entity is the one that sells the subscriptions, because that is where our revenue lands | Our own use of our own product must not appear as revenue (`internal-tenant.mdx` §2.3) |
+| 9 | Do we put SST into the plan price, or accrue it in our books? | **Put it in the price, before the accounting product has a paying customer** - the interim accrual leaves our books and our SST return computed from a tax the customer never paid | Our invoices carry no tax today, so this is a live gap with a filing consequence (`internal-tenant.mdx` §4.3) |
 
 ---
 

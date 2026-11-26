@@ -3,11 +3,11 @@ title: The ledger - double entry, the chart of accounts, and the money rules
 description: The accounting engine behind the service - the chart of accounts, journals with debits equal to credits, fiscal periods with a lock, the statements a tenant's accountant signs, and the money rules that keep it balancing to the cent
 ---
 
-**Document Version:** 1.0 (rewritten 26 Nov 2026 - the engine is unchanged, its owner is not)
+**Document Version:** 1.1 (27 Nov 2026 - deferred revenue, and the accrual rule that the internal tenant exercises first)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every table, rule and screen named here is a proposal until a phase says it is built.
 **The owner of this engine changed.** This document was first written for a module inside the POS backend. It is now the ledger of a **standalone accounting service** (`accounting-service.mdx`). The accounting rules did not change; the **tenant of the books** did - from "the POS tenant" to "the accounting tenant, which is a legal entity". That one change is applied consistently below and flagged where it matters.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (who else writes into this ledger) - `business-model.mdx` (who pays for it) - `purchase-path.mdx` (how the tenant pays for it) - `operations.mdx` (how the ledger is protected and restored) - `program-structure.mdx` (where the engine's code lives, and why it is testable without a database) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `pos-integration.mdx` (our own POS binding) - `connectors-and-switching.mdx` (who else writes into this ledger) - `business-model.mdx` (who pays for it) - `purchase-path.mdx` (how the tenant pays for it) - `operations.mdx` (how the ledger is protected and restored) - `program-structure.mdx` (where the engine's code lives, and why it is testable without a database) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states) - `internal-tenant.mdx` (the internal tenant, our own revenue, and the dogfooding contract)
 
 ---
 
@@ -292,6 +292,28 @@ A tenant's accountant will need to post something no source produced: an accrual
 
 ---
 
+### 4.6 Deferred revenue - the money for a service not yet delivered
+
+**This is the one rule that a restaurant's books do not need and a software company's books cannot do without.**
+
+A restaurant is paid when the meal is served, so cash and revenue land together. **A software company is paid before the service is delivered** - a customer pays for twelve months today and gets twelve months of service. **Recognising that whole amount as revenue on the day the money arrives is not a simplification; it is a wrong number**, and it is wrong in the direction that flatters the business.
+
+**The rule, in one line:** *cash is recorded when it is received; revenue is recorded as the service is delivered.*
+
+The mechanism is a liability account and a release:
+
+| | |
+|---|---|
+| **On payment** | Dr `Bank - settlement` / Cr `Deferred revenue - subscriptions` - **nothing is revenue** |
+| **Over the service period** | the liability is released straight-line to revenue, monthly, until it is zero |
+| **A refund** | the recognised part is reversed and the unearned part is reversed with it - **as a new journal**, never as an edit of the old one |
+
+**And the period that drives the release must be the period the customer actually paid for.** That is not always available to us - the billing system's invoice does not carry its own service period today, and the renewal job advances the subscription's period when it issues the invoice (`website_api/scripts/send_notifications.py:617-626`). **So the release is driven by the period the source states, and where the source cannot state it, the journal is not posted.** That rule, and the deferred revenue account's own chart, are specified in `internal-tenant.mdx` §3.3 and §4.
+
+**This is not a dogfooding-only feature.** Any customer who prepays an annual plan needs it, whoever they are - **the internal tenant is simply the first user, and the reason to build it first is that our own books are where we find out the release is wrong.** (`internal-tenant.mdx` §8.)
+
+---
+
 ## The design - the statements
 
 ### 5.1 What the statements are
@@ -374,7 +396,7 @@ So the accounting service is gated by a feature row - **`accounting`** - plus **
 
 ## The open questions
 
-1. **Cash basis or accrual?** Most small restaurants report on a cash basis - the money is the money. Accrual (and the debtor ledger) implies a choice. Our PROPOSAL: cash basis by default, accrual available per accounting tenant.
+1. **Cash basis or accrual?** Most small restaurants report on a cash basis - the money is the money. Accrual (and the debtor ledger) implies a choice. Our PROPOSAL: cash basis by default, accrual available per accounting tenant. **The accrual path now has its first user: our own books** (`internal-tenant.mdx`), because a prepaid annual subscription is a liability until the service is delivered - which is the accrual rule stated in its simplest form. **So the accrual engine gets exercised on real volume before we sell it to anyone.**
 2. **Is the fiscal year the calendar year?** The PROPOSAL is yes by default and settable. A tenant who files on a fiscal year ending in June sets it once.
 3. **Two base currencies under one platform customer?** The PROPOSAL is one per accounting tenant - one legal entity, one functional currency - and the consolidated view across entities with different currencies **shows no single number**. This is a change from the POS-only version, where the tenant was the group.
 4. **Who signs the year?** `accounting:close` is the owner today (§6.2). Should it be grantable to an accountant who is not the owner - the owner of a group with a bookkeeper outside the business?

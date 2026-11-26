@@ -3,7 +3,7 @@ title: The accounting service - one set of books, bound to the POS
 description: A standalone multi-tenant accounting SaaS with its own tenants, its own API and its own billing - built now, sold first as an add-on to the POS tenants we already have
 ---
 
-**Document Version:** 1.0 (rewritten 26 Nov 2026 - the second version, after the scope changed)
+**Document Version:** 1.1 (27 Nov 2026 - the internal tenant and the repository boundary)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Nothing in this folder is code. Every table, endpoint and screen named here is a proposal until a phase says it is built.
 **The documents in this folder:**
@@ -15,6 +15,7 @@ description: A standalone multi-tenant accounting SaaS with its own tenants, its
 - `operations.mdx` - **the Phase 0c specification**: the database lifecycle, the verified backup and the restore drill, readiness and dependency checks, monitoring and alerting, the scheduled work, and the runbooks.
 - `program-structure.mdx` - **the program structure**: where the code lives, the module tree of the accounting service, the process and port map, the data ownership map, the compatibility rules that keep the POS untouched, and the import rules that keep the modules apart.
 - `business-model.mdx` - who pays, what it costs, how we displace the incumbent stack, and the honest case against this.
+- `internal-tenant.mdx` - **IDEAZES as a tenant of its own accounting product**: the internal tenant, the billing connector that carries our subscription revenue into our books, the deferred revenue rules for prepaid plans, the tax and gateway-fee gaps the live billing system cannot answer, the separation of internal books from customer data, and the reconciliation that proves it.
 
 ---
 
@@ -400,7 +401,7 @@ The e-Invoice design's own facts all support the move and none of them block it:
 
 ## The open questions
 
-1. **Do we build the accounting service in this repository or a new one?** This document says this repository, sharing the identity and billing spine. The alternative is a clean repo boundary at the cost of a second billing integration.
+1. **Do we build the accounting service in this repository or a new one?** Still open, and it is Kens's decision. **The design documents' home is decided** - they stay in `Kiens8/IDEAZESPOSAI` under `system-design/accounting/`, where the house already keeps them and where the live code already points (`website_api/scripts/send_notifications.py:595`). **The recommendation for the source is a dedicated `IDEAZES_Accounting` repository**, on the strength of independent release and rollback, independent CI, a licensing boundary (this repository's `LICENSE` is the Mintlify template's MIT with Mintlify's copyright on it, and `Kiens8/POS_AI` has no `LICENSE` at all), and operational isolation - because the shared billing spine is shared as an **HTTP contract and a test**, not as shared code. `program-structure.mdx` §2 has the full argument both ways.
 2. **Is the legal entity really the right tenant?** Malaysia's registration is the filing unit, so it is the right answer for the books - but it means a tenant with three companies has three logins, not one. Is one login across a group worth the extra complexity?
 3. **Does a POS tenant post into one accounting tenant or several?** This document says one, with the link explicit. A group running one POS across three companies may want the POS split by outlet into three books.
 4. **Do we sell the accounting service to tenants who have no POS at all in Phase 1?** Phase 1 is sellable on its own - but the go-to-market would be a cold sale to accountants, which is a different company from the one we are.

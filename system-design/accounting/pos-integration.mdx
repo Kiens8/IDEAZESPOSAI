@@ -3,10 +3,10 @@ title: The POS integration - how a sale reaches the books, and what the POS must
 description: The binding between our SaaS POS and the standalone accounting service - the event contract, the financial snapshot API, the idempotency and replay rules, the journal mapping, and the six findings from the live code that change the design
 ---
 
-**Document Version:** 1.0 (26 Nov 2026 - written against the live POS at commit `d83d6bf`)
+**Document Version:** 1.1 (27 Nov 2026 - the reference tenant, and what the binding owes the internal tenant)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists. The POS side of this document describes changes that have not been made.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the ledger these journals are written into) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (the commercial case) - `purchase-path.mdx` (how the add-on is bought and granted) - `operations.mdx` (the reconciliation, the runbooks) - `program-structure.mdx` (the ten prerequisites mapped to the files they touch) - `multi-currency-money.mdx` (the rule that amounts are never summed across currencies)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the ledger these journals are written into) - `connectors-and-switching.mdx` (the other connectors and the switch) - `business-model.mdx` (the commercial case) - `purchase-path.mdx` (how the add-on is bought and granted) - `operations.mdx` (the reconciliation, the runbooks) - `program-structure.mdx` (the ten prerequisites mapped to the files they touch) - `multi-currency-money.mdx` (the rule that amounts are never summed across currencies) - `internal-tenant.mdx` (the internal tenant, our own revenue, and the dogfooding contract)
 
 ---
 
@@ -323,6 +323,10 @@ The phases below are the POS-integration phases. **The service's own phases are 
 **2b is the wedge revenue phase.** A POS tenant buys the accounting add-on and sees their own month's books appear without anyone typing anything. **The standalone accounting plan can already be selling by then - that is the hedge. This is the thesis.**
 
 **Phase 2 does not change how the POS sells.** It writes one extra row per settlement, emits one extra event, and adds an internal API. **The floor never waits for the books.**
+
+**And Phase 2 has a reference tenant, if we want one.** The internal tenant (`internal-tenant.mdx`) is our own books, filled by our own subscription revenue - **but that revenue comes from the billing system, not from a POS.** So if we run our own restaurant on the POS, **it becomes this connector's reference tenancy for free**: a real tenant, real sales, real settlements, real refunds, with our own people on the other end of the questions. **The connector gets tested against a real tenancy before a customer sees it, and the test is free.** That is worth doing deliberately rather than by accident - and it is one of the strongest arguments for running a restaurant on our own POS.
+
+**What the binding owes the internal tenant, and it is small.** Our own revenue reaches our books through `billing_ours`, not through this binding - **so Phase 2 is not a dependency of our own books.** But the two share the ledger, the periods, the reconciliation screen and the audit trail, so a defect in this connector's journal mapping would show up in our own books. **Which is the point: the internal tenant is the first place a mapping error is visible, and it is visible to us rather than to a customer.**
 
 ---
 

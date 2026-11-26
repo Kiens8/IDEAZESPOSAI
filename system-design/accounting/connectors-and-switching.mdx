@@ -7,7 +7,7 @@ description: The connectors that write into the ledger - our POS pushing in on t
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists.
 **The direction reversed.** The version this replaces described a connector that pushed **out** of a POS-internal module into the tenant's Xero or Bukku. Under the standalone framing the accounting service **is** the book, and the connectors point **in**: our POS pushes sales in, another vendor's POS may push sales in, a payroll system posts in. The push-out to Xero or Bukku survives as one connector among several, because a tenant whose accountant works in Xero still needs their numbers there.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the engine these connectors write into) - `pos-integration.mdx` (our own POS, in full) - `business-model.mdx` (the commercial case for the binding) - `purchase-path.mdx` (the purchase path) - `operations.mdx` (the service's operations) - `program-structure.mdx` (the connector boundary - adding one must not touch the ledger) - `malaysia-e-invoice.mdx` (the encrypted ERP credential pattern these connectors follow)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the engine these connectors write into) - `pos-integration.mdx` (our own POS, in full) - `business-model.mdx` (the commercial case for the binding) - `purchase-path.mdx` (the purchase path) - `operations.mdx` (the service's operations) - `program-structure.mdx` (the connector boundary - adding one must not touch the ledger) - `malaysia-e-invoice.mdx` (the encrypted ERP credential pattern these connectors follow) - `internal-tenant.mdx` (the internal tenant, our own revenue, and the dogfooding contract)
 
 ---
 
@@ -22,6 +22,7 @@ The previous version of this document was about pushing our journals into someon
 | Connector | Direction | What it carries | Why it matters |
 |---|---|---|---|
 | **Our POS** | **in** | every sale, its discount, its tax, its cost, its outlet | the revenue line, automatically, with zero re-keying - this is the wedge revenue. **Its own document: `pos-integration.mdx`** |
+| **Our own billing** | **in** | our subscription revenue - the invoices our customers pay for, with their service period | **the dogfooding connector** - our own revenue lands in our own books by the same machinery a tenant's sales land in theirs. **Its own document: `internal-tenant.mdx`** |
 | **A third-party POS** | **in** | the same sales facts, from a POS that is not ours | **the displacement case** - the tenant who has AutoCount's POS and a separate accounting package can keep the POS and move the books |
 | **Payroll** | **in** | salary, EPF, SOCSO, EIS, PCB - as journals | the fragmented stack's third pillar; we accept the postings before we build the module |
 | **A bank feed** | **in** | the statement | reconciliation - later |
@@ -122,6 +123,31 @@ Before posting, the service checks whether that key has already been posted. If 
 The dead letter path already exists in the POS (`services/domain_events.py:870`) and it is **not swallowed**. A dead letter on a sale journal means the tenant's revenue is understated by that amount, and the tenant must be able to see it, count it, and retry it.
 
 ---
+
+## Connector 1b - our own subscription revenue lands in our books
+
+**This is the connector that proves the connector design works, because it is the first one we run it on.**
+
+Our customers subscribe to a POS plan and pay. That invoice is **our revenue**, and it belongs in our books - in the internal tenant (`internal-tenant.mdx`). The billing database is the source of truth, the facts are the same kind of facts a POS produces (an amount, a date, a period, a currency), and the machinery is identical: **pull a window of source facts, map them to journal lines, hand them to `services/ledger.py`.**
+
+**It is not the POS connector.** `pos_ours` reads a *tenant's* sales from the POS's snapshot API and writes into *that tenant's* books. `billing_ours` reads *our* revenue from the billing system and writes into *our* books. **They share the connector interface and nothing else** - and that is the point: if the interface is right, the second connector is a directory and a mapping, not a new subsystem.
+
+| | |
+|---|---|
+| **Provider** | `billing_ours` |
+| **Source of truth** | the website API's invoice stream |
+| **Writes into** | the internal tenant, and no other tenant |
+| **The read** | a read-only `GET /api/internal/billing/ledger-events` feed on the website API, with the accounting service's own server key |
+| **The idempotency key** | `(invoice_id, status, paid_at)` - **because an invoice's status can change after the fact** (an admin can set `refunded` on a paid invoice) |
+
+**Two facts make this connector different from the POS one, and both are the billing system's, not ours.**
+
+1. **An invoice does not carry the service period it paid for.** The period lives on the subscription, and the renewal job **advances it at the moment it issues the invoice** (`website_api/scripts/send_notifications.py:617-626`) - so a connector that reads the subscription's period later reads the *wrong* period for every invoice but the newest. **The feed must state the period the invoice covers**, which is why `period_start` / `period_end` on `invoices` is Phase 0b work (`internal-tenant.mdx` §3.3).
+2. **The invoice carries no tax and no fee** - there is no tax column and no fee column anywhere in `website_api/`. So our books are gross of both, and the recognition rules have to name that gap rather than pretend it away (`internal-tenant.mdx` §4.3, §4.4).
+
+**The dead-letter rule is the same as everywhere else, and here it matters more:** *if the feed cannot state the period the invoice covers, the connector does not post it.* It parks it with a named reason. **A missing number beats a wrong number** - and a wrong period on an annual plan is a year of revenue in the wrong month.
+
+**Does NOT:** write into any tenant but the internal one; carry customer identity into our books (the feed has no customer name, no email, no notes); touch the POS backend; or involve the POS at all.
 
 ## Connector 2 - a POS that is not ours
 
@@ -367,6 +393,12 @@ The wizard ends with a **test push** - one journal, one invoice - that the tenan
 ---
 
 ## The phased plan
+
+### Phase 1 - our own revenue lands in our books
+
+**The detail is in `internal-tenant.mdx`.** The internal tenant, the granted entitlement, the read-only billing feed, the `billing_ours` connector, the deferred revenue rules, the monthly gateway-fee adjustment, and the reconciliation that compares our books' cash receipts against the billing system's paid invoices per currency.
+
+**Does NOT:** involve the POS backend, create a POS tenant, or wait for the binding. **It is the first connector we run, and it runs on our own revenue.**
 
 ### Phase 2 - our POS pushes in
 

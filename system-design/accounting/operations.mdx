@@ -3,10 +3,10 @@ title: The operations - making the accounting service a service that survives
 description: The Phase 0c specification - the database lifecycle, the backup and the restore drill, readiness and dependency checks, monitoring and alerting, and the runbooks for the standalone accounting service
 ---
 
-**Document Version:** 1.0 (26 Nov 2026 - written against the live host and the live services)
+**Document Version:** 1.1 (27 Nov 2026 - the internal tenant in the backup scope and in the drill)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists. The existing operations it describes as a model are real and running.
-**Related:** `accounting-service.mdx` (the service, the phases) - `purchase-path.mdx` (the account and the purchase) - `operations.mdx` (the operations) - `ledger-and-money.mdx` (the engine, whose data is what is being protected) - `pos-integration.mdx` (the binding, and the reconciliation that answers the second 2am question) - `program-structure.mdx` (where the code lives, and the ports the service runs on)
+**Related:** `accounting-service.mdx` (the service, the phases) - `purchase-path.mdx` (the account and the purchase) - `operations.mdx` (the operations) - `ledger-and-money.mdx` (the engine, whose data is what is being protected) - `pos-integration.mdx` (the binding, and the reconciliation that answers the second 2am question) - `program-structure.mdx` (where the code lives, and the ports the service runs on) - `internal-tenant.mdx` (the internal tenant, our own revenue, and the dogfooding contract)
 
 ---
 
@@ -50,13 +50,17 @@ This document is Phase 0c: **the operations that turn a deployable into somethin
 | **The row counts are right** | the restore has the data the production database had |
 | **The restore is atomic** | a half-restored environment is never a usable environment |
 
-The Postgres equivalents: `pg_dump --format=custom` (or a base backup), a restore into a scratch database, and the same row-count comparison against the representative tables - **the charts of accounts, the journals, the accounts, the tenants.** The third proof, atomicity, is a property of how the restore is performed: **the restore lands in a scratch environment and the environment is promoted only after the counts pass.** A restore that fails halfway leaves the scratch environment broken and production untouched.
+The Postgres equivalents: `pg_dump --format=custom` (or a base backup), a restore into a scratch database, and the same row-count comparison against the representative tables - **the charts of accounts, the journals, the accounts, the tenants.**
+
+**The internal tenant's journals are in that comparison, and they must be.** We are the first tenant of this service and our own books hold our own revenue (`internal-tenant.mdx`), so **a restore that silently loses our revenue is the one failure we would not notice until tax time.** The drill reads back a trial balance, a P&L and the deferred revenue balance - **not just a row count** - because the deferred revenue balance is the one figure that proves the restore brought back *recognised* revenue rather than invoices. The third proof, atomicity, is a property of how the restore is performed: **the restore lands in a scratch environment and the environment is promoted only after the counts pass.** A restore that fails halfway leaves the scratch environment broken and production untouched.
 
 **The rotation is per-day and per-week, and the retention is written down.** The existing SQLite backup rotates; the accounting service's backup rotates the same way, with a longer tail - a ledger is worth more than a POS and loses more, so the retention window is longer and the backups are copied off the host. **A backup that is only on the machine it protects is not a backup.** It survives disk failure, not a host loss.
 
 **And the restore drill is part of Phase 0, not an afterthought.** Once a month, in a staging environment, the backup is restored and a tenant's books are read back - a trial balance, a P&L, a bank reconciliation - and the numbers are compared against production. **A backup that has never been restored is a hypothesis.** The drill's output is a date and a pass/fail, and a failure is an alert like any other.
 
 **The two questions the drill answers, before any customer asks them:** *can you restore me?* and *was the thing you restored actually my books?*
+
+**And for the internal tenant, a third:** *does the restored book still reconcile?* Our own books reconcile against the billing system's paid invoices per currency (`internal-tenant.mdx` §7), so **the drill has an independent oracle that no customer has** - our revenue is computable twice, by two systems that share no code. **That is the cheapest and strongest test of the whole restore path, and it should run first.**
 
 ---
 
