@@ -9,7 +9,7 @@ description: A standalone multi-tenant accounting SaaS with its own tenants, its
 **The documents in this folder:**
 - `accounting-service.mdx` - **this one.** The product, the tenant model, the service boundary, the API, the billing, the phases.
 - `ledger-and-money.mdx` - the double-entry engine: the chart of accounts, the journals, the fiscal periods, the money rules, the statements.
-- `connectors-and-migration.mdx` - the binding: the POS pushes in, a third-party POS may push in, the books may push out to Xero or Bukku, and an incumbent stack may be migrated in.
+- `connectors-and-switching.mdx` - the binding: the POS pushes in, a third-party POS may push in, the books may push out to Xero or Bukku, and a business that already keeps its books elsewhere may be brought across.
 - `business-model.mdx` - who pays, what it costs, how we displace the incumbent stack, and the honest case against this.
 
 ---
@@ -170,7 +170,7 @@ Full table detail is in `ledger-and-money.mdx` §3. The service-level additions:
 | `acc_api_clients` | the OAuth clients and API keys for third-party integrations | the public API |
 | `acc_outbox` | the service's own outbound queue (to Xero, to Bukku, to a bank) | the mirror of the POS outbox |
 
-**The `acc_tenant_sources` table is the heart of the binding.** It is what turns "the POS pushes to us" into "any source pushes to us" - our POS, another vendor's POS, a payroll system, a bank feed. The connector contract is one contract, and our POS is simply the first and best implementation of it. `connectors-and-migration.mdx` §2 specifies it.
+**The `acc_tenant_sources` table is the heart of the binding.** It is what turns "the POS pushes to us" into "any source pushes to us" - our POS, another vendor's POS, a payroll system, a bank feed. The connector contract is one contract, and our POS is simply the first and best implementation of it. `connectors-and-switching.mdx` §2 specifies it.
 
 ### The API surface
 
@@ -238,7 +238,7 @@ Each phase says what it does **not** do, because the boundary is the design.
 
 The new deployable, its Postgres database, the tenant model (platform customer -> accounting tenant -> books), the website API's `product` discriminator and the `accounting` feature row, the API key and OAuth surfaces, the entitlement call, the audit rule, the money rules, and the empty chart of accounts.
 
-**Does NOT:** post a journal, show a statement, or touch the POS. The books exist and are empty. This is where the migration is written and the rounding rule is proved against the existing float totals.
+**Does NOT:** post a journal, show a statement, or touch the POS. The books exist and are empty. This is where the **schema migration** is written - the database revision that creates the tables - and the rounding rule is proved against the existing float totals.
 
 ### Phase 1 - the ledger and the statements
 
@@ -272,9 +272,9 @@ The year-end close, the retained earnings carry-forward, the opening balances fo
 
 **Does NOT:** re-open a closed year on its own. An owner may re-open a locked period - it is recorded, and the re-opening is visible.
 
-### Phase 6 - the third-party sources and the migration
+### Phase 6 - the third-party sources and the switch
 
-The inbound contract for a **POS that is not ours**, the migration path from an incumbent stack (chart of accounts, opening balances, an opening period, a parallel-run month), and the outbound connectors to Xero and Bukku.
+The inbound contract for a **POS that is not ours**, the switch path for a business that already keeps its books elsewhere (chart of accounts, opening balances, an opening period, a parallel-run month), and the outbound connectors to Xero and Bukku.
 
 **Does NOT:** make the external system the source of truth. Ours is; the connector pushes.
 
@@ -347,7 +347,7 @@ The e-Invoice design's own facts all support the move and none of them block it:
 **The sibling designs in this repository:**
 
 - `ledger-and-money.mdx` - the double-entry engine
-- `connectors-and-migration.mdx` - the binding
+- `connectors-and-switching.mdx` - the binding
 - `business-model.mdx` - the commercial case
 - `malaysia-e-invoice.mdx` - the tax document rail, and the market's shape
 - `multi-currency-money.mdx` - the rule that amounts are never summed across currencies

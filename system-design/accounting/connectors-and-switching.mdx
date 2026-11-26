@@ -1,6 +1,6 @@
 ---
 title: The binding - how a sale reaches the books, and how a tenant switches
-description: The connectors that write into the ledger - our POS pushing in on the outbox it already has, a third-party POS pushing in through the public API, our books pushing out to Xero or Bukku, a payroll system posting in, and the migration path that lets a tenant bring their incumbent stack across
+description: The connectors that write into the ledger - our POS pushing in on the outbox it already has, a third-party POS pushing in through the public API, our books pushing out to Xero or Bukku, a payroll system posting in, and the switch path for a business that already keeps its books somewhere else
 ---
 
 **Document Version:** 1.0 (rewritten 26 Nov 2026 - the direction reversed)
@@ -282,13 +282,22 @@ The pattern is the one the e-Invoice module already uses for the tenant's ERP cr
 
 ---
 
-## The migration - how a tenant brings their incumbent stack
+## The switch - bringing across a business that already has books
+
+**Read this first, because "migration" is used in two senses in this repository and they are not the same thing.**
+
+- **A schema migration** is the database revision that creates our tables. It is greenfield - nothing is being migrated, the tables are simply created. That is what `accounting-service.mdx` Phase 0 means by "the migration is written".
+- **This section is the switch** - the customer-facing path that lets a business which *already keeps books somewhere else* move those books here.
+
+**And this section is for exactly one customer.** A business that is starting from nothing - a new restaurant, a new company - **does not need any of this**. It signs up, the books are created empty, and the sales fill them forward from day one. There is nothing to bring across.
+
+**This section exists for the fragmented-stack owner** - the business running a POS in one system, accounting in another and payroll in a third. That tenant already has a chart of accounts, a history and an accountant who knows them. Without this path they cannot use our accounting at all: the price of switching would be re-keying their whole history by hand. **This path is the door, and the door is what makes the switch a sale rather than a hope.**
 
 **This is the switch, and it is where the fragmentation thesis becomes concrete.**
 
 A tenant on FeedMe + AutoCount + a payroll package has **three systems and five subscriptions**. To move their books to us, they do not need to re-key a year. They need **opening balances** and a **cutover date**.
 
-### 5.1 The migration, in four steps
+### 5.1 The switch, in four steps
 
 | Step | What happens | What the tenant does |
 |---|---|---|
@@ -301,7 +310,7 @@ A tenant on FeedMe + AutoCount + a payroll package has **three systems and five 
 
 **Step 3 is the one that has to be easy.** A side-by-side comparison screen: our P&L for the month, their P&L for the month, and the difference **by account**. The tenant's accountant looks at that screen and either agrees or does not - which is the actual trust mechanism for a migration, and it is much cheaper for both sides than an argument about whose numbers are right.
 
-### 5.2 What we do NOT migrate
+### 5.2 What we do NOT bring across
 
 - **We do not reconstruct their history.** Their past lives in their old system. They get opening balances and a forward book. This is stated plainly at the start of a migration, because a tenant who expects three years of reconstructed history and gets an opening balance feels cheated - and the fix is a sentence in the sales conversation, not a feature.
 - **We do not import their transactions.** Same reason, with one exception: their **sales** can be imported, because a month's sales is exactly what our POS connector would have pushed. **This is the real answer for a tenant whose POS is not ours** - if their old POS can export a month's sales in any structured form, those sales can be loaded as the first month in our books, and the tenant sees their own history in our product on day one.
@@ -318,7 +327,7 @@ A tenant on FeedMe + AutoCount + a payroll package has **three systems and five 
 
 **Every import is validated before it is posted:** the balances must balance, the accounts must exist, the date must be a valid opening date. An import that does not balance is **refused with the out-of-balance amount named** - the same honesty rule the trial balance follows (`ledger-and-money.mdx` §5.1). We do not "adjust" an unbalanced import to make it fit.
 
-### 5.4 The migration is also the switching mechanism
+### 5.4 The switch is also the switching mechanism
 
 **The tenant does not have to move everything at once.** The switch can be partial, and this is the single most commercially important fact in this document:
 
@@ -360,7 +369,7 @@ The outbox channel, the events, the idempotency key, the auto-posting rules, the
 
 **Does NOT:** touch purchases, receivables or a year-end close. One journal family only. **This is the first revenue phase.**
 
-### Phase 6.1 - the third-party POS and the migration
+### Phase 6.1 - the third-party POS and the switch
 
 The public write API, the OAuth client-credentials flow, the per-source keys, the published rate limits, the coarse contract's degradation rules, the chart import, the opening-balance import, the parallel-run comparison, the cutover.
 
@@ -392,7 +401,8 @@ The payroll posting contract and the payroll accounts, then the bank statement i
 - **It does not claim the pushed history is complete.** Only what is pushed goes out - a tenant who connects in November pushes from November.
 - **It does not claim to replace a payroll product.** We accept payroll postings. Payroll is a later module.
 - **It does not claim a bank feed in v1.** Bank transactions are imported by hand.
-- **It does not claim a migration reconstructs history.** Opening balances, a parallel run, and a cutover date.
+- **It does not claim the switch reconstructs history.** Opening balances, a parallel run, and a cutover date.
+- **It does not claim a new business needs any of it.** A tenant starting from nothing creates empty books and fills them forward. This section only matters to a tenant who already has books somewhere else.
 
 ---
 
@@ -403,7 +413,7 @@ The payroll posting contract and the payroll accounts, then the bank statement i
 3. **How far back does the first push go?** The PROPOSAL is from the connect date forward, with an explicit re-push of a chosen period.
 4. **Should a failed push ever block a period close?** The PROPOSAL is no - our books close on our own facts, and the connector reports what it could not push. The alternative is safer for the external book and worse for the tenant's workflow.
 5. **Does the push include the frozen cost?** Our COGS journals carry the recipe cost frozen at the sale. Pushing them makes their gross profit match ours - but their own stock system may compute a different cost. Their accountant needs to know which one the number came from.
-6. **Do we accept a sales CSV from an incumbent POS, or only an API?** The PROPOSAL is both - the CSV is the migration path, the API is the steady state.
+6. **Do we accept a sales CSV from an incumbent POS, or only an API?** The PROPOSAL is both - the CSV is the bring-across path, the API is the steady state.
 7. **Which payroll system do we accept first?** Our own payroll module is not built. The PROPOSAL is that the contract is generic - a journal per pay run - and any payroll system that can produce a journal can post it.
 8. **Do we need to handle a tenant who runs two POS systems into one set of books?** A tenant with an outlet on one POS and another outlet on another is possible. The PROPOSAL is yes - the outlet id is part of the sale payload and each source is registered against the tenant, not the outlet.
 

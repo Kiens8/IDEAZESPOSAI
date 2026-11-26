@@ -6,7 +6,7 @@ description: The commercial case for the standalone accounting service - the pac
 **Document Version:** 1.0 (rewritten 26 Nov 2026)
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every price, every number and every phase gate here is a proposal.
-**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `connectors-and-migration.mdx` (the binding and the migration) - `business-model.mdx` (this one)
+**Related:** `accounting-service.mdx` (the service) - `ledger-and-money.mdx` (the engine) - `connectors-and-switching.mdx` (the binding and the migration) - `business-model.mdx` (this one)
 
 ---
 
@@ -79,7 +79,7 @@ New `subscription_plans` rows for the accounting product, distinguished by a new
 |---|---|---|---|
 | **Accounting Starter** | 99 | 25 | one outlet, the books, the statements, manual entry only |
 | **Accounting Basic** | 199 | 50 | one legal entity, the POS connector, the bank, receivables |
-| **Accounting Pro** | 349 | 90 | multiple legal entities, the third-party POS connector, the Xero / Bukku push, the migration tools |
+| **Accounting Pro** | 349 | 90 | multiple legal entities, the third-party POS connector, the Xero / Bukku push, the bring-across tools |
 
 **The reasoning, briefly.**
 
@@ -158,7 +158,7 @@ Unlike the AI features, a double-entry ledger is **deterministic**. Posting rule
 | **Support** | human hours | **the real cost, and the one that scales badly** - see §4.3 |
 | **Encryption and key management** | the source credentials | small, but it is a hard requirement, not an option |
 
-**The cost that is easy to underestimate is support.** An accounting product's questions are hard: "why is my March different from the accountant's?", "which period did that land in?", "this is wrong, fix it". **Every one of those is a conversation with a tenant who cares about their money.** The migration (§3 of `connectors-and-migration.mdx`) is where the support cost concentrates.
+**The cost that is easy to underestimate is support.** An accounting product's questions are hard: "why is my March different from the accountant's?", "which period did that land in?", "this is wrong, fix it". **Every one of those is a conversation with a tenant who cares about their money.** The migration (§3 of `connectors-and-switching.mdx`) is where the support cost concentrates.
 
 ### 4.2 The revenue
 
@@ -173,8 +173,8 @@ Unlike the AI features, a double-entry ledger is **deterministic**. Posting rule
 **Three honest failure modes:**
 
 1. **Support scales linearly while revenue does not.** A tenant with 12 outlets and a monthly close generates more questions than a tenant with one. **The mitigation is the product:** the trial balance that names the out-of-balance amount, the side-by-side parallel run, the sync log, the dead letter with a retry button. Every one of those turns a support conversation into a screen. **If we build the product as a support-avoidance machine, the margin holds. If we build it as a black box, it does not.**
-2. **The migration is expensive per tenant.** A fragmented-stack switch can take a week of the tenant's time and ours. **This is the strongest argument for the books-first wedge and the parallel run** - the parallel run is not a feature, it is the support-cost reduction.
-3. **A failed migration is a churn event.** A tenant who trusts us with their books and gets them wrong does not complain - they leave. **The opening-balance import must balance before it is allowed to post** (`connectors-and-migration.mdx` §5.3), because a silently unbalanced opening balance is the single worst thing this product could do.
+2. **The switch is expensive per tenant.** A fragmented-stack switch can take a week of the tenant's time and ours. **This is the strongest argument for the books-first wedge and the parallel run** - the parallel run is not a feature, it is the support-cost reduction.
+3. **A failed switch is a churn event.** A tenant who trusts us with their books and gets them wrong does not complain - they leave. **The opening-balance import must balance before it is allowed to post** (`connectors-and-switching.mdx` §5.3), because a silently unbalanced opening balance is the single worst thing this product could do.
 
 ---
 
@@ -290,7 +290,7 @@ A per-tenant support cost that scales with the tenant's complexity, against a pr
 
 - `accounting-service.mdx` - the service, the tenant model, the phases
 - `ledger-and-money.mdx` - the engine, the margin rule the demo depends on
-- `connectors-and-migration.mdx` - the binding, the migration, the parallel run
+- `connectors-and-switching.mdx` - the binding, the switch, the parallel run
 - `malaysia-e-invoice.mdx` - the market's shape, and the compliance rail
 - `multi-currency-money.mdx` - why the price list has a row per currency
 - `pricing-engine-and-promotions.mdx` - the discount's provenance, which is the margin story

@@ -7,7 +7,7 @@ description: The accounting engine behind the service - the chart of accounts, j
 **Created:** 26 Nov 2026
 **Status:** **PROPOSAL, NOT YET BUILT.** Every table, rule and screen named here is a proposal until a phase says it is built.
 **The owner of this engine changed.** This document was first written for a module inside the POS backend. It is now the ledger of a **standalone accounting service** (`accounting-service.mdx`). The accounting rules did not change; the **tenant of the books** did - from "the POS tenant" to "the accounting tenant, which is a legal entity". That one change is applied consistently below and flagged where it matters.
-**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `connectors-and-migration.mdx` (who writes into this ledger) - `business-model.mdx` (who pays for it) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states)
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `connectors-and-switching.mdx` (who writes into this ledger) - `business-model.mdx` (who pays for it) - `malaysia-e-invoice.mdx` (the tax document rail - a different rail) - `multi-currency-money.mdx` (never sum across currencies) - `pricing-engine-and-promotions.mdx` (where the discount comes from) - `order-flow-standards.mdx` (the order states)
 
 ---
 
@@ -24,7 +24,7 @@ A tenant's own outlet sold 200 covers last month. The POS holds the gross, the d
 - **fiscal years and periods** that can be locked so last quarter cannot be rewritten,
 - **the statements** - profit and loss, balance sheet, trial balance, general ledger, tax summary.
 
-**Two things it is not.** It is **not** a second e-Invoice system (`malaysia-e-invoice.mdx` owns that rail - §6.4). And it is **not** us trying to out-build Xero or AutoCount - the **feature set is modelled on Bukku and Xero**, because the third-party case (`connectors-and-migration.mdx`) only works if our model and theirs are the same shape.
+**Two things it is not.** It is **not** a second e-Invoice system (`malaysia-e-invoice.mdx` owns that rail - §6.4). And it is **not** us trying to out-build Xero or AutoCount - the **feature set is modelled on Bukku and Xero**, because the third-party case (`connectors-and-switching.mdx`) only works if our model and theirs are the same shape.
 
 ---
 
@@ -60,7 +60,7 @@ Every reporting endpoint answers the same four questions before it answers the f
 **Under the standalone framing this rail is copied, not shared.** The accounting service has its own database and its own sessions, so it cannot call the POS's `require_outlet_tenant`. **But it adopts the rule verbatim, with the same names and the same refusal behaviour** - because the alternative is inventing a second, weaker tenant rule for the most sensitive data in the product. The accounting service's equivalent is stated in §3.5.
 
 **Finding 3 - the outbox already exists, and it is the answer to "how does a sale get into the ledger".**
-`domain_events` (`models/domain_event.py:89`), `event_subscriptions` (`:159`) and `event_deliveries` (`:239`), with a dispatcher (`services/domain_events.py:704`) that retries with backoff, writes **dead letters** (`:870`) and can requeue them (`:899`). **A journal is posted from an event, not from a request.** The sale path already has exactly the machinery this needs - the connector spec in `connectors-and-migration.mdx` §3 is a channel on this outbox, not a new queue.
+`domain_events` (`models/domain_event.py:89`), `event_subscriptions` (`:159`) and `event_deliveries` (`:239`), with a dispatcher (`services/domain_events.py:704`) that retries with backoff, writes **dead letters** (`:870`) and can requeue them (`:899`). **A journal is posted from an event, not from a request.** The sale path already has exactly the machinery this needs - the connector spec in `connectors-and-switching.mdx` §3 is a channel on this outbox, not a new queue.
 
 ---
 
@@ -364,7 +364,7 @@ So the accounting service is gated by a feature row - **`accounting`** - plus **
 - **It does not claim the tenant's books are statutory records.** The service produces a proper double-entry ledger, but the tenant's accountant and the tax authority decide what is filed. Nothing here is a certified accounting system.
 - **It does not claim to replace the e-Invoice rail.** §2.4. The tax document is `malaysia-e-invoice.mdx`'s job.
 - **It does not claim to make the tenant's reporting work in another currency.** §4.2 - amounts in different currencies are never summed, and the service says so rather than guessing a rate.
-- **It does not claim the historical data is converted.** A tenant who switches on in November gets **opening balances**, not a reconstructed past. See `connectors-and-migration.mdx` §5.
+- **It does not claim the historical data is converted.** A tenant who switches on in November gets **opening balances**, not a reconstructed past. See `connectors-and-switching.mdx` §5.
 - **It does not claim to be an audit.** The audit rule (§3.2) makes the books honest and traceable; it does not make them audited.
 - **It does not claim the connector is two-way.** Ours is the source of truth; the connector pushes.
 - **It does not claim a bank feed.** Bank transactions are entered or imported; a live feed is later.
@@ -378,7 +378,7 @@ So the accounting service is gated by a feature row - **`accounting`** - plus **
 2. **Is the fiscal year the calendar year?** The PROPOSAL is yes by default and settable. A tenant who files on a fiscal year ending in June sets it once.
 3. **Two base currencies under one platform customer?** The PROPOSAL is one per accounting tenant - one legal entity, one functional currency - and the consolidated view across entities with different currencies **shows no single number**. This is a change from the POS-only version, where the tenant was the group.
 4. **Who signs the year?** `accounting:close` is the owner today (§6.2). Should it be grantable to an accountant who is not the owner - the owner of a group with a bookkeeper outside the business?
-5. **How much history is migrated?** The PROPOSAL is opening balances only. A tenant who wants March through October reconstructed needs the float order totals - which means importing the orders and re-running the rules, and the frozen costs for old orders may be NULL for orders placed before the freeze existed.
+5. **How much history do we import?** The PROPOSAL is opening balances only. A tenant who wants March through October reconstructed needs the float order totals - which means importing the orders and re-running the rules, and the frozen costs for old orders may be NULL for orders placed before the freeze existed.
 6. **Does a credit sale change the order flow's shape?** It introduces the debtor at the counter. That touches the payment panel and the receipt - the two screens Kens and the team look at most. The alternative (a credit sale only from the Accounting app, creating an invoice that is not an order) is less coherent but much smaller.
 7. **Does the bank reconciliation need to be in this project?** Posting bills and payments is one thing; reconciling a bank statement against them is more work.
 8. **Should the rounding account exist per currency?** A rounding difference in MYR and one in USD cannot share one account without summing across currencies.
@@ -412,7 +412,7 @@ So the accounting service is gated by a feature row - **`accounting`** - plus **
 **The sibling designs in this repository:**
 
 - `accounting-service.mdx` - the service, the tenant model, the phases
-- `connectors-and-migration.mdx` - who writes into this ledger, and the migration path
+- `connectors-and-switching.mdx` - who writes into this ledger, and the switch path
 - `business-model.mdx` - the commercial case
 - `malaysia-e-invoice.mdx` - the tax invoice rail, and the market's shape
 - `multi-currency-money.mdx` - the rule that amounts are never summed across currencies
