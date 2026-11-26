@@ -1,0 +1,356 @@
+---
+title: The accounting service - one set of books, bound to the POS
+description: A standalone multi-tenant accounting SaaS with its own tenants, its own API and its own billing - built now, sold first as an add-on to the POS tenants we already have
+---
+
+**Document Version:** 1.0 (rewritten 26 Nov 2026 - the second version, after the scope changed)
+**Created:** 26 Nov 2026
+**Status:** **PROPOSAL, NOT YET BUILT.** Nothing in this folder is code. Every table, endpoint and screen named here is a proposal until a phase says it is built.
+**The documents in this folder:**
+- `accounting-service.mdx` - **this one.** The product, the tenant model, the service boundary, the API, the billing, the phases.
+- `ledger-and-money.mdx` - the double-entry engine: the chart of accounts, the journals, the fiscal periods, the money rules, the statements.
+- `connectors-and-migration.mdx` - the binding: the POS pushes in, a third-party POS may push in, the books may push out to Xero or Bukku, and an incumbent stack may be migrated in.
+- `business-model.mdx` - who pays, what it costs, how we displace the incumbent stack, and the honest case against this.
+
+---
+
+## The framing, stated plainly
+
+This is the second version of this proposal, and the framing changed, so the change is stated here first - because **the framing decides several sections, and a reader who does not know it will read the wrong thing into them.**
+
+**What we are building: a standalone, multi-tenant cloud accounting service.** Its own database. Its own tenants - a tenant who never buys our POS can have books here. Its own public API, shaped like Bukku's and Xero's. Its own billing, its own plans, its own customers.
+
+**What we sell first: an add-on to the POS tenants we already have.** The service is built in its final shape from day one, but the first revenue comes from existing POS tenants buying accounting as a priced add-on. That is the "build B's architecture, sell A's packaging" decision.
+
+**Why: the fragmentation.** A tenant's business today is four or five separate systems that do not speak to each other - a POS, an accounting package, a payroll system, a bank portal, maybe a separate e-Invoice bridge. Every figure is re-typed by hand at least once, and the tenant pays five subscriptions to run one restaurant. **The binding is the product: one identity, one chart of accounts, one set of books, and the POS writes into them automatically.** A tenant who switches to us does not switch to "an accounting system" - they switch from five subscriptions to one.
+
+**Where this document differs from the version it replaces.** The first version of this proposal was a **module inside the POS backend**: accounting sold as a feature row to tenants who already bought the POS, with the POS as the parent. That version was not wrong about the ledger - `ledger-and-money.mdx` is essentially unchanged - but it was wrong about the **scope**, and four things follow from the change:
+
+| The section of this folder that changed | What it was | What it is now |
+|---|---|---|
+| **The tenant model** | one set of books per POS tenant (`customers.id`) | one set of books per **legal entity**, belonging to a **platform customer** that may or may not have a POS |
+| **The billing** | a feature row on a POS plan | a **separate product** with its own plans, sold first as a priced add-on |
+| **The connector direction** | the module wrote into the POS | the **POS pushes into the accounting service**; the service also accepts other sources |
+| **The legal-entity boundary** | a footnote | a **first-class decision** - a group with three companies has three sets of books |
+
+The full audit of the first version - what the live code does and does not have - is in `ledger-and-money.mdx` §2. It was read out of the live code on 26 Nov 2026 and has not been re-derived here.
+
+**One framing question this document answers on your behalf.** The first version asked whether this should be F&B-only or general SMB. Your answer came in the pain point: *many tenants have their own separate system - accounting, POS, payroll and etc.* That is a **general SMB** statement, not a restaurant one. So the framing here is:
+
+> **A general SMB accounting service, with F&B as the go-to-market wedge.**
+
+The product is horizontal - Bukku and Xero sell to everyone and are strong in F&B. The **route in** is the POS: we arrive with the transaction already captured, and with the recipe cost, the discount source and the outlet dimension that a generic accounting system never sees. The **presets** are vertical (F&B, retail, services) but the engine is not.
+
+If that is wrong, the honest cost of changing it later is low: the ledger is horizontal either way, and the presets are data. What would change is the go-to-market, not the engine.
+
+---
+
+## Why this is the business
+
+### The fragmented stack is the market
+
+An F&B tenant in Malaysia today looks roughly like this:
+
+| System | What it does | What it costs | What it does not know |
+|---|---|---|---|
+| a POS | takes the orders | one subscription | that the accountant's books exist |
+| an accounting package | the books | another subscription | what the guest actually ordered |
+| a payroll system | the salaries | a third subscription | what the outlet's margin is |
+| a bank portal | the money | free, and useless | which invoice the payment settled |
+| an e-Invoice bridge | the compliance | a fourth subscription | anything about the tenant's own data |
+
+Our own `malaysia-e-invoice.mdx` records this pattern in the market - the typical F&B integrator is *FeedMe POS + AutoCount/Bukku + a MyInvois bridge*, and the POS itself rarely speaks MyInvois (§"How the market does it"). The same shape applies to accounting.
+
+**The gap we can own is the middle.** The market's pattern is *POS -> accounting -> a separate e-Invoice submission*, and the handoffs are where the errors and the labour live. The POS holds the transaction, the cost and the tax treatment **at the moment of the sale**. An accounting package that receives those three facts at the moment of sale does not need a human to re-type a month.
+
+### The binding is what makes it defensible
+
+A general accounting SaaS is a hard business to win: Xero and Bukku have accountants, bank feeds, payroll, years of data and hundreds of engineers. **We should not try to out-build them.** But we have something they cannot have - **we own the transaction**. No accounting system that does not own the POS knows:
+
+- the **frozen cost** of each dish at the moment it was sold - not today's recipe price, the price of the recipe on the day of the sale (`OrderItem.frozen_cost`, `models.py:338`);
+- the **discount source** - a voucher, a promotion or a manager's own hand are three different things to an accountant (`Order.discount_source`, `models.py:292`);
+- the **outlet** a transaction belongs to, as a dimension inside one set of books.
+
+So the accounting service is not "our own smaller Xero". It is **an accounting service that starts where the POS already is**, and the POS integration is not a feature - it is the reason the service can be better than the incumbent's.
+
+### Two things we deliberately do not compete on
+
+**Not on compliance.** The e-Invoice rail stays exactly where it is - `malaysia-e-invoice.mdx` owns the document pipeline. The accounting service **produces the tax figure and the invoice data**; the e-Invoice rail **submits the document**. One number, one owner.
+
+**Not on being a general payroll product.** Payroll in Malaysia carries its own compliance weight - EPF, SOCSO, EIS, PCB and the e-Payroll obligations. **The accounting service accepts payroll postings into the books** (so a payroll system, ours or anyone's, has a place to post), and a payroll module of our own is a later product, not this one.
+
+---
+
+## What exists today - the honest audit
+
+Read out of the live code on 26 Nov 2026 at commit `d83d6bf` of `Kiens8/POS_AI`. The full table is in `ledger-and-money.mdx` §2; this is the summary that decides the architecture.
+
+| What this service needs | What we have | Verdict |
+|---|---|---|
+| A chart of accounts, journals, fiscal periods | **nothing** - no such model anywhere in `backend/app/models/` | build |
+| Invoices, bills, debtors | **nothing** - `Order.customer_id` is the tenant, not a debtor | build |
+| A revenue figure | `Order.subtotal` / `discount` / `tax` / `total` (`models.py:284-295`) | have |
+| The discount's provenance | `Order.discount_source` (`models.py:292`) | have |
+| The tax treatment | `OutletSettings.tax_enabled` / `sst_rate` / `vat_rate` / `service_tax_rate` / `tax_inclusive` (`models.py:427-435`) | have |
+| The cost of goods | `OrderItem.frozen_cost` (`models.py:338`) - NULL means unknown, never zero | have |
+| Stock movements | `stock_movements` (`inventory.py:76`) - purchase / usage / adjustment / waste / transfer | have |
+| Purchase orders | `PurchaseOrder` / `PurchaseOrderItem` (`supplier.py:58`, `:83`) - already **integer cents** | have |
+| A reliable way to emit "this thing happened" | **an outbox already exists** - `domain_events` / `event_subscriptions` / `event_deliveries` (`models/domain_event.py:89`, `:159`, `:239`), a dispatcher with backoff (`services/domain_events.py:704`), dead letters (`:870`) and requeue (`:899`) | **reuse** |
+| A tenant rule that cannot be faked | `core/tenant.py` - the `customer_id` parameter is a **claim**, never an authority; the session wins; a key that names no tenant may not pick one (`core/tenant.py:41`, `:56`, `:77`) | **inherit** |
+| Machine-to-machine auth | `X-API-Key` + `X-Internal-Service: backend-pos` (`routes/customer_bff.py:67`) | extend |
+| A billing spine | website API owns `WebsiteCustomer` (`:70`), `Subscription` (`:95`), `SubscriptionPlan` (`:6`), `Feature` (`:228`), `PlanFeature` (`:245`), **`FeaturePrice` - per-currency add-on pricing (`:258`)** and `CustomerFeatureOverride` (`:299`) | **extend** |
+| Payroll | **nothing** - no payroll table anywhere in the POS | later |
+
+**Three findings that shape the service.**
+
+**Finding 1 - the outbox already exists, and it is exactly right for this.** `domain_events` + `event_deliveries` + a dispatcher with exponential backoff, dead letters and a **visible** plan gate is the machinery a POS-to-accounting push needs. The POS does not need a new queue; it needs a new **channel**.
+
+**Finding 2 - the entitlement spine is the website API, not the POS.** The POS's own `plans` table (`models.py:11`) holds three rows and is used by nothing that gates a feature; entitlement comes from the website API via `fetch_plan_features(customer_id)` (`services/plan_features.py:71`) over `X-API-Key` (`core/config.py:148`). **The accounting service asks the website API for its entitlements the same way.** One billing spine, two products.
+
+**Finding 3 - the money on the sales side is a float, and the money on the purchase side is already integer cents.** `Order.subtotal` / `tax` / `total` and `Payment.amount` are `Float`; `PurchaseOrder.total_amount` and `PurchaseOrderItem.unit_price` / `subtotal` are cents, and the supplier price list is `DECIMAL(10,4)` (`supplier.py:45`). A ledger that balances to the cent cannot sit on floats. `ledger-and-money.mdx` §4 settles this: integer minor units throughout, with the single rounding at the boundary.
+
+**Finding 4 - both services are SQLite.** The POS runs `sqlite://` with WAL and a 30s busy timeout (`core/database.py`); the website API is SQLite too. That is fine at our scale - the live POS database holds **10 tenants, 11 outlets and 365 orders** - but a standalone accounting SaaS serving tenants who do not use our POS is a different load and a different availability requirement. **The accounting service gets its own database, and Postgres from the start.** This is the one place where the new service must not copy the existing stack.
+
+---
+
+## The service boundary
+
+### What is a separate service, and why
+
+**The accounting service is a separate deployable with its own database.** Not a module in the POS backend, not a schema in the website API.
+
+The reasons, in order of weight:
+
+1. **It must serve tenants who do not have a POS.** A tenant whose books live here but whose orders live in someone else's POS is a legitimate customer - and it is the *displacement* customer (`business-model.mdx` §3). If accounting is inside the POS backend, that customer cannot exist.
+2. **Its data is the most sensitive in the product.** The profit, the payroll and the bank balance. A blast radius that stops the counter taking an order is not acceptable.
+3. **Its release cadence is different.** A ledger change and a POS change have nothing to do with each other and should not wait on each other.
+4. **Its database is different.** Postgres, not SQLite (§ "Finding 4").
+
+**What stays shared: the identity and billing spine.** The website API owns the customer, the plan, the subscription, the Stripe integration and the entitlement rows. The accounting service does not own billing and does not own identity. It asks the website API what it is entitled to, exactly as the POS does.
+
+### Where it lives
+
+**A new top-level service in the `Kiens8/POS_AI` repository** - `accounting/` alongside `backend/`, `website_api/`, `customer-app/` - rather than a new repository. The reasons: it shares the identity and billing spine (which lives in `website_api/`), it shares the deploy conventions, and the POS already calls the website API over HTTP with the house's own internal-key pattern (`routes/customer_bff.py:67`), so the same pattern serves the new call.
+
+The alternative - a separate repository - buys isolation we do not need, because the hard isolation boundary is the **database and the API**, not the repository.
+
+### The tenant model - the part that changed most
+
+Three levels, and the middle one is new:
+
+```
+platform customer            website_api.website_customers          (the identity + billing owner)
+   |
+   +-- POS tenant             POS customers + outlets                (optional)
+   |
+   +-- accounting tenant      accounting.acc_tenants                (one per LEGAL ENTITY)
+         |
+         +-- books            chart of accounts, journals, periods, statements
+         +-- connectors       POS, other POS systems, Xero, Bukku, payroll, bank
+```
+
+**The accounting tenant is a legal entity, not a restaurant group.** The reason is Malaysian, not architectural: a business is registered, and a registration is what files, pays SST and signs the accounts. A group with three companies has **three sets of books** and one balance sheet per company. If we model the books per restaurant group, we cannot produce a correct SST return for a group whose companies file separately - and that is a common shape here.
+
+**The platform customer is the billing owner, and it may have zero, one or many accounting tenants.** A tenant who buys accounting without a POS has a platform customer and an accounting tenant and no POS tenant. A group with three companies has one platform customer and three accounting tenants. A tenant with a POS has a platform customer, a POS tenant and an accounting tenant, and the two are linked by `website_customer_id` - the link that already exists (`models.py:40`).
+
+**The link between a POS tenant and an accounting tenant is explicit and one-to-many.** A POS tenant may post into one accounting tenant. The link is a row, not an inference, because the two live in different databases and a tenant may deliberately run one POS against two companies' books.
+
+**Every accounting row carries the accounting tenant id.** Not the POS tenant, not the platform customer - the tenant of the books. Everything below is a dimension inside it.
+
+### The data model - the shape
+
+Full table detail is in `ledger-and-money.mdx` §3. The service-level additions:
+
+| Table | What it holds | Why it is here |
+|---|---|---|
+| `acc_tenants` | the legal entity: name, registration number, SST registration, base currency, financial year start | the tenant of the books |
+| `acc_tenant_sources` | a link from an accounting tenant to a **source system** - our POS, a third-party POS, Xero, Bukku, payroll, a bank | the binding surface |
+| `acc_source_credentials` | the credential for a source, **encrypted at rest** | the secrets |
+| `acc_tenant_users` | who may see this tenant's books, and in what role | the access list |
+| `acc_api_clients` | the OAuth clients and API keys for third-party integrations | the public API |
+| `acc_outbox` | the service's own outbound queue (to Xero, to Bukku, to a bank) | the mirror of the POS outbox |
+
+**The `acc_tenant_sources` table is the heart of the binding.** It is what turns "the POS pushes to us" into "any source pushes to us" - our POS, another vendor's POS, a payroll system, a bank feed. The connector contract is one contract, and our POS is simply the first and best implementation of it. `connectors-and-migration.mdx` §2 specifies it.
+
+### The API surface
+
+Public, documented, versioned - the API is the product for the third-party case. **The shape is Bukku's and Xero's**, because that is what a tenant's existing accountant already knows.
+
+| Endpoint family | What it does |
+|---|---|
+| `/v1/accounts` | the chart of accounts - list, create, update, deactivate, **map** to an external system |
+| `/v1/journals` | post a journal (debits must equal credits), query, reverse |
+| `/v1/invoices` | raise, issue, record payment |
+| `/v1/bills` | the purchase side |
+| `/v1/contacts` | debtors and suppliers |
+| `/v1/bank-accounts`, `/v1/bank-transactions` | the cash and card accounts, the transactions, the reconciliation |
+| `/v1/tax-codes` | the SST / VAT / service-tax codes and the account each posts to |
+| `/v1/fiscal-years`, `/v1/periods` | the calendar, and the **lock** |
+| `/v1/reports/profit-and-loss`, `/balance-sheet`, `/trial-balance`, `/general-ledger`, `/tax-summary` | the statements |
+| `/v1/sources` | register a source system, rotate its credential, read its sync log |
+
+**Two authentication surfaces, deliberately.**
+
+- **Interactive** - a tenant's accountant signs in. The accounting service validates against the website API's customer row and issues its own session. Roles: `owner`, `accountant`, `staff` (read-only).
+- **Machine** - OAuth 2 client credentials for third-party systems, plus per-source API keys for a simpler integration.
+
+**The one rule the API inherits from the POS, unchanged: the tenant is never taken from the request.** A caller proves which tenant it is by the credential it presents; the tenant of a resource is derived from the resource itself, and a credential that names no tenant may not pick one. The POS already states this rule in `core/tenant.py` - the `customer_id` parameter is a *claim*, never an authority, and a key that names no tenant is refused with `KEY_CANNOT_PICK_TENANT` (`core/tenant.py:41`). The accounting service adopts the rule verbatim, because a ledger is a more attractive target than an order.
+
+### Billing - two shapes, one spine
+
+The website API remains the only billing system. Two shapes on it:
+
+**Shape 1 - the add-on (this is how the first revenue arrives).** A new `Feature` row - `accounting` - with `FeaturePrice` rows per currency, exactly like the two AI rows (`ai_agent` at MYR 80 / USD 20, `ai_agent_actions` at MYR 240 / USD 50). A POS tenant buys the add-on and the accounting service grants it. **No new plan, no new checkout, no new billing code** - `FeaturePrice` was built for exactly this, and it is per-currency so MYR and USD are never added together.
+
+**Shape 2 - the standalone product (later).** New `subscription_plans` rows for the accounting product, distinguished by a new `product` discriminator column (`'pos'` / `'accounting'`) so the two catalogues stay separate under one table. A tenant with no POS subscribes to an accounting plan and never touches a POS plan.
+
+**Which plans carry what is data, not code.** The house rule holds: the database is the truth, the seed is only what a fresh install starts with - and `website_api/app/core/ai_addon_prices.py` says so in as many words, with a `--check` migration that reports the drift. The accounting service reads its entitlements exactly as the POS does - one call, one internal key, one list of feature names.
+
+**Two prices, never one sum.** A plan price and an add-on price are separate money on separate schedules. The tenant pays the plan for the POS and the add-on for accounting; the accounting tenant pays the accounting plan and nothing else.
+
+### What the accounting tenant sees - the screens
+
+A **new web app**, separate from the POS frontend, because the accountant's workflow is not the cashier's. Eleven screens, each following the header standard Kens set for the whole app (the 40x40 purple-to-indigo tile with a white 22px icon, the title beside it, the 14px grey description under it - the Order screen is the reference):
+
+| Screen | What it does |
+|---|---|
+| **Overview** | the month in one view: revenue, COGS, gross profit, cash, tax collected, the last closed period |
+| **Chart of accounts** | the accounts; add, rename, deactivate; the three system accounts marked and locked |
+| **Journal** | every journal, filterable by period, source and account |
+| **New journal** | a manual journal - debit/credit lines, the account picker, a live balance check |
+| **Invoices** | the AR ledger: raised, unpaid, overdue, paid |
+| **Bills** | the AP ledger |
+| **Bank** | the cash and settlement accounts, the transactions, the reconciliation |
+| **Tax** | the SST / VAT / service-tax summary and the codes behind it |
+| **Reports** | P&L, balance sheet, trial balance, general ledger - printable and exportable |
+| **Settings** | the fiscal year, the periods, the lock, the base currency, the presets, the users |
+| **Connections** | the sources: our POS, another POS, Xero, Bukku, payroll, the bank |
+
+**The floor does not see the books.** Staff have no accounting role at all. A cashier's job is the order; the profit of the restaurant is not theirs to read.
+
+---
+
+## The phases
+
+Each phase says what it does **not** do, because the boundary is the design.
+
+### Phase 0 - the service skeleton
+
+The new deployable, its Postgres database, the tenant model (platform customer -> accounting tenant -> books), the website API's `product` discriminator and the `accounting` feature row, the API key and OAuth surfaces, the entitlement call, the audit rule, the money rules, and the empty chart of accounts.
+
+**Does NOT:** post a journal, show a statement, or touch the POS. The books exist and are empty. This is where the migration is written and the rounding rule is proved against the existing float totals.
+
+### Phase 1 - the ledger and the statements
+
+The chart of accounts, the journals, the fiscal years and the lock, the statements (P&L, balance sheet, trial balance, general ledger, tax summary), per outlet and consolidated, and the **trial-balance check that refuses to present an unbalanced ledger as final**.
+
+**Does NOT:** connect to any source. Everything is entered by hand or by API by hand. This phase proves the engine and the screens, and it is sellable on its own to an accountant with no POS.
+
+### Phase 2 - the POS binding
+
+Our POS pushes its sales into the service: the **outbound channel on the existing outbox**, the idempotency key, the auto-posting rules, the reversal on a void, and the reconciliation view that shows the POS's numbers beside the books' numbers so a mismatch is visible on the floor.
+
+**Does NOT:** touch purchases, receivables or a year-end close. One journal family only.
+
+**This is the first revenue phase** - an existing POS tenant buys the add-on and sees their own month's books appear without anyone typing anything.
+
+### Phase 3 - purchases, stock and the bank
+
+The bill from a received purchase order, the waste and adjustment journals, the payment of a bill, the bank accounts and their transactions, and the reconciliation.
+
+**Does NOT:** change the sale side, which Phase 2 froze. If Phase 3 reveals a mistake in the sale rules, the sale rules change and the affected periods are re-opened by an owner, deliberately and visibly.
+
+### Phase 4 - receivables
+
+The debtor entity, the credit sale at the counter, the AR ledger, the invoice numbering, the overdue view. **This is the only phase that changes the order flow**, so it is last of the core.
+
+**Does NOT:** change how a normal customer pays.
+
+### Phase 5 - the fiscal year
+
+The year-end close, the retained earnings carry-forward, the opening balances for a tenant who joins mid-life with money already in the bank, and the export of a closed year to their accountant.
+
+**Does NOT:** re-open a closed year on its own. An owner may re-open a locked period - it is recorded, and the re-opening is visible.
+
+### Phase 6 - the third-party sources and the migration
+
+The inbound contract for a **POS that is not ours**, the migration path from an incumbent stack (chart of accounts, opening balances, an opening period, a parallel-run month), and the outbound connectors to Xero and Bukku.
+
+**Does NOT:** make the external system the source of truth. Ours is; the connector pushes.
+
+### Phase 7 - the suite
+
+The payroll posting contract, the bank feed, and the accountant's multi-client workspace - one accountant, many tenants. **This is where the fragmentation thesis is finished**: the tenant's accountant stops having five logins.
+
+---
+
+## The cross-document change this creates
+
+**`malaysia-e-invoice.mdx` will need one section changed, and it is not changed here.** That document currently says *"The POS becomes an ERP client"* (§"How MyInvois works"). Under this framing the **accounting service** is the ERP client, because the accounting service is the system of record for the invoice; the POS renders the counter-time tax invoice and asks, but the document is issued and submitted by the accounting service.
+
+The e-Invoice design's own facts all support the move and none of them block it: the client id and secret are **self-provisioned by the taxpayer** in the MyInvois portal ("View and Register ERP"), so a tenant can grant the accounting service its own credential with no gatekeeper in the middle; the intermediary model exists as a documented fallback with the `onbehalfof` header; the submission is **monthly, within seven calendar days** of the month end (§"Table 3.6"), which is a job for the accounting service, not for a shop floor; and the rate limit arrives as standard HTTP headers, which a worker reads rather than guesses.
+
+**I have not edited that document, because it is 1,169 lines of a design that has been reviewed against the live MyInvois SDK, and changing its subject is a separate, careful pass.** It is named here so the contradiction is visible rather than buried.
+
+---
+
+## What this design does NOT claim
+
+- **It does not claim the books are statutory records.** We produce a proper double-entry ledger. What is filed, and what the tenant's accountant signs, is their business and the law's.
+- **It does not claim to replace the e-Invoice rail.** The tax document is `malaysia-e-invoice.mdx`'s job; we produce the figure it submits.
+- **It does not claim to be an audit.** The audit rule makes the books honest and traceable. It does not make them audited.
+- **It does not claim to replace a payroll product.** We accept payroll postings. Payroll is a later module.
+- **It does not claim a bank feed in v1.** Bank transactions are entered or imported; a live feed is Phase 7.
+- **It does not claim the historical data is converted.** A tenant who switches on in November gets **opening balances**, not a reconstructed past - and their own POS's history stays where it is.
+- **It does not claim the connector is two-way.** Ours is the source of truth; the connector pushes.
+- **It does not claim to win the general SMB market head-on.** `business-model.mdx` §6 is the honest case against this, and it is not a soft one.
+
+---
+
+## The open questions
+
+1. **Do we build the accounting service in this repository or a new one?** This document says this repository, sharing the identity and billing spine. The alternative is a clean repo boundary at the cost of a second billing integration.
+2. **Is the legal entity really the right tenant?** Malaysia's registration is the filing unit, so it is the right answer for the books - but it means a tenant with three companies has three logins, not one. Is one login across a group worth the extra complexity?
+3. **Does a POS tenant post into one accounting tenant or several?** This document says one, with the link explicit. A group running one POS across three companies may want the POS split by outlet into three books.
+4. **Do we sell the accounting service to tenants who have no POS at all in Phase 1?** Phase 1 is sellable on its own - but the go-to-market would be a cold sale to accountants, which is a different company from the one we are.
+5. **Does the accountant workspace come earlier than Phase 7?** The accountant is the sticky party, and Phase 7 is late. Does the multi-client workspace belong in Phase 1, when it is the only reason a non-POS tenant would join?
+6. **Who signs the year?** `owner` only, today. Should a tenant be able to grant it to an accountant who is not the owner?
+7. **Do we keep the accounting screens in the POS frontend as well?** A POS tenant may expect accounting inside the POS they know. One web app is cleaner; two is friendlier.
+
+---
+
+## The sources
+
+**The code (read on 26 Nov 2026, at commit `d83d6bf` of `Kiens8/POS_AI`):**
+
+- `backend/app/models/models.py` - `Plan` (`:11`), `Customer` (`:26`), `website_customer_id` (`:40`), `Outlet` (`:86`), `Order` (`:219`), `dining_customer_id` (`:241`), `payment_mode` (`:272`), `currency` (`:277`), `subtotal` (`:284`), `discount_source` (`:292`), `OrderItem` (`:316`), `frozen_cost` (`:338`), `Payment` (`:374`), `OutletSettings` (`:393`), `currency_code` (`:420`), `tax_enabled` (`:427`), `tax_inclusive` (`:435`), `OrderPayment` (`:578`)
+- `backend/app/models/supplier.py` - the price list `DECIMAL(10,4)` (`:45`), `PurchaseOrder` (`:58`), `PurchaseOrderItem` (`:83`)
+- `backend/app/models/inventory.py` - `stock_movements` (`:76`)
+- `backend/app/models/domain_event.py` - `domain_events` (`:89`), `event_subscriptions` (`:159`), `event_deliveries` (`:239`)
+- `backend/app/services/domain_events.py` - `dispatch_once` (`:704`), `dead_letters` (`:870`), `requeue_dead_letter` (`:899`)
+- `backend/app/core/tenant.py` - `KEY_CANNOT_PICK_TENANT` (`:41`), `TENANT_CLAIM_PARAM` (`:28`), `get_tenant_claim` (`:56`), `require_tenant_claim` (`:77`), `require_outlet_tenant` (`:188`)
+- `backend/app/services/plan_features.py` - `fetch_plan_features` (`:71`), the internal-key header (`:80-81`)
+- `backend/app/core/config.py` - `WEBSITE_API_URL` (`:144`), `WEBSITE_API_INTERNAL_KEY` (`:148`), the SQLite `DATABASE_URL` (`:44`)
+- `backend/app/core/database.py` - WAL, `busy_timeout=30000`
+- `backend/app/routes/customer_bff.py` - the internal service call (`:67`)
+- `backend/app/routes/reports.py` - the three endpoints (`:79`, `:412`, `:734`), the plan gate (`:23`), the cost rule (`:96-130`)
+- `backend/app/routes/order.py` - the stock movement on order ready (`:236`)
+- `backend/app/services/order_pricing.py` - the tax on the amount paid (`:61`)
+- `backend/app/middleware/auth.py` - `ROLE_PERMISSIONS` (`:45`), `require_staff_permission` (`:765`), `require_plan_feature` (`:839`)
+- `website_api/app/models/models.py` - `SubscriptionPlan` (`:6`), `WebsiteCustomer` (`:70`), `Subscription` (`:95`), `Feature` (`:228`), `PlanFeature` (`:245`), `FeaturePrice` (`:258`), `CustomerFeatureOverride` (`:299`)
+- `website_api/app/services/pos_provisioning.py` - `provision_pos_account` (`:40`)
+- `website_api/app/core/ai_addon_prices.py` - the add-on price pattern and the seed-versus-database rule
+- `website_api/app/routes/subscription.py` - the Stripe checkout (`:464`, `:834`) and the webhook (`:907`)
+
+**The live databases (read on 26 Nov 2026):** the POS holds 10 tenants, 11 outlets and 365 orders; the website API holds 46 feature rows, 4 subscription plans, 10 subscriptions (9 active, 1 pending, 2 with a Stripe id), 14 website customers and 1 customer feature override.
+
+**The sibling designs in this repository:**
+
+- `ledger-and-money.mdx` - the double-entry engine
+- `connectors-and-migration.mdx` - the binding
+- `business-model.mdx` - the commercial case
+- `malaysia-e-invoice.mdx` - the tax document rail, and the market's shape
+- `multi-currency-money.mdx` - the rule that amounts are never summed across currencies
+- `api-authentication-strategy.mdx` - the auth rails
+- `pricing-engine-and-promotions.mdx` - where the discount comes from
+- `order-flow-standards.mdx` - the order states and the payment timing

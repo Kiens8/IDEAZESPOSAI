@@ -1,0 +1,436 @@
+---
+title: The binding - how a sale reaches the books, and how a tenant switches
+description: The connectors that write into the ledger - our POS pushing in on the outbox it already has, a third-party POS pushing in through the public API, our books pushing out to Xero or Bukku, a payroll system posting in, and the migration path that lets a tenant bring their incumbent stack across
+---
+
+**Document Version:** 1.0 (rewritten 26 Nov 2026 - the direction reversed)
+**Created:** 26 Nov 2026
+**Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists.
+**The direction reversed.** The version this replaces described a connector that pushed **out** of a POS-internal module into the tenant's Xero or Bukku. Under the standalone framing the accounting service **is** the book, and the connectors point **in**: our POS pushes sales in, another vendor's POS may push sales in, a payroll system posts in. The push-out to Xero or Bukku survives as one connector among several, because a tenant whose accountant works in Xero still needs their numbers there.
+**Related:** `accounting-service.mdx` (the service, the tenant model, the phases) - `ledger-and-money.mdx` (the ledger these connectors write into) - `business-model.mdx` (the commercial case for the binding) - `malaysia-e-invoice.mdx` (the encrypted ERP credential pattern these connectors follow)
+
+---
+
+## The shape of it
+
+**A ledger is worth nothing until money reaches it. The binding is the product.**
+
+The previous version of this document was about pushing our journals into someone else's accounting software. That is still needed - but it is now the *last* connector, not the first, and it is not the one that matters.
+
+**The connectors, in the order they matter:**
+
+| Connector | Direction | What it carries | Why it matters |
+|---|---|---|---|
+| **Our POS** | **in** | every sale, its discount, its tax, its cost, its outlet | the revenue line, automatically, with zero re-keying - this is the first revenue |
+| **A third-party POS** | **in** | the same sales facts, from a POS that is not ours | **the displacement case** - the tenant who has AutoCount's POS and a separate accounting package can keep the POS and move the books |
+| **Payroll** | **in** | salary, EPF, SOCSO, EIS, PCB - as journals | the fragmented stack's third pillar; we accept the postings before we build the module |
+| **A bank feed** | **in** | the statement | reconciliation - later |
+| **Xero / Bukku** | **out** | our journals, invoices, bills, contacts | the tenant's accountant works there; we put our numbers where they already look |
+| **A manual entry** | **in** | the accountant's own accrual, adjustment, depreciation | always available, from day one |
+
+**One rule holds for every connector: the source is explicit, the idempotency key is explicit, and the failure is visible.** A connector that silently loses a sale is worse than no connector, because the tenant's books are then confidently wrong.
+
+---
+
+## The tenant of a connector - the binding's identity rule
+
+**A source is registered against an accounting tenant, and only one.** The table is `acc_tenant_sources`:
+
+| Column | What it holds |
+|---|---|
+| `id` | the source's id |
+| `acc_tenant_id` | **the accounting tenant whose books this source writes into** - never derived from the payload |
+| `provider` | `pos_ideazes` / `pos_external` / `payroll` / `bank` / `manual` / `xero` / `bukku` |
+| `external_ref` | the source system's own id for this tenant |
+| `status` | `active` / `needs_reauth` / `paused` |
+| `last_sync_at`, `last_error` | the health of the connector, shown in the UI |
+| `credential_id` | the pointer to the encrypted credential |
+
+**And the rule that makes it safe:** a source may write into the accounting tenant it is registered against, and **no other**. The tenant of a write is never taken from the request body, never from a payload field, and never inferred from a value inside the data. The POS's own rule applies unchanged - the `customer_id` parameter is a **claim, never an authority** (`core/tenant.py:28`, `:56`, `:77`), and a credential that names no tenant is refused with `KEY_CANNOT_PICK_TENANT` (`core/tenant.py:41`).
+
+**The same rule, one level down:** the tenant of a *resource* is derived from the resource, and every write verifies that the resource belongs to the source's tenant. A source registered against tenant A cannot post to tenant B's journal, invoice or account - not by naming a different id in the payload, and not by any field inside the payload.
+
+---
+
+## Connector 1 - our POS pushes in
+
+### 2.1 The outbox already exists - this is a channel, not a queue
+
+**The POS does not need a new event system. It has one.**
+
+| What exists | Where | What it gives us |
+|---|---|---|
+| `domain_events` | `backend/app/models/domain_event.py:89` | the events themselves, with a payload and a type |
+| `event_subscriptions` | `:159` | who is subscribed to which event type |
+| `event_deliveries` | `:239` | one row per delivery, with its state and attempt count |
+| `dispatch_once` | `backend/app/services/domain_events.py:704` | the worker that claims and delivers |
+| the dead-letter path | `:870` | a delivery that exhausted its retries, kept and visible |
+| `requeue_dead_letter` | `:899` | the manual retry |
+
+That is a **transactional outbox with retry, backoff and a visible failure state** - exactly the machinery a POS-to-accounting push needs. **The accounting connector is one more subscription** on the existing events, and one more channel in the existing dispatcher.
+
+**Why this matters more than it looks.** The alternative - the POS calling the accounting service's API when an order is paid - has two failure modes the outbox does not have: the call fails if the accounting service is down, and the sale is lost. With the outbox, the event is written in the same transaction as the order, and the delivery is retried until it succeeds or it is visible as a dead letter. **The order is never blocked by the ledger, and the ledger never silently misses an order.**
+
+### 2.2 The events
+
+The events are **PROPOSAL**. Each names the fact that changed and carries enough to post a journal without reading the POS again.
+
+| Event | Fires when | Carries |
+|---|---|---|
+| `order.paid` | `Order.payment_status` becomes `paid` | the order id, the outlet, the currency, the subtotal, the discount and its source, the tax lines, the total, the payment method, the order date |
+| `order.voided` | `Order.status` becomes `cancelled` | the order id - the consumer reads the journal it posted and reverses it |
+| `order.refunded` | a refund is recorded | the payment id, the amount, the reason |
+| `order.costed` | the order is ready and the stock movement is written | the order id, the line costs from `frozen_cost` |
+| `purchase.received` | `PurchaseOrder.status` becomes `received` | the purchase order id, the supplier, the lines, the total |
+| `stock.adjusted` | a waste or an adjustment is written | the movement id, the amount, the reason |
+
+**The payload carries the numbers, not just the ids.** An event that only carries an id forces the consumer to call back into the POS - and a callback can see a *different* number than the event described, because the row changed in between. The event carries the amounts **as they were at the moment of the fact**.
+
+**One rule on the money in the payload:** the POS's money is a float, and the payload carries it as a float, because that is what the source holds. **The conversion to integer cents happens once, on the accounting side, at the boundary** (`ledger-and-money.mdx` §3.4). The accounting service is the only place that rounds, and the rounded value is the ledger's truth.
+
+### 2.3 The idempotency key
+
+**Every delivery has a stable key, and a fact is posted exactly once.**
+
+The key is `source_id` + `event_type` + `the source's own id of the fact` - for a sale, the order id; for a void, the order id plus the void event's id; for a purchase, the purchase order id.
+
+Before posting, the service checks whether that key has already been posted. If it has, the delivery is **skipped and recorded as a duplicate**, not an error. A retried delivery after a network timeout must not double a tenant's revenue in their own books - that is the one failure mode that ends an integration permanently.
+
+**Reversals are keyed separately from their originals.** A void is a new fact, not a repeat of the sale, so its key is distinct - and it points at the journal it reverses through `reverses_journal_id`.
+
+### 2.4 What the POS does not do
+
+- **It does not call the accounting service inside the order request.** The order screen must not wait on us - the same rule the outgoing connector followed (§4.1 of the previous version). The event is written in the order's transaction; the dispatcher delivers it.
+- **It does not hold the accounting credential in the request path.** The credential is the source's, encrypted at rest, and it is rotated from the Connections screen.
+- **It does not decide the journal.** The POS says *what happened*; the accounting service decides *how it is posted*. The mapping from a payment method to an account is the tenant's, in the accounting service - which is why a tenant can change it without a POS release.
+
+### 2.5 The failure states
+
+| State | What it means | What the tenant sees |
+|---|---|---|
+| `pending` | queued | nothing |
+| `delivered` | the service accepted and posted it | the count on the sync log |
+| `duplicate` | already posted under the same key | counted, not an error |
+| `retrying` | a transient failure, backing off | the attempt count |
+| `dead` | the retries are exhausted | **the dead letter is visible on the Connections screen, with the reason and a retry button** |
+
+The dead letter path already exists in the POS (`services/domain_events.py:870`) and it is **not swallowed**. A dead letter on a sale journal means the tenant's revenue is understated by that amount, and the tenant must be able to see it, count it, and retry it.
+
+---
+
+## Connector 2 - a POS that is not ours
+
+**This is the displacement connector, and it is the one that makes the business case.**
+
+The pain point is a tenant running **FeedMe or AutoCount for the floor and a separate accounting package for the books**. Under the old framing, that tenant could not use our accounting at all - our accounting was inside our POS. Under this framing, **they can push their sales into our service and get their books without touching the POS they already own.**
+
+**And if our POS is better for the floor, the switch is now easy** - the books are already here, the historical data is already imported, and the only thing left to change is which till writes the sales. That is the switching thesis in `business-model.mdx` §3, and this connector is its mechanism.
+
+### 3.1 The public write API
+
+The same API our POS uses internally, exposed publicly:
+
+| Endpoint | What it does |
+|---|---|
+| `POST /v1/sources/{source_id}/sales` | post one sale - the same payload the `order.paid` event carries |
+| `POST /v1/sources/{source_id}/sales/batch` | post up to 500 sales in one call - a month's backfill |
+| `POST /v1/sources/{source_id}/purchases` | post a received purchase |
+| `POST /v1/sources/{source_id}/stock-movements` | post a waste or an adjustment |
+| `GET /v1/sources/{source_id}/sync-log` | the tenant's view of what arrived and what failed |
+
+**The contract is deliberately coarse.** A third-party POS cannot give us our POS's depth - it will not have `frozen_cost`, it may not have a discount source, it may not have per-outlet tax settings. **So the contract asks for a small set of facts and degrades honestly where they are missing:**
+
+| Fact | Required | If it is missing |
+|---|---|---|
+| the sale's date and time | yes | rejected |
+| the gross amount, the discount, the tax, the total | yes | rejected |
+| the currency | yes | rejected |
+| the outlet / branch | yes - the accounting tenant may have several outlets | rejected |
+| the payment method | yes | rejected - it selects the debit account |
+| the line items with quantities and prices | yes | rejected - a sale with no lines cannot become a revenue split |
+| the cost of each line | **no** | the line posts to revenue only, and the tenant is told that **COGS is incomplete** - never a zero cost |
+| the discount's source | **no** | recorded as `unspecified` |
+| the tax code | **no** | mapped by amount to the tenant's tax codes; ambiguous tax is held in a suspense account and flagged |
+| the seller's tax id (for a tax invoice) | **no** | the sale is not a tax invoice |
+
+**A missing cost is the important one.** Our rule from `ledger-and-money.mdx` §4.4 holds: **an unknown cost is never a zero cost.** A third-party POS that cannot give the cost produces a revenue-accurate, margin-incomplete book, and the product says so on the statement rather than quietly showing a flattering gross profit.
+
+### 3.2 The authentication
+
+Two options, and the tenant chooses:
+
+- **OAuth 2 client credentials** - the source registers, the tenant grants it the scopes it needs, and the credential is scoped to **one accounting tenant and one source**. This is the right one for a product integration.
+- **A per-source API key** - the same key that the POS's internal calls use (`X-API-Key` with `X-Internal-Service`, `backend/app/routes/customer_bff.py:67`), for a source that is a script the tenant wrote.
+
+**A key names exactly one tenant and one source.** A key that names none is refused. This is the `KEY_CANNOT_PICK_TENANT` rule, and it is the rule that stops a third-party integration from becoming a cross-tenant read.
+
+**The scopes are narrow on purpose:** `sales:write`, `purchases:write`, `stock:write`, and `read` on the tenant's own statements. A third-party POS does not get `close` - it cannot lock a period or close a year. It cannot read another tenant's data because it is bound to one tenant.
+
+### 3.3 The rate limits we publish
+
+Our limits are ours to state, so they are stated plainly, in the API documentation and in the connection screen:
+
+| Limit | The proposal |
+|---|---|
+| requests per minute per source | 600 - the same ceiling Bukku uses, and generous for a POS |
+| batch size | 500 sales |
+| payload size | 2 MB |
+| the largest backfill | one month per call, and the calls are queued, not synchronous |
+
+**A backfill is queued, not synchronous.** A tenant importing last year does not get one request that takes four minutes - they get a job that reports progress, and they can close the tab.
+
+---
+
+## Connector 3 - payroll posts in
+
+**Payroll is the fragmented stack's third pillar, and we accept its postings before we build it.**
+
+A payroll system - ours later, theirs now - posts a journal per pay run: salary expense, the employer's EPF and SOCSO and EIS contributions, the employee's deductions and withholding, and the net pay out of the bank. **The contract is one journal per pay run**, and the chart of accounts must already carry the payroll accounts:
+
+| Account | Type | What it holds |
+|---|---|---|
+| `Salaries and wages` | expenses | the gross |
+| `EPF contribution - employer` | expenses | the employer's share |
+| `SOCSO contribution - employer` | expenses | the employer's share |
+| `EIS contribution` | expenses | the employer's share |
+| `EPF payable` | current_liabilities | the employee's and employer's share, to be remitted |
+| `SOCSO payable` | current_liabilities | to be remitted |
+| `PCB payable` | current_liabilities | the tax withheld from the employee |
+| `Net wages payable` | current_liabilities | to be paid out |
+
+**What we do NOT build now: the payroll product itself.** EPF, SOCSO, EIS, PCB and the e-Payroll obligations are a product of their own, with their own compliance calendar and their own failure modes. What we build is the **posting contract** - so that when the payroll module exists (or when the tenant's incumbent payroll posts to us), the books are whole.
+
+**This is also the honest answer to "can you replace our payroll system?"** Not yet. What we can say is that the payroll number lands in the books correctly, which is the half that matters to the accountant.
+
+---
+
+## Connector 4 - our books push out to Xero or Bukku
+
+**Optional for every tenant. The books are complete without it.**
+
+One direction: our ledger is the truth, the connector pushes. We do not read their ledger back, and a journal they edit in Xero does not change our books - **and we say so plainly in the connection screen**, because a silent two-way expectation is how a finance tool loses a customer's trust.
+
+### 4.1 What each provider gives us
+
+**Xero** (read on 26 Nov 2026 from <https://developer.xero.com/documentation/api/accounting/overview>):
+
+| Fact | What it means for the connector |
+|---|---|
+| The Accounting API covers Accounts, Contacts, Invoices, Credit Notes, Items, Currencies, TaxRates, Journals, Manual Journals, Bank Transactions, Purchase Orders, Organisation, Payments and more | we map our entities onto the ones we need and ignore the rest |
+| **`GET Journals` is read-only** - the documentation says to use **Manual Journals** to create journals | we create journals through `ManualJournals`, not `Journals`. This is the single most important fact for the design |
+| **`GET Journals` returns at most 100 per response** | any read we do is paged; any write we do is chunked |
+| The **Journals endpoint** requires a use-case approval and the **Advanced** tier | the connector must degrade gracefully - a tenant on a lower tier loses the journal push and keeps the invoice push |
+| **Organisation** gives the base currency and the fiscal year | we read it at connect time and show the tenant their external base currency next to ours, so a mismatch is visible before the first push |
+| **Accounts** carry a `Type` (BANK, REVENUE, EXPENSE, DIRECTCOSTS, INVENTORY, CURRLIAB and the rest) and a `Code` | a mapping table, not a conversion - §4.3 |
+| **OAuth 2** with a tenant id per authorisation | one authorisation per external tenant |
+
+**Bukku** (read on 26 Nov 2026 from <https://developers.bukku.my/>):
+
+| Fact | What it means for the connector |
+|---|---|
+| Auth is a **Bearer token** plus a **`Company-Subdomain`** header - the subdomain selects the company | our connection row holds the subdomain alongside the encrypted token, and every request carries both |
+| The rate limit is **600 requests per minute** | our worker stays well inside it and treats it as a hard ceiling, not a target |
+| **Journal Entry** carries `journal_items[].account_id` - a debit/credit amount and an account per item | a near-direct match to our `acc_journal_lines` |
+| **Account** carries `type` (the ten accounting types) and `system_type` (`accounts_receivable`, `accounts_payable`, `inventory`) | our chart of accounts maps almost one-to-one - §4.3 |
+| Some endpoints have **eligibility rules** - an invoice's `receivable_account_id` must be an `accounts_receivable` account, a bill's `payable_account_id` must be `accounts_payable`, `default_income_account_id` must be income or other_income, `default_expense_account_id` must be expenses or cost_of_sales, `sale_account_id` must be income or other_income, `purchase_account_id` must be expenses or cost_of_sales, `inventory_account_id` must be an `inventory` account, and a **stock adjustment's account must be expenses or cost_of_sales** | our three system accounts are exactly the ones that satisfy these, so the connector checks eligibility before the first push and says which account is wrong |
+| **Bank deposit** carries `account_id` and `fee_account_id`; a **transfer** needs two different balance-sheet accounts | our bill payments and settlement movements map to these |
+| There are **staging and production** servers | the connection screen must let a tenant connect to **staging first** - a tenant who pushes to production on the first try is a support ticket |
+
+### 4.2 The queue, the key and the backoff
+
+- **A push never happens inside a customer request.** The ledger is written immediately; the worker picks the outbound work up from a queue. The tenant's order is never blocked, and an Xero outage does not stop the restaurant from taking money.
+- **Every outbound item carries a stable key**: `connection_id` + `local_id` + `push_type`. Before pushing, the worker checks whether that key already succeeded; if so it skips. **A journal is pushed once, ever.**
+- **The mapping table stores the external id** we were given, so a later push updates the same external object instead of creating a second one.
+- **`429` and `5xx` are retried** with exponential backoff and jitter. The attempt count is recorded; after a small number of attempts the item goes to a **failed** state with the error, and it is visible in the sync log.
+- **The worker is per-tenant and serial per connection.** Two workers never push into the same external tenant at the same time, so the ordering of journals matches the ordering in our books.
+
+### 4.3 The mapping
+
+Our `acc_accounts` has a `type` from the same ten-type list Bukku uses, and a `system_type` for the three system accounts. So the map is **by type, not by name** - the tenant renames `4000 Food sales` to `Sales - F&B` and the mapping does not break.
+
+The mapping table is one row per our account, holding the external account's id and its type. The connection screen is a two-column picker - our account on the left, theirs on the right - and it **refuses to save a pairing whose types disagree**. A `REVENUE` account cannot be mapped to an `EXPENSE` account, because that would silently misstate their books and there is no way for the tenant to notice.
+
+**Our accounts are pushed to them once, at connect time**, using their own account types. The tenant can pre-create accounts in Xero or Bukku and map to those instead - both paths are supported, and the second is the normal one for a tenant whose accountant already set the chart up.
+
+**The entity map:**
+
+| Ours | Xero | Bukku |
+|---|---|---|
+| `acc_debtors` | Contact | Contact |
+| `acc_invoices` | Invoice | Sales transaction |
+| `acc_bills` | no equivalent push in v1 | Purchase transaction |
+| `acc_journals` | Manual Journal | Journal Entry |
+| `acc_accounts` | Account | Account |
+| `acc_tax_codes` | TaxRate | the tax on the line |
+| `acc_bank_transactions` | Bank Transaction | Bank transaction |
+
+**The journal push is the important one.** Every posted journal becomes one external journal with one line per our line, carrying the account mapping and the tax code. A journal we void, we push as a reversing entry - the same audit rule as our own books (`ledger-and-money.mdx` §3.2).
+
+**What is NOT pushed:** the tenant's chart of accounts is not overwritten, their accounts are not deleted, our period locks are not their period locks, and **nothing is ever pushed to an external system that the tenant has not explicitly enabled** - each push type is a separate switch.
+
+### 4.4 The credentials and the log
+
+**The tokens are secrets and they are encrypted at rest**: `access_token_enc`, `refresh_token_enc`. Never in plaintext, never in the frontend, never in a log line, never in an error message.
+
+The pattern is the one the e-Invoice module already uses for the tenant's ERP credentials (`malaysia-e-invoice.mdx` - the `client_id` / `client_secret` columns are encrypted, and the tenant's own token is stored on the tenant). Two things follow: the tenant's own connection lives on the tenant's own row, with no central pool of accounting credentials; and the decrypt happens inside the connector, at the moment of the request, and the plaintext token lives in memory for the length of that request and no longer.
+
+**The tenant sees the connection state, never the token.** The screen shows "Connected to Xero - organisation name - last pushed 4 minutes ago", with a **disconnect** button. Disconnect revokes and deletes the tokens and the mappings; it does not delete what was already pushed.
+
+**The access token is refreshed by the worker**, not by the frontend, and a failed refresh marks the connection `needs_reauth` and tells the tenant - rather than failing silently for a week.
+
+**The sync log** records every push attempt with the time, the entity, the result and the external id. A tenant who says "my March revenue is wrong in Xero" can be answered in minutes, from the log. The failures are actionable: *Bill 00123 was rejected - account 6100 Gas bills is mapped to an account of type EXPENSE but the Bukku endpoint requires income for a sale.*
+
+---
+
+## The migration - how a tenant brings their incumbent stack
+
+**This is the switch, and it is where the fragmentation thesis becomes concrete.**
+
+A tenant on FeedMe + AutoCount + a payroll package has **three systems and five subscriptions**. To move their books to us, they do not need to re-key a year. They need **opening balances** and a **cutover date**.
+
+### 5.1 The migration, in four steps
+
+| Step | What happens | What the tenant does |
+|---|---|---|
+| **1. The chart** | their chart of accounts is imported - our `acc_accounts`, their codes and names, mapped by type | they review and rename |
+| **2. The opening balances** | the balance of every account at the cutover date, as an opening journal | they export it from their old system and we import it |
+| **3. The parallel run** | both systems run for one month, side by side, and the two profit and loss statements are compared | they check the difference |
+| **4. The cutover** | the old system's postings stop; ours starts | one date, one page |
+
+**Step 2 is the one that has to be right.** Every account's balance at the cutover date is entered as a single opening journal - debits and credits, balanced, dated the cutover day, and marked `source_type = 'opening'`. **Everything after that date is ours.**
+
+**Step 3 is the one that has to be easy.** A side-by-side comparison screen: our P&L for the month, their P&L for the month, and the difference **by account**. The tenant's accountant looks at that screen and either agrees or does not - which is the actual trust mechanism for a migration, and it is much cheaper for both sides than an argument about whose numbers are right.
+
+### 5.2 What we do NOT migrate
+
+- **We do not reconstruct their history.** Their past lives in their old system. They get opening balances and a forward book. This is stated plainly at the start of a migration, because a tenant who expects three years of reconstructed history and gets an opening balance feels cheated - and the fix is a sentence in the sales conversation, not a feature.
+- **We do not import their transactions.** Same reason, with one exception: their **sales** can be imported, because a month's sales is exactly what our POS connector would have pushed. **This is the real answer for a tenant whose POS is not ours** - if their old POS can export a month's sales in any structured form, those sales can be loaded as the first month in our books, and the tenant sees their own history in our product on day one.
+- **We do not import their payroll history** beyond the opening balance.
+- **We do not import their chart with their types** - we map by type, and where a type does not fit, the mapping screen asks the tenant.
+
+### 5.3 The import formats
+
+| Format | What it is for |
+|---|---|
+| **CSV** | the opening balances - one row per account, with the balance and the date. The one format we guarantee, because every accounting package exports CSV. |
+| **Chart of accounts CSV** | the import of their chart - code, name, type. |
+| **Sales CSV / JSON** | a month's sales from an incumbent POS, mapped through the same contract as Connector 2. |
+
+**Every import is validated before it is posted:** the balances must balance, the accounts must exist, the date must be a valid opening date. An import that does not balance is **refused with the out-of-balance amount named** - the same honesty rule the trial balance follows (`ledger-and-money.mdx` §5.1). We do not "adjust" an unbalanced import to make it fit.
+
+### 5.4 The migration is also the switching mechanism
+
+**The tenant does not have to move everything at once.** The switch can be partial, and this is the single most commercially important fact in this document:
+
+| Step | What the tenant moves | What it proves |
+|---|---|---|
+| **a** | their **books** to us, keeping their POS | the fragmented-stack tenant moves - and now has their books and our product |
+| **b** | their **POS** to us, keeping their books | the books are already here; the POS switch is now a configuration change |
+| **c** | their **payroll** to us | the third pillar, later |
+| **d** | **all three** | the suite - one subscription, one login, one set of numbers |
+
+**Step a is the wedge** - it is the cheapest for the tenant, and it is the one that puts them inside our product. **Step b is the one that makes the switch permanent**, because now the books depend on our POS and there is nothing left to migrate back to. The commercial case for building the standalone architecture *first* is exactly this: it lets step a happen, which is the only step that does not require the tenant to trust a new point of sale on day one.
+
+---
+
+## The screens
+
+| Screen | What it does |
+|---|---|
+| **Connections** | the list of sources - our POS, a third-party POS, payroll, the bank, Xero, Bukku - each with its status, its last sync, and its last error |
+| **Sync log** | every delivery, every attempt, every result, with the retry button on a dead letter |
+| **Our POS setup** | the mapping from the POS's payment methods to the accounts, and the channel status |
+| **Third-party POS** | the registration, the key or OAuth client, the scopes, the test sale |
+| **Payroll** | the accounts the payroll postings need, and the account the net pay comes out of |
+| **Xero / Bukku wizard** | the OAuth consent or the token and subdomain, the organisation check, the base currency check, the account mapping, the test push, the enable switches |
+| **Mapping table** | our account on the left, theirs on the right, with the type mismatch refused and the three system accounts flagged when they are unmapped |
+| **Migration** | the four steps - chart, opening balances, parallel run, cutover - and the side-by-side comparison |
+
+The wizard ends with a **test push** - one journal, one invoice - that the tenant sees in their own Xero or Bukku before the first real one goes. **A tenant who has seen the test arrive should not be surprised by the live data.**
+
+**The design of every screen follows the header standard Kens set for the whole app** (the 40x40 purple-to-indigo tile with a white 22px icon, the title beside it, the 14px grey description under it - the Order screen is the reference).
+
+---
+
+## The phased plan
+
+### Phase 2 - our POS pushes in
+
+The outbox channel, the events, the idempotency key, the auto-posting rules, the reversal on a void, and the reconciliation view that shows the POS's numbers beside the books' numbers so a mismatch is visible on the floor.
+
+**Does NOT:** touch purchases, receivables or a year-end close. One journal family only. **This is the first revenue phase.**
+
+### Phase 6.1 - the third-party POS and the migration
+
+The public write API, the OAuth client-credentials flow, the per-source keys, the published rate limits, the coarse contract's degradation rules, the chart import, the opening-balance import, the parallel-run comparison, the cutover.
+
+**Does NOT:** make the external POS the source of truth. Ours is; the connector pushes.
+
+### Phase 6.2 - the outbound connector
+
+The queue, the idempotency key, the worker, the rate limiting, the backoff, the sync log, the Xero OAuth flow, the Bukku token flow, the account mapping with its type check, and the test push.
+
+**Does NOT:** push invoices, bills or contacts yet. One entity type, proved end-to-end, before the queue carries three.
+
+### Phase 6.3 - the resilience
+
+The reauth flow, the failed-item retry, the connection health, the "what is not pushed yet" report, and the alert when a connection has been failing for a while.
+
+### Phase 7 - payroll and the bank
+
+The payroll posting contract and the payroll accounts, then the bank statement import and the reconciliation.
+
+---
+
+## What this design does NOT claim
+
+- **It does not claim two-way sync.** Ours is the source of truth. A journal edited in Xero does not come back.
+- **It does not claim every source gives the same depth.** A third-party POS without costs produces a revenue-accurate, margin-incomplete book, and the product says so.
+- **It does not claim the external system is a certified book.** Pushing a balanced journal to a tenant's accountant does not make the tenant's filing correct - that is the accountant's and the tenant's responsibility.
+- **It does not claim every tenant plan can use every connector.** The Xero / Bukku connector is a separate feature row from the accounting itself.
+- **It does not claim the token can be recovered.** It is encrypted at rest and deleted on disconnect; a lost token means a reauth, by design.
+- **It does not claim the pushed history is complete.** Only what is pushed goes out - a tenant who connects in November pushes from November.
+- **It does not claim to replace a payroll product.** We accept payroll postings. Payroll is a later module.
+- **It does not claim a bank feed in v1.** Bank transactions are imported by hand.
+- **It does not claim a migration reconstructs history.** Opening balances, a parallel run, and a cutover date.
+
+---
+
+## The open questions
+
+1. **Does a third-party POS need to be certified by us before it can push?** A certification programme is a moat and a bottleneck. The PROPOSAL is no certification, but a strict contract and a visible sync log - and a slow, audited rate limit for keys that misbehave.
+2. **Do we charge for the third-party POS connector?** It is the displacement path. The PROPOSAL is that it is included with the accounting plan, because the value is the tenant's books, not the plumbing.
+3. **How far back does the first push go?** The PROPOSAL is from the connect date forward, with an explicit re-push of a chosen period.
+4. **Should a failed push ever block a period close?** The PROPOSAL is no - our books close on our own facts, and the connector reports what it could not push. The alternative is safer for the external book and worse for the tenant's workflow.
+5. **Does the push include the frozen cost?** Our COGS journals carry the recipe cost frozen at the sale. Pushing them makes their gross profit match ours - but their own stock system may compute a different cost. Their accountant needs to know which one the number came from.
+6. **Do we accept a sales CSV from an incumbent POS, or only an API?** The PROPOSAL is both - the CSV is the migration path, the API is the steady state.
+7. **Which payroll system do we accept first?** Our own payroll module is not built. The PROPOSAL is that the contract is generic - a journal per pay run - and any payroll system that can produce a journal can post it.
+8. **Do we need to handle a tenant who runs two POS systems into one set of books?** A tenant with an outlet on one POS and another outlet on another is possible. The PROPOSAL is yes - the outlet id is part of the sale payload and each source is registered against the tenant, not the outlet.
+
+---
+
+## The sources
+
+**The code (read on 26 Nov 2026, at commit `d83d6bf` of `Kiens8/POS_AI`):**
+
+- `backend/app/models/domain_event.py` - `domain_events` (`:89`), `event_subscriptions` (`:159`), `event_deliveries` (`:239`)
+- `backend/app/services/domain_events.py` - `dispatch_once` (`:704`), `dead_letters` (`:870`), `requeue_dead_letter` (`:899`)
+- `backend/app/core/tenant.py` - `KEY_CANNOT_PICK_TENANT` (`:41`), `TENANT_CLAIM_PARAM` (`:28`), `get_tenant_claim` (`:56`), `require_tenant_claim` (`:77`), `require_outlet_tenant` (`:188`)
+- `backend/app/routes/customer_bff.py` - the internal service call (`:67`)
+- `backend/app/models/models.py` - `Order` (`:219`), `payment_mode` (`:272`), `discount_source` (`:292`), `OrderItem.frozen_cost` (`:338`), `OutletSettings` (`:393`)
+- `backend/app/models/supplier.py` - `PurchaseOrder` (`:60`), `PurchaseOrderItem` (`:85`)
+- `backend/app/models/inventory.py` - `stock_movements` (`:78`)
+- `backend/app/routes/order.py` - the stock movement on order ready (`:236`)
+
+**The providers (read on 26 Nov 2026):**
+
+- <https://developers.bukku.my/> - the account model and its `type` and `system_type`, the Journal Entry and Account endpoints, the endpoint eligibility rules, the Bearer + Company-Subdomain auth, the 600 requests per minute limit, the staging and production servers
+- <https://developer.xero.com/documentation/api/accounting/overview> - the endpoint families, Manual Journals versus the read-only Journals endpoint, the 100-per-response limit, the Accounts and TaxRates models, the Organisation endpoint, the use-case and tier requirement on the Journals endpoint
+
+**The sibling designs in this repository:**
+
+- `accounting-service.mdx` - the service and the tenant model
+- `ledger-and-money.mdx` - the ledger, the chart of accounts, the audit rule, the fiscal lock
+- `business-model.mdx` - the commercial case for the binding
+- `malaysia-e-invoice.mdx` - the encrypted ERP credential pattern
+- `api-authentication-strategy.mdx` - the auth rails
