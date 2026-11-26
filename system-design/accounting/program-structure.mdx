@@ -1,0 +1,432 @@
+---
+title: The program structure - where the code lives and what may touch what
+description: The concrete structure of the accounting program - the repository layout, the module tree of the accounting service, the process and port map, the data ownership map, the compatibility rules that keep the POS untouched, and the import rules that keep the modules apart
+---
+
+**Document Version:** 1.0 (27 Nov 2026 - written against the live `Kiens8/POS_AI` at commit `d83d6bf`, and the live host)
+**Created:** 27 Nov 2026
+**Status:** **PROPOSAL, NOT YET BUILT.** Nothing here exists. Everything it describes about the existing POS was read on 26-27 Nov 2026.
+**Related:** `accounting-service.mdx` (the service, the phases) - `purchase-path.mdx` (the account and the purchase) - `operations.mdx` (the operations) - `ledger-and-money.mdx` (the engine) - `pos-integration.mdx` (the binding)
+
+---
+
+## What this document is
+
+**The other seven documents say what to build. This one says where it goes and what may not touch what.**
+
+The accounting program touches three existing things, and each of them is touched differently and for a different reason. **Most of the confusion about this program's risk comes from collapsing those three into one word, "the POS".** They are not the same thing, and the distinction is the whole answer to "does this change our POS?".
+
+| The thing | What it is | When accounting touches it |
+|---|---|---|
+| **the POS backend** (`backend/`) | the product the counter runs on | **Phase 2 only**, and only as the nine prerequisites that make the binding honest |
+| **the website API** (`website_api/`) | the shared billing and entitlement spine | **Phase 0b**, and it is a *shared* spine - the accounting product changes it, and so does every future product |
+| **the host** (Caddy, pm2, systemd, Postgres) | the machine everything runs on | **Phase 0a**, additively - a new process, a new port, a new database |
+
+---
+
+## 1. The short answer to "does this touch our POS?"
+
+**Three separate answers, because there are three separate surfaces.**
+
+**1. The accounting service never touches the POS database.** Not reads, not writes, not a join. The accounting service has its own Postgres database. The POS keeps its SQLite file (`database/pos_ai.db`). There is no shared table, no shared connection, no cross-database query, and no migration that spans both. **A tenant's books live in the accounting database and only there.**
+
+**2. Phases 0 and 1 change the POS backend ZERO times.** This is the load-bearing fact, and it is what makes Option C possible. The accounting service in Phase 0 and Phase 1 is a **complete, sellable, standalone double-entry ledger with manual entry** - chart of accounts, journals, fiscal periods, trial balance, P&L, balance sheet. It does not read a sale, does not import a sale, and does not know the POS exists. **If we stopped the program at the end of Phase 1, the POS backend would have no accounting code in it at all** - and we would still have a product we could sell, because the ledger is horizontal.
+
+**3. Phase 2 changes the POS backend - and that is the point.** The binding is where the value is, and it costs ten specific things in the POS, listed in `pos-integration.mdx` §"The POS prerequisites" and repeated in §5 below. Nine of them are **filling gaps the POS has today** - the frozen settlement, the tax breakdown that is computed and thrown away, the settlement timestamp that does not exist, the payment row missing from the commonest sale path, the refund path the POS does not have. The tenth is the snapshot API the accounting service reads money from.
+
+**So the honest one-liner:** the accounting program does not change how the POS sells a coffee, and it does not change the POS's data model for anything the POS already has. **It adds to the POS** - a settlement table, a set of event types, an emitter, a refund path, a read-only internal API - and every one of those additions is a thing the POS was missing.
+
+**And the one shared surface that genuinely carries POS risk is not the POS backend - it is the website API's entitlement route.** Section 4 is about that, and it is the most important compatibility rule in this document.
+
+---
+
+## 2. The repository layout
+
+**The accounting program lives in the existing `Kiens8/POS_AI` repository, as two new top-level directories.** The house pattern is that **each top-level directory is a deployable unit** - `backend/` (the POS API), `website_api/` (the billing API), `frontend/` (the POS staff app), `admin/` (the admin panel), `site/` (the marketing site), `customer-app/` (the ordering PWA). The accounting program adds two more.
+
+```
+Kiens8/POS_AI/
+├── backend/                 # the POS API              - unchanged until Phase 2
+├── website_api/             # the billing spine       - changed in Phase 0b
+├── frontend/                # the POS staff app       - unchanged
+├── admin/                   # the admin panel         - unchanged
+├── site/                    # the marketing site      - unchanged
+├── customer-app/            # the ordering PWA        - unchanged
+│
+├── accounting/              # NEW - the accounting API        (Phase 0a)
+│   └── app/ ...             # the module tree, in section 3
+│
+├── accounting-web/          # NEW - the accountant-facing web app   (Phase 1)
+│
+├── database/                # the POS SQLite file       - unchanged
+│   └── init_db.py
+├── deploy/                  # systemd + logrotate       - extended in Phase 0c
+│   ├── systemd/
+│   │   ├── posai-backup.{service,timer}          - existing
+│   │   ├── posai-backup-notify.service            - existing
+│   │   ├── posai-session-prune.{service,timer}   - existing
+│   │   ├── posai-accounting-backup.{service,timer}      - NEW (Phase 0c)
+│   │   └── posai-accounting-backup-notify.service       - NEW (Phase 0c)
+│   └── logrotate/posai                            - extended (Phase 0c)
+├── scripts/                 # pos_backup.py, prune_staff_sessions.py
+└── start-services.sh        # pm2 orchestration          - extended (Phase 0a)
+```
+
+**Why the same repository and not a new one.** Three reasons, in order of weight:
+
+1. **The billing spine is shared, and it lives in `website_api/`.** Phase 0b changes that spine - the product discriminator, the feature subscription table, the entitlement union, the checkout route, the webhook branch, the conditional POS provisioning. **A repository boundary does not make a shared spine any less shared**; it only makes the change harder to see. If the accounting service is in this repository, a change to the entitlement route and a change to the accounting service that depends on it are **reviewed in the same diff and land in the same release.**
+2. **The deploy conventions are here** - the pm2 orchestration in `start-services.sh`, the systemd units in `deploy/systemd/`, the logrotate policy in `deploy/logrotate/posai`, the `deploy/logrotate/posai` source-of-truth comment pattern that says "if you change one, change the other and re-copy". **A new repository means a new set of conventions, invented from scratch, and a second place where the backup rules live.**
+3. **The hard isolation boundary is the database and the API, not the repository.** `accounting-service.mdx` §"The service boundary" already made this argument. Putting the code in a separate repository would create a *paper* boundary where a *real* one already exists, and the paper one would be the one that leaks.
+
+**What a separate repository would buy, honestly:** an independent release cadence and a permission boundary. The release cadence is already handled by pm2 and systemd - the accounting service restarts independently of the POS. The permission boundary is real but small, and it is better enforced by the API key and the tenant claim than by a repository.
+
+**One repository, two deployables.** The rule that keeps the boundary honest: **the accounting service imports nothing from `backend/`, and nothing from `backend/` imports anything from `accounting/`.** Section 6.
+
+---
+
+## 3. The module tree of the accounting service
+
+**Modeled on the house's own shape.** The POS backend is `app/{models,routes,services,core,middleware}` and the website API is `app/{models,routes,services,core,invoices,emails}`. The accounting service uses the same four directories, with two additions the house does not need.
+
+```
+accounting/
+├── app/
+│   ├── main.py                    # FastAPI app, router wiring, lifespan, /livez /readyz /healthz
+│   │
+│   ├── core/                      # configuration, the database, and the isolation boundary
+│   │   ├── config.py              # pydantic-settings, like website_api/app/core/config.py
+│   │   ├── database.py            # the Postgres engine and session
+│   │   ├── tenant.py              # ★ THE ISOLATION BOUNDARY - see section 6
+│   │   ├── auth.py                # service credentials, tenant-scoped tokens
+│   │   ├── money.py               # ★ minor units, and the ONE rounding point
+│   │   ├── errors.py              # the error shape the API returns
+│   │   └── logging.py             # structured logs, tenant id in every line
+│   │
+│   ├── models/                    # SQLAlchemy 2.0 models - the data, nothing else
+│   │   ├── tenant.py              # accounting_tenant, accounting_tenant_link, membership
+│   │   ├── accounts.py            # chart_of_accounts, account_mappings, account_balances
+│   │   ├── journal.py             # journals, journal_lines, fiscal_years, fiscal_periods
+│   │   ├── tax.py                 # tax_settings, tax_codes, tax_summary
+│   │   ├── bank.py                # bank_accounts, bank_transactions, bank_reconciliations
+│   │   ├── purchase.py            # purchases, purchase_lines, stock_movements
+│   │   ├── receivable.py           # invoices, invoice_lines, payments, credit_notes
+│   │   ├── connector.py           # connector_configs, sync_state, dead_letters
+│   │   └── audit.py               # audit_log - every posted, voided, locked, unlocked
+│   │
+│   ├── schemas/                   # Pydantic request and response models
+│   │   ├── account.py
+│   │   ├── journal.py
+│   │   ├── statement.py
+│   │   └── ...
+│   │
+│   ├── routes/                    # HTTP - parse, authorise, delegate, serialise. No business rules.
+│   │   ├── accounts.py            # the chart of accounts
+│   │   ├── journals.py            # post, void, list
+│   │   ├── statements.py          # P&L, balance sheet, trial balance, general ledger, tax summary
+│   │   ├── bank.py
+│   │   ├── tax.py
+│   │   ├── fiscal.py              # years, periods, the lock
+│   │   ├── admin.py               # tenant-scoped admin: users, settings, export
+│   │   ├── health.py              # /livez /readyz /healthz - the three surfaces
+│   │   └── connectors/            # one module per outside system
+│   │       ├── pos_ours.py        # Phase 2 - our own POS
+│   │       ├── pos_thirdparty.py  # Phase 6 - FeedMe, AutoCount
+│   │       ├── xero.py            # Phase 6
+│   │       ├── bukku.py           # Phase 6
+│   │       └── payroll.py         # Phase 6 - postings in, no module
+│   │
+│   ├── services/                  # the behaviour - the business rules live here
+│   │   ├── ledger.py              # ★ THE ENGINE - post, balance, void, reverse
+│   │   ├── chart.py               # chart provisioning and the F&B preset
+│   │   ├── fiscal.py              # period open/close/lock, year-end carry-forward
+│   │   ├── statements.py          # the statement builders
+│   │   ├── reconciliation.py      # POS vs books, bank vs books
+│   │   ├── entitlement.py         # reads the website API - the service decides nothing
+│   │   ├── provisioning.py        # the lazy, idempotent tenant creation
+│   │   └── billing_sync.py        # renewal and dunning, driven by entitlement
+│   │
+│   ├── connectors/                # the adapters to the outside world
+│   │   ├── base.py                # ★ the Connector interface - one method to implement
+│   │   ├── pos_ours/
+│   │   │   ├── adapter.py         # pull the snapshot, apply the mapping
+│   │   │   └── mapping.py         # sale -> journal lines
+│   │   ├── pos_thirdparty/
+│   │   ├── xero/
+│   │   ├── bukku/
+│   │   └── payroll/
+│   │
+│   ├── jobs/                      # the scheduled work - the same three as the house
+│   │   ├── dispatcher.py           # minute-level: events -> journals
+│   │   ├── reconcile.py            # nightly: books vs sources, named difference
+│   │   └── renewal.py             # nightly: renewal invoices and dunning
+│   │
+│   ├── migrations/                # the schema, as numbered SQL
+│   │   ├── 0001_tenants.sql
+│   │   ├── 0002_accounts.sql
+│   │   └── ...
+│   │
+│   └── tests/
+│       ├── unit/                  # ★ the engine, with no database at all
+│       └── integration/           # against a real Postgres
+│
+├── requirements.txt
+├── run_accounting.sh              # mirrors backend/run_pos_backend.sh and website_api/run_api_site.sh
+└── .env.example
+```
+
+### The four decisions in this tree that matter
+
+**★ `services/ledger.py` must be unit-testable with no database.** This is the single most important structural decision in the service, and it is what makes the audit rule provable rather than asserted. The engine takes a list of lines and either balances them or raises. It takes a session, it does not create one. It has no HTTP in it and no import of `core.database`.
+
+The consequence: **the test suite can prove "debits equal credits or the journal is refused" on a laptop in two seconds**, with no Postgres running, and can prove it across every edge case - a negative amount, a zero line, a line on a closed account, a line on a locked period, a currency that does not match the book. **This is how the whole ledger's central claim gets tested, and it is only possible because the engine does not own its own persistence.** A ledger engine that reaches for the database session itself cannot be tested this way, and a ledger whose balance rule is only tested through an API is a ledger whose balance rule is tested slowly.
+
+**★ `core/money.py` is the only module allowed to convert.** Every amount in the service is an integer in minor units. The conversion from the source's representation happens once, at the boundary, in one file. Every other module takes minor units and returns minor units. This is the rule from `ledger-and-money.mdx` §3.4, and it is enforced by structure - one module, one function, one place to look.
+
+**★ `core/tenant.py` is the isolation boundary, and it is the POS's own pattern.** The POS already has this exact idea in `backend/app/core/tenant.py` - a tenant claim that a key cannot pick (`KEY_CANNOT_PICK_TENANT`, `:41`), `get_tenant_claim` (`:56`), `require_tenant_claim` (`:77`), `require_outlet_tenant` (`:188`). The accounting service gets **the same shape, a different subject**: the tenant is an accounting tenant (a legal entity), not a POS tenant (a restaurant group). The rule is the one the house already lives by:
+
+> **A caller-supplied tenant id is never authorisation. The tenant comes from a signed credential, and every outlet, order and accounting entity is verified to belong to it.**
+
+The accounting service's version is in `core/tenant.py`, it is used by every route, and **no route reads a tenant id from the request body.**
+
+**★ `connectors/base.py` defines one interface, so adding Xero does not touch the ledger.** Every connector implements the same shape: pull a window of source facts, map them to journal lines, hand them to `services/ledger.py`. **The journal mapping lives in the connector. The money rules live in the ledger.** So the Xero connector in Phase 6 is a new directory, a new route module, and a new set of tests - **and it changes nothing in `services/ledger.py`.** If adding a connector ever requires editing the ledger, the boundary has failed.
+
+---
+
+## 4. The compatibility rules that keep the POS untouched
+
+**This is the section that matters most for risk.** The accounting program changes the website API, and the website API is shared with the POS. The POS reads two things from the website API that the accounting program touches.
+
+### The shared surface, exactly
+
+| What the POS reads | Where | What accounting does to it |
+|---|---|---|
+| **the entitlement route** - the plan's features merged with the customer's overrides | `website_api/app/routes/admin.py:1216` (`GET /api/admin/customer/{customer_id}/features`), read by the POS at `backend/app/services/plan_features.py:71` and `backend/app/routes/customer_bff.py:194` | **its output becomes a union - but it stays byte-identical for every existing customer** |
+| **the plan-change push** - a notification that a tenant's plan changed, so the POS drops its cache | `website_api/app/services/plan_notify.py:25` -> `POST /internal/plan-changed` -> `backend/app/routes/internal.py:70` | **the existing push is reused**, with the union's feature list. No new POS endpoint |
+
+### Rule 1 - the entitlement union changes no existing output
+
+The entitlement read today is: the plan's features, plus the customer's overrides. It becomes: **the plan's features for the requested product, plus active feature subscriptions for that product, plus the enabled overrides.**
+
+**Why this is invisible to the POS today.** The union adds a source that contributes **nothing** for any existing customer, because **no feature subscription exists yet** and none can exist until the Phase 0b checkout route is built. For every customer in the live database right now, the union's output equals the old route's output. **That is a property that can be asserted in a test**, not a hope: *the union, run against the live data, returns exactly the old route's rows.*
+
+**The scoping rule.** The union is **product-scoped**. The existing admin route defaults to `product='pos'` - so it answers for the POS product, exactly as it does today - and a **new** internal route answers for `product='accounting'`:
+
+| Route | Who calls it | Product | Status |
+|---|---|---|---|
+| `GET /api/admin/customer/{id}/features` | the POS (`plan_features.py:71`, `customer_bff.py:194`) | `pos` (default) | **response shape unchanged** |
+| `GET /api/internal/entitlements/{platform_customer_id}?product=accounting` | the accounting service | `accounting` | **NEW** |
+
+**Why a new route rather than a parameter on the old one.** A new route means **the POS's call site does not change at all** - not the URL, not the parameters, not the response shape. A parameter on the old route means every existing caller has to keep working with a default, which is a rule that decays. **The accounting service gets its own door, and the POS's door stays exactly as it is.**
+
+### Rule 2 - the guard that has to become product-scoped
+
+`website_api/app/routes/subscription.py:227` refuses a second subscription:
+
+```
+existing = db.query(Subscription).filter(
+    Subscription.customer_id == current_user.id,
+    Subscription.status.in_(["active", "trial"])
+).first()
+if existing:
+    raise HTTPException(status_code=400, detail="Already has active subscription")
+```
+
+**This is a real blocker for the second revenue path, and it is one line.** A POS tenant on a `pos` plan who wants the standalone `accounting` plan is refused - correctly, under the old rule, because today one customer has one subscription. With two products, the rule has to be "already has an active subscription **for this product**". The customer's subscription count stays unlimited; the count *per product* is one.
+
+**The feature checkout does not hit this guard at all**, because a feature purchase creates a `feature_subscriptions` row and never a `Subscription` row.
+
+### Rule 3 - the conditional POS provisioning
+
+Every website customer is auto-provisioned a POS account, at three call sites: `website_api/app/routes/auth.py:143` (signup), `website_api/app/routes/subscription.py:577` (subscribe), `website_api/app/routes/webhooks.py:683` (the Stripe webhook). All three call `provision_pos_account` (`website_api/app/services/pos_provisioning.py:40`), which POSTs to the POS's own `POST /api/auth/register-customer` and `POST /api/auth/register` over `http://127.0.0.1:8000/api/auth` with the staff key.
+
+**All three become conditional on the product:** provision a POS tenant only when `account_type == 'pos'` or the plan's `product == 'pos'`. An accounting-only customer gets a `website_customers` row with `customer_id = NULL` and **no POS tenant is created** - which is the point of the standalone product.
+
+**The POS backend changes zero times for this.** The two POS endpoints stay exactly as they are. The website API simply stops calling them for accounting-only customers. **This is the clearest example in the whole program of the difference between "the accounting program touches the POS" and "the accounting program changes the POS".**
+
+### Rule 4 - the cache stays fresh through the push that already exists
+
+The POS caches a tenant's feature list for **300 seconds** (`backend/app/core/plan_cache.py:41`), and the website API's push is what makes an upgrade visible immediately - the TTL is only the safety net for a lost notification (`plan_cache.py:15-16`). So when a feature subscription is granted or cancelled, the website API calls the **existing** `notify_pos_plan_changed` (`website_api/app/services/plan_notify.py:25`) with the union's feature list, and the POS drops its cache entry through the route it already has (`backend/app/routes/internal.py:70`).
+
+**No new POS endpoint. No new cache. No new TTL.** The push is the house's own mechanism, used for a new reason.
+
+---
+
+## 5. What Phase 2 adds to the POS - precisely
+
+**This is the complete list. Nothing else in the POS backend changes, in any phase, for any reason.**
+
+| # | What is added to the POS | Where | Why it cannot be avoided |
+|---|---|---|---|
+| **P1** | the frozen settlement row - the figures as they were at settlement | a new table beside `Order` | the live order row is mutable; a cancellation erases the totals |
+| **P2** | the tax breakdown on the frozen row | the same new table | the POS computes the tax and throws it away (`services/order_pricing.py:61`) |
+| **P3** | the settlement time on the frozen row | the same new table | an ordinary sale has no settlement timestamp anywhere today |
+| **P4** | a payment row on **every** settlement path | `services/order_service.py:1235`, `routes/order.py:1368`, `routes/delivery_tracking.py:501`, `routes/internal.py:206` | the commonest sale of the day writes no payment row |
+| **P5** | the accounting event types, with **their own** base feature | `services/domain_events.py:97`, `:146`, `:349` | the existing events are gated behind `"AI Agent"` (`BASE_FEATURE`, `:146`) - an accounting-only tenant would have every sale **silently skipped** |
+| **P6** | the emitters, beside the existing ones | `services/event_emitters.py` | the signal has to exist before anything can consume it |
+| **P7** | a refund path - a refund record, a payment row, the emitter | new | a settled sale cannot be taken back today |
+| **P8** | the snapshot API and the reconciliation endpoint | a new router beside `routes/internal.py`, under the existing `require_internal_key` (`:44`) | this is where the money comes from |
+| **P9** | a reversing stock movement when an order is voided | `routes/order.py:1540` (the void), against `:236` (the stock usage) | the stock usage is never reversed, so a voided order leaves the stock short |
+| **P10** | a purchase emitter | `routes/purchase_orders.py:238` | the purchase side is silent today |
+
+**P1-P4 are one table and one writer.** They are the same fact written once: *what was sold, for how much, taxed how, paid how, and when.*
+
+**P5 is the one that would have been a silent disaster.** The POS's domain events all hang off `BASE_FEATURE = "AI Agent"` (`domain_events.py:146`), and the feature list is read from the entitlement route at `domain_events.py:333-341`. **An accounting tenant that was not an "AI Agent" subscriber would have had every one of its sales skipped without an error** - the books would just quietly not fill. The accounting events need their own types and their own gate.
+
+**Every one of these is an addition.** No existing POS route changes its behaviour. No existing POS table changes its shape. The sale path writes one extra row per settlement and emits one extra event - **and the floor never waits for the books.**
+
+---
+
+## 6. The isolation boundary, structurally
+
+**The rules that keep one tenant's books out of another's, expressed as code structure rather than as intent.**
+
+**6.1 The accounting service imports nothing from `backend/`.** Not the tenant module, not the money module, not a model. The POS's `core/tenant.py` is a *pattern* to copy, not a library to import - and copying it is the right call, because **a shared import is a shared failure**: a change to the POS's tenant helper would silently change the accounting service's isolation. **The rule is checked in CI** (a grep for `from backend` / `import backend` in `accounting/`), and it is cheap to check because the POS and the accounting service are separate deployables with separate working directories.
+
+**6.2 Nothing from `backend/` imports anything from `accounting/`.** The dependency arrow points one way, and it points from the POS *to* the accounting service only in Phase 2 - and then only as an HTTP call the POS makes to itself.
+
+**6.3 The tenant never comes from the request.** Every route resolves the tenant from the signed credential via `core/tenant.py`. A tenant id in a path, a query string, or a body is **read as a filter, never as authority** - and the filter is applied to a set the caller is already entitled to, so a wrong id returns nothing rather than someone else's books.
+
+**6.4 Every accounting row carries the accounting tenant id.** Not the POS tenant, not the platform customer. The tenant of the books. Every query filters on it, and **there is no code path that reads a table without a tenant filter** - enforced by a repository helper that takes the tenant as a required argument, so the filter cannot be forgotten.
+
+**6.5 The provider credentials are per tenant and per legal entity.** They are encrypted at rest, they never appear in a log line, and an alert carries a tenant id rather than a credential.
+
+**6.6 The accounting service asks, it does not decide.** Entitlement comes from the website API (`services/entitlement.py`). **The service never decides its own entitlements** - the same rule the POS already lives by at `backend/app/services/plan_features.py:71`.
+
+---
+
+## 7. The process, port and domain map
+
+**The house's conventions, extended by one.**
+
+| Process | Port | Domain | Manager | Database | Phase |
+|---|---|---|---|---|---|
+| `pos-backend` | 8000 | `api.ideazes.com`, `app.ideazes.com` | pm2 | `database/pos_ai.db` (SQLite) | existing |
+| `website-api` | 9000 | `apisite.ideazes.com`, `admin.ideazes.com` | pm2 | `website_api/website_api.db` (SQLite) | existing |
+| `site-app` | 5000 | `site.ideazes.com` | pm2 | - | existing |
+| `customer-app` | 8080 / 8090 | `order.ideazes.com` | pm2 | - | existing |
+| **`accounting-api`** | **8100** | **`accounting.ideazes.com`** | **pm2** | **Postgres `accounting`** | **0a** |
+| **`accounting-web`** | - | **`books.ideazes.com`** | **static build** | - | **1** |
+
+**Port 8100 is free** - verified on the host, 27 Nov 2026. The ports in use are 22, 53, 80, 443, 631, 2019, 3011-3014, 5000, 8000, 8011-8013, 8080, 8090, 8091, 9000, 11434, 18789, 18799, 18800. The 30xx and 80xx ports belong to a separate verification harness under `/srv/openclaw/vera`, not to this product - **and 8011-8013 are the harness running a copy of the POS backend, which is why the accounting service must not assume a POS backend on a fixed port is always the production one.**
+
+**Two domains for the accounting program, for two different audiences.** `books.ideazes.com` is the accountant-facing web app - a static build served from disk like `app.ideazes.com` and `admin.ideazes.com`, with `/api/*` proxied to 8100 so the session cookie is same-origin. `accounting.ideazes.com` is the public API surface - the same pattern as `api.ideazes.com` - and it is where the webhook receiver and the third-party connectors land. **One process, two doors.**
+
+**The Postgres requirement is a Phase 0a prerequisite, not an assumption.** The host runs **no Postgres today** - both live databases are SQLite. Postgres 16 is available in apt (`16+257build1.1`, not installed). The host has 23 GB RAM with 16 GB free and 151 GB free disk, so a single Postgres instance with a modest `shared_buffers` is comfortable. **`operations.mdx` §1 already says why the SQLite backup method cannot be reused** - `pg_dump` is a different tool with different guarantees, and the accounting backup is a separate unit with its own proof.
+
+**The systemd and logrotate additions mirror the existing ones exactly** - `posai-accounting-backup.{service,timer}` with `OnFailure=posai-accounting-backup-notify.service`, and a logrotate block in `deploy/logrotate/posai` for the accounting logs. **The `deploy/logrotate/posai` file is the source of truth and the installed copy lives at `/etc/logrotate.d/posai`; if one changes, both change.** That comment is already at the top of the file and the rule is house policy.
+
+---
+
+## 8. The data ownership map
+
+**One table, one owner, one database. This is the shortest way to say the isolation story.**
+
+| Data | Owner | Lives in | The POS can see it? | The accounting service can see it? |
+|---|---|---|---|---|
+| orders, payments, menus, outlets, staff | the POS | `pos_ai.db` | yes | **no** |
+| the POS settlement snapshot | the POS | `pos_ai.db` | yes | **yes, over HTTP only** (P8) |
+| the chart of accounts, journals, periods | accounting | `accounting` (Postgres) | **no** | yes |
+| fiscal settings, tax settings, bank accounts | accounting | `accounting` | **no** | yes |
+| provider credentials (Xero, Bukku, payroll) | accounting | `accounting`, encrypted | **no** | yes, per tenant |
+| customers, plans, prices, subscriptions, entitlements | the website API | `website_api.db` | reads its own share | **reads over HTTP only** |
+| feature subscriptions | the website API | `website_api.db` | reads its own share | **reads over HTTP only** |
+| invoices | the website API | `website_api.db` | reads its own share | **reads over HTTP only** |
+| the POS feature list the POS caches | the POS | memory, 300s TTL | yes | no |
+
+**The rule the map encodes: the accounting service reads the outside world over HTTP, and it reads only through a tenant-scoped interface.** There is no path by which the accounting service reaches into the POS's database, and no path by which the POS reaches into the accounting database.
+
+---
+
+## 9. The phase-to-structure map
+
+**Which files exist when. This is the build order expressed as a tree.**
+
+| Phase | What appears | Where |
+|---|---|---|
+| **0a** | the deployable, the Postgres database, the tenant model, the money rules, the health surfaces, the empty chart of accounts | `accounting/app/{main,core,models,health}` + `deploy/systemd/` + `start-services.sh` |
+| **0b** | the account and the purchase - **mostly in `website_api/`** | `website_api/app/{models,routes,services}` - the product discriminator, `feature_subscriptions`, the checkout route, the webhook branch, the entitlement union, the conditional provisioning; and in `accounting/`: `services/provisioning.py`, `services/entitlement.py` |
+| **0c** | the operations - the backup unit, the restore drill, the alerting, the runbooks | `deploy/systemd/posai-accounting-backup.*`, `deploy/logrotate/posai`, `accounting/app/routes/health.py` |
+| **1** | the ledger and the statements, and the accountant-facing app | `accounting/app/{models/journal,services/ledger,services/fiscal,services/statements,routes/statements}` + `accounting-web/` |
+| **2** | the POS binding | the ten prerequisites **in `backend/`**, and `accounting/app/connectors/pos_ours/` + `accounting/app/routes/connectors/pos_ours.py` |
+| **3-7** | purchases, receivables, the fiscal year, the other sources, the suite | `accounting/app/models/{purchase,receivable}.py`, `accounting/app/connectors/{pos_thirdparty,xero,bukku,payroll}/` |
+
+**Notice what is not in the table: `backend/` does not appear until Phase 2.** Phases 0 and 1 are built without touching the POS backend, and the accounting service is **complete and sellable at the end of Phase 1**.
+
+---
+
+## 10. The build order, in the order a developer should type it
+
+**Because a structure that is right but built in the wrong order costs more than one that is slightly wrong and built right.**
+
+1. **`core/money.py` and `services/ledger.py` first, with the unit tests, before the database exists.** The engine is the product. If the balance rule is right, everything above it is plumbing. **This is the step that makes the whole service testable in two seconds instead of two minutes.**
+2. **`core/tenant.py` next**, before any route exists. The isolation boundary is a module, not a middleware, and it is written once and used by every route that follows.
+3. **The models**, then `migrations/`, then the health surfaces. The database appears in Phase 0a with nothing in it but the tenant, the chart of accounts and the money rules.
+4. **The statements** (Phase 1) - because a trial balance and a P&L are what the product *is*, and they are what a standalone customer in Phase 1 is actually buying.
+5. **The website API changes** (Phase 0b) - the purchase path, after the ledger exists and can be provisioned into.
+6. **The operations** (Phase 0c) - the backup, the drill, the alerting. **After there is something worth backing up, and before there is a customer whose books depend on it.**
+7. **The POS binding** (Phase 2) - last, because it is the only phase that touches the POS, and it needs a ledger that is already proven.
+
+---
+
+## What this document does NOT claim
+
+- **It does not claim any of this is built.** The tree above is a proposal. The `accounting/` directory does not exist.
+- **It does not claim the POS is untouched forever.** It is untouched in Phases 0 and 1, and touched additively in Phase 2, in ten named places.
+- **It does not claim the entitlement union is free.** It changes a shared route. **Rule 1's test - the union returns byte-identical output for every existing customer - is what makes it safe, and that test has to exist.**
+- **It does not claim Postgres is free to add.** It is not installed on this host. It is a Phase 0a prerequisite with its own backup method.
+- **It does not claim a separate repository would be wrong.** It would be defensible on the permission boundary. The argument here is that the shared spine and the shared deploy conventions matter more, and that a repository boundary is the wrong place to enforce an API boundary.
+
+---
+
+## The open questions
+
+1. **Does the accountant-facing app go in `accounting-web/` or inside `accounting/`?** The house's pattern says top-level. But the accounting service is a *product*, not a feature of the POS, and a self-contained directory is easier to move out later if it becomes its own repository. **The honest answer is that it does not matter much and should be decided by whoever writes the first screen.**
+2. **Is one Postgres instance enough, and where does it live?** The host runs everything on one box today. The accounting service gets its own database on it. **The first account needs more than one box, and the backup story changes when it does.**
+3. **Does the accounting API get a public API key model like the POS's, or is it session-only?** The public API is the displacement play - a third-party POS or a payroll system posting in. **The key model, its scopes, and its tenant binding are a Phase 2b decision.**
+4. **Does the accountant-facing app live at `books.ideazes.com` or inside `site.ideazes.com`?** The marketing site is Next.js and the accountant app is a React SPA. **One domain or two is a branding decision with a technical consequence, and it should be made before the first screen is built.**
+
+---
+
+## The sources
+
+**The live code (read 26-27 Nov 2026, at commit `d83d6bf` of `Kiens8/POS_AI`):**
+
+- `backend/app/core/tenant.py` - the tenant claim: `TENANT_CLAIM_PARAM` (`:28`), `KEY_CANNOT_PICK_TENANT` (`:41`), `get_tenant_claim` (`:56`), `require_tenant_claim` (`:77`), `require_outlet_tenant` (`:188`)
+- `backend/app/core/plan_cache.py` - `TTL_SECONDS = 300` (`:41`), the push-notification rule (`:15-16`)
+- `backend/app/services/plan_features.py` - `fetch_plan_features` (`:71`), the response parsing (`:88-97`)
+- `backend/app/services/domain_events.py` - `BASE_FEATURE = "AI Agent"` (`:146`), the feature read (`:333-341`), `dispatch_once` (`:704`), dead letters (`:870`), requeue (`:899`)
+- `backend/app/routes/internal.py` - `require_internal_key` (`:44`), `plan_changed` (`:70`), `order_paid` (`:147`)
+- `backend/app/routes/customer_bff.py` - the entitlement read (`:194`), the internal-key pattern (`:67`)
+- `backend/app/middleware/auth.py` - `require_plan_feature` (`:839`), `ROLE_PERMISSIONS` (`:45`)
+- `backend/app/core/config.py` - `POS_STAFF_API_KEY` (`:137`), `WEBSITE_API_INTERNAL_KEY` (`:148`)
+- `backend/app/services/order_service.py` (`:1235`), `backend/app/routes/order.py` (`:236`, `:1368`, `:1540`), `backend/app/routes/delivery_tracking.py` (`:501`), `backend/app/routes/purchase_orders.py` (`:238`), `backend/app/services/order_pricing.py` (`:61`) - the settlement paths
+- `website_api/app/routes/admin.py` - the entitlement route (`:1216`)
+- `website_api/app/routes/subscription.py` - the existing-subscription guard (`:227`), the provisioning (`:577`), the checkouts (`:464`, `:834`, `:1483`)
+- `website_api/app/routes/auth.py` - the signup provisioning (`:143`), the signup schema (`:28-33`)
+- `website_api/app/routes/webhooks.py` - the provisioning (`:683`), the event types (`:105-117`)
+- `website_api/app/services/pos_provisioning.py` - `provision_pos_account` (`:40`), the POS base URL (`:27`)
+- `website_api/app/services/plan_notify.py` - `notify_pos_plan_changed` (`:25`), the push (`:43-44`)
+- `website_api/app/core/api_key_scope.py` - `POS_INTERNAL_KEY` (`:8`), `enforce_tenant_read` (`:75`)
+- `website_api/app/core/config.py` - `POS_API_KEY` (`:86`), `POS_INTERNAL_KEY` (`:92`)
+- `website_api/app/models/models.py` - `SubscriptionPlan` (`:6`), `WebsiteCustomer` (`:70`), `Subscription` (`:95`), `Feature` (`:228`), `PlanFeature` (`:245`), `FeaturePrice` (`:258`), `CustomerFeatureOverride` (`:299`), `Invoice` (`:168`)
+- `website_api/app/main.py` - the router wiring (`:41-57`)
+- `backend/app/main.py` (`:619`), `website_api/app/main.py` (`:71`) - the shallow health checks
+
+**The live host (read 26-27 Nov 2026):**
+
+- `/etc/caddy/Caddyfile` - the seven domains and their upstreams
+- `start-services.sh` - the pm2 orchestration, the port list
+- `deploy/systemd/` - the existing units; `deploy/logrotate/posai` - the rotation policy and its source-of-truth rule
+- `scripts/pos_backup.py` - the SQLite backup method
+- `pm2 list` - the eight managed processes
+- `ss -tlnp` - the ports in use, and the verification harness under `/srv/openclaw/vera`
+- `apt-cache policy postgresql` - Postgres 16 available, not installed
+
+**The sibling designs in this repository:**
+
+- `accounting-service.mdx` - the service, the tenant model, the phases
+- `purchase-path.mdx` - the account, the purchase, the entitlement, the lifecycle
+- `operations.mdx` - the database lifecycle, the readiness surfaces, the monitoring, the runbooks
+- `ledger-and-money.mdx` - the engine, the audit rule, the money rules
+- `pos-integration.mdx` - the binding, and the ten prerequisites in full
+- `business-model.mdx` - the commercial case, and the hedge/thesis split

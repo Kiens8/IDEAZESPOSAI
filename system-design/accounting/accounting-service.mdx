@@ -13,6 +13,7 @@ description: A standalone multi-tenant accounting SaaS with its own tenants, its
 - `connectors-and-switching.mdx` - the other connectors: a third-party POS may push in, the books may push out to Xero or Bukku, a payroll system posts in, and a business that already keeps its books elsewhere may be brought across.
 - `purchase-path.mdx` - **the Phase 0b specification, in full**: the signup that does not create a POS tenant, the checkout that charges the right currency, the webhook that grants the entitlement, the persistence model for a purchase that is not a plan, and the renewal, cancellation and dunning that follow it.
 - `operations.mdx` - **the Phase 0c specification**: the database lifecycle, the verified backup and the restore drill, readiness and dependency checks, monitoring and alerting, the scheduled work, and the runbooks.
+- `program-structure.mdx` - **the program structure**: where the code lives, the module tree of the accounting service, the process and port map, the data ownership map, the compatibility rules that keep the POS untouched, and the import rules that keep the modules apart.
 - `business-model.mdx` - who pays, what it costs, how we displace the incumbent stack, and the honest case against this.
 
 ---
