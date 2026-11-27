@@ -12,4 +12,6 @@ drafts/
 # runbook and the staff-order kiosk proposal are internal working
 # documents. They stay in GitHub for the record; they are not for the
 # public documentation site.
-system-design/
+#
+# The design documents themselves moved to their own repository:
+# https://github.com/Kiens8/System-Design
