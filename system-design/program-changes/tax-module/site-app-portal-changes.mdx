@@ -26,7 +26,8 @@ Live source inspected: `POS_AI` @ `d83d6bf`.
 | The invoice list renders `formatCurrency(invoice.amount, invoice.currency)` | `site/src/app/[locale]/portal/billing/page.tsx:462` |
 | The invoice detail modal renders the same | `portal/billing/page.tsx:556` |
 | The payment panel shows the **amount due** | `site/src/components/PaymentPanel.tsx:220-224` |
-| The portal invoice page renders the invoice | `site/src/app/[locale]/invoice/[id]/page.tsx` |
+| The printable invoice page does **not** render the invoice — it **embeds server-rendered HTML** | `site/src/app/[locale]/invoice/[id]/page.tsx` fetches `https://apisite.ideazes.com/api/invoices/${invoiceId}/view` |
+| The portal opens the detail modal from the **invoice details** endpoint | `portal/billing/page.tsx` fetches `/api/invoices/${invoice.id}/details` |
 | The datetime helper reads an offset-less datetime as **UTC** and shows it in the **reader's** clock | `site/src/lib/datetime.ts` |
 | The portal copy lives in **three** locales: `en`, `km`, `zh` | `site/src/i18n/messages/{en,km,zh}/portal.json` |
 
@@ -46,6 +47,25 @@ Cambodian or Chinese reader has no idea what it means) or it uses the local tax 
 (which for an export-exempt customer would be *wrong*). That decision is part of the
 proposal, and it is a question for the accountant too: what is the term on a tax
 invoice for a customer outside Malaysia?
+
+### 1.1 Three facts about the site that shape the work
+
+- **The printable invoice is server-rendered.** The page at
+  `site/src/app/[locale]/invoice/[id]/page.tsx` fetches HTML from
+  `/api/invoices/{id}/view` and embeds it — it does not build the document itself. So
+  the tax rows and the service period on that document are the **API's** work
+  ([website-api-changes §8.4](./website-api-changes#84-changed--the-three-invoice-renderers)),
+  not the site's. What the site owes is the *page around it* — the loading and failure
+  states, and the print affordances — which do not change.
+- **A Stripe-paid customer's invoice may be a Stripe document.** The portal opens the
+  Stripe-hosted invoice when one exists (`stripe_pdf_url` / `hosted_invoice_url`, via
+  `/api/invoices/{id}/details`). **Stripe's hosted invoice will not carry our tax
+  line or our service period** — Stripe knows the amount it charged and nothing else.
+  This is a real gap in the customer's experience, and it is discussed in
+  [section 6.2](#62-the-stripe-hosted-invoice--the-gap-we-cannot-render-around).
+- **The portal's numbers come from two different endpoints.** The list comes from
+  `/api/billing/invoices` and the detail modal from `/api/invoices/{id}/details`. Both
+  have to carry the tax fields, or the list shows a breakdown the modal does not.
 
 ---
 
@@ -161,7 +181,19 @@ Amount paid           RM 108.00
 Service period        1 Nov 2026 – 30 Nov 2026
 ```
 
-### 5.3 The portal dashboard — `site/src/app/[locale]/portal/page.tsx`
+The modal is opened from the **invoice details** endpoint
+(`/api/invoices/{id}/details`), so that endpoint has to carry the tax fields and the
+period — not just the list endpoint. The portal spreads the invoice into the modal's
+state (`setSelectedInvoice({...invoice, ...})`), so a field that is missing from the
+details response is simply absent from the modal.
+
+### 5.3 The service period is worth showing here
+
+"What did I pay for, and for when?" is the question a customer opens the billing page
+to answer, and right now the portal cannot answer it at all. The period turns the
+portal from a payment list into a **statement of what was bought**.
+
+### 5.4 The portal dashboard — `site/src/app/[locale]/portal/page.tsx`
 
 The subscription card shows the plan and the next renewal. Under the exclusive basis
 it may note that the renewal will include the tax — but only if the tax is active. A
@@ -207,23 +239,71 @@ Requirements:
 - The **customer's country** is printed (it is on the invoice for tax purposes), and
   the dates are the customer's own dates.
 
+> **The document is rendered by the API, not by this app.** The printable invoice comes
+> from `/api/invoices/{id}/view`, which is the API's renderer. The site's work here is
+> to keep the page around it working and to make sure the **period** it asks for is
+> carried and formatted correctly.
+
 ### 6.1 The dates — `site/src/lib/datetime.ts`
 
 The existing helper reads an offset-less datetime as UTC and shows it in the reader's
 clock. That is correct for **moments** (when the invoice was written). It is **wrong**
 for a **service period**, which is a range of calendar days, not a moment.
 
-A service period that ends on 30 November ends on the 30th in the customer's clock. It
-must not render as "29 Nov" because the end timestamp was `2026-12-01T00:00:00Z`. So
-the site needs a **date-only** helper — parse the calendar date, do not shift it:
+The period's stored end is **exclusive** — `period_end` is the instant the service
+ends and the next period begins, so a November period is stored as
+`2026-11-01 → 2026-12-01`. The customer must read "1 Nov – 30 Nov". Rendering the
+stored end as a date would say "1 Dec"; converting it through a timezone makes it
+worse, because `parseApiDate` reads `2026-12-01T00:00:00` as UTC and shifts it into
+the reader's clock — which lands on 30 Nov for a reader west of UTC and on 1 Dec for
+a reader east of it. **The same invoice would show a different period to two
+customers.**
+
+So the site needs a **date-only** helper that parses the calendar date and does not
+shift it, and the period range is rendered as `period_start` through the day **before**
+`period_end`:
 
 ```ts
 /** A calendar date - a day, not a moment. Not shifted by any timezone. */
 export function parseApiDateOnly(value: string | null | undefined): string | null
+
+/** The inclusive last day of a period whose end is exclusive. */
+export function periodEndDateOnly(value: string | null | undefined): string | null
 ```
 
 and the locale formatting follows the existing `datetime.ts` pattern (the portal
 already localises its dates — the new helper follows the same convention).
+
+> **A date-only helper is not enough on its own.** The end is *exclusive*, so
+> "1 Nov – 1 Dec" is what the raw dates say and "1 Nov – 30 Nov" is what the customer
+> must read. The subtraction has to happen once, in a named helper, in every place
+> that renders a period — the portal list, the portal modal and the invoice document
+> — or two of them will disagree.
+
+### 6.2 The Stripe-hosted invoice — the gap we cannot render around
+
+When a customer pays by card, their invoice may be a **Stripe-hosted document**: the
+portal opens `hosted_invoice_url` / `stripe_pdf_url` when they exist. Stripe knows the
+amount it charged and nothing else, so **that document carries no tax line, no net,
+and no service period.**
+
+This is a genuine gap in the customer's experience, and it is not fixed by the site
+app — it is fixed by what we do about the Stripe invoice. There are three honest
+options, and the choice belongs to Kens and the accountant:
+
+| Option | What the customer sees | Cost |
+|---|---|---|
+| **A** — our document is the tax document | the portal links our printable invoice; the Stripe link becomes a *payment receipt* | the customer has two documents, and they must be told which is which |
+| **B** — Stripe Tax / a tax-enabled price | Stripe renders the tax on its own document | Stripe's tax product and its SST coverage are a separate question, and our treatment codes do not map onto it |
+| **C** — no tax on card payments | the tax is only charged on our own invoices (pay-later, HitPay, transfer) | incoherent: the same customer pays a different total by payment method |
+
+**Option A is the recommendation**, because it keeps one authority for the tax — our
+invoice — and the treatment codes, the rate snapshot and the period all stay ours. The
+cost of A is a wording problem, which is what the locale section is for: the portal
+must say plainly which document is the invoice and which is the receipt.
+
+Until that decision is made, the site must not assume the Stripe link shows a
+breakdown.
 
 ---
 
@@ -242,6 +322,8 @@ already localises its dates — the new helper follows the same convention).
 | `billing.tax.excluded` | + SST | + SST | + SST |
 | `billing.tax.exempt` | Tax exempt | មិនទាន់កាត់ពន្ធ | 免税 |
 | `billing.tax.servicePeriod` | Service period | រយៈពេលសេវា | 服务期间 |
+| `billing.tax.invoiceVsReceipt` | Invoice | វិម្មីបញ្ចូល | 发票 |
+| `billing.tax.receipt` | Payment receipt | បញ្ចូលបង់ប្រាក់ | 付款收据 |
 | `billing.tax.registrationNumber` | SST registration no. | លេខចុះឈ្មោះ SST | SST 注册号 |
 | `billing.tax.total` | Total | សរុប | 合计 |
 | `payment.tax.breakdown` | Amount due | ប្រាក់ដែលត្រូវបង់ | 应付金额 |
@@ -330,7 +412,12 @@ the amount changes, so that the new number is never a surprise on the same day.
 - [ ] A non-taxable customer sees exactly the screen they see today — one number, no
       tax row.
 - [ ] The service period renders as the correct calendar dates in **every** locale and
-      in the reader's own timezone — a period ending 30 Nov never shows as 29 Nov.
+      in the reader's own timezone — a period ending 30 Nov never shows as 29 Nov, and
+      never as 1 Dec.
+- [ ] Two customers in different timezones see the **same** period on the same
+      invoice.
+- [ ] The invoice detail modal carries the breakdown — it is opened from the invoice
+      details endpoint, not from the list.
 - [ ] The tax line, the service period and the breakdown exist in **en**, **km** and
       **zh** — no missing key falls back to the raw key name.
 - [ ] `+ SST` and `incl. SST` are never swapped: the `+` variant is used only for the

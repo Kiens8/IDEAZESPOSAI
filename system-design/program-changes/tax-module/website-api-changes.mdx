@@ -15,6 +15,12 @@ only about what changes in `website_api`.
 
 Live source inspected: `POS_AI` @ `d83d6bf`.
 
+> **Revision note (v1.9).** This revision corrects two counting errors in the previous
+> draft — **nine** invoice-creation sites (there are **eleven**) and **two** invoice HTML
+> renderers (there are **three**) — and expands the service-period work into a full
+> section of its own. See [section 4](#4-the-eleven-invoice-sites) and
+> [section 5](#5-the-service-period).
+
 ---
 
 ## 1. What the API does today
@@ -26,24 +32,35 @@ The facts this proposal rests on, verified in the live code:
 | `Invoice` has **no** tax column and **no** service-period column | `website_api/app/models/models.py:162` |
 | `Invoice.amount` is a **single** number — it is what the customer pays | `models.py:170` |
 | `Invoice.currency` — the currency of that one number | `models.py:171` |
+| `Invoice.status` is a string; the values the code actually writes are `pending`, `paid`, `failed`, `forgiven`, `cancelled` | `models.py:172` |
 | `PlanPrice` holds per-currency prices, no tax notion | `models.py:51` |
 | `WebsiteCustomer.country` is a **claim** in the profile | `models.py:70+` |
 | The payment-method gate already refuses MYR to a non-MY customer | `subscription.py:335` |
-| **9** places construct an `Invoice` | see [section 4](#4-the-nine-invoice-sites) |
-| Revenue reports sum `invoice.amount` | `admin.py` → `group_by_currency(all_invoices, statuses={"paid"})` |
-| The customer invoice HTML is rendered from the raw amount | `billing.py` → `/invoices/{invoice_id}/view` |
-| The admin invoice HTML is a **second, separate renderer** | `admin.py` → `/invoices/{invoice_id}/html` |
+| **11** places construct an `Invoice` | see [section 4](#4-the-eleven-invoice-sites) |
+| **3** separate renderers produce invoice HTML | see [section 8.4](#84-changed--the-three-invoice-renderers) |
+| Revenue reports sum `invoice.amount` | `admin.py:295` → `group_by_currency(all_invoices, statuses={"paid"})` |
+| `group_by_currency` reads one attribute and turns `NULL` into zero | `app/services/money.py:25-42` |
+| The promotion report compares `invoice.amount` against the regular price | `app/services/promotion_stats.py:74` |
+| The promo **email** compares `invoice.amount` against the regular price | `app/services/subscription_email.py:115` |
+| The Stripe **checkout** price is built from the net plan price | `subscription.py:479`, `billing.py:447` |
 | There is **no Alembic** — the schema grows by hand via `scripts/migrate_*.py` | `scripts/migrate_promotion.py` |
 | The plan prices are published to the site | `plans.py` → `GET /api/plans/published` |
 
-The two consequences that shape everything below:
+The four consequences that shape everything below:
 
 - **`amount` is already the gross.** It is what the payment provider charged and what
   the customer was billed. If we made `amount` the net, the payment path would break.
   So the tax goes in **new columns**, and `amount` stays the gross.
-- **There are nine invoice-creation sites**, and two of them are *Stripe webhooks that
-  mirror a Stripe invoice*. Every one of them must produce the same tax and the same
-  service period, or the book becomes wrong in nine different ways.
+- **There are eleven invoice-creation sites**, and **five** of them are *Stripe webhooks
+  that mirror a Stripe invoice*. Every one of them must produce the same tax and the
+  same service period, or the book becomes wrong in eleven different ways.
+- **Three code paths read `invoice.amount` as if it were the price.** The moment
+  `amount` becomes the gross, the promotion email, the promotion report and the
+  promotion coupon all break. See [section 9](#9-the-three-places-that-read-the-amount).
+- **The period on the subscription is not the period of the invoice.** The renewal job
+  advances `current_period_start` / `current_period_end` at the moment it issues the
+  invoice, so the subscription can only ever describe the *latest* period. The period
+  has to be **snapshotted onto the invoice**. See [section 5](#5-the-service-period).
 
 ---
 
@@ -62,13 +79,23 @@ running customer or invoice is touched.
 | `tax_rate` | `FLOAT` | the rate applied, snapshotted (`0.08`, not `8`) |
 | `tax_treatment` | `VARCHAR(30)` | the treatment code that decided it — `not_registered`, `domestic_taxable`, `export_taxable`, `export_exempt`, `export_pending` |
 | `tax_inclusive` | `BOOLEAN` | was the charged amount tax-inclusive? (default `FALSE`) |
-| `service_period_start` | `DATETIME` | the start of the service the money is for |
-| `service_period_end` | `DATETIME` | the end of that service period |
+| `period_start` | `DATETIME` | the **inclusive** start of the service the money is for |
+| `period_end` | `DATETIME` | the **exclusive** end of that service period |
 | `taxable_supply` | `BOOLEAN` | does this invoice count toward the RM500,000 measure? (default `FALSE`) |
 
 `amount` keeps its meaning: **the gross that was charged**. For a new invoice,
 `amount == subtotal + tax_amount`. For an old invoice, `subtotal IS NULL` and
 `amount` is the whole truth.
+
+> **The period columns are `period_start` / `period_end`, and that is not a free
+> choice.** [accounting/purchase-path](../../accounting/purchase-path) already specifies
+> exactly these two columns on `invoices` as `DateTime, nullable` — the period snapshot
+> the deferred-revenue connector needs. The two programs must land **one** pair of
+> columns, not two competing ones under two names. An earlier draft of this proposal
+> used `service_period_start` / `service_period_end`; that was a mistake and it is
+> corrected here. If this module ships first, it creates the columns the accounting
+> program then consumes, and the accounting program's Phase 0b item
+> ([internal-tenant §Phase 0b](../../accounting/internal-tenant)) is satisfied by it.
 
 ### 2.2 New table `tax_rates`
 
@@ -154,6 +181,10 @@ when missing**, so it can run on every deploy without thinking about it. Columns
 nullable and there is **no backfill**: `NULL` means "no tax", so no running customer,
 invoice or subscription is touched.
 
+**The `period_start` / `period_end` columns belong to the same migration** — see
+[section 2.1](#21-new-columns-on-invoices). If the accounting program's migration lands
+first, this script must detect the columns and not try to create them again.
+
 ---
 
 ## 3. The tax engine — `app/services/tax.py`
@@ -187,7 +218,7 @@ missing rate in charging mode is an error, not a free invoice.
 
 ### 3.3 `compute(net, rate, inclusive, currency)`
 
-Rounding, stated once so all nine call sites agree:
+Rounding, stated once so all eleven call sites agree:
 
 - **Exclusive**: `tax = round(net * rate, 2)`, `gross = round(net + tax, 2)`.
 - **Inclusive**: `gross = net` (the amount as listed), `tax = round(gross - gross / (1 + rate), 2)`,
@@ -195,6 +226,20 @@ Rounding, stated once so all nine call sites agree:
   the gross that was charged. The gross is never off by a cent.
 
 Both results are returned together, always in the invoice's own currency.
+
+> **A second decision this function must make explicit: which gross?**
+> For an invoice we raise ourselves (pay-later, HitPay, bank transfer), we compute the
+> gross from the net. For an invoice that **mirrors Stripe**, Stripe has already
+> decided what to charge, and our job is to *explain* that amount rather than to
+> change it. So the engine exposes two entry points:
+>
+> - `compute(net, rate, ...)` — for the invoices we price.
+> - `explain(gross, net, rate, ...)` — for the invoices Stripe priced. It derives
+>   `tax = gross - net` and **verifies** that the derived tax equals the expected tax
+>   to within one cent. A mismatch is an **alert**, never a silent correction.
+>
+> This is what "our invoice is the truth for the tax, Stripe's amount is used to
+> reconcile" means in practice.
 
 ### 3.4 `taxable_supply(treatment)`
 
@@ -204,22 +249,24 @@ exempt or undetermined export is not a taxable service supplied in Malaysia.
 
 ---
 
-## 4. The nine invoice sites
+## 4. The eleven invoice sites
 
 Every site below currently constructs `Invoice(...)` **by hand**. Every one of them
 must go through the factory and must state a service period.
 
 | # | Site | Function | The service period it uses |
 |---|---|---|---|
-| 1 | `subscription.py:693` | `create_subscription` — the first invoice (trial / free / paid) | trial: the trial window from `trial_days`; free: the free window; paid: the subscription's `current_period_start → current_period_end` |
-| 2 | `subscription.py:982` | `handle_stripe_checkout_success` | the subscription's `current_period_start → current_period_end` |
-| 3 | `subscription.py:1303` | `upgrade_subscription` — the **proration** invoice | the **prorated segment** only: from the upgrade moment to `current_period_end` |
-| 4 | `subscription.py:1539` | `upgrade_subscription` — the `pay_later` proration invoice | the same prorated segment |
-| 5 | `webhooks.py:644` | `handle_checkout_completed` | the Stripe invoice's period |
-| 6 | `webhooks.py:770` | `handle_invoice_created` | the Stripe invoice's period |
-| 7 | `webhooks.py:870` | `handle_invoice_finalized` | the Stripe invoice's period |
-| 8 | `webhooks.py:896` | `handle_invoice_finalized` (the second branch) | the Stripe invoice's period |
-| 9 | `webhooks.py:973` | `handle_invoice_paid` | the Stripe invoice's period |
+| 1 | `app/routes/subscription.py:693` | `create_subscription` — the first invoice (trial / free / paid) | the subscription's own period as created: for a trial, `now → trial_ends_at`; for free and paid, `now → now + one cycle` (`subscription.py:527-528`) |
+| 2 | `app/routes/subscription.py:982` | `handle_stripe_checkout_success` — the Stripe amount for the checkout | the subscription's `current_period_start → current_period_end` |
+| 3 | `app/routes/subscription.py:1303` | `upgrade_subscription` — the **Stripe** proration invoice | the **prorated segment**: the upgrade moment → `current_period_end` |
+| 4 | `app/routes/subscription.py:1539` | `upgrade_subscription` — the **`pay_later`** proration invoice | the same prorated segment |
+| 5 | `app/routes/webhooks.py:644` | `handle_checkout_completed` | the Stripe invoice's period; **and it may adopt an orphan invoice** — see [section 5.6](#56-the-stripe-period--and-the-one-case-with-no-fallback) |
+| 6 | `app/routes/webhooks.py:770` | `handle_invoice_created` | the Stripe invoice's period |
+| 7 | `app/routes/webhooks.py:870` | `handle_invoice_finalized` (the subscription is known) | the Stripe invoice's period |
+| 8 | `app/routes/webhooks.py:896` | `handle_invoice_finalized` (**no subscription** — the customer is found by email) | the Stripe invoice's period **only** — there is no subscription to fall back on |
+| 9 | `app/routes/webhooks.py:973` | `handle_invoice_paid` | the Stripe invoice's period |
+| 10 | `scripts/send_notifications.py:455` | `process_trial_end` — the **first paid** invoice after the trial | the first **paid** period: `trial_ends_at → trial_ends_at + one cycle` (`send_notifications.py:447-453`) |
+| 11 | `scripts/send_notifications.py:655` | `generate_renewal_invoices` — the renewal invoice (**non-Stripe only** — a Stripe subscription is billed by Stripe) | the period being **invoiced**: `new_period_start → new_period_end` (`send_notifications.py:617-622`) |
 
 **Sites 5–9 are the trap.** They *mirror* a Stripe invoice. If the tax is computed
 from our own plan price, it is computed twice — once by us, once by nobody — and if it
@@ -227,19 +274,170 @@ is taken from Stripe, then the tax on a **HitPay** or **bank transfer** invoice 
 never passes through Stripe) would be missing, because those invoices are created on
 our side in `subscription.py`.
 
-So: **our invoice is the truth for the tax.** Stripe's amount is used to *reconcile*
-(`amount == gross`), not to *decide*. A reconciliation mismatch is logged loudly; it is
-not silently corrected.
+So: **our price is the truth for the tax, Stripe's amount is the truth for the gross.**
+The two must agree to within a cent, and a disagreement is logged loudly — it is not
+silently corrected.
 
-**Site 3 and 4 are the other trap:** a proration invoice covers a *fraction* of a
+**Sites 3 and 4 are the other trap:** a proration invoice covers a *fraction* of a
 period. Stating the whole `current_period_start → current_period_end` would overstate
 the service. The period is the **prorated segment**.
 
+**Sites 10 and 11 are the trap the previous draft missed.** The renewal cron is in
+`scripts/`, not in `app/` — which is exactly why a search of `app/` alone found nine
+sites instead of eleven. These two sites are the ones that **advance the subscription
+period**, so they are the ones where a snapshot taken at the wrong moment is silently
+wrong. See [section 5](#5-the-service-period).
+
 ---
 
-## 5. The invoice factory — `app/services/invoicing.py`
+## 5. The service period
 
-A single `create_invoice(...)` that all nine sites call, so the tax and the period are
+**Every invoice states the service period it is for.** Two dates: the start and the end.
+
+This is what makes the invoice *accountable* rather than merely *paid*. It is also what
+the accounting service needs to recognise revenue over the period instead of on the
+cash date — the deferred-revenue model in
+[accounting/internal-tenant](../../accounting/internal-tenant) depends on the
+service period being present.
+
+The rule is a refusal: **an invoice that cannot state its service period is not
+issued.** There is no "period unknown" invoice. That refusal is what keeps the
+accounting reconciliation honest later.
+
+### 5.1 Why the snapshot exists at all
+
+The period lives on the subscription (`models.py:41-42`: `current_period_start` /
+`current_period_end`), **and the renewal job advances it at the moment it issues the
+invoice** (`scripts/send_notifications.py:617-626`):
+
+```
+new_period_start = sub.current_period_end
+...
+sub.current_period_start = new_period_start
+sub.current_period_end   = new_period_end
+```
+
+So **the subscription's period is not the period of the invoice you are reading.**
+After the next renewal, the subscription points at a later period, and a connector
+that reads `subscription.current_period_end` when it sees an old invoice recognises
+that invoice's revenue **in the wrong period** — and for an annual plan, a year wrong.
+
+The invoice therefore carries its own snapshot: `period_start` and `period_end`,
+written at creation, from the same values the renewal job already computes.
+
+### 5.2 The convention — inclusive start, exclusive end
+
+| | Value | Meaning |
+|---|---|---|
+| `period_start` | **inclusive** | the first moment of service on the invoice |
+| `period_end` | **exclusive** | the moment the service ends and the next period begins |
+
+This matches the subscription's own convention exactly — `current_period_end` is the
+instant the *next* renewal fires — so the two can be chained without an off-by-one,
+and the renewal invoice's `period_start` is the previous invoice's `period_end`.
+
+The **display** is a separate question from the storage. A customer reads
+"1 Nov – 30 Nov", which is `period_start` through `period_end` **minus one day**. The
+API therefore exposes the raw pair *and* the rendered range, and every renderer uses
+the rendered range. See [site-app-portal-changes §6.1](./site-app-portal-changes#61-the-dates--sitesrclibdatetimets).
+
+### 5.3 Capture before you advance
+
+The rule that makes the snapshot correct, and the one that is easiest to get wrong:
+
+> **Capture the period from the values the code has already computed, at the moment it
+> computes them — never by re-reading the subscription afterwards.**
+
+Concretely, at each site:
+
+- **Site 10 (`process_trial_end`)** computes `period_start = sub.trial_ends_at` and
+  `period_end = period_start + one cycle` at lines 447-453, creates the invoice at 455,
+  and only *then* writes `sub.current_period_start = period_start` at line 469. The
+  invoice must take the **locals**, not the subscription.
+- **Site 11 (`generate_renewal_invoices`)** computes `new_period_start` /
+  `new_period_end` at lines 617-622 and advances the subscription at 625-626 — the
+  advance happens **before** the invoice is created at 655. The invoice must take
+  `new_period_start` / `new_period_end`, which is the period being *paid for*, and not
+  the subscription's post-advance fields (which happen to agree today, but only by
+  coincidence of ordering, and would silently break the day the ordering changes).
+- **Site 1 (`create_subscription`)** creates the subscription with
+  `current_period_start=now, current_period_end=period_end` at lines 527-528 before
+  the invoice is constructed at 693. The invoice reads those two.
+
+### 5.4 The period of each kind of invoice
+
+| The invoice is for | The period is | Why |
+|---|---|---|
+| a trial | `now → trial_ends_at` | the trial window is the service the $0 invoice is for |
+| a free plan | `now → now + one cycle` | same shape |
+| the first paid period | `trial_ends_at → trial_ends_at + one cycle` | the trial is over; the money buys the period **after** it |
+| a paid subscription's first invoice | the subscription's `current_period_start → current_period_end` | it is the period the price was quoted for |
+| a renewal | `new_period_start → new_period_end` | the period being invoiced, which the renewal is advancing into |
+| a **proration** (upgrade) | the upgrade moment → `current_period_end` | a fraction of a period, and the invoice says so |
+| a Stripe mirror | the Stripe invoice's period | Stripe priced it |
+| a $0 invoice marked paid by the cron | the same period as the invoice it marks | a zero invoice still states what it covers |
+
+### 5.5 The proration segment must agree with the proration arithmetic
+
+`app/services/upgrade_proration.py` computes the amount from a **day count**:
+
+```
+total_days     = max(1, (period_end - period_start).days)
+days_used      = max(0, (now - period_start).days)
+days_remaining = max(0, total_days - days_used)
+amount = round(max(0.0, (new_price - old_price) * (days_remaining / total_days)), 2)
+```
+
+The period snapshot on that invoice must be taken from **the same `now` and the same
+`current_period_end`** that this calculation used, and the day boundaries must be the
+same ones — otherwise the invoice states a range that does not contain the days it
+charged for, and the revenue-per-day reconciliation does not close.
+
+Two other facts about proration that the tax engine must respect:
+
+- The proration amount is a **difference between two plans**, not a plan price. The
+  tax is charged on that difference — the invoice's net is the difference.
+- A free → paid upgrade is charged at the **full** new price, not prorated
+  (`upgrade_proration.py`, the `old_price == 0` branch), and its description says
+  "full price". The tax follows the amount, so it is the full price that is taxed.
+
+### 5.6 The Stripe period — and the one case with no fallback
+
+The Stripe webhook payload carries the invoice's period (`period_start` /
+`period_end` on the invoice object). The handler should read it from the payload, and
+**reconcile** it against the subscription's own period rather than trusting either
+blindly.
+
+**Site 8 is the exception.** In `handle_invoice_finalized`, when the Stripe invoice
+does not match a known subscription, the handler creates an invoice for a customer
+found **by email** (`webhooks.py:896`) — with **no `subscription_id`**. There is no
+subscription to read a period from. The period must come from the Stripe payload
+alone.
+
+Two consequences:
+
+1. If the Stripe payload carries no period either, **that invoice cannot be issued**
+   under the refusal rule. It must be parked and surfaced — the same discipline the
+   accounting connector uses for a feed that cannot state a period: *a number that is
+   missing rather than a number that is wrong*.
+2. The orphan invoice is later **adopted** by `handle_checkout_completed` (site 5),
+   which links it to the subscription and marks it paid. Adoption must **not**
+   recompute the tax or the period — the invoice keeps the tax and the period it was
+   created with, exactly as the treatment-freeze rule in
+   [tax-module §3](./tax-module#3-the-tax-treatment-state-machine) requires.
+
+### 5.7 The period on a $0 invoice
+
+`mark_zero_invoices_paid` (`send_notifications.py:491`) marks every $0 pending invoice
+as paid. Those invoices — the trial and the free plan — still carry a period. A $0
+invoice has no tax (the net is zero, so the tax is zero), but it **states what it
+covers**, which is what makes the free tier auditable rather than invisible.
+
+---
+
+## 6. The invoice factory — `app/services/invoicing.py`
+
+A single `create_invoice(...)` that all eleven sites call, so the tax and the period are
 computed in exactly one place.
 
 ```python
@@ -251,8 +449,8 @@ def create_invoice(
     description,
     status="pending",
     payment_method=None,
-    service_period_start,   # required — no default
-    service_period_end,     # required — no default
+    period_start,           # required — no default
+    period_end,             # required — no default
     invoice_date=None,
     taxable_supply_override=None,
 ) -> Invoice:
@@ -275,18 +473,61 @@ The **shadow mode** is what makes this safe to deploy: `off`/`shadow`/`admin_onl
 compute the tax, store it, and **do not change `amount`**. The admin can watch the
 computed tax for a month before a single customer is charged differently.
 
-### 5.1 The refund and cancellation path
+### 6.1 The factory has to be able to say "Stripe priced this"
+
+Sites 5–9 do not price the invoice — Stripe did. For them the factory takes the
+**gross Stripe charged** and the **net we computed**, and derives the tax between them
+([section 3.3](#33-computenet-rate-inclusive-currency)):
+
+```python
+def create_invoice(
+    db, *,
+    customer, subscription=None,
+    amount,                 # the NET for an invoice we price
+    gross=None,             # the amount Stripe charged, for a mirrored invoice
+    ...
+)
+```
+
+When `gross` is given, `amount` is the net, `tax_amount = gross - net`, and the
+factory **verifies** that the derived tax matches the expected tax within one cent.
+A mismatch raises an alert with the invoice id — it does not adjust the amount,
+because the amount is what the customer was actually charged.
+
+### 6.2 The refund, cancellation and forgiveness paths
 
 An invoice that is refunded or cancelled must have its tax reversed with it — the
-`tax_amount` is part of what was collected. The refund paths that read `amount` must
-now also read `tax_amount` and `subtotal`, or the reversal will be wrong by the tax.
+`tax_amount` is part of what was collected. Three facts about the live code shape this:
+
+- **There is no `refunded` write path.** The status is listed in the model's comment
+  (`models.py:172`) but nothing in `app/` or `scripts/` ever writes it. A refund today
+  is a **manual action outside the system** — the Stripe dashboard, by a human. So the
+  tax reversal for a refund is also manual today, and the module's job is to make the
+  *numbers* available for that manual act (`subtotal`, `tax_amount`, `tax_treatment`
+  on the invoice) rather than to pretend an automated path exists.
+- **`cancelled` is written for one case only** — a superseded proration invoice
+  (`subscription.py:1299`, `candidate.status = "cancelled"`). A voided proration
+  carries no tax to reverse, because it was never collected; it must simply not
+  appear in revenue or tax collected.
+- **`forgiven` is written by the cron** (`send_notifications.py:252`) when an invoice
+  passes its due date unpaid. A forgiven invoice was **never charged**, so it carries
+  a computed tax but contributes **nothing** to tax collected.
+
+The rule that follows, and that the reporting depends on:
+
+> **Tax collected is the tax on `paid` invoices. Nothing else.**
+
+A `pending`, `overdue`, `failed`, `forgiven` or `cancelled` invoice contributes
+nothing to revenue and nothing to tax collected, no matter how much tax is computed on
+it. That is the difference between *tax computed* and *tax collected*, and the reports
+must keep them apart.
 
 ---
 
-## 6. The reporting change — revenue versus tax liability
+## 7. The reporting change — revenue versus tax liability
 
-This is the change with the most consequence, and it is a **two-line** change that
-changes a number everybody looks at.
+This is the change with the most consequence, and it is a **small** change that changes
+a number everybody looks at.
 
 Today `GET /api/admin/reports/summary` computes:
 
@@ -303,7 +544,7 @@ So `app/services/money.py` gains a basis parameter:
 | Helper | Change |
 |---|---|
 | `group_by_currency(invoices, statuses=..., basis="net")` | `net` sums `subtotal` when present, else `amount` (the legacy invoices). `gross` sums `amount`. |
-| `tax_liability_by_currency(invoices, statuses={"paid"})` | new — sums `tax_amount`, per currency |
+| `tax_liability_by_currency(invoices, statuses={"paid"})` | new — sums `tax_amount`, per currency, **paid only** |
 | `mrr_by_currency(db, subscriptions)` | unchanged in shape, but the MRR is a **net** figure — the recurring net price |
 | `plan_price(plan, currency, cycle)` | unchanged — the plan prices stay **net** under the recommended exclusive basis |
 | `changes_by_currency(current, previous)` | unchanged |
@@ -313,10 +554,30 @@ So `app/services/money.py` gains a basis parameter:
 match the new reporting. `gross` is used only where the gross is what is being asked
 for ("Total Received" — what actually landed).
 
+The callers that must be reviewed: `admin.py:244` (monthly revenue), `admin.py:245`
+(pending revenue — this one stays **gross**, it is a cash figure),
+`admin.py:264` (the revenue-by-day series), `admin.py:295` (total revenue),
+`admin.py:323` (previous period, for the change), and
+`app/services/promotion_stats.py:79` (the promotion revenue).
+
 > **The rule that is not negotiable:** revenue is net. The tax is a liability, not
 > income. A dashboard that shows revenue and tax together as one number is wrong.
 
-### 6.1 The new threshold monitor
+> **The trap in `group_by_currency`.** It reads one attribute and does
+> `amount = getattr(item, amount_attr, None) or 0` (`money.py:36`). A `NULL`
+> `subtotal` becomes **zero**, not the legacy amount. So the naive implementation —
+> `group_by_currency(invoices, amount_attr="subtotal")` — would **silently drop every
+> pre-module invoice from the revenue figure**, and the dashboard would show a
+> collapse rather than an error. The basis parameter must therefore be a **custom
+> amount extractor** with an explicit fallback (`subtotal` if not `NULL`, else
+> `amount`), never a swapped `amount_attr`. Every historical invoice has to keep
+> counting.
+>
+> `skip_zero=True` (the default) also drops a currency whose total is zero. That is
+> correct for a real zero, but a currency whose only invoices are legacy ones with a
+> `NULL` subtotal must not vanish for that reason.
+
+### 7.1 The new threshold monitor
 
 `GET /api/admin/tax/threshold` returns:
 
@@ -347,11 +608,11 @@ for ("Total Received" — what actually landed).
 
 ---
 
-## 7. The API contracts
+## 8. The API contracts
 
-### 7.1 Changed — the customer invoice
+### 8.1 Changed — the customer invoice
 
-`GET /api/billing/invoices` (the `InvoiceResponse` model in `billing.py`) gains:
+`GET /api/billing/invoices` (the `InvoiceResponse` model in `billing.py:22`) gains:
 
 ```python
 subtotal: Optional[float]
@@ -359,37 +620,69 @@ tax_amount: Optional[float]
 tax_rate: Optional[float]
 tax_treatment: Optional[str]
 tax_inclusive: Optional[bool]
-service_period_start: Optional[datetime]
-service_period_end: Optional[datetime]
+period_start: Optional[datetime]
+period_end: Optional[datetime]
 ```
 
 `amount` is unchanged in meaning — the gross. The site can then render the tax line
 without a second request.
 
-### 7.2 Changed — the customer invoice HTML
+### 8.2 Changed — the admin invoice list
 
-`GET /api/billing/invoices/{invoice_id}/view` renders the net, the tax and the gross
-as separate rows, plus the service period line, plus our SST registration number when
-we are registered.
+`GET /api/admin/invoices` (the `InvoiceResponse` model in `admin.py:170`) gains the
+same fields. The admin list builds its rows by hand (`admin.py:675-696`), so the new
+fields have to be added to that construction explicitly — they are not picked up
+automatically the way `Config.from_attributes` would suggest.
 
-The renderer already reads the customer's own timezone (`local_date(invoice.created_at,
-current_user.country)`) — the service period dates must be rendered the same way, and
-they are **dates**, not moments: a period that ends on the 30th ends on the 30th in the
-customer's clock, not at 00:00 UTC on the 31st.
+> **Do not put the tax into `description`.** The admin derives the plan name from the
+> description with `inv.description.split(" - ")[0]` (`admin.py:695`). The description
+> keeps its current shape, and the tax lives in the tax columns.
 
-### 7.3 Changed — the admin invoice HTML
+### 8.3 Changed — the invoice details
 
-`GET /api/admin/invoices/{invoice_id}/html` is a **second renderer** with the same
-shape. It gets the same tax rows and the same service period — and it gets the
-customer's country, which it already reads
-(`local_date(inv.created_at, getattr(customer, "country", None))`).
+`GET /api/invoices/{invoice_id}/details` (in `app/invoices/routes.py:98`) returns the
+invoice summary the portal's detail modal uses. It gains the same tax fields, because
+the portal opens the modal from this response — the modal cannot show a breakdown it
+does not have.
 
-> **Two renderers, one document.** This is the shape of the codebase today, and it is
-> why the proposal touches both. A third renderer appearing later is the risk — the
-> factory produces the *numbers*; a shared invoice template would remove the
-> duplication. That is a separate cleanup, flagged, not included.
+### 8.4 Changed — the three invoice renderers
 
-### 7.4 Changed — the published plan prices
+There are **three** renderers, not two. Each produces a customer- or admin-facing
+document, and each must show the net, the tax and the gross as separate rows, plus the
+service period line, plus our SST registration number when we are registered.
+
+| # | Renderer | Route | Who sees it |
+|---|---|---|---|
+| 1 | `app/routes/billing.py` | `GET /api/billing/invoices/{invoice_id}/view` | a customer-facing printable invoice; it builds its HTML inline as an f-string |
+| 2 | `app/invoices/invoice_service.py` → `generate_invoice_html` | `GET /api/invoices/{invoice_id}/view` (in `app/invoices/routes.py`) | **this is the one the printable invoice page in the site app actually calls** — `site/src/app/[locale]/invoice/[id]/page.tsx` fetches `https://apisite.ideazes.com/api/invoices/${invoiceId}/view` |
+| 3 | `app/routes/admin.py` | `GET /api/admin/invoices/{invoice_id}/html` | the admin's printable invoice — `admin/src/pages/Invoices.jsx` calls `https://apisite.ideazes.com/api/admin/invoices/${invoiceId}/html` |
+
+Two of them need real work, and the third needs more:
+
+- **Renderer 1** (`billing.py`) is an f-string template with `invoice.amount` in two
+  places (`billing.py:180`, `billing.py:187`). It becomes net / tax / gross.
+- **Renderer 2** (`invoice_service.py`) takes a **flat parameter list** —
+  `amount: float`, `currency`, `status`, … — and formats a single
+  `f"{symbol}{amount:.2f}"`. It gains `subtotal`, `tax_amount`, `tax_rate`,
+  `tax_label`, `period_start`, `period_end` and `registration_number` parameters, and
+  renders the extra rows when a tax is present.
+- **Renderer 3** (`admin.py`) is a near-copy of renderer 1.
+
+> **Renderer 1 has no caller in the site app today.** The site calls
+> `/api/invoices/{id}/view` (renderer 2) for the printable document, and
+> `/api/billing/invoices/{id}/pay`, `/qr` and `/status` for the payment flow. Renderer 1
+> is still a **live, customer-authenticated endpoint**, so it must not be left showing
+> an untaxed total to a customer who finds it. It is either updated with the others or
+> removed — but that is a decision, not an omission.
+
+> **Three renderers, one document.** This is the shape of the codebase today, and it is
+> why the proposal touches all three. A fourth renderer appearing later is the risk —
+> the factory produces the *numbers*; a **shared invoice template** would remove the
+> duplication. That is a separate cleanup, flagged, not included. It is worth doing
+> first, though: renderer 1 and renderer 3 are already near-duplicates, and the tax
+> makes each of them three rows instead of one.
+
+### 8.5 Changed — the published plan prices
 
 `GET /api/plans/published?locale=` gains a `tax` block:
 
@@ -401,7 +694,7 @@ The prices themselves do **not** change — under the recommended exclusive basi
 are the net, and they stay the net. The block tells the site whether to annotate and
 how.
 
-### 7.5 New — the tax status for the signed-in customer
+### 8.6 New — the tax status for the signed-in customer
 
 `GET /api/billing/tax-context` returns the treatment that applies to the *current*
 customer, so the portal can decide what to show without the customer having to infer
@@ -421,7 +714,7 @@ it:
 For an `export_pending` customer this returns `applicable: false` — the portal shows
 nothing, and the uncertainty stays internal.
 
-### 7.6 New — the admin tax endpoints
+### 8.7 New — the admin tax endpoints
 
 | Endpoint | Purpose |
 |---|---|
@@ -436,11 +729,13 @@ nothing, and the uncertainty stays internal.
 
 ---
 
-## 8. The email
+## 9. The three places that read the amount
 
-`app/services/subscription_email.py` sends the confirmation with **the amount the
-customer paid** — and it detects a promotion by comparing that amount against the
-plan's regular price:
+The moment `amount` becomes the gross, every comparison of the form "is this amount
+below the regular price?" becomes wrong. There are **three** such places, and each one
+fails quietly.
+
+### 9.1 The promotion email — `app/services/subscription_email.py`
 
 ```python
 if amount is not None:
@@ -449,20 +744,134 @@ if amount is not None:
         promo_amount = float(amount)
 ```
 
-Once `amount` is the **gross**, `amount != promo_price` — the comparison fails, and
-**the promotional email is never sent**. A customer pays a promotional price and is
-told it was a regular price.
+`amount` comes from `invoice.amount` (`subscription_email.py:83-84`). Once `amount` is
+the gross, `amount != promo_price` — the comparison fails, and **the promotional email
+is never sent**. A customer pays a promotional price and is told it was a regular price.
 
 The fix: the comparison must use the **net** — `invoice.subtotal` — not `invoice.amount`.
-This is a one-line change with a very quiet failure mode, which is exactly why it is
-called out here.
+
+### 9.2 The Stripe checkout coupon — `app/routes/billing.py`
+
+```python
+if regular and invoice.amount and float(invoice.amount) < float(regular):
+    discount = round((float(regular) - float(invoice.amount)) * 100)
+    ... create_one_time_coupon(discount, ...)
+```
+
+The coupon is a **fixed amount off**, computed from the difference between the regular
+price and the invoice. With a gross `amount`, the difference is wrong in both
+directions: the comparison `amount < regular` may fail (no coupon at all — the
+customer is charged the regular price while the invoice says the promotional price),
+or the discount is computed from gross numbers (the coupon is too large and Stripe
+rejects it, which the code already treats as "no promotion rather than a wrong price").
+
+The fix: compare and subtract on the **net** in both places.
+
+### 9.3 The promotion report — `app/services/promotion_stats.py`
+
+```python
+if not regular or float(invoice.amount or 0) >= float(regular):
+    # Not below the regular price -> no promotion on this invoice.
+...
+saved = float(regular) - float(invoice.amount or 0)
+row["promo_revenue"].get(currency, 0) + float(invoice.amount or 0)
+```
+
+Three problems at once: the promotion is **not detected** (the gross is never below the
+regular net price), the **discount** is computed from gross numbers, and the
+**promotion revenue** is a gross figure reported as revenue.
+
+The fix: every one of these reads the **net**. `promotion_stats` also has a
+`_is_proration(invoice)` check that keys off the `UPG-` invoice-number prefix
+(`promotion_stats.py:32-33`) — the invoice numbering must keep that prefix, which is
+another reason the tax must not touch `invoice_number`.
+
+### 9.4 The signup coupon — `app/routes/subscription.py`
+
+The signup path compares the **net** to the **net** already
+(`subscription.py:432-448`: `resolved_amount` against `promo_amount`), so the coupon
+arithmetic survives the tax unchanged. But the **checkout price** does not: see
+[section 10](#10-the-stripe-checkout--the-tax-has-to-actually-be-charged).
+
+---
+
+## 10. The Stripe checkout — the tax has to actually be charged
+
+The tax is only real if the customer is **charged** it. Four places build a Stripe
+price:
+
+| Site | Price built from |
+|---|---|
+| `subscription.py:479` | `resolved_amount` — the **net** plan price |
+| `subscription.py:847` | `plan.price_monthly` — a legacy field, hardcoded `'usd'` |
+| `subscription.py:1495` | `prorated_amount` — the **net** difference |
+| `billing.py:447` | `regular` — the regular price, with the difference to the invoice taken off as a coupon |
+
+In `charge` mode, the tax must be **in** the amount Stripe charges, or the invoice and
+the payment disagree — and the acceptance criterion "`invoices.amount` equals the
+amount the payment provider charged" would be false from the first day.
+
+The rule that keeps the coupon arithmetic intact:
+
+> **The tax is added to the Stripe `unit_amount`. The promotion coupon keeps
+> comparing net to net.**
+
+The coupon is a fixed amount off the first invoice only. Today: `unit_amount` = the
+regular net price, coupon = `regular_net - promo_net`, so the customer pays
+`promo_net`. With the tax added to the unit amount — `unit_amount = regular_net +
+tax` — the coupon is still `regular_net - promo_net`, and the customer pays
+`promo_net + tax`. The tax is additive, so the coupon does not have to know about it.
+
+**Two consequences that must be stated rather than discovered:**
+
+1. **The tax rate becomes frozen into the Stripe subscription price at checkout.**
+   A rate change later does not change what Stripe charges for an existing
+   subscription. Catching up every existing Stripe subscription to a new rate is a
+   **migration** — a deliberate operation, not a side effect of editing a rate row.
+   Until that migration exists, a rate change applies to new subscriptions only, and
+   the ledger will show two rates in force at once. The rate table's `effective_from`
+   is not enough on its own; the **billing** effective date is a separate fact, and
+   the accounting connector has to be told which one it is looking at.
+2. **The legacy `subscription.py:847` checkout** uses `plan.price_monthly` and a
+   hardcoded `'usd'` currency. It predates the per-currency price table. If it is
+   still reachable, it needs the same treatment; if it is dead, it should be removed
+   rather than quietly left untaxed.
+
+### 10.1 The HitPay and manual paths need nothing
+
+- **HitPay**: `billing.py` sends `amount=float(invoice.amount or 0)` to
+  `create_payment_request`. Since `amount` stays the gross, the QR charges the gross
+  automatically — **no change**.
+- **HitPay reconciliation**: `app/services/hitpay_reconcile.py` compares the paid
+  amount against `invoice.amount` with a one-cent tolerance and refuses to mark the
+  invoice paid on a mismatch (an alert, not a payment). It compares gross to gross —
+  **no change**, and it stays a useful check that the tax was actually collected.
+- **Bank transfer and cash**: the amount on the invoice is what the customer
+  transfers. The gross on the invoice is the gross they owe — **no change**.
+
+### 10.2 The Stripe webhook mirrors
+
+For the five webhook sites, the amount written to the invoice is Stripe's
+(`amount_due`, `amount_total`, `amount_paid`). In `charge` mode those amounts now
+**include** the tax, because the Stripe price includes it. The factory therefore
+derives the tax as `gross - net` and verifies it
+([section 3.3](#33-computenet-rate-inclusive-currency)).
+
+---
+
+## 11. The email
+
+`app/services/subscription_email.py` sends the confirmation with **the amount the
+customer paid** — and it detects a promotion by comparing that amount against the
+plan's regular price. The fix is described in
+[section 9.1](#91-the-promotion-email--appservicessubscription_emailpy).
 
 The email's own wording also needs the tax: "you paid RM 108.00 (RM 100.00 + RM 8.00
 SST)". The tax is shown **only** when it was actually charged.
 
 ---
 
-## 9. The accounting connector
+## 12. The accounting connector
 
 The Phase 1 `billing_ours` connector reads `GET /api/internal/billing/ledger-events`.
 That payload must carry the tax facts, or the accounting service will have to
@@ -481,8 +890,8 @@ Each ledger event gains:
   "tax_treatment": "domestic_taxable",
   "taxable_supply": true,
   "currency": "MYR",
-  "service_period_start": "2026-11-01T00:00:00",
-  "service_period_end": "2026-11-30T00:00:00"
+  "period_start": "2026-11-01T00:00:00",
+  "period_end": "2026-12-01T00:00:00"
 }
 ```
 
@@ -491,9 +900,15 @@ and releases the net over the **service period**. The accounting implementation 
 deferred — this is only the contract, and it is the same HTTP-contract discipline the
 program already requires.
 
+> The event carries the **raw** `period_start` / `period_end` (the same exclusive-end
+> convention as the invoice row), because the accounting service does its own period
+> arithmetic and must not have to re-derive an inclusive end. The customer-facing
+> rendering is a separate concern
+> ([site-app-portal-changes §6.1](./site-app-portal-changes#61-the-dates--sitesrclibdatetimets)).
+
 ---
 
-## 10. The rollout, in the API
+## 13. The rollout, in the API
 
 | Step | API behaviour | Flag |
 |---|---|---|
@@ -506,25 +921,49 @@ program already requires.
 **Steps 0–2 cannot change what a customer pays.** That is the property to test, and it
 is the first acceptance test in [tax-module §10](./tax-module#10-acceptance-criteria-all-three-surfaces).
 
+**Step 4 has a prerequisite that steps 0–3 do not:** the Stripe checkout price has to
+carry the tax ([section 10](#10-the-stripe-checkout--the-tax-has-to-actually-be-charged)),
+and the three amount-reading paths have to be on the net
+([section 9](#9-the-three-places-that-read-the-amount)). Step 4 without those is a
+charge that does not reconcile.
+
 ---
 
-## 11. Acceptance criteria — API
+## 14. Acceptance criteria — API
 
 - [ ] `scripts/migrate_tax_module.py` is idempotent; running it twice changes nothing;
       `--check` reports without applying.
 - [ ] No existing invoice is modified by the migration; `subtotal IS NULL` for all of
-      them.
-- [ ] All nine invoice sites go through the factory; no `Invoice(` construction remains
-      outside it.
-- [ ] Every invoice created after the change has a non-null service period.
+      them, and they still count in the revenue report.
+- [ ] All **eleven** invoice sites go through the factory; no `Invoice(` construction
+      remains outside it.
+- [ ] Every invoice created after the change has a non-null `period_start` and
+      `period_end`.
 - [ ] The proration invoices (sites 3 and 4) state the prorated segment, not the whole
-      period.
+      period, and the segment is taken from the same `now` and `current_period_end`
+      that the proration arithmetic used.
+- [ ] The trial-end invoice (site 10) states the first **paid** period, beginning at
+      `trial_ends_at` — not the trial period.
+- [ ] The renewal invoice (site 11) states the period **being invoiced**, captured
+      before the subscription period is advanced.
+- [ ] The Stripe mirror sites state a period derived from the Stripe payload, and site
+      8 (the orphan, no subscription) either states one or is parked — never issued
+      without one.
 - [ ] In `shadow` mode, `amount` is byte-identical to what it would have been before.
 - [ ] `invoices.amount` equals the amount the payment provider charged, for every
       invoice, new and historical.
+- [ ] In `charge` mode, the Stripe `unit_amount` includes the tax, and the promotion
+      coupon is still computed net-to-net.
 - [ ] The promotional email still fires for a promotional price (the net comparison).
+- [ ] The Stripe checkout coupon is still created for a promotional price (the net
+      comparison), and the promotion report still detects promotions and reports
+      **net** revenue and **net** discount.
 - [ ] `GET /api/admin/reports/summary` reports net revenue and tax liability as two
       numbers, per currency, and they reconcile to the invoice list.
+- [ ] Tax collected counts `paid` invoices only — `forgiven`, `cancelled`, `failed`
+      and `pending` invoices contribute nothing to revenue or to tax collected.
+- [ ] All **three** invoice renderers show the net, the tax, the gross and the service
+      period, and a legacy invoice with no tax shows exactly what it shows today.
 - [ ] The threshold monitor excludes `export_exempt` and `export_pending`, states that
       it is an estimate, and names the FX rate and its date.
 - [ ] The ledger event carries net, tax, gross and the service period.
@@ -540,6 +979,7 @@ is the first acceptance test in [tax-module §10](./tax-module#10-acceptance-cri
 - [plan-promotion](../../plan-promotion) — the promo prices the email compares against
 - [pricing-engine-and-promotions](../../pricing-engine-and-promotions) — where the net price is resolved
 - [accounting/internal-tenant](../../accounting/internal-tenant) — the deferred revenue that wants the service period
+- [accounting/purchase-path](../../accounting/purchase-path) — the `period_start` / `period_end` columns this shares
 
 ---
 

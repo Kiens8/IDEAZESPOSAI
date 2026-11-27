@@ -29,6 +29,8 @@ Live source inspected: `POS_AI` @ `d83d6bf`.
 | The invoice list sums `invoice.amount` into "Total Received" / "Pending / Overdue" | `admin/src/pages/Invoices.jsx:140-141, 206-221` |
 | The invoice rows print `formatCurrency(invoice.amount, invoice.currency)` | `Invoices.jsx:341` |
 | The invoice detail modal prints the same amount | `Invoices.jsx:430` |
+| The admin API derives the plan name from the description: `description.split(" - ")[0]` | `website_api/app/routes/admin.py:695` |
+| The admin printable invoice is **one of three** invoice renderers | `admin.py` → `GET /api/admin/invoices/{invoice_id}/html` |
 | The invoice API client is `invoicesAPI` | `admin/src/lib/api.js:108` |
 | The reports read the admin report endpoints | `admin/src/pages/Reports.jsx` |
 
@@ -43,6 +45,15 @@ Live source inspected: `POS_AI` @ `d83d6bf`.
 2. **The currency switcher is already the mechanism for "one currency at a time".**
    The tax does not need a new dimension of its own — it follows the invoice's
    currency, and the switcher already decides which one the admin is reading.
+3. **The description is load-bearing.** The admin derives the plan name from
+   `description.split(" - ")[0]`. The tax therefore lives in its own columns and
+   **never** in the description — a description that reads "Starter - monthly
+   subscription + SST" would break the plan-name column and the promotion report at
+   the same time.
+4. **A legacy invoice has no subtotal, and must still count.** Every invoice issued
+   before this module has `subtotal = NULL`. The helpers below fall back to
+   `amount` for those, and the revenue report must not show a collapse when the
+   module is switched on.
 
 ---
 
@@ -75,9 +86,15 @@ export function invoiceGross(invoice) {
 
 /** True when the invoice carries a tax line at all. */
 export function invoiceHasTax(invoice) {
-  return invoiceHasTaxTreatment(invoice.treatment);
+  return invoice.tax_amount !== null && invoice.tax_amount !== undefined
+    && Number(invoice.tax_amount) !== 0;
 }
 ```
+
+> The `invoiceHasTax` helper is **presence of a tax line**, not the treatment. An
+> `export_exempt` invoice and a legacy invoice both have no tax line, and neither
+> should render an empty "SST 0.00" row. The *treatment* is a separate question, and
+> it is answered by `taxLabel` below.
 
 ### 2.2 The one rule the helpers encode
 
@@ -92,6 +109,18 @@ what they want and get the right number:
 | "Revenue" — what we earned | the **net** |
 | "Tax collected" — what we owe | the **tax** |
 | The invoice row's big number | the **gross** |
+
+**Tax collected counts `paid` invoices only.** A `pending`, `overdue`, `failed`,
+`forgiven` or `cancelled` invoice contributes nothing to revenue and nothing to tax
+collected, however much tax is computed on it. A forgiven invoice was never charged;
+a cancelled one is a voided proration. The admin has to be able to see the difference
+between *tax computed* and *tax collected*, because the second one is what we owe.
+
+> **There is no `refunded` write path in the code today.** The status exists in the
+> model's comment but nothing writes it — a refund is a manual act in the Stripe
+> dashboard today. So the admin's job on a refunded invoice is a **manual** one, and
+> the screen has to make that possible: the net, the tax and the treatment are all on
+> the invoice, so the person reversing it has the numbers they need.
 
 ### 2.3 A tax label helper
 
@@ -180,7 +209,19 @@ Tax treatment             Export — determination pending
 The reference field is **required** when the treatment is set — an exemption without a
 reference is an opinion, and opinions are not auditable.
 
-### 3.4 The filter
+The **service period** is shown on the same block, as the range of calendar days the
+money bought. For a legacy invoice there is no period, and the row is simply absent —
+not "—", not a wrong range.
+
+### 3.4 The printable invoice
+
+The admin's printable invoice is `GET /api/admin/invoices/{invoice_id}/html` — one of
+**three** invoice renderers in the codebase. It is a near-copy of the customer's
+renderable invoice, and it must show the same net / tax / gross rows and the same
+service period, or the admin prints a document that disagrees with what the customer
+holds.
+
+### 3.5 The filter
 
 A **tax treatment** filter joins the currency filter: `All / Taxable / Exempt /
 Pending / Not registered`. The pending filter is the working list — "which customers
@@ -218,7 +259,25 @@ per month, per currency, with the export of the same table to CSV — the CSV is
 thing that goes to the accountant, so it must carry the currency in the file name and
 a UTF-8 BOM, like the existing revenue export.
 
-### 4.3 The threshold monitor
+The CSV carries the **net**, the **tax** and the **gross** as three separate columns,
+never one added number. It also carries the **service period** and the **treatment**
+and the **rate** — because the CSV is what the accountant reconciles against, and a
+tax figure without the period it applies to is a figure that cannot be checked.
+
+### 4.3 The promotion report must read the net
+
+The promotion report (`app/services/promotion_stats.py`, exposed through
+`admin.py`) compares `invoice.amount` against the plan's regular price to decide
+whether an invoice was promotional, and then sums `invoice.amount` as the promotion's
+revenue and discount. Once `amount` is the gross, **all three break**: the promotion
+is not detected (a gross is never below a regular net price), the discount is computed
+from gross numbers, and the promotion revenue is a gross reported as revenue.
+
+The fix is on the API side — the report reads the **net**. The admin screen does not
+change shape, but the numbers it has always shown will become correct rather than
+silently wrong.
+
+### 4.4 The threshold monitor
 
 A single banner at the top of the reports page, in the admin only:
 
@@ -434,6 +493,12 @@ available everywhere with no new wiring.
       without a reference.
 - [ ] The invoice detail shows the service period, and the dates are the customer's
       own dates.
+- [ ] A legacy invoice (no tax, no period) still counts in the revenue report, and
+      shows no tax row and no empty period row.
+- [ ] Tax collected counts `paid` invoices only; forgiven, cancelled, failed and
+      pending invoices contribute nothing to revenue or to tax collected.
+- [ ] The plan name still derives from the description — the tax is not in the
+      description.
 - [ ] The promotional price in the admin is still recognised as promotional after the
       tax lands (the comparison is on the net).
 - [ ] The CSV export carries the currency in the file name, and the net, tax and gross

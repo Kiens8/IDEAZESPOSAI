@@ -60,7 +60,7 @@ data.
 | **Tax** | the SST charged on that net amount |
 | **Gross (total)** | net + tax — **this is what the customer pays** |
 | **Tax treatment** | the rule that decided how this particular invoice is taxed |
-| **Service period** | the dates the service is provided for — the period the money is *for* |
+| **Service period** | the dates the service is provided for — the period the money is *for*; snapshot onto the invoice as `period_start` / `period_end` |
 | **Tax liability** | the tax we collected and owe to the government — **not revenue** |
 | **Revenue** | the net amount — what the subscription actually earned |
 
@@ -170,9 +170,63 @@ The rule is a refusal: **an invoice that cannot state its service period is not
 issued.** There is no "period unknown" invoice. That refusal is what keeps the
 accounting reconciliation honest later.
 
-The period is captured at each of the **nine invoice-creation sites** — see
-[website-api-changes](./website-api-changes#4-the-nine-invoice-sites) for the table of
-which period each one uses.
+### 5.1 Why the invoice has to carry its own period
+
+The period lives on the subscription (`current_period_start` / `current_period_end`),
+**and the renewal job advances it at the moment it issues the invoice**. So the
+subscription's period is never the period of the invoice you are reading — after the
+next renewal, the subscription points at a later period, and a connector that reads it
+when it sees an old invoice recognises that invoice's revenue **in the wrong period**
+(and for an annual plan, a year wrong).
+
+So the period is **snapshotted onto the invoice**, as `period_start` and `period_end`.
+
+> **The column names are `period_start` and `period_end`** — the same two columns that
+> [accounting/purchase-path](../../accounting/purchase-path) already specifies on
+> `invoices`, and the same ones the accounting program's Phase 0b work adds. The two
+> programs must land **one** pair of columns. An earlier draft of this proposal used
+> `service_period_start` / `service_period_end`; that was a mistake and it is
+> corrected here.
+
+### 5.2 The convention
+
+`period_start` is **inclusive**, `period_end` is **exclusive** — matching the
+subscription's own convention, so the two chain without an off-by-one and a renewal
+invoice's `period_start` is the previous invoice's `period_end`.
+
+The **display** is separate from the storage: a customer reads "1 Nov – 30 Nov", which
+is `period_start` through `period_end` minus one day. And a service period is a range
+of **calendar days**, not a moment — it must never be shifted by a timezone. The
+rendering rule is spelled out in
+[site-app-portal-changes §6.1](./site-app-portal-changes#61-the-dates--sitesrclibdatetimets).
+
+### 5.3 Capture before you advance
+
+The rule that makes the snapshot correct:
+
+> **Capture the period from the values the code has already computed, at the moment it
+> computes them — never by re-reading the subscription afterwards.**
+
+This matters most in the renewal cron, which is where the period is advanced. The
+trial-end invoice states the first **paid** period (beginning at `trial_ends_at`), and
+the renewal invoice states the period **being invoiced** — captured before the
+subscription moves on.
+
+The period is captured at each of the **eleven invoice-creation sites** — see
+[website-api-changes §4](./website-api-changes#4-the-eleven-invoice-sites) for the
+table of which period each one uses, and
+[§5](./website-api-changes#5-the-service-period) for the rule each one follows.
+
+### 5.4 What the period is not
+
+The period is **not** the invoice date, and it is **not** the subscription's current
+period. Three different facts, and the invoice carries the third one:
+
+| Fact | What it is | Where it lives |
+|---|---|---|
+| the invoice date | when the invoice was written | `invoice.created_at` |
+| the subscription's current period | the period the subscription is *in now* | `subscription.current_period_start` / `_end` |
+| **the invoice's service period** | the period **this money bought** | `invoice.period_start` / `_end` |
 
 ---
 
@@ -273,6 +327,12 @@ rollout itself is auditable: "from the 1st of December we were in shadow mode, f
 - [ ] No invoice amount changes while `tax_mode` is `shadow` or `admin_only`.
 - [ ] Every invoice issued after the change carries a service period; the factory
       refuses to issue one that cannot.
+- [ ] The service period is the period the money bought — not the invoice date, and
+      not the subscription's current period.
+- [ ] A renewal invoice states the period **being invoiced**; a trial-end invoice
+      states the first **paid** period, beginning at `trial_ends_at`; a proration
+      invoice states the **prorated segment**, not the whole period.
+- [ ] A service period renders as calendar dates and is never shifted by a timezone.
 - [ ] `invoices.amount` still equals the amount the payment provider charged, for
       every historical and every new invoice.
 - [ ] The admin revenue report shows **net revenue** and **tax liability** as two
