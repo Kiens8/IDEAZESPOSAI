@@ -193,6 +193,12 @@ details response is simply absent from the modal.
 to answer, and right now the portal cannot answer it at all. The period turns the
 portal from a payment list into a **statement of what was bought**.
 
+> **The period is not waiting on the tax.** It is the subscription right as it stood
+> when the invoice was issued, so it is a fact read from the code — not a number that
+> depends on the registration status, the rate, or the pricing basis. The portal can
+> show it as soon as the API carries it, with or without a tax line beside it. (That
+> is also why the period is the one thing the customer gets even in `tax_mode = off`.)
+
 ### 5.4 The portal dashboard — `site/src/app/[locale]/portal/page.tsx`
 
 The subscription card shows the plan and the next renewal. Under the exclusive basis

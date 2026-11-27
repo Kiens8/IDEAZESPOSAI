@@ -213,6 +213,11 @@ The **service period** is shown on the same block, as the range of calendar days
 money bought. For a legacy invoice there is no period, and the row is simply absent —
 not "—", not a wrong range.
 
+The period does not depend on the tax. It is the subscription right as it stood when
+the invoice was issued, so the row appears as soon as the API carries the period —
+before any rate, treatment or pricing basis exists. The tax rows above it are the
+ones that wait for the determination.
+
 ### 3.4 The printable invoice
 
 The admin's printable invoice is `GET /api/admin/invoices/{invoice_id}/html` — one of

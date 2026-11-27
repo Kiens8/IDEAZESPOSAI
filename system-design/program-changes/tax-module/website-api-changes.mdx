@@ -216,6 +216,24 @@ The `tax_rates` row in force on `at_date` — the one where
 If there is no rate row, the engine **raises** rather than defaulting to zero: a
 missing rate in charging mode is an error, not a free invoice.
 
+> **Shadow mode still needs a rate row, and that is not the accountant's answer.**
+> The *code* does not care what the rate is — it reads a row and applies it. So while
+> the determination is outstanding, the administrator enters a **provisional** rate row:
+> the same columns, `source` set to something honest like
+> `"provisional — pending gazette confirmation"`, and `effective_from` set to the date
+> the shadow run starts. Shadow mode computes against that row, shows the admin what
+> the tax *would* be, and changes no amount.
+>
+> When the determination arrives, it is a **data change**: the provisional row is
+> closed (`effective_to`) and the confirmed row is inserted with its own
+> `effective_from` and its gazette reference. No code changes, and because the
+> treatment is **frozen onto each invoice**, the invoices already issued keep the
+> treatment they were given. That is the whole point of making the rate data.
+>
+> The one thing a provisional rate must never do is reach `charge` mode. That is what
+> the `tax_mode` flag is for: the provisional row is fine for `shadow`, `admin_only`
+> and `display`, and charging waits for the real rate.
+
 ### 3.3 `compute(net, rate, inclusive, currency)`
 
 Rounding, stated once so all eleven call sites agree:

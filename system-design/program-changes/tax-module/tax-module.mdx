@@ -24,7 +24,9 @@ different reasons and must not be shipped as one undifferentiated "tax module":
 
 This document holds only what the three surfaces **share**: the vocabulary, the tax
 treatment state machine, the service-period rule, the threshold monitor, the rollout,
-and the questions that a Malaysian accountant has to answer before any of it is built.
+and the questions that gate the **tax values** — not the build. Those answers change
+*what we charge* and *what a tax invoice must state*. They do not change how the service
+period is derived, how the invoice is built, or how the reporting splits.
 
 ---
 
@@ -48,6 +50,14 @@ So the module is designed so that these are **data with an effective date and a 
 source**, entered by an administrator or an accountant — never hard-coded, never guessed
 at request time. The engine reads a treatment and applies it; the treatment comes from
 data.
+
+And because the answers are **data**, they are allowed to arrive late. The mechanism does
+not wait for them: the rollout ([section 9](#9-rollout)) splits the build so that the
+schema, the engine, the factory, the **service period**, the reporting split and the
+three renderers can all be built and shipped while the answers are outstanding — and
+the answers then arrive as **rows**, not as code changes. What is actually blocked, and
+what is not, is set out in
+[section 11](#11-the-decisions-that-need-a-professional-answer).
 
 ---
 
@@ -327,8 +337,9 @@ rollout itself is auditable: "from the 1st of December we were in shadow mode, f
 - [ ] No invoice amount changes while `tax_mode` is `shadow` or `admin_only`.
 - [ ] Every invoice issued after the change carries a service period; the factory
       refuses to issue one that cannot.
-- [ ] The service period is the period the money bought — not the invoice date, and
-      not the subscription's current period.
+- [ ] The service period is the period the money bought — the **subscription right as
+      it stood when the invoice was issued** — not the invoice date, and not the
+      subscription's period as it reads later.
 - [ ] A renewal invoice states the period **being invoiced**; a trial-end invoice
       states the first **paid** period, beginning at `trial_ends_at`; a proration
       invoice states the **prorated segment**, not the whole period.
@@ -354,6 +365,25 @@ rollout itself is auditable: "from the 1st of December we were in shadow mode, f
 These are the questions I could not answer from the code, and I should not have answered
 them from the code at all.
 
+**But first — what is *not* on this list.** This document is a proposal because the
+*tax treatment* is undecided, not because the mechanism is unknowable. Everything that
+shapes the **shape** of an invoice is decided by the code:
+
+| Blocked on a professional answer | **Not** blocked — buildable now |
+|---|---|
+| whether we charge SST at all (registration status + effective date) | the schema — `subtotal`, `tax_amount`, `tax_rate`, `tax_treatment`, `tax_inclusive`, `period_start`, `period_end`, `taxable_supply` |
+| the rate, its effective date, and the gazette source | the tax engine and the invoice factory |
+| inclusive or exclusive pricing | the **service period** — the subscription right as it stood at issue time, read from the code |
+| the Cambodian export determination | the eleven invoice sites moving onto one factory |
+| the tax currency on a USD invoice | the reporting split (net revenue vs tax liability) |
+| the SST registration number and the invoice particulars | the three invoice renderers |
+
+The engine already fails safe: `not_registered` is the default below the threshold, a
+customer with no export determination is `export_pending` (which charges nothing), and
+a missing rate in charging mode **raises** rather than defaulting to zero. So the module
+can be built and shipped in `off` / `shadow` / `admin_only` while the answers are
+outstanding, and the answers then land as rows.
+
 **For the accountant / customs authority:**
 
 1. The legal entity's SST registration status, and whether registration has been applied
@@ -372,14 +402,22 @@ them from the code at all.
    it does not touch the invoice.
 7. Whether an invoice must carry the SST registration number, and what other
    particulars SST requires on a tax invoice.
+8. **When the tax on a prepaid period is attributable.** An annual subscription is
+   invoiced up front, so the invoice carries the whole period's tax in one line. Is that
+   output tax attributable at the invoice date, or does it follow the service as the
+   period is delivered? This does not change *the period* — the period is the
+   subscription right, read from the code — but it decides whether the tax sits in the
+   liability until the return is filed, or is released across the period alongside the
+   revenue. The proposal assumes the invoice-date answer and says so; if the answer is
+   the other one, the **accounting connector** changes and the invoice does not.
 
 **For Kens (business decisions, not tax advice):**
 
-8. Whether we register voluntarily before the threshold — if registration is cheap and
+9. Whether we register voluntarily before the threshold — if registration is cheap and
    we are heading for it, registering early is usually simpler than a mid-year
    effective date.
-9. Whether the tax is charged in the invoice currency or in MYR (item 5 above is the
-   tax view of this).
+10. Whether the tax is charged in the invoice currency or in MYR (item 5 above is the
+    tax view of this).
 
 ---
 
