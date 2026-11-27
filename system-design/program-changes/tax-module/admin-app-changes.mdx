@@ -1,0 +1,455 @@
+---
+title: "SaaS Tax Module - admin app changes"
+description: "The proposed changes to the admin app for the SaaS subscription tax module"
+---
+
+# SaaS Tax Module — `admin` app changes
+
+> **Date:** November 27, 2026
+> **Status:** Proposal — not implemented
+> **Author:** Lumi
+
+Surface 2 of 3. The shared contract lives in [tax-module](./tax-module); the API it
+talks to is in [website-api-changes](./website-api-changes). This document is only
+about what changes in the React admin app.
+
+Live source inspected: `POS_AI` @ `d83d6bf`.
+
+---
+
+## 1. What the admin app does today
+
+| Fact | Where |
+|---|---|
+| Every money figure is **per currency**, never summed across currencies | `admin/src/lib/money.js` |
+| The currencies offered are **USD** and **MYR** | `money.js` → `ALL_CURRENCIES` |
+| The default currency is **USD** | `money.js` → `DEFAULT_CURRENCY` |
+| `formatMoney(amount, currency)` renders one currency | `money.js` |
+| The currency switcher is a component in the header | `admin/src/components/CurrencyToggle.jsx` |
+| The invoice list sums `invoice.amount` into "Total Received" / "Pending / Overdue" | `admin/src/pages/Invoices.jsx:140-141, 206-221` |
+| The invoice rows print `formatCurrency(invoice.amount, invoice.currency)` | `Invoices.jsx:341` |
+| The invoice detail modal prints the same amount | `Invoices.jsx:430` |
+| The invoice API client is `invoicesAPI` | `admin/src/lib/api.js:108` |
+| The reports read the admin report endpoints | `admin/src/pages/Reports.jsx` |
+
+### The two consequences that shape this document
+
+1. **"Total Received" is currently a gross figure.** The moment the tax is charged,
+   `invoice.amount` is the gross, and a sum of grosses labelled *Total Received* is
+   **not revenue** — it is revenue plus money we owe to the government. The admin is
+   the person who will look at that number and make a decision with it, so it has to be
+   right.
+
+2. **The currency switcher is already the mechanism for "one currency at a time".**
+   The tax does not need a new dimension of its own — it follows the invoice's
+   currency, and the switcher already decides which one the admin is reading.
+
+---
+
+## 2. The money helpers — `admin/src/lib/money.js`
+
+This is where most of the change lives, because every money screen already goes
+through these helpers.
+
+### 2.1 New helpers
+
+```js
+/** The net of an invoice — the price before tax. */
+export function invoiceNet(invoice) {
+  // A legacy invoice has no subtotal: it was never taxed, so the net is the amount.
+  if (invoice.subtotal !== null && invoice.subtotal !== undefined) {
+    return Number(invoice.subtotal);
+  }
+  return Number(invoice.amount || 0);
+}
+
+/** The tax charged on an invoice. */
+export function invoiceTax(invoice) {
+  return Number(invoice.tax_amount || 0);
+}
+
+/** The gross — what was paid. */
+export function invoiceGross(invoice) {
+  return Number(invoice.amount || 0);
+}
+
+/** True when the invoice carries a tax line at all. */
+export function invoiceHasTax(invoice) {
+  return invoiceHasTaxTreatment(invoice.treatment);
+}
+```
+
+### 2.2 The one rule the helpers encode
+
+> **A gross is never called revenue, and a tax is never added into a total.**
+
+The helpers exist so that no screen has to know the difference — the screens ask for
+what they want and get the right number:
+
+| The screen wants | It calls |
+|---|---|
+| "Total Received" — what actually landed in the bank | the **gross** |
+| "Revenue" — what we earned | the **net** |
+| "Tax collected" — what we owe | the **tax** |
+| The invoice row's big number | the **gross** |
+
+### 2.3 A tax label helper
+
+```js
+export function taxLabel(invoice) {
+  switch (invoice.tax_treatment) {
+    case 'domestic_taxable':
+    case 'export_taxable':
+      return invoice.tax_rate ? `SST ${(invoice.tax_rate * 100).toFixed(0)}%` : 'SST';
+    case 'export_exempt':
+      return 'Exempt (export)';
+    case 'export_pending':
+      return 'Pending determination';
+    default:
+      return null;
+  }
+}
+```
+
+`export_pending` gets a label **only in the admin**. The customer never sees it — the
+portal's own label helper does not have that case, by design (see
+[site-app-portal-changes](./site-app-portal-changes)).
+
+---
+
+## 3. The invoice list — `admin/src/pages/Invoices.jsx`
+
+### 3.1 The totals
+
+The three summary cards become four, or three with a different second card:
+
+| Card | Before | After |
+|---|---|---|
+| Total Received | gross | **gross** — unchanged in meaning, but now labelled "Gross received" |
+| Pending / Overdue | gross | gross |
+| **Net revenue** | — | **new** — the net of the paid invoices |
+| **Tax collected** | — | **new** — the tax of the paid invoices, per currency |
+
+The cards are per currency (the switcher), and each keeps its own currency — the tax
+is collected in the invoice's currency, so it is displayed in that currency, never
+converted into the switcher's currency.
+
+### 3.2 The rows
+
+The row's big number stays the **gross** — that is what the customer was charged. A
+second, smaller line appears under it **only when the invoice carries tax**:
+
+```
+RM 108.00
+  incl. SST 8%  ·  RM 100.00 + RM 8.00
+```
+
+And for a foreign customer whose determination is outstanding, the row carries an
+amber badge:
+
+```
+$20.00
+  Export determination pending
+```
+
+That badge is the whole point of the `export_pending` state being visible to the admin:
+it is a **to-do**, not a bug. It says "this customer needs a ruling". A customer with
+that badge is not being charged, and nobody should have to guess why.
+
+### 3.3 The detail modal
+
+The modal (around `Invoices.jsx:430`) gains a small breakdown block:
+
+```
+Amount charged            RM 108.00
+  Subtotal                RM 100.00
+  SST 8%                  RM   8.00
+Service period            1 Nov 2026 – 30 Nov 2026
+Tax treatment             Domestic taxable
+```
+
+Plus, when the treatment is `export_pending` or `export_exempt`, the reference and who
+entered it:
+
+```
+Tax treatment             Export — determination pending
+  Reference               (none yet)
+  Entered by              —
+```
+
+The reference field is **required** when the treatment is set — an exemption without a
+reference is an opinion, and opinions are not auditable.
+
+### 3.4 The filter
+
+A **tax treatment** filter joins the currency filter: `All / Taxable / Exempt /
+Pending / Not registered`. The pending filter is the working list — "which customers
+need a ruling?" — and it should be one click from the invoice list.
+
+---
+
+## 4. The reports — `admin/src/pages/Reports.jsx`
+
+### 4.1 The revenue chart
+
+The chart currently plots `invoice.amount` per month, per currency. It must now plot
+the **net**, because a revenue chart that plots the gross overstates every month by
+the tax.
+
+Two series, one switcher:
+
+- **Revenue (net)** — the default.
+- **Gross collected** — the second series, for the cash view.
+
+They differ only when the tax is being charged, so a chart with two lines that are
+identical until the tax starts is itself a good check.
+
+### 4.2 A tax report
+
+A new block on the reports page:
+
+| | MYR | USD |
+|---|---|---|
+| Revenue (net) | 254,000.00 | 75,000.00 |
+| SST collected | 20,320.00 | 6,000.00 |
+| Gross collected | 274,320.00 | 81,000.00 |
+
+per month, per currency, with the export of the same table to CSV — the CSV is the
+thing that goes to the accountant, so it must carry the currency in the file name and
+a UTF-8 BOM, like the existing revenue export.
+
+### 4.3 The threshold monitor
+
+A single banner at the top of the reports page, in the admin only:
+
+```
+RM500,000 threshold        RM 318,400 of taxable services (64%)
+                           Estimate — MYR-equivalent, USD converted at 4.62 (2026-11-27)
+```
+
+The banner states the **estimate** and the FX rate it used. It never says "you are
+over the threshold" without saying it is an estimate.
+
+The colour bands: quiet below 70%, notice from 70%, red above 100%.
+
+---
+
+## 5. The dashboard — `admin/src/pages/Dashboard.jsx`
+
+The dashboard's revenue tiles come from `GET /api/admin/dashboard`, whose
+`monthly_revenue`, `pending_revenue` and `revenue_chart` are all per currency.
+
+- The revenue tile becomes the **net**.
+- A new **"SST collected"** tile shows the tax of the period.
+- The "pending revenue" tile stays a **gross** — that is a cash figure.
+
+The dashboard is the screen people look at first, so it is the screen where a gross
+mislabeled as revenue does the most damage. Net it is.
+
+---
+
+## 6. The new tax settings — `admin/src/pages/Settings.jsx`
+
+A new **Tax** section in the settings page. It is where the tax configuration is
+entered, and every field on it exists because a decision has to be recorded, not
+guessed.
+
+### 6.1 Registration
+
+```
+SST registration            Registered
+Registration number         W16-1234567-03
+Effective from              1 December 2026
+```
+
+With the warning that is the single most consequential switch in the system:
+
+```
+Changing this to "Registered" will start adding SST to invoices
+for taxable supplies. The effective date decides which invoices
+are affected.
+```
+
+### 6.2 The mode
+
+A four-way switch with a plain description of each:
+
+| Mode | Meaning |
+|---|---|
+| `off` | the module is dormant; invoices are exactly as they were |
+| `shadow` | the tax is computed and stored; nothing is charged, nothing is shown |
+| `admin_only` | the admin sees the tax; the customer does not |
+| `display` | the customer sees the tax line; the charged amount is unchanged |
+| `charge` | the tax is collected |
+
+> **`shadow` is the default when the module is first enabled.** The safe way to find
+> out whether a computation is right is to run it for a month and read it.
+
+### 6.3 The rate table
+
+The rate rows with their effective dates and their **source**:
+
+```
+Code        Rate   Effective from   Effective to   Source
+SST_IT_8    8.00%  2026-11-01       —             Royal Malaysia Customs, Service Tax (Amendment) Regulations 2024
+```
+
+The source is **required** on every row. A rate without a source is a guess with a
+number attached, and it is exactly the kind of thing that fails an audit.
+
+### 6.4 The pricing basis
+
+```
+Pricing basis               Tax-exclusive (recommended)
+```
+
+with a note explaining that under the exclusive basis the plan prices are the net and
+the tax is added at the invoice.
+
+### 6.5 The threshold monitor
+
+The same component as the reports page, plus the FX rate table it uses.
+
+---
+
+## 7. The customer export determination — a place to enter it
+
+The determination is per customer, and it belongs with the customer, not with the
+settings. The natural home is `admin/src/pages/Customers.jsx` — a **Tax** block on the
+customer drawer:
+
+```
+Tax treatment               Export — pending determination
+  Reference                 (none yet)
+  Decided by                —
+  Decided at                —
+
+[ Set determination ]
+```
+
+Which opens a small form: the treatment (`export_exempt` / `export_taxable` /
+`export_pending`), the effective date, the reference, and a note.
+
+**The reference is required** for `export_exempt` and `export_taxable`. The admin
+cannot type "exempt" without typing the memo it is based on.
+
+There is also a **worklist** — the customers whose determination is outstanding — which
+is the practical way to chase the ruling. It lives on the customers page as a filter,
+and it is the answer to "who needs a ruling from the accountant?".
+
+---
+
+## 8. The plans — `admin/src/pages/PlanManagement.jsx` and `Plans.jsx`
+
+Under the recommended **exclusive** basis the plan prices do not change. But the admin
+needs to know that, or they will "fix" the prices when they see the tax:
+
+```
+Starter — MYR
+  Monthly      RM 100.00      (net — SST added at the invoice)
+  Annual       RM 1,000.00    (net — SST added at the invoice)
+```
+
+A short note under the price table, present only when the tax is active:
+
+```
+These prices exclude SST. The tax is added to the invoice.
+```
+
+And under the **inclusive** basis (if that is ever chosen) the note becomes:
+
+```
+These prices include SST.
+```
+
+and the price table is **gross** — which means every stored price must be re-entered
+when the rate changes. That is the cost of the inclusive basis, and the admin should
+see it stated when the basis is switched.
+
+The **promotion prices** stay on the same basis as the regular prices. A promotion is
+a discount on the **net**; the tax is computed on the discounted net.
+
+---
+
+## 9. The subscriptions page — `admin/src/pages/Subscriptions.jsx`
+
+The subscription rows show the price in the subscription's own currency. That price is
+the **net**, so:
+
+- the row gains an "incl. tax" note only where the subscription is taxable,
+- the **MRR** is a net figure — and it must be labelled as such next to the gross
+  collected, because the two diverge the moment the tax starts.
+
+---
+
+## 10. The API client — `admin/src/lib/api.js`
+
+`invoicesAPI` (line 108) is unchanged in shape — the extra fields simply arrive on the
+existing objects. What is added is the tax client:
+
+```js
+export const taxAPI = {
+  status: () => adminApi.get('/api/admin/tax/status'),
+  updateStatus: (body) => adminApi.put('/api/admin/tax/status', body),
+  rates: () => adminApi.get('/api/admin/tax/rates'),
+  addRate: (body) => adminApi.post('/api/admin/tax/rates', body),
+  customerProfile: (id) => adminApi.get(`/api/admin/tax/customers/${id}`),
+  setCustomerProfile: (id, body) => adminApi.put(`/api/admin/tax/customers/${id}`, body),
+  threshold: () => adminApi.get('/api/admin/tax/threshold'),
+  report: (days = 30) => adminApi.get(`/api/admin/reports/tax?days=${days}`),
+};
+```
+
+`money.js` is imported by every money screen already, so the new helpers are
+available everywhere with no new wiring.
+
+---
+
+## 11. Rollout in the admin
+
+| Step | What the admin sees |
+|---|---|
+| 0 | a Tax section in the settings with the mode at `off`; nothing else changes |
+| 1 | the reports show the **computed** tax as a shadow line; no invoice shows it |
+| 2 | the invoice list and the detail modal show the tax; the tax report block appears; the threshold banner appears |
+| 3 | nothing new in the admin — the customer invoice now shows the tax line |
+| 4 | the "Gross received" and "Net revenue" cards diverge for the first time |
+
+---
+
+## 12. Acceptance criteria — admin app
+
+- [ ] No admin screen sums a tax into a revenue figure; the revenue report shows the
+      net and the tax beside it, never added.
+- [ ] Every money figure keeps its own currency; the tax is never converted into the
+      switcher's currency.
+- [ ] "Total Received" is the gross, and is labelled as such.
+- [ ] A `domestic_taxable` invoice shows the tax line; an `export_exempt` and an
+      `export_pending` invoice do not show a tax line.
+- [ ] An `export_pending` invoice carries a visible badge in the admin, and the badge
+      does not appear anywhere in the customer portal.
+- [ ] The threshold banner states that it is an estimate and names the FX rate and its
+      date.
+- [ ] A rate cannot be saved without a source; an export determination cannot be saved
+      without a reference.
+- [ ] The invoice detail shows the service period, and the dates are the customer's
+      own dates.
+- [ ] The promotional price in the admin is still recognised as promotional after the
+      tax lands (the comparison is on the net).
+- [ ] The CSV export carries the currency in the file name, and the net, tax and gross
+      as separate columns.
+
+---
+
+## Related
+
+- [tax-module](./tax-module) — the shared contract, the treatments, the rollout
+- [website-api-changes](./website-api-changes) — the endpoints this app calls
+- [site-app-portal-changes](./site-app-portal-changes) — what the customer sees instead
+- [multi-currency-money](../../multi-currency-money) — the money rules this app already follows
+- [reports-and-analytics-fixes](../../reports-and-analytics-fixes) — the reports this page builds on
+- [malaysia-e-invoice](../../malaysia-e-invoice) — the restaurant's own SST (6%, a different tax)
+
+---
+
+*Proposed November 27, 2026. Nothing in this document is implemented.*

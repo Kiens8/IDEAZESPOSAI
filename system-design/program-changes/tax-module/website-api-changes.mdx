@@ -1,0 +1,546 @@
+---
+title: "SaaS Tax Module - website_api changes"
+description: "The proposed changes to website_api for the SaaS subscription tax module"
+---
+
+# SaaS Tax Module — `website_api` changes
+
+> **Date:** November 27, 2026
+> **Status:** Proposal — not implemented
+> **Author:** Lumi
+
+Surface 1 of 3. The shared contract — the vocabulary, the treatment state machine, the
+threshold monitor, the rollout — lives in [tax-module](./tax-module). This document is
+only about what changes in `website_api`.
+
+Live source inspected: `POS_AI` @ `d83d6bf`.
+
+---
+
+## 1. What the API does today
+
+The facts this proposal rests on, verified in the live code:
+
+| Fact | Where |
+|---|---|
+| `Invoice` has **no** tax column and **no** service-period column | `website_api/app/models/models.py:162` |
+| `Invoice.amount` is a **single** number — it is what the customer pays | `models.py:170` |
+| `Invoice.currency` — the currency of that one number | `models.py:171` |
+| `PlanPrice` holds per-currency prices, no tax notion | `models.py:51` |
+| `WebsiteCustomer.country` is a **claim** in the profile | `models.py:70+` |
+| The payment-method gate already refuses MYR to a non-MY customer | `subscription.py:335` |
+| **9** places construct an `Invoice` | see [section 4](#4-the-nine-invoice-sites) |
+| Revenue reports sum `invoice.amount` | `admin.py` → `group_by_currency(all_invoices, statuses={"paid"})` |
+| The customer invoice HTML is rendered from the raw amount | `billing.py` → `/invoices/{invoice_id}/view` |
+| The admin invoice HTML is a **second, separate renderer** | `admin.py` → `/invoices/{invoice_id}/html` |
+| There is **no Alembic** — the schema grows by hand via `scripts/migrate_*.py` | `scripts/migrate_promotion.py` |
+| The plan prices are published to the site | `plans.py` → `GET /api/plans/published` |
+
+The two consequences that shape everything below:
+
+- **`amount` is already the gross.** It is what the payment provider charged and what
+  the customer was billed. If we made `amount` the net, the payment path would break.
+  So the tax goes in **new columns**, and `amount` stays the gross.
+- **There are nine invoice-creation sites**, and two of them are *Stripe webhooks that
+  mirror a Stripe invoice*. Every one of them must produce the same tax and the same
+  service period, or the book becomes wrong in nine different ways.
+
+---
+
+## 2. Data model
+
+### 2.1 New columns on `invoices`
+
+All **nullable**, all additive, no backfill — the same discipline as
+`scripts/migrate_promotion.py`: `NULL` means "this invoice predates the module", so no
+running customer or invoice is touched.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `subtotal` | `FLOAT` | the **net** — the price before tax |
+| `tax_amount` | `FLOAT` | the SST charged on that net |
+| `tax_rate` | `FLOAT` | the rate applied, snapshotted (`0.08`, not `8`) |
+| `tax_treatment` | `VARCHAR(30)` | the treatment code that decided it — `not_registered`, `domestic_taxable`, `export_taxable`, `export_exempt`, `export_pending` |
+| `tax_inclusive` | `BOOLEAN` | was the charged amount tax-inclusive? (default `FALSE`) |
+| `service_period_start` | `DATETIME` | the start of the service the money is for |
+| `service_period_end` | `DATETIME` | the end of that service period |
+| `taxable_supply` | `BOOLEAN` | does this invoice count toward the RM500,000 measure? (default `FALSE`) |
+
+`amount` keeps its meaning: **the gross that was charged**. For a new invoice,
+`amount == subtotal + tax_amount`. For an old invoice, `subtotal IS NULL` and
+`amount` is the whole truth.
+
+### 2.2 New table `tax_rates`
+
+The rate is data, effective-dated, with a named source.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | `INTEGER` PK | |
+| `code` | `VARCHAR(50)` | e.g. `SST_IT_8` |
+| `rate` | `FLOAT` | e.g. `0.08` |
+| `effective_from` | `DATETIME` | |
+| `effective_to` | `DATETIME` | nullable = still in force |
+| `source` | `VARCHAR(255)` | the gazette reference, or the accountant's memo |
+| `note` | `TEXT` | what the determination actually said |
+| `is_active` | `BOOLEAN` | default `TRUE` |
+
+### 2.3 New table `customer_tax_profiles`
+
+The export determination is a **per-customer fact**, not something derivable from a
+country field.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `id` | `INTEGER` PK | |
+| `customer_id` | `INTEGER` FK `website_customers.id` | |
+| `treatment` | `VARCHAR(30)` | `export_exempt` / `export_taxable` / `export_pending` |
+| `effective_from` | `DATETIME` | |
+| `reference` | `VARCHAR(255)` | the ruling / memo / advice reference |
+| `decided_by` | `VARCHAR(120)` | the admin who entered it |
+| `decided_at` | `DATETIME` | |
+| `note` | `TEXT` | |
+
+### 2.4 New table `fx_rates`
+
+The threshold monitor converts to ringgit. It needs a dated rate with a source —
+the same discipline as the money rules.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `base_currency` | `VARCHAR(10)` | e.g. `USD` |
+| `quote_currency` | `VARCHAR(10)` | e.g. `MYR` |
+| `rate` | `FLOAT` | |
+| `rate_date` | `DATE` | |
+| `source` | `VARCHAR(255)` | where the rate came from |
+| `is_active` | `BOOLEAN` | |
+
+### 2.5 New settings keys
+
+The `settings` table (`models.py:153`) is `key` / `value` / `description` and is already
+served by `GET /api/admin/settings` and `PUT /api/admin/settings/{key}`. The tax
+configuration rides on it — no new endpoint for the settings themselves.
+
+| Key | Meaning |
+|---|---|
+| `tax_module_enabled` | `true` / `false` — the master switch |
+| `tax_mode` | `off` / `shadow` / `admin_only` / `display` / `charge` |
+| `tax_registration_status` | `not_registered` / `registered` |
+| `tax_registration_effective_date` | the date the registration starts |
+| `tax_registration_number` | our SST registration number (for the invoice) |
+| `tax_pricing_basis` | `exclusive` / `inclusive` (recommended: `exclusive`) |
+| `tax_threshold_amount` | `500000` |
+| `tax_threshold_warn_ratio` | `0.70` |
+| `tax_threshold_currency` | `MYR` |
+
+> **Note on `settings` and the POS:** the POS backend reads `GET /admin/settings` with
+> the server key on every login. A tax key in that table is harmless — the POS ignores
+> keys it does not know — but it does mean the tax settings are visible to the POS
+> service's key. Nothing sensitive goes in them; the customer export determination
+> lives in its own table, not in `settings`.
+
+### 2.6 The migration
+
+No Alembic in this project — the schema grows by hand, and the house pattern is an
+**idempotent** script with a `--check` mode:
+
+```
+python3 scripts/migrate_tax_module.py            # apply
+python3 scripts/migrate_tax_module.py --check     # only report
+```
+
+The script creates the three new tables and adds the eight new columns, **each only
+when missing**, so it can run on every deploy without thinking about it. Columns are
+nullable and there is **no backfill**: `NULL` means "no tax", so no running customer,
+invoice or subscription is touched.
+
+---
+
+## 3. The tax engine — `app/services/tax.py`
+
+A new service, deliberately small and deliberately **pure**: it takes facts and returns
+numbers, and it never reads the clock or the database unless it is told to.
+
+### 3.1 `resolve_treatment(customer, country, at_date, db)`
+
+Returns the treatment code. The chain, in order:
+
+1. `tax_module_enabled` is off → `not_registered` (and the caller skips the engine).
+2. `tax_registration_status` is `not_registered`, or `at_date` is **before**
+   `tax_registration_effective_date` → `not_registered`.
+3. Otherwise, the customer is taxable:
+   - the country is **MY** → `domestic_taxable`
+   - the country is **not** MY and the customer has a profile →
+     `export_exempt` / `export_taxable` / `export_pending` (the latest profile
+     effective on `at_date`)
+   - the country is **not** MY and there is **no profile** → `export_pending`
+
+`export_pending` is the default for any foreign customer without a determination. It
+charges nothing, and it is the safe direction to fail.
+
+### 3.2 `rate_for(at_date, db)`
+
+The `tax_rates` row in force on `at_date` — the one where
+`effective_from <= at_date` and (`effective_to IS NULL` or `effective_to > at_date`).
+If there is no rate row, the engine **raises** rather than defaulting to zero: a
+missing rate in charging mode is an error, not a free invoice.
+
+### 3.3 `compute(net, rate, inclusive, currency)`
+
+Rounding, stated once so all nine call sites agree:
+
+- **Exclusive**: `tax = round(net * rate, 2)`, `gross = round(net + tax, 2)`.
+- **Inclusive**: `gross = net` (the amount as listed), `tax = round(gross - gross / (1 + rate), 2)`,
+  and the **net is then `round(gross - tax, 2)`** — so the net plus the tax is exactly
+  the gross that was charged. The gross is never off by a cent.
+
+Both results are returned together, always in the invoice's own currency.
+
+### 3.4 `taxable_supply(treatment)`
+
+`True` only for `domestic_taxable` and `export_taxable`. `not_registered`,
+`export_exempt` and `export_pending` are excluded from the RM500,000 measure — an
+exempt or undetermined export is not a taxable service supplied in Malaysia.
+
+---
+
+## 4. The nine invoice sites
+
+Every site below currently constructs `Invoice(...)` **by hand**. Every one of them
+must go through the factory and must state a service period.
+
+| # | Site | Function | The service period it uses |
+|---|---|---|---|
+| 1 | `subscription.py:693` | `create_subscription` — the first invoice (trial / free / paid) | trial: the trial window from `trial_days`; free: the free window; paid: the subscription's `current_period_start → current_period_end` |
+| 2 | `subscription.py:982` | `handle_stripe_checkout_success` | the subscription's `current_period_start → current_period_end` |
+| 3 | `subscription.py:1303` | `upgrade_subscription` — the **proration** invoice | the **prorated segment** only: from the upgrade moment to `current_period_end` |
+| 4 | `subscription.py:1539` | `upgrade_subscription` — the `pay_later` proration invoice | the same prorated segment |
+| 5 | `webhooks.py:644` | `handle_checkout_completed` | the Stripe invoice's period |
+| 6 | `webhooks.py:770` | `handle_invoice_created` | the Stripe invoice's period |
+| 7 | `webhooks.py:870` | `handle_invoice_finalized` | the Stripe invoice's period |
+| 8 | `webhooks.py:896` | `handle_invoice_finalized` (the second branch) | the Stripe invoice's period |
+| 9 | `webhooks.py:973` | `handle_invoice_paid` | the Stripe invoice's period |
+
+**Sites 5–9 are the trap.** They *mirror* a Stripe invoice. If the tax is computed
+from our own plan price, it is computed twice — once by us, once by nobody — and if it
+is taken from Stripe, then the tax on a **HitPay** or **bank transfer** invoice (which
+never passes through Stripe) would be missing, because those invoices are created on
+our side in `subscription.py`.
+
+So: **our invoice is the truth for the tax.** Stripe's amount is used to *reconcile*
+(`amount == gross`), not to *decide*. A reconciliation mismatch is logged loudly; it is
+not silently corrected.
+
+**Site 3 and 4 are the other trap:** a proration invoice covers a *fraction* of a
+period. Stating the whole `current_period_start → current_period_end` would overstate
+the service. The period is the **prorated segment**.
+
+---
+
+## 5. The invoice factory — `app/services/invoicing.py`
+
+A single `create_invoice(...)` that all nine sites call, so the tax and the period are
+computed in exactly one place.
+
+```python
+def create_invoice(
+    db, *,
+    customer, subscription=None,
+    amount,                 # the NET (the price of the service)
+    currency,
+    description,
+    status="pending",
+    payment_method=None,
+    service_period_start,   # required — no default
+    service_period_end,     # required — no default
+    invoice_date=None,
+    taxable_supply_override=None,
+) -> Invoice:
+```
+
+Inside it, in this order:
+
+1. **Resolve the treatment** for `customer` on `invoice_date`.
+2. **Read the rate** in force on `invoice_date`.
+3. **Compute** net / tax / gross with the rounding of [section 3.3](#33-computenet-rate-inclusive-currency).
+4. **Apply the mode** — `off` and `shadow` and `admin_only` produce the same gross as
+   today; only `display` and `charge` add the tax to the charged amount.
+5. **Write the invoice** with `amount = gross`, `subtotal = net`, `tax_amount`,
+   `tax_rate`, `tax_treatment`, `tax_inclusive`, the service period, and
+   `taxable_supply`.
+6. **Refuse** if the service period cannot be stated — an `AssertionError` /
+   `ValueError` naming the missing period, not a silently empty invoice.
+
+The **shadow mode** is what makes this safe to deploy: `off`/`shadow`/`admin_only`
+compute the tax, store it, and **do not change `amount`**. The admin can watch the
+computed tax for a month before a single customer is charged differently.
+
+### 5.1 The refund and cancellation path
+
+An invoice that is refunded or cancelled must have its tax reversed with it — the
+`tax_amount` is part of what was collected. The refund paths that read `amount` must
+now also read `tax_amount` and `subtotal`, or the reversal will be wrong by the tax.
+
+---
+
+## 6. The reporting change — revenue versus tax liability
+
+This is the change with the most consequence, and it is a **two-line** change that
+changes a number everybody looks at.
+
+Today `GET /api/admin/reports/summary` computes:
+
+```python
+total_revenue = group_by_currency(all_invoices, statuses={"paid"})
+```
+
+`group_by_currency` sums `invoice.amount`. Once `amount` is the **gross**, that sum is
+**revenue plus tax** — and the dashboard would overstate revenue by 8% from the day we
+start charging.
+
+So `app/services/money.py` gains a basis parameter:
+
+| Helper | Change |
+|---|---|
+| `group_by_currency(invoices, statuses=..., basis="net")` | `net` sums `subtotal` when present, else `amount` (the legacy invoices). `gross` sums `amount`. |
+| `tax_liability_by_currency(invoices, statuses={"paid"})` | new — sums `tax_amount`, per currency |
+| `mrr_by_currency(db, subscriptions)` | unchanged in shape, but the MRR is a **net** figure — the recurring net price |
+| `plan_price(plan, currency, cycle)` | unchanged — the plan prices stay **net** under the recommended exclusive basis |
+| `changes_by_currency(current, previous)` | unchanged |
+
+**Every existing caller of `group_by_currency` must declare its basis.** The default is
+`net`, because that is the correct meaning of revenue — and the admin's own totals then
+match the new reporting. `gross` is used only where the gross is what is being asked
+for ("Total Received" — what actually landed).
+
+> **The rule that is not negotiable:** revenue is net. The tax is a liability, not
+> income. A dashboard that shows revenue and tax together as one number is wrong.
+
+### 6.1 The new threshold monitor
+
+`GET /api/admin/tax/threshold` returns:
+
+```json
+{
+  "currency": "MYR",
+  "basis": "estimated_myr_equivalent",
+  "window": { "from": "2025-12-01", "to": "2026-11-30" },
+  "taxable_services_myr": 318400.0,
+  "threshold_myr": 500000.0,
+  "ratio": 0.6368,
+  "band": "notice",
+  "components": {
+    "MYR": 254000.0,
+    "USD": 7500.0
+  },
+  "excluded": { "export_exempt": 0.0, "export_pending": 12000.0, "not_registered": 0.0 },
+  "fx": { "USD_MYR": 4.62, "rate_date": "2026-11-27", "source": "..." },
+  "note": "An estimate. The authoritative figure is the accounting service's."
+}
+```
+
+- The window is the rolling **12 months** ending on the invoice date.
+- Only `taxable_supply = TRUE` invoices count.
+- The USD component is converted with the dated `fx_rates` row — never a live rate,
+  never a silent assumption. The `note` says so in the payload itself.
+- `band` is `quiet` / `notice` / `over`.
+
+---
+
+## 7. The API contracts
+
+### 7.1 Changed — the customer invoice
+
+`GET /api/billing/invoices` (the `InvoiceResponse` model in `billing.py`) gains:
+
+```python
+subtotal: Optional[float]
+tax_amount: Optional[float]
+tax_rate: Optional[float]
+tax_treatment: Optional[str]
+tax_inclusive: Optional[bool]
+service_period_start: Optional[datetime]
+service_period_end: Optional[datetime]
+```
+
+`amount` is unchanged in meaning — the gross. The site can then render the tax line
+without a second request.
+
+### 7.2 Changed — the customer invoice HTML
+
+`GET /api/billing/invoices/{invoice_id}/view` renders the net, the tax and the gross
+as separate rows, plus the service period line, plus our SST registration number when
+we are registered.
+
+The renderer already reads the customer's own timezone (`local_date(invoice.created_at,
+current_user.country)`) — the service period dates must be rendered the same way, and
+they are **dates**, not moments: a period that ends on the 30th ends on the 30th in the
+customer's clock, not at 00:00 UTC on the 31st.
+
+### 7.3 Changed — the admin invoice HTML
+
+`GET /api/admin/invoices/{invoice_id}/html` is a **second renderer** with the same
+shape. It gets the same tax rows and the same service period — and it gets the
+customer's country, which it already reads
+(`local_date(inv.created_at, getattr(customer, "country", None))`).
+
+> **Two renderers, one document.** This is the shape of the codebase today, and it is
+> why the proposal touches both. A third renderer appearing later is the risk — the
+> factory produces the *numbers*; a shared invoice template would remove the
+> duplication. That is a separate cleanup, flagged, not included.
+
+### 7.4 Changed — the published plan prices
+
+`GET /api/plans/published?locale=` gains a `tax` block:
+
+```json
+"tax": { "mode": "display", "basis": "exclusive", "rate": 0.08, "label": "SST" }
+```
+
+The prices themselves do **not** change — under the recommended exclusive basis they
+are the net, and they stay the net. The block tells the site whether to annotate and
+how.
+
+### 7.5 New — the tax status for the signed-in customer
+
+`GET /api/billing/tax-context` returns the treatment that applies to the *current*
+customer, so the portal can decide what to show without the customer having to infer
+it:
+
+```json
+{
+  "applicable": true,
+  "treatment": "domestic_taxable",
+  "rate": 0.08,
+  "basis": "exclusive",
+  "label": "SST",
+  "registration_number": "W16-1234567-03"
+}
+```
+
+For an `export_pending` customer this returns `applicable: false` — the portal shows
+nothing, and the uncertainty stays internal.
+
+### 7.6 New — the admin tax endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/admin/tax/status` | registration status, mode, rate in force, effective dates |
+| `PUT /api/admin/tax/status` | change them (admin only, and the change is logged) |
+| `GET /api/admin/tax/rates` | the rate table |
+| `POST /api/admin/tax/rates` | add a rate — with `source` **required** |
+| `GET /api/admin/tax/customers/{id}` | the customer's export determination |
+| `PUT /api/admin/tax/customers/{id}` | set it — the `reference` is **required** |
+| `GET /api/admin/tax/threshold` | the RM500,000 monitor |
+| `GET /api/admin/reports/tax` | tax collected per currency per month, and the net revenue beside it |
+
+---
+
+## 8. The email
+
+`app/services/subscription_email.py` sends the confirmation with **the amount the
+customer paid** — and it detects a promotion by comparing that amount against the
+plan's regular price:
+
+```python
+if amount is not None:
+    regular = float(regular_price)
+    if float(amount) < float(regular) and abs(float(promo_price) - float(amount)) < 0.01:
+        promo_amount = float(amount)
+```
+
+Once `amount` is the **gross**, `amount != promo_price` — the comparison fails, and
+**the promotional email is never sent**. A customer pays a promotional price and is
+told it was a regular price.
+
+The fix: the comparison must use the **net** — `invoice.subtotal` — not `invoice.amount`.
+This is a one-line change with a very quiet failure mode, which is exactly why it is
+called out here.
+
+The email's own wording also needs the tax: "you paid RM 108.00 (RM 100.00 + RM 8.00
+SST)". The tax is shown **only** when it was actually charged.
+
+---
+
+## 9. The accounting connector
+
+The Phase 1 `billing_ours` connector reads `GET /api/internal/billing/ledger-events`.
+That payload must carry the tax facts, or the accounting service will have to
+re-interpret the invoice on its own — which breaks the "the accounting service reads
+the billing spine, it does not guess" rule.
+
+Each ledger event gains:
+
+```json
+{
+  "invoice_id": 1234,
+  "gross": 108.00,
+  "net": 100.00,
+  "tax": 8.00,
+  "tax_rate": 0.08,
+  "tax_treatment": "domestic_taxable",
+  "taxable_supply": true,
+  "currency": "MYR",
+  "service_period_start": "2026-11-01T00:00:00",
+  "service_period_end": "2026-11-30T00:00:00"
+}
+```
+
+The accounting service posts the **net** to revenue, the **tax** to a liability account,
+and releases the net over the **service period**. The accounting implementation stays
+deferred — this is only the contract, and it is the same HTTP-contract discipline the
+program already requires.
+
+---
+
+## 10. The rollout, in the API
+
+| Step | API behaviour | Flag |
+|---|---|---|
+| 0 | the schema and the engine exist; every invoice is created exactly as today | `tax_mode = off` |
+| 1 | the factory computes and stores net/tax/period; `amount` is unchanged | `tax_mode = shadow` |
+| 2 | the admin endpoints and the admin reports show the tax | `tax_mode = admin_only` |
+| 3 | the customer invoice shows the tax line; the gross is unchanged | `tax_mode = display` |
+| 4 | the gross includes the tax; the tax is collected | `tax_mode = charge` |
+
+**Steps 0–2 cannot change what a customer pays.** That is the property to test, and it
+is the first acceptance test in [tax-module §10](./tax-module#10-acceptance-criteria-all-three-surfaces).
+
+---
+
+## 11. Acceptance criteria — API
+
+- [ ] `scripts/migrate_tax_module.py` is idempotent; running it twice changes nothing;
+      `--check` reports without applying.
+- [ ] No existing invoice is modified by the migration; `subtotal IS NULL` for all of
+      them.
+- [ ] All nine invoice sites go through the factory; no `Invoice(` construction remains
+      outside it.
+- [ ] Every invoice created after the change has a non-null service period.
+- [ ] The proration invoices (sites 3 and 4) state the prorated segment, not the whole
+      period.
+- [ ] In `shadow` mode, `amount` is byte-identical to what it would have been before.
+- [ ] `invoices.amount` equals the amount the payment provider charged, for every
+      invoice, new and historical.
+- [ ] The promotional email still fires for a promotional price (the net comparison).
+- [ ] `GET /api/admin/reports/summary` reports net revenue and tax liability as two
+      numbers, per currency, and they reconcile to the invoice list.
+- [ ] The threshold monitor excludes `export_exempt` and `export_pending`, states that
+      it is an estimate, and names the FX rate and its date.
+- [ ] The ledger event carries net, tax, gross and the service period.
+
+---
+
+## Related
+
+- [tax-module](./tax-module) — the shared contract, the treatments, the rollout
+- [admin-app-changes](./admin-app-changes) — what the admin sees
+- [site-app-portal-changes](./site-app-portal-changes) — what the customer sees
+- [multi-currency-money](../../multi-currency-money) — the money helpers this changes
+- [plan-promotion](../../plan-promotion) — the promo prices the email compares against
+- [pricing-engine-and-promotions](../../pricing-engine-and-promotions) — where the net price is resolved
+- [accounting/internal-tenant](../../accounting/internal-tenant) — the deferred revenue that wants the service period
+
+---
+
+*Proposed November 27, 2026. Nothing in this document is implemented.*

@@ -1,0 +1,337 @@
+---
+title: "SaaS Tax Module - the shared contract"
+description: "The SST design for the SaaS POS, split across website_api, the admin app and the site portal"
+---
+
+# SaaS Tax Module — the shared contract
+
+> **Date:** November 27, 2026
+> **Status:** Proposal — not implemented
+> **Author:** Lumi
+
+This folder is the proposal for the **SaaS subscription tax module**: the service tax
+(SST) that we charge on our own subscriptions, plus the service period that every
+invoice has to state.
+
+It is deliberately **three separate proposals**, because the three surfaces change for
+different reasons and must not be shipped as one undifferentiated "tax module":
+
+| Document | Surface | What changes there |
+|---|---|---|
+| [website-api-changes](./website-api-changes) | `website_api` (FastAPI) | the data model, the tax engine, the invoice factory, the API contracts |
+| [admin-app-changes](./admin-app-changes) | `admin` (React) | the money views, the invoice list, the reports, the tax settings |
+| [site-app-portal-changes](./site-app-portal-changes) | `site` (Next.js) | the prices, the checkout, the portal billing, the printable invoice, the three locales |
+
+This document holds only what the three surfaces **share**: the vocabulary, the tax
+treatment state machine, the service-period rule, the threshold monitor, the rollout,
+and the questions that a Malaysian accountant has to answer before any of it is built.
+
+---
+
+## 1. Why this is a design proposal and not a task
+
+Because the tax treatment is not yet decided. Three things are genuinely open and they
+are **not ours to decide**:
+
+1. **Are we a registered person, and from when?**
+   SST registration is required when the value of taxable services supplied exceeds
+   **RM500,000 in any 12-month period**. Below that we must not charge SST to anyone.
+   The registration date decides which invoices carry tax and which do not.
+2. **Is the Cambodian tenant's subscription an export of services, and is it exempt?**
+   This changes *what we charge* (nothing vs 8%) **and** *whether that revenue counts
+   toward the RM500,000 threshold* — the exemption question decides the threshold
+   question.
+3. **Are our prices tax-inclusive or tax-exclusive?**
+   This changes every number the customer sees, the promo logic, and the refund math.
+
+So the module is designed so that these are **data with an effective date and a named
+source**, entered by an administrator or an accountant — never hard-coded, never guessed
+at request time. The engine reads a treatment and applies it; the treatment comes from
+data.
+
+---
+
+## 2. The vocabulary
+
+| Term | Meaning in this design |
+|---|---|
+| **Taxable service** | a supply of IT/SAAS services that is subject to SST once we are registered |
+| **Net (subtotal)** | the price of the service **before** service tax |
+| **Tax** | the SST charged on that net amount |
+| **Gross (total)** | net + tax — **this is what the customer pays** |
+| **Tax treatment** | the rule that decided how this particular invoice is taxed |
+| **Service period** | the dates the service is provided for — the period the money is *for* |
+| **Tax liability** | the tax we collected and owe to the government — **not revenue** |
+| **Revenue** | the net amount — what the subscription actually earned |
+
+The last two are the whole reason this module exists, and they are the reason the
+reporting change in [admin-app-changes](./admin-app-changes) is not optional.
+
+---
+
+## 3. The tax treatment state machine
+
+A treatment is **resolved per invoice**, from the customer and the date, and then
+**frozen onto that invoice**. A later change of rate, of registration, or of the
+customer's status must never rewrite a historical invoice — the invoice keeps the
+treatment that was applied to it.
+
+```
+                       ┌──────────────────────────────────────────┐
+                       │  not_registered                          │
+                       │  (value of taxable services <= RM500,000)│
+                       │  → tax 0, no SST on any invoice          │
+                       └───────────────┬──────────────────────────┘
+                                       │ registration effective (a date)
+                                       ▼
+        ┌──────────────────────────────────────────────────────────────┐
+        │  registered                                                 │
+        │                                                             │
+        │  customer is in MY ──→ taxable ──→ charge SST at the rate   │
+        │  customer is outside MY ─┬─→ export_exempt (if determined) │
+        │                          └─→ export_taxable ──→ charge SST  │
+        └──────────────────────────────────────────────────────────────┘
+```
+
+### The treatment codes
+
+| Code | Meaning | Tax |
+|---|---|---|
+| `not_registered` | we are not a registered person; charging SST would be unlawful | 0 |
+| `domestic_taxable` | the customer is in Malaysia; the supply is a taxable service | rate × net |
+| `export_taxable` | the customer is outside Malaysia and the supply is **not** exempt | rate × net |
+| `export_exempt` | the customer is outside Malaysia and the supply is an exempt export | 0 |
+| `export_pending` | the customer is outside Malaysia and the export determination is **not yet made** | 0, and flagged |
+
+`export_pending` is the important one. It is what the Cambodian tenant gets while the
+determination is outstanding. It charges nothing (the safe direction), it is visible
+**only to the admin** as a badge, and it is deliberately *not* shown to the customer —
+we do not display our own uncertainty on a customer invoice.
+
+`export_pending` also **does not count toward the RM500,000 threshold** — an exempt or
+undetermined export is excluded from taxable services supplied in Malaysia. That is why
+the threshold monitor must be able to exclude it, and why the export determination is
+worth chasing before we approach the threshold, not after.
+
+### Where a treatment comes from
+
+The chain, in order:
+
+1. `tax_registration_status` + `tax_registration_effective_date` (settings) — are we
+   registered, and since when.
+2. The **rate in force** on the invoice date (`tax_rates` table, effective-dated).
+3. The **customer's country** (`website_customers.country`) — the same claim the
+   payment-method gate already uses.
+4. The **customer's export status** — an admin-entered determination, because the
+   export question is a *per-customer factual* question, not something the server can
+   derive from a country field.
+
+> **Note:** `website_customers.country` is a claim in the profile. The payment methods
+> already treat it that way (`services/payment_methods.country_code`, and
+> `subscription.py:335` refuses MYR to a non-MY customer). The export determination must
+> be **confirmed by an administrator**, never inferred from the country field at request
+> time.
+
+---
+
+## 4. The rate is data
+
+A rate is a row, not a constant:
+
+| Field | Purpose |
+|---|---|
+| `code` | e.g. `SST_IT_8` |
+| `rate` | e.g. `0.08` |
+| `effective_from` / `effective_to` | the window the rate applies to |
+| `source` | the named authority for the rate (the gazette, the accountant's memo) |
+| `note` | free text — what the determination actually said |
+
+The invoice stores a **snapshot** of the rate it used (`tax_rate`, `tax_treatment`), so
+the rate table can change and the history still explains itself. This mirrors the rule
+already in the codebase for money and promotions: the *price* is per currency and
+effective-dated, and the value carries its own provenance.
+
+**The rate is not 8% by default.** 8% is the standard rate for IT services from
+1 March 2024 — but it is entered, with a source, by an administrator.
+
+---
+
+## 5. The service period
+
+**Every invoice states the service period it is for.** Two dates: the start and the end.
+
+This is what makes the invoice *accountable* rather than merely *paid*. It is also what
+the accounting service needs to recognise revenue over the period instead of on the
+cash date — the deferred-revenue model in
+[accounting/internal-tenant](../../accounting/internal-tenant) depends on the
+service period being present.
+
+The rule is a refusal: **an invoice that cannot state its service period is not
+issued.** There is no "period unknown" invoice. That refusal is what keeps the
+accounting reconciliation honest later.
+
+The period is captured at each of the **nine invoice-creation sites** — see
+[website-api-changes](./website-api-changes#4-the-nine-invoice-sites) for the table of
+which period each one uses.
+
+---
+
+## 6. The RM500,000 threshold monitor
+
+A monitor, not a gate. It watches the rolling 12-month value of taxable services and
+warns **well before** the threshold, because the consequence of crossing it unprepared
+is that we have been charging (or not charging) the wrong thing for months.
+
+Three rules make the monitor trustworthy:
+
+1. **Only taxable supplies count.** Revenue from `export_exempt` and `export_pending`
+   is excluded — an exempt export is not a taxable service supplied in Malaysia.
+2. **The money is never added across currencies.** The threshold is in ringgit, and the
+   book is in USD and MYR. The monitor converts with a **dated FX rate table with a
+   named source**, exactly the discipline in
+   [multi-currency-money](../../multi-currency-money). The MYR-equivalent total is
+   an **estimate**, and it says so.
+3. **The monitor is not the ledger.** It is a warning light, not an accounting record.
+   The authoritative figure is the accounting service's, and the two are reconciled —
+   which is precisely what the internal tenant exists for.
+
+The monitor reports three bands: below 70% (quiet), 70–100% (notice), above 100%
+(over the threshold — registration is required, and the treatment table flips to
+`registered`).
+
+---
+
+## 7. Inclusive or exclusive pricing
+
+Two defensible designs. We recommend **exclusive** (net), and this is the decision we
+want confirmed.
+
+| | Exclusive (recommended) | Inclusive |
+|---|---|---|
+| Plan prices are | the **net** amount | the **gross** amount |
+| The customer sees | `RM 100.00` + `+ SST` | `RM 108.00` `incl. SST` |
+| The gross charged | net + tax | the price as listed |
+| Net on the invoice | the price as listed | price ÷ 1.08 |
+| Promo comparison | stored promo price = net | stored promo price = gross |
+| Refund math | tax refunded with the service | tax already inside the number |
+| Changing the rate later | the price list stays valid | **every price list is wrong** |
+
+Exclusive wins because it survives a rate change and because the stored prices keep
+meaning "the price of the service". Inclusive wins for the customer only in that one
+number is shown — at the cost of a price list that must be rewritten whenever the rate
+moves.
+
+**Under exclusive pricing, the tax is added at the invoice, and the price list is
+annotated, not changed.** The customer-facing price pages must then say that the price
+excludes SST — which is a **display** obligation, and it lands in the site portal
+document.
+
+> **The registration status decides when this matters.** While `not_registered`, there
+> is no tax and no annotation — saying "excl. SST" when we charge none is noise.
+
+---
+
+## 8. What the three surfaces share
+
+These three rules must hold in every surface, or the three surfaces will disagree:
+
+1. **The gross is what is paid.** `invoices.amount` keeps its current meaning: the
+   amount that is charged. The tax is *added on top*, in new columns. Nothing that
+   touches payment changes meaning.
+2. **The net is the revenue; the tax is a liability.** Reporting splits them. The
+   customer-facing gross is neither.
+3. **Every money figure keeps its currency.** Tax is charged and reported in the
+   invoice's own currency. Nothing crosses a currency boundary except through the
+   dated FX table.
+
+---
+
+## 9. Rollout
+
+Each step is independently shippable, and each one can be stopped at.
+
+| Step | What ships | Flag | Effect on the customer |
+|---|---|---|---|
+| **0** | schema + engine, everything dormant | `tax_module_enabled = off` | none |
+| **1** | **shadow** — compute the tax, store it, show it to nobody | `tax_mode = shadow` | none |
+| **2** | admin display — the admin sees the tax, the customer does not | `tax_mode = admin_only` | none |
+| **3** | customer display — the tax line appears on the invoice, still charged as before | `tax_mode = display` | the invoice shows the tax line |
+| **4** | **charging** — the gross is raised, the tax is collected | `tax_mode = charge` | the customer pays more |
+
+Steps 0–2 are safe to run against production: no invoice amount changes. Step 3 changes
+what is *printed*; step 4 changes what is *charged*.
+
+The flag lives with the other settings (`settings` table), so the admin can flip it
+without a deploy — and because `tax_mode` is a **value with an effective date**, the
+rollout itself is auditable: "from the 1st of December we were in shadow mode, from the
+15th we were charging."
+
+---
+
+## 10. Acceptance criteria (all three surfaces)
+
+- [ ] No invoice amount changes while `tax_mode` is `shadow` or `admin_only`.
+- [ ] Every invoice issued after the change carries a service period; the factory
+      refuses to issue one that cannot.
+- [ ] `invoices.amount` still equals the amount the payment provider charged, for
+      every historical and every new invoice.
+- [ ] The admin revenue report shows **net revenue** and **tax liability** as two
+      different numbers, per currency.
+- [ ] A MY customer sees the tax line; a customer under `export_exempt` or
+      `export_pending` does not.
+- [ ] The promo email still recognises a promotional price — the promo comparison uses
+      the **net**, not the gross.
+- [ ] The threshold monitor reports a MYR-equivalent taxable-services figure, states
+      that it is an estimate, and excludes exempt/pending exports.
+- [ ] The site portal prints the tax line in **en**, **km** and **zh**.
+- [ ] The accounting connector's ledger events carry net, tax, gross and the service
+      period, so the books can be fed without a second interpretation.
+
+---
+
+## 11. The decisions that need a professional answer
+
+These are the questions I could not answer from the code, and I should not have answered
+them from the code at all.
+
+**For the accountant / customs authority:**
+
+1. The legal entity's SST registration status, and whether registration has been applied
+   for or is likely on the RM500,000 measure.
+2. Whether the Cambodian tenant's subscription is an **export of services**, and if so
+   whether the exemption conditions are met (the "outside scope" condition).
+3. Whether our prices should be presented tax-inclusive or tax-exclusive, and whether
+   the customer-facing price pages must carry the SST annotation.
+4. The applicable service-tax rate for our supply, and its effective date — with the
+   gazette reference for the source field.
+5. Whether the tax on a **USD** invoice to a Malaysian customer is charged in USD
+   (our default) or in MYR, and how the MYR liability is determined.
+6. The **imported-services self-assessment** on our own vendor spend — which vendors
+   supply us services from outside Malaysia, and whether the reverse charge applies to
+   them. This is a *vendor* question, and it is a separate workstream from this module:
+   it does not touch the invoice.
+7. Whether an invoice must carry the SST registration number, and what other
+   particulars SST requires on a tax invoice.
+
+**For Kens (business decisions, not tax advice):**
+
+8. Whether we register voluntarily before the threshold — if registration is cheap and
+   we are heading for it, registering early is usually simpler than a mid-year
+   effective date.
+9. Whether the tax is charged in the invoice currency or in MYR (item 5 above is the
+   tax view of this).
+
+---
+
+## Related
+
+- [multi-currency-money](../../multi-currency-money) — the money rules this module follows
+- [plan-promotion](../../plan-promotion) — the promotion prices, per currency
+- [pricing-engine-and-promotions](../../pricing-engine-and-promotions) — how the price is resolved
+- [malaysia-e-invoice](../../malaysia-e-invoice) — the restaurant's own SST (a different tax, a different rate)
+- [accounting/internal-tenant](../../accounting/internal-tenant) — the deferred-revenue model that wants the service period
+- [renewal-system](../../renewal-system) — the renewal invoices this module must annotate
+
+---
+
+*Proposed November 27, 2026. Nothing in this folder is implemented.*
